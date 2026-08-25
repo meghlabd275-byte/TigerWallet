@@ -4,6 +4,7 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import './styles/globals.css';
 
 // Import Pages
+import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import UsersPage from './pages/UsersPage';
 import TransactionsPage from './pages/TransactionsPage';
@@ -263,6 +264,16 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
 const AppContent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const { resolvedTheme, toggleTheme } = useTheme();
+
+  // Auth gate: require a stored admin token before exposing the panel. LoginPage
+  // persists the token and reloads, so a render-time read is sufficient.
+  const authed = typeof window !== 'undefined' && !!localStorage.getItem('admin_token');
+
+  if (!authed) {
+    return (
+      <LoginPage />
+    );
+  }
 
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: 'var(--bg-secondary)' }}>

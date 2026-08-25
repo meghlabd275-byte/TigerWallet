@@ -14,6 +14,8 @@
     <string name="login_email">Email</string>
     <string name="login_password">Password</string>
     <string name="login_button">Sign in</string>
+    <string name="login_error_empty">Please enter both email and password</string>
+    <string name="login_error_generic">Login failed</string>
     <string name="add_chain">Add chain</string>
     <string name="save">Save</string>
 </resources>

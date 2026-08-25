@@ -34,8 +34,8 @@
 ### P1 — Production blockers
 | Gap | Location | Evidence |
 |---|---|---|
-| No Login page (manual localStorage token) | `admin/web`, `white_label_admin/web` | Page inventory — no login route |
-| LoginActivity stub (`setupLoginForm` empty) | `admin/android` `MainActivity.kt` | Round-4 verification |
+| ~~No Login page (manual localStorage token)~~ ✅ RESOLVED | `admin/web`, `white_label_admin/web` | Session 2: real Login pages added + auth gate (see IMPLEMENTATION_LOG.md) |
+| ~~LoginActivity stub (`setupLoginForm` empty)~~ ✅ RESOLVED | `admin/android` `MainActivity.kt` | Session 2: wired to real `POST /auth/login` via `AdminRepository` |
 | Billing plans hardcoded | `admin/go` | Plan definitions in code, not DB |
 
 ### P2 — Major gaps
@@ -104,7 +104,7 @@ Known intentional simulation (allowed, must never be represented as live):
    fetchers with the 22-field template.
 3. API audit (Phase 37) starting with `go/wallet_api`, `master_wallet/backend`,
    `admin/go`, `super_admin/go` route tables.
-4. Fix P1: Login pages for admin/web + white_label_admin/web; wire
-   admin/android LoginActivity.
+4. ~~Fix P1: Login pages for admin/web + white_label_admin/web; wire
+   admin/android LoginActivity.~~ ✅ DONE (Session 2 — see IMPLEMENTATION_LOG.md).
 5. Fix P0: complete `admin/rust` handler auth; document/keep
    `selfhosted_masterwallet` non-shippable status.

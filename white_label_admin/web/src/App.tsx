@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import KYC from './pages/KYC';
@@ -49,6 +50,13 @@ interface NavSection { title: string; items: { id: Page; label: string }[]; }
 function AppContent() {
   const { theme, isDark, toggleTheme } = useTheme();
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+
+  // Auth gate: require a stored token before exposing the dashboard. Login
+  // persists the token and reloads, so a render-time read is sufficient.
+  const authed = typeof window !== 'undefined' && !!localStorage.getItem('whitelabel_admin_token');
+  if (!authed) {
+    return <Login />;
+  }
 
   const renderPage = () => {
     switch (currentPage) {

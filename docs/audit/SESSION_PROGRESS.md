@@ -14,7 +14,8 @@
 
 | Session | Date | Deliverables | Commit |
 |---|---|---|---|
-| 1 | 2026-08-25 | `docs/audit/REPOSITORY_INVENTORY.md`, `ARCHITECTURE_MAP.md`, `DUPLICATE_AUDIT.md`, `GAP_ANALYSIS.md`, this tracker | (this commit) |
+| 1 | 2026-08-25 | `docs/audit/REPOSITORY_INVENTORY.md`, `ARCHITECTURE_MAP.md`, `DUPLICATE_AUDIT.md`, `GAP_ANALYSIS.md`, this tracker | `2dad2b3` |
+| 2 | 2026-08-25 | `docs/audit/IMPLEMENTATION_LOG.md`; admin/web + white_label_admin/web + admin/android Login implementations (P1) | (this commit) |
 
 ## Phase coverage matrix
 
@@ -33,7 +34,7 @@
 | 13 | UserWallet platform matrix | ✅ | REPOSITORY_INVENTORY.md §5 |
 | 14 | UserWallet competitive audit | 🔶 | GAP_ANALYSIS.md §3 snapshot; full feature table ➡️ session 2 |
 | 15 | UserWallet fetcher audit | ⬜ | ➡️ session 2 (with Phase 36) |
-| 16 | Admin application audit | 🔶 | Gaps logged (login pages, billing, auth stubs) |
+| 16 | Admin application audit | ✅ | admin/web + white_label_admin/web now have real Login pages; admin/android LoginActivity wired to real API (see IMPLEMENTATION_LOG.md) |
 | 17 | Admin vs SuperAdmin | 🔶 | Boundaries mapped; full permission matrix ➡️ session 2 |
 | 18–20 | MasterWallet reqs / chain mgmt / token mgmt | 🔶 | GAP_ANALYSIS.md §4 |
 | 21 | Billion-address architecture | ⬜ | Sharding plan needed (P2) |

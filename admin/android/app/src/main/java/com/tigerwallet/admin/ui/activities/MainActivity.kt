@@ -1,14 +1,24 @@
 package com.tigerwallet.admin.ui.activities
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.tigerwallet.admin.R
+import com.tigerwallet.admin.TigerAdminApplication
+import com.tigerwallet.admin.data.repository.AdminRepository
 import com.tigerwallet.admin.ui.fragments.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Main Admin Activity
@@ -20,6 +30,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Require an authenticated session before showing the dashboard.
+        if (!TigerAdminApplication.instance.isLoggedIn()) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         setContentView(R.layout.activity_main)
 
         setupToolbar()
@@ -133,26 +151,77 @@ class MainActivity : AppCompatActivity() {
  */
 class LoginActivity : AppCompatActivity() {
 
+    private lateinit var emailInput: EditText
+    private lateinit var passwordInput: EditText
+    private lateinit var loginButton: Button
+    private lateinit var progressBar: ProgressBar
+    private lateinit var adminRepository: AdminRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
-        
+
         // Check if already logged in
         if (TigerAdminApplication.instance.isLoggedIn()) {
             navigateToMain()
             return
         }
-        
+
+        emailInput = findViewById(R.id.emailInput)
+        passwordInput = findViewById(R.id.passwordInput)
+        loginButton = findViewById(R.id.loginButton)
+        progressBar = findViewById(R.id.loginProgress)
+        adminRepository = AdminRepository(TigerAdminApplication.instance.getApiService())
+
         setupLoginForm()
     }
 
     private fun setupLoginForm() {
-        // Setup login form with email/password fields
-        // On successful login, save session and navigate to main
+        loginButton.setOnClickListener {
+            val email = emailInput.text.toString().trim()
+            val password = passwordInput.text.toString()
+            if (email.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, R.string.login_error_empty, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            performLogin(email, password)
+        }
+    }
+
+    private fun performLogin(email: String, password: String) {
+        setLoading(true)
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    adminRepository.login(email, password)
+                }
+                result.onSuccess { loginResponse ->
+                    TigerAdminApplication.instance.sessionManager.saveSession(
+                        authToken = loginResponse.token,
+                        refreshToken = loginResponse.refresh_token,
+                        expiresAt = loginResponse.expires_at,
+                        adminUser = loginResponse.admin
+                    )
+                    navigateToMain()
+                }.onFailure { error ->
+                    Toast.makeText(this@LoginActivity, error.message ?: getString(R.string.login_error_generic), Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@LoginActivity, e.message ?: getString(R.string.login_error_generic), Toast.LENGTH_SHORT).show()
+            } finally {
+                setLoading(false)
+            }
+        }
+    }
+
+    private fun setLoading(loading: Boolean) {
+        loginButton.isEnabled = !loading
+        progressBar.visibility = if (loading) ProgressBar.VISIBLE else ProgressBar.GONE
     }
 
     private fun navigateToMain() {
-        // Navigate to main activity
+        startActivity(Intent(this, MainActivity::class.java))
+        finish()
     }
 }
 
@@ -160,14 +229,6 @@ class LoginActivity : AppCompatActivity() {
  * Base Activity with common functionality
  */
 abstract class BaseActivity : AppCompatActivity() {
-
-    protected fun showLoading() {
-        // Show loading dialog
-    }
-
-    protected fun hideLoading() {
-        // Hide loading dialog
-    }
 
     protected fun showError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
@@ -178,7 +239,10 @@ abstract class BaseActivity : AppCompatActivity() {
     }
 
     protected fun isNetworkAvailable(): Boolean {
-        // Check network connectivity
-        return true
+        val cm = getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+                as android.net.ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val capabilities = cm.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

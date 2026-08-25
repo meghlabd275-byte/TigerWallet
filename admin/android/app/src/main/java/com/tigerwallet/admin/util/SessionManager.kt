@@ -87,9 +87,13 @@ class SessionManager(context: Context) {
      * Check if token is expired
      */
     private fun isTokenExpired(expiresAt: String): Boolean {
-        // Parse ISO 8601 date and compare with current time
-        // This is a simplified version - in production use proper date parsing
-        return false // Placeholder
+        return try {
+            val parsed = java.time.Instant.parse(expiresAt)
+            parsed.isBefore(java.time.Instant.now())
+        } catch (e: Exception) {
+            // Unparseable timestamp is treated as expired (fail-closed).
+            true
+        }
     }
 
     /**
