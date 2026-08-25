@@ -30,11 +30,9 @@ TigerWallet supports **200+ EVM blockchain networks** and **500-1000+ Non-EVM bl
 - **Starknet**: Mainnet, Goerli
 - **Injective**: Mainnet, Testnet
 - **Substrate/Polkadot**: Kusama, Westend
-- **Algorand**: Mainnet
-- **Near**: Mainnet
 - **And 500+ more chains...**
 
-### Native Implementations Built From Scratch:
+### Native Implementations Built From Scratch
 
 | Component | Status | Description |
 |-----------|--------|-------------|
@@ -46,7 +44,7 @@ TigerWallet supports **200+ EVM blockchain networks** and **500-1000+ Non-EVM bl
 | **Pi Network SDK** | ✅ Complete | Payment integration |
 | **EVM Wallet Adapter** | ✅ Complete | MetaMask, WalletConnect v2, Coinbase |
 | **Solana Wallet** | ✅ Complete | Phantom, Solflare, Backpack |
-| **Aptos Wallet** | ✅ Complete | Martian, Sui Wallet |
+| **Aptos Wallet** | ✅ Complete | Martian, Petra, Pontem |
 | **TON Wallet** | ✅ Complete | Tonkeeper adapter |
 | **Core AMM** | ✅ Complete | Concentrated liquidity, constant product |
 | **MEV Protection** | ✅ Complete | Bundle builder, sandwich detector |
@@ -114,7 +112,7 @@ TigerWallet/
 ### Consolidated canonical layout (2026-08-23)
 
 Duplicate top-level directories were merged into one canonical home each
-(full functionality and fetchers preserved; see `docs/GAPS.md` item 9):
+(full functionality and fetchers preserved):
 
 | Domain | Canonical root | Absorbed duplicates |
 |--------|----------------|---------------------|
@@ -131,7 +129,7 @@ Duplicate top-level directories were merged into one canonical home each
 | NFT | `nft_ecosystem/` (go, rust, cpp) | `nft_marketplace/` |
 | Notifications | `notifications/` | `notification/` → `go/cmd/gateway/` |
 | Staking | `staking_hub/` (go, rust) | `staking/` → `go/legacy/` |
-| White label | `white_label/` (+ `white_label_admin/`) | `white_label_portal/`, `white_label_system/`, `white_label_marketplace/`, `white_label_templates/`, `white_label_analytics_ai/`, `white_label_sdk/` → `sdk/cpp/`, `white_level_sdk/` → `sdk/rust/` |
+| White label | `white_label/` (+ `white_label_admin/`) | `white_label_portal/`, `white_label_system/`, `white_label_marketplace/`, `white_label_templates/`, `white_label_analytics_ai/`, `white_label_sdk/` → `sdk/cpp/`, `white_label_sdk/` → `sdk/rust/` |
 | Embedded wallet | `embedded_wallet/sdk/` | `embedded_wallet_sdk/` (README) → `embedded_wallet/sdk/javascript/README.md` |
 | Portfolio analytics | `portfolio/` (go, rust) | `portfolio_analytics/` (README) → `portfolio/README.md` |
 | Governance / DAO | `governance/` (go service + 4 contract variants) | `governance_dao/` → `governance/smart_contracts/ethereum/TigerGovernance.sol` |
