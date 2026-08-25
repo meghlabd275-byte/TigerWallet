@@ -180,4 +180,4 @@ For more details, see:
 
 ## License
 
-MIT License - Multichain Cryptocurrency Decentralized Exchanges
+MIT License - Multichain Cryptocurrency Decentralized Wallet
