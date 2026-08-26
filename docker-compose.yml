@@ -757,7 +757,7 @@ services:
       dockerfile: Dockerfile
     container_name: tigerwallet-wl-liquidity
     ports:
-      - "8462:8462"
+      - "8458:8462"
     environment:
       LIQ_PORT: "8462"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_liquidity?sslmode=disable"
@@ -781,7 +781,7 @@ services:
       dockerfile: Dockerfile
     container_name: tigerwallet-wl-card
     ports:
-      - "8463:8463"
+      - "8459:8463"
     environment:
       CARD_PORT: "8463"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_card?sslmode=disable"
@@ -812,7 +812,7 @@ services:
       dockerfile: Dockerfile
     container_name: tigerwallet-wl-admin
     ports:
-      - "8461:8082"
+      - "8456:8082"
     environment:
       SERVER_PORT: "8082"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_admin?sslmode=disable"

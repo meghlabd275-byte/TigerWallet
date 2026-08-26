@@ -1,5 +1,5 @@
-# TigerSwap Requirements
-# Python dependencies for TigerSwap DEX Aggregator and Trading Services
+# TigerWallet Requirements
+# Python dependencies for TigerWallet DEX Aggregator and Trading Services
 
 # Core
 asyncio>=3.4.3
