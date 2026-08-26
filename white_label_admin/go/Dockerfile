@@ -27,8 +27,8 @@ RUN apk add --no-cache ca-certificates wget && \
 WORKDIR /app
 COPY --from=builder /out/wl-admin /app/wl-admin
 USER wladmin
-EXPOSE 8082
-ENV SERVER_PORT=8082
+EXPOSE 8456
+ENV SERVER_PORT=8456
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:8082/health || exit 1
+  CMD wget -qO- http://127.0.0.1:8456/health || exit 1
 ENTRYPOINT ["/app/wl-admin"]

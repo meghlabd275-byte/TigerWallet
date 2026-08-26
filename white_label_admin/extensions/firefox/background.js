@@ -13,7 +13,7 @@ if (typeof browser !== "undefined" && typeof chrome === "undefined") {
 // Background script
 browser.runtime.onInstalled.addListener(() => {
   console.log('TigerWallet White Label Admin Extension installed');
-  browser.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:8082' });
+  browser.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:8456' });
 });
 
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {

@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
 
     let app = tiger_admin::api::router(state).layer(cors);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8082));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8456));
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

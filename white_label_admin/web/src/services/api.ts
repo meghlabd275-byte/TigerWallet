@@ -4,7 +4,7 @@
  * Connected to Go Backend with PostgreSQL and Redis
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_WHITELABEL_ADMIN_API || 'http://localhost:8082';
+const API_BASE_URL = process.env.NEXT_PUBLIC_WHITELABEL_ADMIN_API || 'http://localhost:8456';
 
 class WhiteLabelAdminApiService {
   private baseURL: string;

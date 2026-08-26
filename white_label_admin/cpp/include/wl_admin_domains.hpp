@@ -3,7 +3,7 @@
  *
  * Governance-record handlers for the 11 WL admin domains mirrored across all
  * WL clients (web/android/ios/desktop/extensions/rust). Each handler produces a
- * normalized request descriptor for the WL backend at http://localhost:8082.
+ * normalized request descriptor for the WL backend at http://localhost:8456.
  * Governance records ONLY - no fund movement, no balance mutation.
  */
 #ifndef TIGER_WL_ADMIN_DOMAINS_HPP
@@ -31,8 +31,8 @@ inline std::string_view to_string_view(HttpMethod m) {
     return "GET";
 }
 
-// WL backend base. Port 8082 - matches the Go WL admin server.
-constexpr std::string_view WL_API_BASE = "http://localhost:8082/api/v1/admin";
+// WL backend base. Port 8456 - matches the Go WL admin server.
+constexpr std::string_view WL_API_BASE = "http://localhost:8456/api/v1/admin";
 
 struct DomainRequest {
     HttpMethod method;
@@ -152,7 +152,7 @@ inline const std::vector<DomainSpec>& domain_registry() {
 
         // -----------------------------------------------------------------
         // 9 scoped admin domains — real main.go routes on the WL backend
-        // (port 8082). Governance/config records + scoped approval actions.
+        // (port 8456). Governance/config records + scoped approval actions.
         // -----------------------------------------------------------------
         {
             // LiquidityAdmin: wl-liquidity/sources CRUD + status + allocations + stats.

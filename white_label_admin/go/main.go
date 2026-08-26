@@ -315,6 +315,15 @@ func main() {
 			admin.GET("/wl-cards/transactions", middleware.RequireScope(roles.CardAdmin), svc.ListWLCardTransactions)
 			admin.GET("/wl-cards/stats", middleware.RequireScope(roles.CardAdmin), svc.WLCardStats)
 
+			// wallet_admin scope — WL MasterWallet + WL UserWallet governance
+			admin.GET("/wl-master-wallets", middleware.RequireScope(roles.WalletAdmin), svc.ListWLMasterWallets)
+			admin.POST("/wl-master-wallets", middleware.RequireScope(roles.WalletAdmin), svc.RegisterWLMasterWallet)
+			admin.PUT("/wl-master-wallets/:id", middleware.RequireScope(roles.WalletAdmin), svc.UpdateWLMasterWallet)
+			admin.DELETE("/wl-master-wallets/:id", middleware.RequireScope(roles.WalletAdmin), svc.DeleteWLMasterWallet)
+			admin.GET("/wl-user-wallets", middleware.RequireScope(roles.WalletAdmin), svc.ListWLUserWallets)
+			admin.POST("/wl-user-wallets", middleware.RequireScope(roles.WalletAdmin), svc.RegisterWLUserWallet)
+			admin.PUT("/wl-user-wallets/:id/status", middleware.RequireScope(roles.WalletAdmin), svc.UpdateWLUserWalletStatus)
+
 			admin.GET("/stats", svc.Stats)
 		}
 	}

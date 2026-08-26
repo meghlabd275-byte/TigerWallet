@@ -122,6 +122,9 @@ func consumeUnlockToken(token string, walletID, userID uuid.UUID) ([]byte, bool)
 // an unlock_token (passwordless) and falling back to the wallet password.
 // Callers pass the wallet record + the request's password + unlock token.
 func resolveSeed(wallet *WalletRecord, password, unlockToken string) ([]byte, error) {
+	if wallet.IsWatchOnly {
+		return nil, fmt.Errorf("watch-only wallet cannot sign")
+	}
 	if unlockToken != "" {
 		seed, ok := consumeUnlockToken(unlockToken, wallet.ID, wallet.UserID)
 		if !ok {
@@ -154,14 +157,14 @@ func randHex(n int) string {
 // a passcode hash, a passkey credential, both, or neither (no lock set →
 // unlock returns a token immediately = "without entering anything").
 type lockCredential struct {
-	WalletID          uuid.UUID `json:"-"`
-	PasscodeHash      string    // bcrypt-ish hash of the passcode ("" = none)
-	PasskeyCredID     string    // base64url credential id ("" = none)
-	PasskeyPubKey     string    // base64url SPKI P-256 public key
-	PasskeySignCount  uint32    // replay-protection counter
-	UnlockKeyEncSeed  string    // for passkey-created wallets: seed encrypted with the passkey unlock key
-	UnlockKeyHash     string    // sha256(unlock_key) — the passkey asserts to release this key
-	UpdatedAt         time.Time
+	WalletID         uuid.UUID `json:"-"`
+	PasscodeHash     string    // bcrypt-ish hash of the passcode ("" = none)
+	PasskeyCredID    string    // base64url credential id ("" = none)
+	PasskeyPubKey    string    // base64url SPKI P-256 public key
+	PasskeySignCount uint32    // replay-protection counter
+	UnlockKeyEncSeed string    // for passkey-created wallets: seed encrypted with the passkey unlock key
+	UnlockKeyHash    string    // sha256(unlock_key) — the passkey asserts to release this key
+	UpdatedAt        time.Time
 }
 
 // loadLockCredential reads a wallet's lock credential from PG (empty if none).
@@ -243,14 +246,14 @@ func nullable(s string) interface{} {
 // --- Passkey wallet creation ---
 
 type passkeyWalletReq struct {
-	Label         string `json:"label"`
-	ChainID       int64  `json:"chain_id"`
-	AccountIndex  int    `json:"account_index"`
-	EntropyBits   int    `json:"entropy_bits"`
-	CredentialID  string `json:"credential_id"`  // base64url, from navigator.credentials.create
-	PublicKey     string `json:"public_key"`      // base64url SPKI P-256
-	SignCount     uint32 `json:"sign_count"`
-	Attestation   string `json:"attestation"`    // base64url clientDataJSON+authData (audited by the browser; we store the SPKI pubkey)
+	Label        string `json:"label"`
+	ChainID      int64  `json:"chain_id"`
+	AccountIndex int    `json:"account_index"`
+	EntropyBits  int    `json:"entropy_bits"`
+	CredentialID string `json:"credential_id"` // base64url, from navigator.credentials.create
+	PublicKey    string `json:"public_key"`    // base64url SPKI P-256
+	SignCount    uint32 `json:"sign_count"`
+	Attestation  string `json:"attestation"` // base64url clientDataJSON+authData (audited by the browser; we store the SPKI pubkey)
 }
 
 // handlePasskeyCreateWallet creates a wallet whose seed is encrypted with a
@@ -358,16 +361,16 @@ func handlePasskeyCreateWallet(c *gin.Context) {
 		"chain_id":        w.ChainID,
 		"address":         address,
 		"derivation_path": w.DerivationPath,
-		"mnemonic":         mnemonic,
-		"unlock_key":       unlockKey, // client wraps this with the passkey; never re-sent by the server
-		"unlock_token":     issueUnlockToken(seed, w.ID, uid, true),
+		"mnemonic":        mnemonic,
+		"unlock_key":      unlockKey, // client wraps this with the passkey; never re-sent by the server
+		"unlock_token":    issueUnlockToken(seed, w.ID, uid, true),
 	})
 }
 
 // --- App lock setup ---
 
 type lockSetupReq struct {
-	Passcode     string `json:"passcode"`      // optional; min 4 digits if set
+	Passcode      string `json:"passcode"` // optional; min 4 digits if set
 	PasskeyCredID string `json:"passkey_credential_id"`
 	PasskeyPubKey string `json:"passkey_public_key"`
 }
@@ -438,12 +441,12 @@ func handleLockSetup(c *gin.Context) {
 // --- Unlock (returns a passwordless session token) ---
 
 type unlockReq struct {
-	Passcode            string `json:"passcode"`
-	Password            string `json:"password"` // legacy wallet-password fallback
-	PasskeyAssertion    string `json:"passkey_assertion"`     // base64url signature
-	PasskeyAuthData     string `json:"passkey_auth_data"`     // base64url authenticatorData
-	PasskeyClientData   string `json:"passkey_client_data"`   // base64url clientDataJSON
-	UnwrappedUnlockKey  string `json:"unwrapped_unlock_key"` // for passkey-created wallets
+	Passcode           string `json:"passcode"`
+	Password           string `json:"password"`             // legacy wallet-password fallback
+	PasskeyAssertion   string `json:"passkey_assertion"`    // base64url signature
+	PasskeyAuthData    string `json:"passkey_auth_data"`    // base64url authenticatorData
+	PasskeyClientData  string `json:"passkey_client_data"`  // base64url clientDataJSON
+	UnwrappedUnlockKey string `json:"unwrapped_unlock_key"` // for passkey-created wallets
 }
 
 // handleUnlock verifies the app-lock credential and returns a short-lived

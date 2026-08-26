@@ -48,7 +48,7 @@ function select(d) {
   subtitle.textContent = 'Governance records only - no fund movement.';
   endpointsEl.innerHTML = d.endpoints.map(([m, p, gov]) =>
     `<div class="ep ${gov ? 'gov' : ''}"><span class="label">${m}</span><span class="path">${p}</span></div>`
-  ).join('') + '<div class="note">Backend: http://localhost:8082 (WL admin)</div>';
+  ).join('') + '<div class="note">Backend: http://localhost:8456 (WL admin)</div>';
   // Bind the domain's IPC contract (real calls issued on demand by future
   // table renderers; selection already exposes window.wlAdmin[d.key]).
   const bridge = window.wlAdmin && window.wlAdmin[d.key];

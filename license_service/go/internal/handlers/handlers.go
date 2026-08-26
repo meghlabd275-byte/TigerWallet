@@ -374,6 +374,24 @@ func (h *Handlers) transitionLicense(c *gin.Context, status string) {
 	c.JSON(http.StatusOK, gin.H{"transitioned": id, "status": status})
 }
 
+// ClearLicenseInstance removes a license's instance binding so a WL client can
+// rotate to new hardware/cloud. SuperAdmin-only (route-gated). This is the
+// clean path to rebind without re-issuing the license.
+func (h *Handlers) ClearLicenseInstance(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	ctx := c.Request.Context()
+	if err := h.store.ClearLicenseInstance(ctx, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	h.store.Audit(ctx, adminID(c), "license.clear-instance", "license", id.String(), nil)
+	c.JSON(http.StatusOK, gin.H{"cleared": id})
+}
+
 // ==================== SuperAdmin: feature flags (per-fetcher) ====================
 
 func (h *Handlers) SetFeatureFlag(c *gin.Context) {
@@ -491,6 +509,17 @@ func (h *Handlers) ValidateLicense(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"valid": false, "error": "license not found"})
 		return
 	}
+	// Instance binding (no-resale enforcement): once a license is bound to one
+	// self-hosted instance, ANY other instance_id is refused. The first valid
+	// call atomically binds the license to this instance_id.
+	if lic.BoundInstanceID != nil && *lic.BoundInstanceID != "" && *lic.BoundInstanceID != req.InstanceID {
+		c.JSON(http.StatusForbidden, gin.H{"valid": false, "alive": false, "reason": "license_bound_to_another_instance", "command": "halt"})
+		return
+	}
+	if err := h.store.BindLicenseInstance(ctx, lic.ID, req.InstanceID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"valid": false, "error": "instance binding failed"})
+		return
+	}
 	// Kill-switch check FIRST: a halted scope (global / client / product) fails
 	// closed immediately with an explicit halt, ahead of every lifecycle check.
 	// This makes the emergency stop effective on the validate path that the Go
@@ -561,6 +590,16 @@ func (h *Handlers) Heartbeat(c *gin.Context) {
 	lic, err := h.store.GetLicenseByKey(ctx, req.LicenseKey)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": "license not found"})
+		return
+	}
+	// Instance binding (no-resale enforcement): refuse any heartbeat from an
+	// instance_id that differs from the bound one.
+	if lic.BoundInstanceID != nil && *lic.BoundInstanceID != "" && *lic.BoundInstanceID != req.InstanceID {
+		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": "license_bound_to_another_instance", "command": "halt"})
+		return
+	}
+	if err := h.store.BindLicenseInstance(ctx, lic.ID, req.InstanceID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"alive": false, "reason": "instance binding failed"})
 		return
 	}
 	// Kill-switch check first: a halted scope (global / client / product) fails

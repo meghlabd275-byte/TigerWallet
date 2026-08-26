@@ -17,7 +17,7 @@ import java.util.Map;
 /**
  * Read-only governance contract for a single WL admin domain. Renders the
  * backend endpoints (CRUD + status/approve/reject where defined) against the
- * WL backend at http://localhost:8082. Governance records only - no fund
+ * WL backend at http://localhost:8456. Governance records only - no fund
  * movement. Theme follows the app-wide dark-mode preference.
  */
 public class DomainDetailFragment extends Fragment {
@@ -130,7 +130,7 @@ public class DomainDetailFragment extends Fragment {
         }
 
         TextView note = new TextView(requireContext());
-        note.setText("No fund movement - governance records only. WL backend :8082.");
+        note.setText("No fund movement - governance records only. WL backend :8456.");
         note.setTextSize(12f);
         note.setPadding(0, 32, 0, 0);
         root.addView(note);

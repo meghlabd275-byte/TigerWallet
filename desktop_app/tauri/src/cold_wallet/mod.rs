@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+use secp256k1::ecdsa::RecoverableSignature;
+use secp256k1::{Message, PublicKey, Secp256k1};
+use sha3::{Digest, Keccak256};
+
 /// Signed transaction for air-gapped transfer
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedTransaction {
@@ -154,17 +158,41 @@ impl ColdWalletManager {
         signed: &SignedTransaction,
         expected_from: &str,
     ) -> Result<bool, ColdWalletError> {
-        // In production, this would:
-        // 1. Recover the signer address from signature
-        // 2. Compare with expected_from
-        // 3. Verify the transaction hash matches
-        
-        // For now, just check if we have a valid signature
+        // Real cryptographic signature verification (no fake "check signature
+        // is non-empty"). Recover the signer public key from a 65-byte
+        // recoverable secp256k1 signature (r||s||v) over the transaction hash
+        // (keccak256 of the signed tx) and compare its Ethereum address to
+        // expected_from.
         if signed.signature.is_empty() {
             return Err(ColdWalletError::InvalidSignature);
         }
-        
-        Ok(true)
+
+        let sig_bytes = hex::decode(signed.signature.trim_start_matches("0x"))
+            .map_err(|_| ColdWalletError::InvalidSignature)?;
+        if sig_bytes.len() != 65 {
+            return Err(ColdWalletError::InvalidSignature);
+        }
+        let msg_bytes = hex::decode(signed.tx_hash.trim_start_matches("0x"))
+            .map_err(|_| ColdWalletError::VerificationFailed("invalid tx_hash".into()))?;
+        if msg_bytes.len() != 32 {
+            return Err(ColdWalletError::VerificationFailed("invalid tx_hash length".into()));
+        }
+
+        let msg = Message::from_slice(&msg_bytes)
+            .map_err(|e| ColdWalletError::VerificationFailed(e.to_string()))?;
+        let recovery_id = secp256k1::ecdsa::RecoveryId::from_i32(sig_bytes[64] as i32)
+            .map_err(|_| ColdWalletError::InvalidSignature)?;
+        let rec_sig = RecoverableSignature::from_compact(&sig_bytes[..64], recovery_id)
+            .map_err(|_| ColdWalletError::InvalidSignature)?;
+
+        let secp = Secp256k1::new();
+        let pubkey = secp
+            .recover_ecdsa(&msg, &rec_sig)
+            .map_err(|e| ColdWalletError::VerificationFailed(e.to_string()))?;
+
+        let recovered = recover_eth_address(&pubkey);
+        let expected = expected_from.trim_start_matches("0x").to_ascii_lowercase();
+        Ok(recovered == expected)
     }
 
     /// Broadcast signed transaction (requires internet connection)
@@ -203,24 +231,35 @@ impl ColdWalletManager {
     }
 }
 
-/// Generate QR code for unsigned transaction
+/// Generate QR code for unsigned transaction.
+///
+/// Returns the exact payload that the QR renderer must encode. The unsigned
+/// transaction is serialized to JSON; the actual QR image rasterization is
+/// performed by the renderer layer (this function returns the bytes that must
+/// appear in the QR, so `parse_qr_code` round-trips byte-for-byte).
 pub fn generate_qr_code(tx: &UnsignedTransaction) -> Result<Vec<u8>, ColdWalletError> {
-    // Serialize and encode
-    let serialized = serde_json::to_string(tx)
+    let serialized = serde_json::to_vec(tx)
         .map_err(|e| ColdWalletError::StorageError(e.to_string()))?;
-    
-    // Use QR code library to generate image
-    // This is a placeholder - in production, use qrcode crate
-    Ok(serialized.as_bytes().to_vec())
+    Ok(serialized)
 }
 
 /// Parse QR code data to unsigned transaction
 pub fn parse_qr_code(data: &[u8]) -> Result<UnsignedTransaction, ColdWalletError> {
     let string = String::from_utf8(data.to_vec())
         .map_err(|_| ColdWalletError::InvalidTransaction)?;
-    
+
     serde_json::from_str(&string)
         .map_err(|_| ColdWalletError::InvalidTransaction)
+}
+
+/// recover_eth_address derives the lowercase 0x-prefixed Ethereum address from
+/// an uncompressed secp256k1 public key: keccak256(pubkey[1..65])[12..32].
+fn recover_eth_address(pubkey: &PublicKey) -> String {
+    let serialized = pubkey.serialize_uncompressed();
+    let mut hasher = Keccak256::new();
+    hasher.update(&serialized[1..]);
+    let hash = hasher.finalize();
+    format!("0x{}", hex::encode(&hash[12..]))
 }
 
 #[cfg(test)]

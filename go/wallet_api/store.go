@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS wallets (
     is_primary BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Watch-only wallets hold an address but NO seed (no signing capability).
+ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_watch_only BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE wallets ALTER COLUMN encrypted_seed DROP NOT NULL;
 
 CREATE TABLE IF NOT EXISTS address_book (
     id UUID PRIMARY KEY,
@@ -197,6 +200,18 @@ CREATE TABLE IF NOT EXISTS wallet_locks (
     unlock_key_hash TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS price_alerts (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    coin_id TEXT NOT NULL,
+    direction TEXT NOT NULL CHECK (direction IN ('above','below')),
+    price NUMERIC NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_price_alerts_user ON price_alerts(user_id);
 ` + portfolioSchemaSQL
 
 // ---- User operations ----
@@ -284,16 +299,27 @@ func (s *Store) SaveWallet(ctx context.Context, w *WalletRecord) error {
 	if w.ID == uuid.Nil {
 		w.ID = uuid.New()
 	}
+	// encrypted_seed is NULLable now (watch-only wallets hold no seed).
+	var seed any
+	if w.EncryptedSeed == "" {
+		seed = nil
+	} else {
+		seed = w.EncryptedSeed
+	}
 	_, err := s.PG.Exec(ctx,
-		`INSERT INTO wallets (id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		w.ID, w.UserID, w.Label, w.ChainID, w.Address, w.EncryptedSeed, w.DerivationPath, w.AccountIndex, w.IsPrimary)
+		`INSERT INTO wallets (id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary, is_watch_only)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		 ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label, chain_id=EXCLUDED.chain_id,
+		   address=EXCLUDED.address, encrypted_seed=EXCLUDED.encrypted_seed,
+		   derivation_path=EXCLUDED.derivation_path, account_index=EXCLUDED.account_index,
+		   is_primary=EXCLUDED.is_primary, is_watch_only=EXCLUDED.is_watch_only`,
+		w.ID, w.UserID, w.Label, w.ChainID, w.Address, seed, w.DerivationPath, w.AccountIndex, w.IsPrimary, w.IsWatchOnly)
 	return err
 }
 
 func (s *Store) GetWalletsByUser(ctx context.Context, userID uuid.UUID) ([]WalletRecord, error) {
 	rows, err := s.PG.Query(ctx,
-		"SELECT id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary FROM wallets WHERE user_id=$1 ORDER BY created_at",
+		"SELECT id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary, is_watch_only FROM wallets WHERE user_id=$1 ORDER BY created_at",
 		userID)
 	if err != nil {
 		return nil, err
@@ -302,9 +328,11 @@ func (s *Store) GetWalletsByUser(ctx context.Context, userID uuid.UUID) ([]Walle
 	var out []WalletRecord
 	for rows.Next() {
 		var w WalletRecord
-		if err := rows.Scan(&w.ID, &w.UserID, &w.Label, &w.ChainID, &w.Address, &w.EncryptedSeed, &w.DerivationPath, &w.AccountIndex, &w.IsPrimary); err != nil {
+		var enc sql.NullString
+		if err := rows.Scan(&w.ID, &w.UserID, &w.Label, &w.ChainID, &w.Address, &enc, &w.DerivationPath, &w.AccountIndex, &w.IsPrimary, &w.IsWatchOnly); err != nil {
 			return nil, err
 		}
+		w.EncryptedSeed = enc.String
 		out = append(out, w)
 	}
 	return out, nil
@@ -312,9 +340,11 @@ func (s *Store) GetWalletsByUser(ctx context.Context, userID uuid.UUID) ([]Walle
 
 func (s *Store) GetWalletByID(ctx context.Context, id uuid.UUID) (*WalletRecord, error) {
 	row := s.PG.QueryRow(ctx,
-		"SELECT id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary FROM wallets WHERE id=$1", id)
+		"SELECT id, user_id, label, chain_id, address, encrypted_seed, derivation_path, account_index, is_primary, is_watch_only FROM wallets WHERE id=$1", id)
 	w := &WalletRecord{}
-	err := row.Scan(&w.ID, &w.UserID, &w.Label, &w.ChainID, &w.Address, &w.EncryptedSeed, &w.DerivationPath, &w.AccountIndex, &w.IsPrimary)
+	var enc sql.NullString
+	err := row.Scan(&w.ID, &w.UserID, &w.Label, &w.ChainID, &w.Address, &enc, &w.DerivationPath, &w.AccountIndex, &w.IsPrimary, &w.IsWatchOnly)
+	w.EncryptedSeed = enc.String
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -439,17 +469,17 @@ func (s *Store) ListAllTransactions(ctx context.Context, limit int) ([]TxLogReco
 // AdminUserRecord is a user row augmented with aggregate activity metrics
 // for the admin dashboard. Volume/trades are computed from transaction_log.
 type AdminUserRecord struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	Username      string    `json:"username"`
-	Role          string    `json:"role"`
-	KYCStatus     string    `json:"kyc_status"`
-	Status        string    `json:"status"` // derived: "active" if last_login within 24h else "inactive"
-	WalletCount   int       `json:"wallet_count"`
-	TradeCount    int       `json:"trades"`
-	Volume30d     string    `json:"volume"` // numeric as text (wei-scale); "0" when none
-	CreatedAt     string    `json:"created_at"`
-	LastLoginAt   *string   `json:"last_login_at"`
+	ID          uuid.UUID `json:"id"`
+	Email       string    `json:"email"`
+	Username    string    `json:"username"`
+	Role        string    `json:"role"`
+	KYCStatus   string    `json:"kyc_status"`
+	Status      string    `json:"status"` // derived: "active" if last_login within 24h else "inactive"
+	WalletCount int       `json:"wallet_count"`
+	TradeCount  int       `json:"trades"`
+	Volume30d   string    `json:"volume"` // numeric as text (wei-scale); "0" when none
+	CreatedAt   string    `json:"created_at"`
+	LastLoginAt *string   `json:"last_login_at"`
 }
 
 // ListAllUsers returns up to `limit` users with per-user wallet counts and
@@ -532,6 +562,7 @@ type WalletRecord struct {
 	DerivationPath string    `json:"derivation_path"`
 	AccountIndex   int       `json:"account_index"`
 	IsPrimary      bool      `json:"is_primary"`
+	IsWatchOnly    bool      `json:"is_watch_only"`
 }
 
 type TxLogRecord struct {

@@ -17,6 +17,7 @@ package main
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -26,19 +27,19 @@ import (
 
 // nonEvmSignReq is the body for the message-signing endpoint.
 type nonEvmSignReq struct {
-	WalletID string `json:"wallet_id" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	Message  string `json:"message" binding:"required"`
+	WalletID  string `json:"wallet_id" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	Message   string `json:"message" binding:"required"`
 	ChainType string `json:"chain_type" binding:"required"` // solana|bitcoin|cosmos
 }
 
 // nonEvmSendReq is the body for the transaction-building/signing endpoint.
 type nonEvmSendReq struct {
-	WalletID       string        `json:"wallet_id" binding:"required"`
-	Password       string        `json:"password" binding:"required"`
-	ChainType      string        `json:"chain_type" binding:"required"` // bitcoin
-	BitcoinInputs  []BTCInput    `json:"bitcoin_inputs"`
-	BitcoinOutputs []BTCOutput   `json:"bitcoin_outputs"`
+	WalletID       string         `json:"wallet_id" binding:"required"`
+	Password       string         `json:"password" binding:"required"`
+	ChainType      string         `json:"chain_type" binding:"required"` // bitcoin
+	BitcoinInputs  []BTCInput     `json:"bitcoin_inputs"`
+	BitcoinOutputs []BTCOutput    `json:"bitcoin_outputs"`
 	CosmosSignDoc  *CosmosSignDoc `json:"cosmos_sign_doc"`
 }
 
@@ -130,11 +131,11 @@ func handleNonEvmSend(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"signature":   hex0x(sig),
-			"public_key":  hex0x(pub),
-			"chain_type":  "cosmos",
-			"sign_doc":    req.CosmosSignDoc,
-			"action":      "broadcast the signed SignDoc via a Cosmos SDK node (cosmos.tx.v1beta1.Service.BroadcastTx)",
+			"signature":  hex0x(sig),
+			"public_key": hex0x(pub),
+			"chain_type": "cosmos",
+			"sign_doc":   req.CosmosSignDoc,
+			"action":     "broadcast the signed SignDoc via a Cosmos SDK node (cosmos.tx.v1beta1.Service.BroadcastTx)",
 		})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain_type; use bitcoin|cosmos"})
@@ -197,6 +198,9 @@ func loadOwnedSeed(c *gin.Context, walletIDStr, password string) ([]byte, *Walle
 	uid, _ := uuid.Parse(getUserID(c))
 	if wallet.UserID != uid {
 		return nil, nil, errNotOwner
+	}
+	if wallet.IsWatchOnly {
+		return nil, nil, fmt.Errorf("watch-only wallet cannot sign")
 	}
 	seed, err := DecryptSeed(wallet.EncryptedSeed, password)
 	if err != nil {

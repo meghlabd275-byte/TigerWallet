@@ -5,7 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const DOMAINS = [
   'futures', 'options', 'copy-trading', 'convert', 'onramp', 'offramp',
   'p2p-clients', 'partners', 'rewards', 'marketing', 'rbac',
-  // 9 scoped admin domains (real main.go routes on port 8082)
+  // 9 scoped admin domains (real main.go routes on port 8456)
   'liquidity', 'crypto-card', 'bots', 'kyc', 'tickets',
   'ip-whitelist', 'audit-logs', 'wallet-management', 'withdrawals',
 ];
