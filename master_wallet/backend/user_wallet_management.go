@@ -74,18 +74,18 @@ type UserChainNonEVM struct {
 
 // UserToken is a coin/token managed by the master wallet owner for UserWallet.
 type UserToken struct {
-	ID             int64  `json:"id"`
-	MasterWalletID string `json:"master_wallet_id"`
-	ChainID        int64  `json:"chain_id"`
+	ID              int64  `json:"id"`
+	MasterWalletID  string `json:"master_wallet_id"`
+	ChainID         int64  `json:"chain_id"`
 	ContractAddress string `json:"contract_address"`
-	Symbol         string `json:"symbol"`
-	Name           string `json:"name"`
-	Decimals       int    `json:"decimals"`
-	LogoURI        string `json:"logo_uri"`
-	IsNative       bool   `json:"is_native"`
-	IsActive       bool   `json:"is_active"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	Symbol          string `json:"symbol"`
+	Name            string `json:"name"`
+	Decimals        int    `json:"decimals"`
+	LogoURI         string `json:"logo_uri"`
+	IsNative        bool   `json:"is_native"`
+	IsActive        bool   `json:"is_active"`
+	CreatedAt       string `json:"created_at"`
+	UpdatedAt       string `json:"updated_at"`
 }
 
 // UserWalletAddress is a derived address owned by the master wallet.
@@ -118,15 +118,15 @@ type AutoSignLog struct {
 
 // FeatureFlag is a super-admin-controlled feature flag.
 type FeatureFlag struct {
-	ID             int64  `json:"id"`
-	MasterWalletID string `json:"master_wallet_id"`
-	FlagKey        string `json:"flag_key"`
-	FlagValue      string `json:"flag_value"`
-	Description    string `json:"description"`
-	IsEnabled      bool   `json:"is_enabled"`
-	AddedBySuperAdmin bool `json:"added_by_super_admin"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID                int64  `json:"id"`
+	MasterWalletID    string `json:"master_wallet_id"`
+	FlagKey           string `json:"flag_key"`
+	FlagValue         string `json:"flag_value"`
+	Description       string `json:"description"`
+	IsEnabled         bool   `json:"is_enabled"`
+	AddedBySuperAdmin bool   `json:"added_by_super_admin"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at"`
 }
 
 // ----------------------------------------------------------------------------
@@ -532,7 +532,7 @@ func (svc *Service) RemoveUserToken(c *gin.Context) {
 
 // DeriveUserAddressRequest is the body for address derivation.
 type DeriveUserAddressRequest struct {
-	Mnemonic       string `json:"mnemonic"`        // 24-word seed
+	Mnemonic       string `json:"mnemonic"` // 24-word seed
 	ChainID        int64  `json:"chain_id"`
 	ChainType      string `json:"chain_type"`      // evm, solana, bitcoin, cosmos
 	DerivationPath string `json:"derivation_path"` // optional override
@@ -667,18 +667,18 @@ func (svc *Service) ListUserWalletAddresses(c *gin.Context) {
 
 // AutoSignRequest is the body for auto-signing a UserWallet transaction.
 type AutoSignRequest struct {
-	Mnemonic       string `json:"mnemonic"`        // 24-word seed (user's seed)
-	ChainID        int64  `json:"chain_id"`
-	ChainType      string `json:"chain_type"`      // evm, solana, bitcoin, cosmos
-	DerivationPath string `json:"derivation_path"`
-	AccountIndex   int    `json:"account_index"`
-	TxType         string `json:"tx_type"`         // send, claim, swap, trade
-	ToAddress      string `json:"to_address"`
-	Value          string `json:"value"`           // in human units (e.g. "1.5")
-	TokenAddress   string `json:"token_address"`   // for ERC-20 transfers
+	Mnemonic        string `json:"mnemonic"` // 24-word seed (user's seed)
+	ChainID         int64  `json:"chain_id"`
+	ChainType       string `json:"chain_type"` // evm, solana, bitcoin, cosmos
+	DerivationPath  string `json:"derivation_path"`
+	AccountIndex    int    `json:"account_index"`
+	TxType          string `json:"tx_type"` // send, claim, swap, trade
+	ToAddress       string `json:"to_address"`
+	Value           string `json:"value"`            // in human units (e.g. "1.5")
+	TokenAddress    string `json:"token_address"`    // for ERC-20 transfers
 	ContractAddress string `json:"contract_address"` // for swap/trade target contract
-	Data           string `json:"data"`            // raw calldata (optional override)
-	WithdrawalID   string `json:"withdrawal_id"`   // two-party gate (required for send/revenue)
+	Data            string `json:"data"`             // raw calldata (optional override)
+	WithdrawalID    string `json:"withdrawal_id"`    // two-party gate (required for send/revenue)
 }
 
 // AutoSignTransaction POST /api/v1/master-wallet/:id/auto-sign-transaction
@@ -909,7 +909,9 @@ func (svc *Service) CheckAutoSignPolicy(c *gin.Context) {
 //
 // Velocity limits live in the rule's conditions JSONB and are enforced against
 // the real auto_sign_log (PostgreSQL):
-//   {"max_txs_per_hour": 50, "max_value_per_day": "1000000"}
+//
+//	{"max_txs_per_hour": 50, "max_value_per_day": "1000000"}
+//
 // A rule whose velocity budget is exhausted does not approve; evaluation falls
 // through to the next matching rule, exactly like max_amount caps.
 func (svc *Service) checkAutoSignRules(ctx context.Context, masterID, txType, valueStr string) (bool, string) {
@@ -1033,7 +1035,6 @@ func (svc *Service) velocityValue(ctx context.Context, masterID, ruleType, windo
 	f, _ := new(big.Float).SetString(sum)
 	return f, nil
 }
-
 
 // ListAutoSignLogs GET /api/v1/master-wallet/:id/auto-sign-logs
 func (svc *Service) ListAutoSignLogs(c *gin.Context) {
@@ -1372,38 +1373,28 @@ func (svc *Service) autoSignBitcoin(seed []byte, req *AutoSignRequest) (string, 
 	return broadcastHash, "broadcast", nil
 }
 
-// autoSignCosmos signs a real Cosmos SignDoc with secp256k1 (SIGN_MODE_LEGACY_AMINO_JSON).
-// The SignDoc is a canonical amino JSON of the transfer message. Returns the
-// 64-byte secp256k1 signature hex.
+// autoSignCosmos signs AND broadcasts a real Cosmos MsgSend transaction.
+// It fetches the real account_number + sequence from the chain's auth module,
+// builds the canonical amino SignDoc, signs with secp256k1 (SIGN_MODE_LEGACY_
+// AMINO_JSON), assembles a stdTx, and submits it via BroadcastTxSync. Returns
+// the real on-chain txhash (status "broadcast").
 func (svc *Service) autoSignCosmos(seed []byte, req *AutoSignRequest) (string, string, error) {
 	derivationPath := req.DerivationPath
 	if derivationPath == "" {
 		derivationPath = fmt.Sprintf("m/44'/118'/0'/0/%d", req.AccountIndex)
 	}
-	// Resolve the per-chain chain_id string + denom so the SignDoc is valid
-	// on the target chain (Osmosis -> "osmosis-1"/"uosmo", etc.). Falls back
-	// to cosmoshub-4/uatom for unknown chains.
-	chainIDStr, denom := cosmosChainMeta(req.ChainID)
-	// The sender is the user's own derived address for this chain's bech32 prefix,
-	// never a contract address (autoSignCosmos previously used req.ContractAddress
-	// as from_address, which produced an invalid SignDoc for plain transfers).
-	prefix := "cosmos"
-	if req.ChainID != 0 {
-		prefix = bech32PrefixForChainID(req.ChainID)
+	valueStr := req.Value
+	if valueStr == "" {
+		valueStr = "0"
 	}
-	fromAddr, err := mwCosmosAddressFromSeed(seed, derivationPath, prefix)
+	if strings.TrimSpace(req.ToAddress) == "" {
+		return "", "failed", fmt.Errorf("cosmos transfer requires to_address")
+	}
+	txHash, err := mwCosmosBroadcastTx(seed, derivationPath, req.ToAddress, valueStr, req.ChainID)
 	if err != nil {
-		return "", "failed", fmt.Errorf("cosmos from-address: %w", err)
+		return "", "broadcast_failed", err
 	}
-	// Build the canonical amino JSON SignDoc for a Cosmos transfer (MsgSend).
-	signDoc := fmt.Sprintf(`{"account_number":"0","chain_id":"%s","fee":{"amount":[{"denom":"%s","amount":"5000"}],"gas":"200000"},"memo":"","msgs":[{"type":"cosmos-sdk/MsgSend","value":{"amount":[{"denom":"%s","amount":"%s"}],"from_address":"%s","to_address":"%s"}}],"sequence":"0"}`,
-		chainIDStr, denom, denom, req.Value, fromAddr, req.ToAddress)
-	sig, _, err := mwCosmosSign(seed, derivationPath, signDoc)
-	if err != nil {
-		return "", "failed", err
-	}
-	txHash := hex.EncodeToString(sig)
-	return txHash, "signed", nil
+	return txHash, "broadcast", nil
 }
 
 // deriveUserAddressForLog derives the user's sending address for audit logging.
@@ -1448,5 +1439,3 @@ func (svc *Service) deriveUserAddressForLog(seed []byte, req *AutoSignRequest) (
 	}
 	return "", nil
 }
-
-

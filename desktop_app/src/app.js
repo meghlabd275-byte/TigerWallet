@@ -257,10 +257,12 @@ class TigerWalletApp {
 
             this.wallets.push({
                 id: this.generateId(),
+                wallet_id: wallet.id,          // server-side wallet id required by /api/v1/send
                 name: name,
                 address: wallet.address,
                 balance: '0',
-                tokens: []
+                tokens: [],
+                unlocked: false
             });
             localStorage.setItem('tigerwallet-wallets', JSON.stringify(this.wallets));
             localStorage.setItem('tigerwallet-master', await this.hashPassword(password));
@@ -393,16 +395,49 @@ class TigerWalletApp {
             return;
         }
         
-        // Show simulation result
+        const wallet = this.wallets[0];
+        if (!wallet) {
+            alert('No wallet loaded');
+            return;
+        }
         const result = document.getElementById('simulation-result');
-        result.innerHTML = `
-            <strong>Simulation Result:</strong><br>
-            To: ${this.formatAddress(to)}<br>
-            Amount: ${amount} ETH<br>
-            Gas: ~21000 units<br>
-            Total Cost: ${(amount * 1.00002).toFixed(6)} ETH<br>
-            <span style="color: var(--success)">✓ Transaction would succeed</span>
-        `;
+        try {
+            // Real dry-run against the canonical backend (eth_estimateGas +
+            // eth_call). The client never fabricates a simulation verdict.
+            const res = await fetch('http://localhost:8443/api/v1/simulate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chain_id: this.currentNetwork,
+                    from: wallet.address,
+                    to: to,
+                    value: amount
+                })
+            });
+            if (!res.ok) {
+                throw new Error(await res.text());
+            }
+            const sim = await res.json();
+            const gas = sim.gas_estimate || 21000;
+            const willRevert = sim.will_revert;
+            const revertReason = sim.revert_reason || '';
+            const gasPrice = sim.gas_price || '';
+            result.innerHTML = `
+                <strong>Simulation Result:</strong><br>
+                To: ${this.formatAddress(to)}<br>
+                Amount: ${amount} ETH<br>
+                Gas estimate: ${gas} units<br>
+                ${gasPrice ? `Gas price: ${gasPrice} wei<br>` : ''}
+                ${willRevert
+                    ? `<span style="color: var(--danger)">✗ Will revert: ${this.escapeHtml(revertReason)}</span>`
+                    : `<span style="color: var(--success)">✓ Transaction would succeed</span>`}
+            `;
+        } catch (e) {
+            result.innerHTML = `
+                <strong>Simulation Result:</strong><br>
+                <span style="color: var(--danger)">Simulation error: ${this.escapeHtml(e.message)}</span>
+            `;
+        }
         result.classList.add('show');
     }
     
@@ -424,17 +459,24 @@ class TigerWalletApp {
             return;
         }
 
+        const wallet = this.wallets[0];
         try {
             // Broadcast via the canonical wallet_api backend (POST /api/v1/send)
             // which performs real secp256k1 signing + eth_sendRawTransaction.
             // This client never fabricates a transaction hash.
+            const password = prompt('Enter wallet password to sign:');
+            if (!password) {
+                alert('Password is required to sign the transaction');
+                return;
+            }
             const res = await fetch('http://localhost:8443/api/v1/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    from_address: this.wallets[0].address,
-                    to_address: to,
-                    amount: amount,
+                    wallet_id: wallet.wallet_id ?? wallet.id,
+                    password,
+                    to: to,
+                    value: amount,
                     chain_id: this.currentNetwork
                 })
             });
@@ -591,6 +633,12 @@ class TigerWalletApp {
         const hash = await this.derivePbkdf2(password, salt);
         const toHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
         return `${toHex(salt)}:${toHex(hash)}`;
+    }
+
+    escapeHtml(str) {
+        const el = document.createElement('div');
+        el.textContent = String(str ?? '');
+        return el.innerHTML;
     }
 
     async verifyPassword(password, stored) {

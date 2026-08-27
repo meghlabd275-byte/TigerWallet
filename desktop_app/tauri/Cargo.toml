@@ -55,6 +55,8 @@ rand = "0.8"
 thiserror = "1.0"
 ed25519-dalek = { version = "2.0", features = ["serde"] }
 secp256k1 = { version = "0.27", features = ["recovery", "serde"] }
+hmac = "0.12"
+pbkdf2 = "0.12"
 
 # Hardware wallet support
 hidapi = "1.4"

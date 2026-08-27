@@ -15,6 +15,16 @@ use chrono::Utc;
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
 
+mod crypto;
+#[path = "cold_wallet/mod.rs"]
+mod cold_wallet;
+#[path = "services/desktop_services.rs"]
+mod desktop_services;
+
+/// Canonical UserWallet backend base URL. The desktop app is a thin client and
+/// never talks to MasterWallet/Admin backends directly.
+const WALLET_API_BASE: &str = "http://localhost:8443";
+
 // ============================================================================
 // Error Types
 // ============================================================================
@@ -136,52 +146,62 @@ impl Default for AppState {
 #[tauri::command]
 fn create_wallet(name: String, state: State<AppState>) -> Result<WalletAccount, AppError> {
     info!("Creating wallet: {}", name);
-    
-    let wallet = WalletAccount {
-        id: Uuid::new_v4().to_string(),
-        name: name.clone(),
-        address: generate_address(),
-        chain_id: 1,
-        balance: "0".to_string(),
-        tokens: vec![],
-        created_at: Utc::now().timestamp(),
-        is_derived: false,
-    };
-    
-    let mut wallets = state.wallets.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
-    wallets.insert(wallet.id.clone(), wallet.clone());
-    
-    info!("Wallet created: {}", wallet.address);
-    Ok(wallet)
-}
 
-#[tauri::command]
-fn import_wallet(name: String, seed_phrase: String, state: State<AppState>) -> Result<WalletAccount, AppError> {
-    info!("Importing wallet: {}", name);
-    
-    let words: Vec<&str> = seed_phrase.split_whitespace().collect();
-    if words.len() != 12 && words.len() != 24 {
-        return Err(AppError::Wallet("Invalid seed phrase length".to_string()));
-    }
-    
+    // Generate a real 24-word BIP-39 mnemonic and derive the EVM address from
+    // it (BIP-32 m/44'/60'/0'/0/0 + Keccak-256). Never fabricate an address.
+    let mnemonic = crypto::generate_mnemonic_24().map_err(AppError::Wallet)?;
+    let seed = crypto::mnemonic_to_seed(&mnemonic, "");
+    let address = crypto::evm_address_from_seed(&seed, 0).map_err(AppError::Wallet)?;
+    // The mnemonic must be shown once and persisted encrypted by the caller;
+    // it is intentionally not retained in the in-memory registry.
+    drop(mnemonic);
+
     let wallet = WalletAccount {
         id: Uuid::new_v4().to_string(),
         name: name.clone(),
-        address: derive_address_from_seed(&seed_phrase),
+        address,
         chain_id: 1,
         balance: "0".to_string(),
         tokens: vec![],
         created_at: Utc::now().timestamp(),
         is_derived: true,
     };
-    
+
     let mut wallets = state.wallets.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
     wallets.insert(wallet.id.clone(), wallet.clone());
-    
+
+    info!("Wallet created: {}", wallet.address);
+    Ok(wallet)
+}
+#[tauri::command]
+fn import_wallet(name: String, seed_phrase: String, state: State<AppState>) -> Result<WalletAccount, AppError> {
+    info!("Importing wallet: {}", name);
+
+    let words: Vec<&str> = seed_phrase.split_whitespace().collect();
+    if words.len() != 12 && words.len() != 24 {
+        return Err(AppError::Wallet("Invalid seed phrase length".to_string()));
+    }
+
+    // Real BIP-39 checksum validation + real address derivation.
+    let address = derive_address_from_seed(&seed_phrase)?;
+
+    let wallet = WalletAccount {
+        id: Uuid::new_v4().to_string(),
+        name: name.clone(),
+        address,
+        chain_id: 1,
+        balance: "0".to_string(),
+        tokens: vec![],
+        created_at: Utc::now().timestamp(),
+        is_derived: true,
+    };
+
+    let mut wallets = state.wallets.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
+    wallets.insert(wallet.id.clone(), wallet.clone());
+
     info!("Wallet imported: {}", wallet.address);
     Ok(wallet)
 }
-
 #[tauri::command]
 fn get_wallets(state: State<AppState>) -> Result<Vec<WalletAccount>, AppError> {
     let wallets = state.wallets.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
@@ -205,17 +225,42 @@ fn delete_wallet(id: String, state: State<AppState>) -> Result<bool, AppError> {
 // ============================================================================
 
 #[tauri::command]
-fn send_transaction(from: String, to: String, value: String, token: String, chain_id: u64, state: State<AppState>) -> Result<Transaction, AppError> {
+async fn send_transaction(from: String, to: String, value: String, token: String, chain_id: u64, state: State<'_, AppState>) -> Result<Transaction, AppError> {
     info!("Sending transaction: {} -> {} ({})", from, to, value);
-    
+
     let is_locked = state.is_locked.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
     if *is_locked {
         return Err(AppError::Wallet("Wallet is locked".to_string()));
     }
-    
+
+    // The Tauri backend is a thin client over the canonical wallet_api backend,
+    // which performs real secp256k1 signing + eth_sendRawTransaction. Never
+    // fabricate a transaction hash.
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "from_address": from,
+        "to_address": to,
+        "amount": value,
+        "chain_id": chain_id,
+    });
+    let resp = client
+        .post(format!("{}/api/v1/send", WALLET_API_BASE))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Network(e.to_string()))?;
+
+    let tx_hash = if resp.status().is_success() {
+        let json: serde_json::Value = resp.json().await.unwrap_or_default();
+        json.get("tx_hash").and_then(|v| v.as_str()).unwrap_or_default().to_string()
+    } else {
+        let err = resp.text().await.unwrap_or_default();
+        return Err(AppError::Transaction(err));
+    };
+
     let tx = Transaction {
         id: Uuid::new_v4().to_string(),
-        hash: format!("0x{}", generate_tx_hash()),
+        hash: tx_hash,
         from,
         to: to.clone(),
         value: value.clone(),
@@ -223,43 +268,60 @@ fn send_transaction(from: String, to: String, value: String, token: String, chai
         status: "pending".to_string(),
         chain_id,
         timestamp: Utc::now().timestamp(),
-        gas_used: 21000,
-        gas_price: "20000000000".to_string(),
+        gas_used: 0,
+        gas_price: "0".to_string(),
     };
-    
+
     let mut transactions = state.transactions.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
     transactions.push(tx.clone());
-    
-    info!("Transaction sent: {}", tx.hash);
+
+    info!("Transaction broadcast: {}", tx.hash);
     Ok(tx)
 }
-
 #[tauri::command]
 fn get_transactions(state: State<AppState>) -> Result<Vec<Transaction>, AppError> {
     let transactions = state.transactions.lock().map_err(|e| AppError::Wallet(e.to_string()))?;
     Ok(transactions.clone())
 }
-
 #[tauri::command]
-fn simulate_transaction(from: String, to: String, value: String, data: String, chain_id: u64) -> Result<SimulateResult, AppError> {
+async fn simulate_transaction(from: String, to: String, value: String, data: String, chain_id: u64) -> Result<SimulateResult, AppError> {
     info!("Simulating transaction: {} -> {}", from, to);
-    
-    let result = SimulateResult {
-        success: true,
-        gas_used: 21000,
-        gas_price: "20000000000".to_string(),
-        total_cost: "210000000000000".to_string(),
-        balance_changes: vec![
-            BalanceChange { address: from.clone(), change_type: "decrease".to_string(), token: "ETH".to_string(), amount: value.clone() },
-            BalanceChange { address: to.clone(), change_type: "increase".to_string(), token: "ETH".to_string(), amount: value },
-        ],
-        warnings: vec![],
-        logs: vec!["Transfer successful".to_string()],
-    };
-    
-    Ok(result)
-}
 
+    // Real dry-run against the canonical wallet_api backend
+    // (eth_estimateGas + eth_call). Never fabricate a simulation verdict.
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "chain_id": chain_id,
+        "from": from,
+        "to": to,
+        "value": value,
+        "data": data,
+    });
+    let resp = client
+        .post(format!("{}/api/v1/simulate", WALLET_API_BASE))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| AppError::Network(e.to_string()))?;
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| AppError::Network(e.to_string()))?;
+
+    let success = json.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+    let gas_estimate = json.get("gas_estimate").and_then(|v| v.as_u64()).unwrap_or(21000);
+    let gas_price = json.get("gas_price").and_then(|v| v.as_str()).unwrap_or("0").to_string();
+    let estimated_cost = json.get("estimated_cost_wei").and_then(|v| v.as_str()).unwrap_or("0").to_string();
+    let revert_reason = json.get("revert_reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    Ok(SimulateResult {
+        success,
+        gas_used: gas_estimate,
+        gas_price,
+        total_cost: estimated_cost,
+        balance_changes: vec![],
+        warnings: if revert_reason.is_empty() { vec![] } else { vec![format!("revert: {}", revert_reason)] },
+        logs: vec![],
+    })
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulateResult {
     pub success: bool,
@@ -385,31 +447,28 @@ pub struct ChainInfo {
 // Helper Functions
 // ============================================================================
 
-fn generate_address() -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(Uuid::new_v4().as_bytes());
-    let result = hasher.finalize();
-    format!("0x{}", hex::encode(&result[12..]))
+/// Derive a real EVM address from a 24-word BIP-39 seed. The address is
+/// deterministically derived via BIP-32 (m/44'/60'/0'/0/0) + Keccak-256,
+/// matching the canonical wallet_api/MasterWallet derivation. A new account
+/// is only ever created for display when a *real* seed is provided; otherwise
+/// this function is never used to fabricate an address.
+fn derive_address_from_seed(seed: &str) -> Result<String, AppError> {
+    if !crypto::validate_mnemonic(seed) {
+        return Err(AppError::Wallet(
+            "invalid BIP-39 mnemonic (checksum verification failed)".to_string(),
+        ));
+    }
+    let seed_bytes = crypto::mnemonic_to_seed(seed, "");
+    crypto::evm_address_from_seed(&seed_bytes, 0).map_err(AppError::Wallet)
 }
 
-fn derive_address_from_seed(seed: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(seed.as_bytes());
-    let result = hasher.finalize();
-    format!("0x{}", hex::encode(&result[12..]))
-}
-
-fn generate_tx_hash() -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(Uuid::new_v4().as_bytes());
-    let result = hasher.finalize();
-    hex::encode(result)
-}
-
+/// Hash a password with SHA-256 + fixed salt for the in-memory lock gate.
+/// NOTE: this is a local UI lock, not the canonical credential store — the
+/// wallet's cryptographic seed is never derived from or encrypted with this.
 fn hash_password(password: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
-    hasher.update(b"tiger-wallet-salt");
+    hasher.update(b"tiger-wallet-lock-salt");
     hex::encode(hasher.finalize())
 }
 
