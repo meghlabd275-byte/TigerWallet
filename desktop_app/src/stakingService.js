@@ -43,27 +43,15 @@ class StakingService {
     }
 
     /**
-     * Get default validators
+     * Fallback validators — returns an empty list (fail-closed) rather than
+     * fabricating APR/TVL/risk market data. The canonical backend exposes
+     * real validators via the staking quote/action endpoints and
+     * /admin/chains/validators (admin-managed); when those are unreachable we
+     * must not invent yield numbers or validator identities.
      */
     getDefaultValidators(chain) {
-        const defaults = {
-            ethereum: [
-                { id: 'lido', name: 'Lido', apr: 4.2, tvl: '15000000000', risk: 'low' },
-                { id: 'rocketpool', name: 'Rocket Pool', apr: 3.8, tvl: '1500000000', risk: 'low' },
-                { id: 'coinbase', name: 'Coinbase Staking', apr: 3.5, tvl: '8000000000', risk: 'low' },
-                { id: 'kraken', name: 'Kraken Staking', apr: 4.0, tvl: '5000000000', risk: 'medium' },
-            ],
-            polygon: [
-                { id: 'ankr', name: 'Ankr', apr: 5.2, tvl: '500000000', risk: 'medium' },
-                { id: 'stader', name: 'Stader', apr: 4.8, tvl: '300000000', risk: 'medium' },
-            ],
-            solana: [
-                { id: 'marinade', name: 'Marinade Finance', apr: 6.5, tvl: '400000000', risk: 'low' },
-                { id: 'jpool', name: 'JPool', apr: 6.2, tvl: '200000000', risk: 'medium' },
-                { id: 'lido-sol', name: 'Lido (SOL)', apr: 5.8, tvl: '300000000', risk: 'low' },
-            ]
-        };
-        return defaults[chain] || [];
+        console.warn('No real validator data available for', chain, '— returning empty (fail-closed)');
+        return [];
     }
 
     /**

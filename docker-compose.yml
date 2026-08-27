@@ -421,6 +421,7 @@ services:
       DB_HOST: postgres
       REDIS_HOST: redis
       JWT_SECRET: tigerwallet-jwt-secret-key
+      SUPER_ADMIN_SECRET: "${SUPER_ADMIN_SECRET:-tigerwallet-super-admin-secret-change-me}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -812,9 +813,9 @@ services:
       dockerfile: Dockerfile
     container_name: tigerwallet-wl-admin
     ports:
-      - "8456:8082"
+      - "8456:8456"
     environment:
-      SERVER_PORT: "8082"
+      SERVER_PORT: "8456"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_admin?sslmode=disable"
       REDIS_ADDR: "redis:6379"
       JWT_SECRET: "${WL_ADMIN_JWT_SECRET:-wl-admin-jwt-secret-change-me}"

@@ -363,6 +363,41 @@ func runMigrations(ctx context.Context) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_wl_card_transactions_white_label ON wl_card_transactions(white_label_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_wl_card_transactions_card ON wl_card_transactions(card_id)`,
+
+		// ---- WL MasterWallet + UserWallet governance records ----
+		// The WL MasterWallet and WL UserWallet run as INDEPENDENT processes
+		// (wl_master_wallet/go, wl_user_wallet/go), license-gated via the
+		// license_service heartbeat. These tables record the WL client's
+		// governance decisions (chain/token additions, fee schedules, account
+		// status) from the WL-admin panel. Real wallet/signing state lives in the
+		// product backends; these rows are the tenant-scoped governance/audit layer.
+
+		`CREATE TABLE IF NOT EXISTS wl_master_wallets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name TEXT NOT NULL,
+			chain_id BIGINT NOT NULL,
+			chain_type TEXT NOT NULL DEFAULT 'evm',
+			symbol TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'active',
+			auto_sign_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+			fee_percent NUMERIC DEFAULT 0,
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (white_label_id, chain_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_master_wallets_white_label ON wl_master_wallets(white_label_id)`,
+		`CREATE TABLE IF NOT EXISTS wl_user_wallets (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_ref TEXT NOT NULL,
+			wallet_address TEXT NOT NULL,
+			chain_id BIGINT NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active',
+			white_label_id UUID NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_user_wallets_white_label ON wl_user_wallets(white_label_id)`,
 	}
 
 	for _, migration := range migrations {

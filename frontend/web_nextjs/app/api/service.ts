@@ -577,7 +577,11 @@ export class WalletService {
       body: JSON.stringify(params),
     });
     if (!res.ok) throw await this.httpError(res, 'Failed to create wallet');
-    return res.json();
+    // The Go wallet-api returns snake_case (chain_id, derivation_path); normalize
+    // to the camelCase shape the UI reads, so the created/imported wallet does not
+    // silently lose its chainId/derivationPath.
+    const data = await res.json();
+    return normalizeWalletResp(data as Record<string, unknown>);
   }
 
   /**
@@ -605,7 +609,8 @@ export class WalletService {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw await this.httpError(res, 'Failed to list wallets');
-    return res.json();
+    const data = (await res.json()) as { wallets?: Record<string, unknown>[] };
+    return { wallets: (data.wallets ?? []).map(normalizeWalletResp) };
   }
 
   async getBalance(address: string, chainId: number): Promise<BalanceResult> {
@@ -822,7 +827,8 @@ export class WalletService {
       }),
     });
     if (!res.ok) throw await this.httpError(res, 'Failed to restore wallet from backup');
-    return res.json();
+    const data = (await res.json()) as Record<string, unknown>;
+    return normalizeWalletResp(data);
   }
 
   logout(): void {
@@ -843,6 +849,21 @@ export interface WalletInfo {
   chainId: number;
   address: string;
   derivationPath: string;
+}
+
+// The Go wallet-api serializes wallet records with snake_case keys
+// (chain_id, derivation_path) while the UI reads camelCase. Normalize both
+// variants so wallet create/import/list never drop the chain id or path.
+function normalizeWalletResp(w: Record<string, unknown>): WalletInfo {
+  return {
+    id: String(w.id ?? w.ID ?? ''),
+    label: String(w.label ?? w.Label ?? ''),
+    chainId: Number(w.chainId ?? w.chain_id ?? w.ChainID ?? 0),
+    address: String(w.address ?? w.Address ?? ''),
+    derivationPath: String(
+      w.derivationPath ?? w.derivation_path ?? w.DerivationPath ?? ''
+    ),
+  };
 }
 
 export interface BalanceResult {

@@ -1,8 +1,8 @@
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
 
-// WL backend (port 8082). Governance records only - no fund movement.
-const WL_API_BASE = 'http://localhost:8082/api/v1/admin';
+// WL backend (port 8456). Governance records only - no fund movement.
+const WL_API_BASE = 'http://localhost:8456/api/v1/admin';
 
 // 11 + 9 domain screens mirrored across all WL clients. Each domain exposes the
 // same IPC contract: list / get / create / update / delete, plus status or
@@ -22,7 +22,7 @@ const DOMAINS = {
   rewards:       { crud: true, status: true,  approve: false },
   marketing:     { crud: true, status: true,  approve: false },
   rbac:          { crud: true, status: false, approve: false, special: ['admin-roles', 'admin-permissions', 'admins'] },
-  // --- 9 scoped admin domains (real main.go routes, port 8082) ---
+  // --- 9 scoped admin domains (real main.go routes, port 8456) ---
   liquidity:     { base: '/wl-liquidity/sources', crud: true, status: false, approve: false,
                    extra: [['GET', '/wl-liquidity/allocations'], ['POST', '/wl-liquidity/allocations'], ['GET', '/wl-liquidity/stats']] },
   'crypto-card': { base: '/wl-cards', crud: false, status: true, approve: false,

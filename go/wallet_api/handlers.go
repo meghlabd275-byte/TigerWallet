@@ -138,6 +138,7 @@ type walletResp struct {
 	ChainID        int64  `json:"chain_id"`
 	Address        string `json:"address"`
 	DerivationPath string `json:"derivation_path"`
+	IsWatchOnly    bool   `json:"is_watch_only"`
 	Mnemonic       string `json:"mnemonic,omitempty"` // only returned on creation
 }
 
@@ -282,10 +283,10 @@ func handleExportEncryptedSeed(c *gin.Context) {
 // blob. Used for Google Drive restore.
 func handleImportEncryptedSeed(c *gin.Context) {
 	var req struct {
-		EncryptedSeed string `json:"encrypted_seed" binding:"required"`
-		Password      string `json:"password" binding:"required"`
-		Label         string `json:"label"`
-		ChainID       int64  `json:"chain_id"`
+		EncryptedSeed  string `json:"encrypted_seed" binding:"required"`
+		Password       string `json:"password" binding:"required"`
+		Label          string `json:"label"`
+		ChainID        int64  `json:"chain_id"`
 		DerivationPath string `json:"derivation_path"`
 		AccountIndex   int    `json:"account_index"`
 	}
@@ -344,7 +345,7 @@ func handleImportEncryptedSeed(c *gin.Context) {
 		"chain_id":        w.ChainID,
 		"address":         w.Address,
 		"derivation_path": w.DerivationPath,
-		"account_index":  w.AccountIndex,
+		"account_index":   w.AccountIndex,
 		"restored":        true,
 	})
 }
@@ -364,6 +365,7 @@ func handleListWallets(c *gin.Context) {
 			ChainID:        w.ChainID,
 			Address:        w.Address,
 			DerivationPath: w.DerivationPath,
+			IsWatchOnly:    w.IsWatchOnly,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"wallets": out})
@@ -478,8 +480,8 @@ func handleNFTs(c *gin.Context) {
 
 type sendTxReq struct {
 	WalletID    string `json:"wallet_id" binding:"required"`
-	Password    string `json:"password"`         // optional when unlock_token supplied (passwordless send)
-	UnlockToken string `json:"unlock_token"`     // optional; short-lived session from /wallets/:id/unlock
+	Password    string `json:"password"`     // optional when unlock_token supplied (passwordless send)
+	UnlockToken string `json:"unlock_token"` // optional; short-lived session from /wallets/:id/unlock
 	ToAddress   string `json:"to" binding:"required"`
 	Value       string `json:"value" binding:"required"` // in ether
 	GasLimit    uint64 `json:"gas_limit"`

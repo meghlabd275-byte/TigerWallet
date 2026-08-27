@@ -86,6 +86,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			max_bots INT NOT NULL DEFAULT 50,
 			features TEXT[] DEFAULT '{}',
 			issued_by UUID REFERENCES sa_admins(id),
+			bound_instance_id VARCHAR(128),
 			created_at TIMESTAMPTZ DEFAULT NOW(),
 			updated_at TIMESTAMPTZ DEFAULT NOW(),
 			suspended_at TIMESTAMPTZ,
@@ -393,6 +394,11 @@ type License struct {
 	Features   []string   `json:"features"`
 	IssuedBy   *uuid.UUID `json:"issued_by"`
 	CreatedAt  time.Time  `json:"created_at"`
+	// BoundInstanceID pins this license to a single self-hosted instance. Once
+	// bound, the control plane rejects /validate and /heartbeat from any other
+	// instance_id, technically preventing one WL client from reselling or
+	// re-issuing the same license to a third party. Cleared only by SuperAdmin.
+	BoundInstanceID *string `json:"bound_instance_id,omitempty"`
 }
 
 func (s *Store) CreateLicense(ctx context.Context, wlClientID uuid.UUID, product, plan, key string,
@@ -460,7 +466,7 @@ func (s *Store) ListLicenses(ctx context.Context, wlClientID *uuid.UUID) ([]*Lic
 	var out []*License
 	for rows.Next() {
 		l := &License{}
-		if err := rows.Scan(&l.ID, &l.WLClientID, &l.Product, &l.Plan, &l.Status, &l.LicenseKey, &l.ValidFrom, &l.ValidUntil, &l.MaxUsers, &l.MaxWallets, &l.MaxBots, &l.Features, &l.IssuedBy, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.WLClientID, &l.Product, &l.Plan, &l.Status, &l.LicenseKey, &l.ValidFrom, &l.ValidUntil, &l.MaxUsers, &l.MaxWallets, &l.MaxBots, &l.Features, &l.IssuedBy, &l.BoundInstanceID, &l.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -490,6 +496,27 @@ func (s *Store) SetLicenseStatus(ctx context.Context, id uuid.UUID, status strin
 	default:
 		return fmt.Errorf("unknown status %q", status)
 	}
+}
+
+// BindLicenseInstance pins a license to exactly one self-hosted instance. The
+// first instance that validates/heartbeats with a valid prod name stamps its
+// identity onto the license; every later validate/heartbeat from a different
+// instance_id is then refused by the control plane, technically enforcing the
+// "must NEVER resell / re-license / transfer" requirement. SuperAdmin can clear
+// the binding (rotating a client to new hardware/cloud) via ClearLicenseInstance.
+func (s *Store) BindLicenseInstance(ctx context.Context, id uuid.UUID, instanceID string) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE licenses SET bound_instance_id=$2, updated_at=NOW() WHERE id=$1 AND (bound_instance_id IS NULL OR bound_instance_id=$2)`,
+		id, instanceID)
+	return err
+}
+
+// ClearLicenseInstance removes a license's instance binding so the client can
+// re-bind to new hardware/cloud. SuperAdmin-only (route-gated).
+func (s *Store) ClearLicenseInstance(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE licenses SET bound_instance_id=NULL, updated_at=NOW() WHERE id=$1`, id)
+	return err
 }
 
 // --- Feature flags (per-fetcher granularity) ---

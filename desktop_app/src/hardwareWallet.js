@@ -46,24 +46,75 @@ class HardwareWalletManager {
     }
 
     async detectLedger() {
-        // In production, use hid library
-        // Simulate detection
-        return {
-            name: 'Ledger Nano X',
-            model: 'Nano X',
-            firmware: '2.1.0',
-            serial: '001122334455'
-        };
+        // Real WebHID detection: Ledger uses vendorId 0x2c97. In a desktop
+        // webview (Tauri) WebHID may be unavailable; then detection fails
+        // closed (null) instead of fabricating a device. The OS-level HID
+        // enumeration is performed by the native side (tauri hidapi) and this
+        // JS path delegates to the canonical wallet_api backend for APDU
+        // address derivation/signing.
+        if (typeof navigator === 'undefined' || !navigator.hid) {
+            return null;
+        }
+        try {
+            const devices = await navigator.hid.getDevices();
+            let device = devices.find((d) => d.vendorId === 0x2c97);
+            if (!device) {
+                const requested = await navigator.hid.requestDevice({
+                    filters: [{ vendorId: 0x2c97 }],
+                });
+                device = requested && requested[0];
+            }
+            if (!device) return null;
+            if (!device.opened) await device.open();
+            return {
+                name: 'Ledger',
+                model: device.productName || 'Ledger',
+                // Real device descriptors (no fabrication). firmware/serial are
+                // only surfaced by the APDU layer or native backend.
+                serial: null,
+                firmware: null,
+                vendorId: device.vendorId,
+                productId: device.productId,
+            };
+        } catch (error) {
+            console.error('Ledger detection failed:', error);
+            return null;
+        }
     }
 
     async detectTrezor() {
-        // Simulate detection
-        return {
-            name: 'Trezor Model T',
-            model: 'Model T',
-            firmware: '2.6.0',
-            serial: '001122334455'
-        };
+        // Real WebUSB detection: Trezor uses vendorId 0x1209 (SatoshiLabs) and
+        // the older 0x534c. Fail closed when WebUSB is unavailable.
+        if (typeof navigator === 'undefined' || !navigator.usb) {
+            return null;
+        }
+        try {
+            const devices = await navigator.usb.getDevices();
+            let device = devices.find(
+                (d) => d.vendorId === 0x1209 || d.vendorId === 0x534c
+            );
+            if (!device) {
+                const requested = await navigator.usb.requestDevice({
+                    filters: [
+                        { vendorId: 0x1209 },
+                        { vendorId: 0x534c },
+                    ],
+                });
+                device = requested;
+            }
+            if (!device) return null;
+            return {
+                name: 'Trezor',
+                model: device.productName || 'Trezor',
+                serial: device.serialNumber || null,
+                firmware: null,
+                vendorId: device.vendorId,
+                productId: device.productId,
+            };
+        } catch (error) {
+            console.error('Trezor detection failed:', error);
+            return null;
+        }
     }
 
     /**
@@ -142,8 +193,6 @@ class HardwareWalletManager {
         throw new Error(
           'Message signing is performed by the hardware device or the canonical wallet-api backend (/sign); client-side signature fabrication is disabled'
         );
-
-        return signature;
     }
 
     /**

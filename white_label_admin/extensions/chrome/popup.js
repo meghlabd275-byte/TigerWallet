@@ -62,7 +62,7 @@ function buildTabs() {
     sec.innerHTML =
       '<div class="card"><h3>' + d.label + ' - read-only</h3>' +
       d.endpoints.map(([m, p, gov]) => '<div class="ep' + (gov ? ' gov' : '') + '">' + m + ' ' + p + '</div>').join('') +
-      '<div class="note">Governance records only - no fund movement. WL backend :8082.</div></div>';
+      '<div class="note">Governance records only - no fund movement. WL backend :8456.</div></div>';
     sections.appendChild(sec);
   });
 }
@@ -103,5 +103,5 @@ function initTheme() {
 document.addEventListener('DOMContentLoaded', () => {
   buildTabs();
   initTheme();
-  document.getElementById('open-dashboard').addEventListener('click', () => openDashboard('http://localhost:8082'));
+  document.getElementById('open-dashboard').addEventListener('click', () => openDashboard('http://localhost:8456'));
 });

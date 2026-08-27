@@ -134,6 +134,7 @@ func main() {
 			sa.POST("/licenses/:id/halt", h.HaltLicense)
 			sa.POST("/licenses/:id/revoke", h.RevokeLicense)
 			sa.POST("/licenses/:id/resume", h.ResumeLicense) // SuperAdmin-only resume
+				sa.POST("/licenses/:id/clear-instance", h.ClearLicenseInstance) // SuperAdmin-only rebind
 
 			// Feature flags (per-fetcher granularity)
 			sa.POST("/feature-flags", h.SetFeatureFlag)

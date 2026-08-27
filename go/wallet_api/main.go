@@ -115,6 +115,14 @@ func main() {
 	{
 		wallet.POST("/wallets", handleCreateWallet)
 		wallet.GET("/wallets", handleListWallets)
+		// Watch-only: track an address without its seed. Read-only; every
+		// signing/funds-movement path rejects these wallets fail-closed.
+		wallet.POST("/wallets/watch-only", handleCreateWatchOnlyWallet)
+		// Price alerts (real CoinGecko spot quotes, evaluated on-read).
+		wallet.GET("/price-alerts", handleListPriceAlerts)
+		wallet.POST("/price-alerts", handleCreatePriceAlert)
+		wallet.PUT("/price-alerts/:id", handleUpdatePriceAlert)
+		wallet.DELETE("/price-alerts/:id", handleDeletePriceAlert)
 		// Google Drive backup: export the encrypted seed blob (password-verified)
 		// for upload to Drive; restore from a downloaded blob + password.
 		wallet.POST("/wallets/:id/export-encrypted-seed", handleExportEncryptedSeed)

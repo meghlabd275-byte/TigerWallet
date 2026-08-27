@@ -75,7 +75,8 @@ func main() {
 		auth := api.Group("/auth")
 		{
 			auth.POST("/login", handleLogin)
-			auth.POST("/register", handleRegister)
+			// No self-registration route: admin accounts are created exclusively
+			// by a SuperAdmin via POST /api/v1/admin/admins (see adminAdmins below).
 			auth.POST("/refresh", handleRefreshToken)
 		}
 
@@ -372,6 +373,7 @@ func main() {
 			adminAdmins.Use(middleware.RoleAuth("super_admin"))
 			{
 				adminAdmins.GET("/admins", handleGetAdmins)
+				adminAdmins.POST("/admins", handleCreateAdmin)
 				adminAdmins.GET("/admins/:id", handleGetAdmin)
 				adminAdmins.PUT("/admins/:id", handleUpdateAdmin)
 				adminAdmins.DELETE("/admins/:id", handleDeleteAdmin)
@@ -581,14 +583,25 @@ func handleLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr, "user": gin.H{"id": id, "email": req.Email, "username": username, "role": role}})
 }
 
-func handleRegister(c *gin.Context) {
+func handleCreateAdmin(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" binding:"required"`
 		Email    string `json:"email" binding:"required"`
 		Password string `json:"password" binding:"required"`
+		Role     string `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Role is optional but must be one of the known admin roles. Never allow a
+	// request to self-promote to super_admin via this endpoint.
+	validRoles := []string{"admin", "operator", "viewer", "dex_admin", "cex_admin", "finance_admin"}
+	if req.Role == "" {
+		req.Role = "admin"
+	}
+	if !contains(validRoles, req.Role) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid role"})
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -597,12 +610,21 @@ func handleRegister(c *gin.Context) {
 		return
 	}
 	id := uuid.New()
-	_, err = dbExec(c, `INSERT INTO admin_users (id, username, email, password_hash, role, is_active, created_at, updated_at) VALUES ($1,$2,$3,$4,'admin',true,NOW(),NOW())`, id, req.Username, req.Email, string(hash))
+	_, err = dbExec(c, `INSERT INTO admin_users (id, username, email, password_hash, role, is_active, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,true,NOW(),NOW())`, id, req.Username, req.Email, string(hash), req.Role)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "user already exists", "detail": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": id, "username": req.Username, "email": req.Email, "role": "admin"})
+	c.JSON(http.StatusCreated, gin.H{"id": id, "username": req.Username, "email": req.Email, "role": req.Role})
+}
+
+func contains(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func handleRefreshToken(c *gin.Context) {

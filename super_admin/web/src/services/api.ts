@@ -766,59 +766,59 @@ class SuperAdminApiService {
         }
       });
     }
-    return this.request(`/api/v1/admins?${query}`);
+    return this.request(`/api/v1/admin/admins?${query}`);
   }
 
   async getAdmin(id: string): Promise<Admin> {
-    return this.request(`/api/v1/admins/${id}`);
+    return this.request(`/api/v1/admin/admins/${id}`);
   }
 
   async createAdmin(data: AdminCreateInput): Promise<Admin> {
-    return this.request('/api/v1/admins', {
+    return this.request('/api/v1/admin/admins', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async updateAdmin(id: string, data: AdminUpdateInput): Promise<Admin> {
-    return this.request(`/api/v1/admins/${id}`, {
+    return this.request(`/api/v1/admin/admins/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteAdmin(id: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}`, { method: 'DELETE' });
+    return this.request(`/api/v1/admin/admins/${id}`, { method: 'DELETE' });
   }
 
   async suspendAdmin(id: string, reason: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}/suspend`, {
+    return this.request(`/api/v1/admin/admins/${id}/suspend`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     });
   }
 
   async activateAdmin(id: string): Promise<void> {
-    return this.request(`/api/v1/admins/${id}/activate`, { method: 'POST' });
+    return this.request(`/api/v1/admin/admins/${id}/activate`, { method: 'POST' });
   }
 
   async updateAdminPermissions(id: string, permissions: string[]): Promise<Admin> {
-    return this.request(`/api/v1/admins/${id}/permissions`, {
+    return this.request(`/api/v1/admin/admins/${id}/permissions`, {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
     });
   }
 
   async getAdminSessions(adminId: string): Promise<any[]> {
-    return this.request(`/api/v1/admins/${adminId}/sessions`);
+    return this.request(`/api/v1/admin/admins/${adminId}/sessions`);
   }
 
   async revokeAdminSession(adminId: string, sessionId: string): Promise<void> {
-    return this.request(`/api/v1/admins/${adminId}/sessions/${sessionId}`, { method: 'DELETE' });
+    return this.request(`/api/v1/admin/admins/${adminId}/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
   async revokeAllAdminSessions(adminId: string): Promise<void> {
-    return this.request(`/api/v1/admins/${adminId}/sessions`, { method: 'DELETE' });
+    return this.request(`/api/v1/admin/admins/${adminId}/sessions`, { method: 'DELETE' });
   }
 
   // ==================== Ticket System ====================

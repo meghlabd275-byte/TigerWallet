@@ -49,7 +49,7 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		ServerPort:         getEnv("SERVER_PORT", "8082"),
+		ServerPort:         getEnv("SERVER_PORT", "8456"),
 		ServerReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 30*time.Second),
 		ServerWriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 30*time.Second),
 		ServerIdleTimeout:  getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second),

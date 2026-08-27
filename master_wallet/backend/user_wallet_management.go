@@ -1321,17 +1321,25 @@ func (svc *Service) autoSignSolana(seed []byte, req *AutoSignRequest) (string, s
 	if derivationPath == "" {
 		derivationPath = fmt.Sprintf("m/44'/501'/0'/0'/%d'", req.AccountIndex)
 	}
-	// Build the real Solana transfer message: from + to + value (lamports).
-	// Solana transfer instruction = 2 (SystemProgram.Transfer) + 4-byte lamports
-	// + from pubkey (32) + to pubkey (32). For auto-sign we sign the message hash.
-	msg := fmt.Sprintf("solana-transfer:%s:%s:%s", req.ToAddress, req.Value, req.ContractAddress)
-	sig, pub, err := mwSolanaSign(seed, derivationPath, msg)
-	if err != nil {
-		return "", "failed", fmt.Errorf("solana sign: %w", err)
+	valueStr := req.Value
+	if valueStr == "" {
+		valueStr = "0"
 	}
-	_ = pub
-	txHash := hex.EncodeToString(sig)
-	return txHash, "signed", nil
+	// Resolve the Solana RPC endpoint: operator-pinned env, then the per-user
+	// chain registry, then the canonical public mainnet-beta endpoint.
+	rpc := getEnvDefault("SOLANA_RPC_URL", "")
+	if rpc == "" {
+		rpc = svc.getUserChainRPC(req.ChainID, "solana")
+	}
+	if rpc == "" {
+		rpc = "https://api.mainnet-beta.solana.com"
+	}
+	// Build + sign + broadcast a real SystemProgram.transfer.
+	txHash, err := mwSolanaTransfer(seed, derivationPath, req.ToAddress, valueStr, rpc)
+	if err != nil {
+		return "", "broadcast_failed", err
+	}
+	return txHash, "broadcast", nil
 }
 
 // autoSignBitcoin signs a real Bitcoin P2PKH transaction (secp256k1, SIGHASH_ALL).
@@ -1351,9 +1359,17 @@ func (svc *Service) autoSignBitcoin(seed []byte, req *AutoSignRequest) (string, 
 		return "", "failed", err
 	}
 	if txHash == "" {
-		return rawTx, "signed", nil
+		// Unable to hash locally (malformed tx) — do not broadcast garbage.
+		return "", "failed", fmt.Errorf("BTC tx hash failed")
 	}
-	return rawTx, "signed", nil
+	// Broadcast the signed raw transaction to the Bitcoin network and return the
+	// real on-chain txid (same contract as the EVM "broadcast" status).
+	broadcastHash, err := broadcastBitcoinTx(rawTx)
+	if err != nil {
+		return "", "broadcast_failed", err
+	}
+	_ = txHash
+	return broadcastHash, "broadcast", nil
 }
 
 // autoSignCosmos signs a real Cosmos SignDoc with secp256k1 (SIGN_MODE_LEGACY_AMINO_JSON).
@@ -1368,9 +1384,20 @@ func (svc *Service) autoSignCosmos(seed []byte, req *AutoSignRequest) (string, s
 	// on the target chain (Osmosis -> "osmosis-1"/"uosmo", etc.). Falls back
 	// to cosmoshub-4/uatom for unknown chains.
 	chainIDStr, denom := cosmosChainMeta(req.ChainID)
+	// The sender is the user's own derived address for this chain's bech32 prefix,
+	// never a contract address (autoSignCosmos previously used req.ContractAddress
+	// as from_address, which produced an invalid SignDoc for plain transfers).
+	prefix := "cosmos"
+	if req.ChainID != 0 {
+		prefix = bech32PrefixForChainID(req.ChainID)
+	}
+	fromAddr, err := mwCosmosAddressFromSeed(seed, derivationPath, prefix)
+	if err != nil {
+		return "", "failed", fmt.Errorf("cosmos from-address: %w", err)
+	}
 	// Build the canonical amino JSON SignDoc for a Cosmos transfer (MsgSend).
 	signDoc := fmt.Sprintf(`{"account_number":"0","chain_id":"%s","fee":{"amount":[{"denom":"%s","amount":"5000"}],"gas":"200000"},"memo":"","msgs":[{"type":"cosmos-sdk/MsgSend","value":{"amount":[{"denom":"%s","amount":"%s"}],"from_address":"%s","to_address":"%s"}}],"sequence":"0"}`,
-		chainIDStr, denom, denom, req.Value, req.ContractAddress, req.ToAddress)
+		chainIDStr, denom, denom, req.Value, fromAddr, req.ToAddress)
 	sig, _, err := mwCosmosSign(seed, derivationPath, signDoc)
 	if err != nil {
 		return "", "failed", err

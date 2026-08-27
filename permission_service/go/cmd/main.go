@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -449,6 +451,31 @@ func logAudit(adminID, clientID uuid.UUID, action, resourceType, resourceID, det
 	return err
 }
 
+// superAdminMiddleware gates admin control-plane routes behind the platform
+// shared secret (SUPER_ADMIN_SECRET) as a Bearer token. Fail-closed: if the
+// secret is not configured the route is disabled rather than left open.
+func superAdminMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		secret := os.Getenv("SUPER_ADMIN_SECRET")
+		if secret == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "super admin access not configured"})
+			c.Abort()
+			return
+		}
+		auth := c.GetHeader("Authorization")
+		token := ""
+		if len(auth) > 7 && auth[:7] == "Bearer " {
+			token = auth[7:]
+		}
+		if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid super admin credentials"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 // ============ HTTP HANDLERS ============
 
 // Health check
@@ -818,17 +845,25 @@ func GetAuditLog(c *gin.Context) {
 	clientID := c.Query("client_id")
 	limit := c.DefaultQuery("limit", "100")
 
+	// Parameterized: never interpolate client_id/limit into the SQL text.
+	// LIMIT cannot be bound as a parameter, so parse it strictly as an integer.
+	limitInt, err := strconv.Atoi(limit)
+	if err != nil || limitInt <= 0 || limitInt > 1000 {
+		limitInt = 100
+	}
+
 	query := `
 		SELECT id, admin_id, client_id, action, resource_type, resource_id, details, ip_address, timestamp
 		FROM permission_audits
-		WHERE 1=1
 	`
+	args := []interface{}{}
 	if clientID != "" {
-		query += fmt.Sprintf(" AND client_id = '%s'", clientID)
+		query += `WHERE client_id = $1`
+		args = append(args, clientID)
 	}
-	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT %s", limit)
+	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT %d", limitInt)
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -990,29 +1025,31 @@ func main() {
 
 	router.GET("/health", HealthCheck)
 
-	// Client management
-	router.POST("/api/v1/clients", RegisterClient)
+	// Tenant-facing runtime endpoints. These self-identify with X-API-Key inside
+	// the handler, or are the WL admin login / permission check used by the edge.
 	router.GET("/api/v1/clients", GetClient)
-	router.GET("/api/v1/admin/clients", GetClients)
-	router.PUT("/api/v1/admin/clients/:client_id/status", UpdateClientStatus)
-
-	// Admin management
-	router.POST("/api/v1/admins", CreateAdmin)
 	router.POST("/api/v1/auth/login", Login)
-
-	// Permission management
-	router.POST("/api/v1/permissions/grant", GrantPermissionHandler)
-	router.POST("/api/v1/permissions/revoke", RevokePermissionHandler)
-	router.GET("/api/v1/permissions/:client_id", GetPermissions)
 	router.POST("/api/v1/permissions/check", CheckPermissionHandler)
-
-	// Connection management
 	router.POST("/api/v1/connections", RegisterConnection)
 	router.POST("/api/v1/connections/heartbeat", Heartbeat)
 	router.POST("/api/v1/connections/disconnect", Disconnect)
 
-	// Audit
-	router.GET("/api/v1/audit", GetAuditLog)
+	// Admin control-plane endpoints. Gated by the platform shared secret
+	// (SUPER_ADMIN_SECRET) as a Bearer token; fail-closed if unset. These create
+	// or mutate clients/admins/permissions and read audit state — never intended
+	// for unauthenticated tenants.
+	superAdmin := router.Group("/api/v1")
+	superAdmin.Use(superAdminMiddleware())
+	{
+		superAdmin.POST("/clients", RegisterClient)
+		superAdmin.GET("/admin/clients", GetClients)
+		superAdmin.PUT("/admin/clients/:client_id/status", UpdateClientStatus)
+		superAdmin.POST("/admins", CreateAdmin)
+		superAdmin.POST("/permissions/grant", GrantPermissionHandler)
+		superAdmin.POST("/permissions/revoke", RevokePermissionHandler)
+		superAdmin.GET("/permissions/:client_id", GetPermissions)
+		superAdmin.GET("/audit", GetAuditLog)
+	}
 
 	logger.Printf("Starting server on port %s", config.Port)
 	srv := &http.Server{
