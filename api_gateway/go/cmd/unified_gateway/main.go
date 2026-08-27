@@ -58,6 +58,9 @@ func main() {
 	log.Println("TigerWallet Unified API Gateway starting...")
 
 	loadConfig()
+	if cfg.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	initRedis()
 
 	httpClient = &http.Client{
@@ -100,7 +103,7 @@ func loadConfig() {
 		CopyTradingSvc: getEnv("COPYTRADING_SERVICE", "http://localhost:8006"),
 		PredictionSvc:  getEnv("PREDICTION_SERVICE", "http://localhost:8455"),
 		FiatRampSvc:    getEnv("FIAT_RAMP_SERVICE", "http://localhost:8008"),
-		JWTSecret:      getEnv("JWT_SECRET", "tigerwallet-secret-key-change-in-production"),
+		JWTSecret:      getEnv("JWT_SECRET", ""),
 		RedisHost:      getEnv("REDIS_HOST", "localhost"),
 		RedisPort:      getEnv("REDIS_PORT", "6379"),
 	}

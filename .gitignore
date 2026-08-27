@@ -151,6 +151,8 @@ user_wallet/go/user_wallet
 /monitoring_dashboard/cmd
 /permission_service/cmd
 /connection_api/cmd
+/mm_bot_platform/bot_api/bot_api
+/api_gateway/go/cmd/unified_gateway/unified_gateway
 
 # MasterWallet compiled backend binary
 master_wallet/backend/master-wallet-backend

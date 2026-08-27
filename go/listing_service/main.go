@@ -30,7 +30,7 @@ import (
 // listing service validates tokens issued by wallet_api so admins are
 // authenticated through the same realm as regular users. Override via
 // JWT_SECRET env (must match wallet_api).
-var jwtSecret = getEnv("JWT_SECRET", "tigerwallet-dev-secret-change-in-production")
+var jwtSecret = getEnv("JWT_SECRET", "")
 
 func getEnv(key, dflt string) string {
 	if v := os.Getenv(key); v != "" {
@@ -942,6 +942,9 @@ func (s *ListingService) HealthCheck(c *gin.Context) {
 // ============================================================================
 
 func main() {
+	if jwtSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	log.Println("TigerWallet Token Listing Service")
 	log.Println("==================================")
 

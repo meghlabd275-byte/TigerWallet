@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,6 +21,10 @@ import (
 func main() {
 	// Load configuration
 	cfg := config.Load()
+
+	if cfg.JWT.Secret == "" {
+		log.Fatalf("BILLING_JWT_SECRET environment variable must be set")
+	}
 
 	// Initialize database
 	if err := database.Initialize(cfg); err != nil {
