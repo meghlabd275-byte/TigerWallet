@@ -23,6 +23,8 @@ use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use std::env;
+use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -30,6 +32,7 @@ use uuid::Uuid;
 mod chains_data;
 mod crypto;
 mod evm_tx;
+mod license_gate;
 mod multisig;
 mod non_evm;
 mod rlp;
@@ -46,6 +49,8 @@ pub enum ApiError {
     BadRequest(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("product not authorized: {0}")]
+    ServiceUnavailable(String),
 }
 
 impl actix_web::ResponseError for ApiError {
@@ -55,6 +60,7 @@ impl actix_web::ResponseError for ApiError {
             ApiError::Unauthorized => actix_web::http::StatusCode::UNAUTHORIZED,
             ApiError::BadRequest(_) => actix_web::http::StatusCode::BAD_REQUEST,
             ApiError::Internal(_) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::ServiceUnavailable(_) => actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
         }
     }
     fn error_response(&self) -> HttpResponse {
@@ -71,12 +77,13 @@ fn db_err(e: sqlx::Error) -> ApiError {
     }
 }
 
-/// Shared application state: DB pool + JWT secret.
+/// Shared application state: DB pool + JWT secret + license gate.
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub jwt_secret: String,
     pub bind_addr: String,
+    pub gate: Arc<license_gate::LicenseGate>,
 }
 
 impl AppState {
@@ -87,9 +94,17 @@ impl AppState {
         let pool = PgPoolOptions::new().max_connections(10).connect(&db_url).await?;
         run_migrations(&pool).await?;
         seed_chains(&pool).await?;
-        let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "dev-only-change-me-in-prod".into());
+        // Fail-closed: no dev fallback. A missing JWT secret must prevent boot.
+        let jwt_secret = match env::var("JWT_SECRET") {
+            Ok(v) if !v.is_empty() => v,
+            _ => {
+                error!("JWT_SECRET environment variable must be set (fail-closed)");
+                std::process::exit(1);
+            }
+        };
         let bind_addr = env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8470".into());
-        Ok(Self { pool, jwt_secret, bind_addr })
+        let gate = Arc::new(license_gate::LicenseGate::new());
+        Ok(Self { pool, jwt_secret, bind_addr, gate })
     }
 }
 
@@ -203,13 +218,22 @@ fn base64_url_decode(s: &str) -> Result<Vec<u8>, ()> {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s).map_err(|_| ())
 }
 
-fn require_auth(headers: &HeaderMap, jwt_secret: &str) -> ApiResult<(Uuid, String)> {
+pub fn require_auth(headers: &HeaderMap, state: &AppState) -> ApiResult<(Uuid, String)> {
+    // Fail-closed license gate: no protected request is served unless the
+    // SuperAdmin control plane has validated the product license on a recent
+    // heartbeat. This mirrors wl_shared/go/wlgate (503 when dead).
+    if !state.gate.is_alive() {
+        return Err(ApiError::ServiceUnavailable(format!(
+            "product is not authorized to serve (license suspended/revoked or heartbeat stale): {}",
+            state.gate.reason()
+        )));
+    }
     let auth = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError::Unauthorized)?;
     let token = auth.strip_prefix("Bearer ").ok_or(ApiError::Unauthorized)?;
-    let claims = jwt_verify(jwt_secret, token)?;
+    let claims = jwt_verify(&state.jwt_secret, token)?;
     Ok((claims.sub, claims.role))
 }
 
@@ -609,7 +633,7 @@ async fn login(state: web::Data<AppState>, body: web::Json<LoginReq>) -> ApiResu
 /// m/44'/60'/0'/0/0, encrypts the seed with scrypt+AES-256-GCM under the
 /// operator's password, and returns the mnemonic ONCE.
 async fn create_master_wallet(state: web::Data<AppState>, req: HttpRequest, body: web::Json<CreateMasterWalletReq>) -> ApiResult<HttpResponse> {
-    let (uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (uid, _role) = require_auth(req.headers(), &state)?;
     let name = body
         .name
         .clone()
@@ -675,7 +699,7 @@ async fn create_master_wallet(state: web::Data<AppState>, req: HttpRequest, body
 }
 
 async fn list_master_wallets(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
-    let (uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (uid, _role) = require_auth(req.headers(), &state)?;
     let rows = sqlx::query(
         "SELECT id, name, blockchain, address, public_key, wallet_type, chain_id, is_active, created_at \
          FROM shmw_master_wallets WHERE owner_id = $1 ORDER BY created_at DESC",
@@ -697,7 +721,7 @@ async fn list_master_wallets(state: web::Data<AppState>, req: HttpRequest) -> Ap
 }
 
 async fn get_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let row = sqlx::query(
         "SELECT id, name, blockchain, address, public_key, wallet_type, chain_id, is_active, created_at \
@@ -721,7 +745,7 @@ async fn get_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: w
 /// UpdateMasterWallet — PUT /api/v1/master-wallet/:id. Mutable metadata only
 /// (name, wallet_type, is_active); address/seed/public_key are immutable.
 async fn update_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<UpdateMasterWalletReq>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     if body.name.is_none() && body.wallet_type.is_none() && body.is_active.is_none() {
         return Err(ApiError::BadRequest("no updatable fields provided".into()));
@@ -749,7 +773,7 @@ async fn update_master_wallet(state: web::Data<AppState>, req: HttpRequest, path
 
 /// DeleteMasterWallet — DELETE /api/v1/master-wallet/:id.
 async fn delete_master_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let res = sqlx::query("DELETE FROM shmw_master_wallets WHERE id=$1")
         .bind(id).execute(&state.pool).await.map_err(db_err)?;
@@ -762,7 +786,7 @@ async fn delete_master_wallet(state: web::Data<AppState>, req: HttpRequest, path
 /// GetMasterWalletBalance — LIVE native balance from the chain RPC.
 /// Fail-closed: without a configured RPC the balance is reported as unknown.
 async fn get_balance(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let row = sqlx::query("SELECT address, chain_id FROM shmw_master_wallets WHERE id = $1")
         .bind(id).fetch_optional(&state.pool).await.map_err(db_err)?;
@@ -787,7 +811,7 @@ async fn get_balance(state: web::Data<AppState>, req: HttpRequest, path: web::Pa
 }
 
 async fn list_transactions(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let rows = sqlx::query("SELECT id, to_address, value, token, data, chain_id, status, transaction_hash, created_at FROM shmw_transactions WHERE master_wallet_id = $1 ORDER BY created_at DESC")
         .bind(id).fetch_all(&state.pool).await.map_err(db_err)?;
@@ -804,7 +828,7 @@ async fn list_transactions(state: web::Data<AppState>, req: HttpRequest, path: w
 }
 
 async fn create_transaction(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<CreateTransactionReq>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let mw_id = path.into_inner();
     let id = Uuid::new_v4();
     sqlx::query("INSERT INTO shmw_transactions (id, master_wallet_id, to_address, value, token, data, chain_id, status) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending')")
@@ -815,7 +839,7 @@ async fn create_transaction(state: web::Data<AppState>, req: HttpRequest, path: 
 }
 
 async fn approve_transaction(state: web::Data<AppState>, req: HttpRequest, path: web::Path<(Uuid, Uuid)>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -829,7 +853,7 @@ async fn approve_transaction(state: web::Data<AppState>, req: HttpRequest, path:
 }
 
 async fn reject_transaction(state: web::Data<AppState>, req: HttpRequest, path: web::Path<(Uuid, Uuid)>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -850,7 +874,7 @@ async fn reject_transaction(state: web::Data<AppState>, req: HttpRequest, path: 
 /// no RPC → 503; bad password → 400; RPC failure → 502; never fabricates a
 /// transaction hash.
 async fn sign_and_broadcast(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<SignReq>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let mw_id = path.into_inner();
 
     // Two-party withdrawal gate: the self-hosted node has no license control
@@ -992,7 +1016,7 @@ fn add_dec(a: &str, b: &str) -> Result<String, String> {
 /// personal_sign for EVM, Ed25519 for Solana, Bitcoin signed-message format
 /// for BTC, amino-style for Cosmos.
 async fn sign_message(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<SignMessageReq>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let mw_id = path.into_inner();
     if body.message.is_empty() {
         return Err(ApiError::BadRequest("message required".into()));
@@ -1078,7 +1102,7 @@ async fn sign_message(state: web::Data<AppState>, req: HttpRequest, path: web::P
 /// (canonical contract). Deterministic per (seed, chain, account_index);
 /// persisted for idempotent re-derivation.
 async fn derive_user_address(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<DeriveUserAddressReq>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let mw_id = path.into_inner();
     if body.chain_id <= 0 {
         return Err(ApiError::BadRequest("chain_id must be positive".into()));
@@ -1147,7 +1171,7 @@ async fn derive_user_address(state: web::Data<AppState>, req: HttpRequest, path:
 
 /// ListUserWalletAddresses — GET /api/v1/master-wallet/:id/user-wallet-addresses.
 async fn list_user_wallet_addresses(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let mw_id = path.into_inner();
     let rows = sqlx::query(
         "SELECT chain_id, chain_type, address, derivation_path, account_index, created_at \
@@ -1167,7 +1191,7 @@ async fn list_user_wallet_addresses(state: web::Data<AppState>, req: HttpRequest
 }
 
 async fn list_fees(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let rows = sqlx::query("SELECT id, chain_id, fee_bps FROM shmw_fees WHERE master_wallet_id = $1")
         .bind(id).fetch_all(&state.pool).await.map_err(db_err)?;
@@ -1180,7 +1204,7 @@ async fn list_fees(state: web::Data<AppState>, req: HttpRequest, path: web::Path
 }
 
 async fn set_fee(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<FeeReq>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -1196,7 +1220,7 @@ async fn set_fee(state: web::Data<AppState>, req: HttpRequest, path: web::Path<U
 }
 
 async fn delete_fee(state: web::Data<AppState>, req: HttpRequest, path: web::Path<(Uuid, Uuid)>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -1206,7 +1230,7 @@ async fn delete_fee(state: web::Data<AppState>, req: HttpRequest, path: web::Pat
 }
 
 async fn list_auto_sign(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let rows = sqlx::query("SELECT id, pattern, max_value, enabled FROM shmw_auto_sign WHERE master_wallet_id = $1")
         .bind(id).fetch_all(&state.pool).await.map_err(db_err)?;
@@ -1220,7 +1244,7 @@ async fn list_auto_sign(state: web::Data<AppState>, req: HttpRequest, path: web:
 }
 
 async fn create_auto_sign(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<AutoSignReq>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -1233,7 +1257,7 @@ async fn create_auto_sign(state: web::Data<AppState>, req: HttpRequest, path: we
 }
 
 async fn delete_auto_sign(state: web::Data<AppState>, req: HttpRequest, path: web::Path<(Uuid, Uuid)>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -1243,7 +1267,7 @@ async fn delete_auto_sign(state: web::Data<AppState>, req: HttpRequest, path: we
 }
 
 async fn list_users(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let rows = sqlx::query("SELECT wu.user_id, wu.role, u.email FROM shmw_wallet_users wu JOIN shmw_users u ON u.id = wu.user_id WHERE wu.master_wallet_id = $1")
         .bind(id).fetch_all(&state.pool).await.map_err(db_err)?;
@@ -1256,7 +1280,7 @@ async fn list_users(state: web::Data<AppState>, req: HttpRequest, path: web::Pat
 }
 
 async fn add_user(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<AddUserReq>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -1269,7 +1293,7 @@ async fn add_user(state: web::Data<AppState>, req: HttpRequest, path: web::Path<
 }
 
 async fn remove_user(state: web::Data<AppState>, req: HttpRequest, path: web::Path<(Uuid, Uuid)>) -> ApiResult<HttpResponse> {
-    let (_uid, role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, role) = require_auth(req.headers(), &state)?;
     if role != "admin" && role != "master_wallet_admin" {
         return Err(ApiError::Unauthorized);
     }
@@ -1279,7 +1303,7 @@ async fn remove_user(state: web::Data<AppState>, req: HttpRequest, path: web::Pa
 }
 
 async fn list_sub_wallets(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let rows = sqlx::query("SELECT id, label, chain_id, address, balance_usd FROM shmw_sub_wallets WHERE master_wallet_id = $1")
         .bind(id).fetch_all(&state.pool).await.map_err(db_err)?;
@@ -1293,7 +1317,7 @@ async fn list_sub_wallets(state: web::Data<AppState>, req: HttpRequest, path: we
 }
 
 async fn create_sub_wallet(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>, body: web::Json<CreateSubWalletReq>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let mw_id = path.into_inner();
     let id = Uuid::new_v4();
     sqlx::query("INSERT INTO shmw_sub_wallets (id, master_wallet_id, label, chain_id, address) VALUES ($1,$2,$3,$4,$5)")
@@ -1303,7 +1327,7 @@ async fn create_sub_wallet(state: web::Data<AppState>, req: HttpRequest, path: w
 }
 
 async fn analytics_tx(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let rows = sqlx::query("SELECT status, COUNT(*) AS cnt FROM shmw_transactions WHERE master_wallet_id = $1 GROUP BY status")
         .bind(id).fetch_all(&state.pool).await.map_err(db_err)?;
@@ -1314,7 +1338,7 @@ async fn analytics_tx(state: web::Data<AppState>, req: HttpRequest, path: web::P
 }
 
 async fn analytics_wallets(state: web::Data<AppState>, req: HttpRequest, path: web::Path<Uuid>) -> ApiResult<HttpResponse> {
-    let (_uid, _role) = require_auth(req.headers(), &state.jwt_secret)?;
+    let (_uid, _role) = require_auth(req.headers(), &state)?;
     let id = path.into_inner();
     let row = sqlx::query("SELECT COUNT(*)::INT8 AS cnt, COALESCE(SUM(balance_usd),0)::TEXT AS total FROM shmw_sub_wallets WHERE master_wallet_id = $1")
         .bind(id).fetch_one(&state.pool).await.map_err(db_err)?;
@@ -1327,7 +1351,7 @@ async fn analytics_wallets(state: web::Data<AppState>, req: HttpRequest, path: w
 /// ListChains — GET /api/v1/chains. The canonical seeded registry: EVM and
 /// non-EVM mainnet chains with metadata; RPC URLs resolve from env vars.
 async fn list_chains(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
-    require_auth(req.headers(), &state.jwt_secret)?;
+    require_auth(req.headers(), &state)?;
     let evm_rows = sqlx::query(
         "SELECT chain_id, name, symbol, rpc_url, explorer_url, decimals, derivation_path \
          FROM shmw_user_chains_evm ORDER BY chain_id",
@@ -1374,7 +1398,7 @@ async fn list_chains(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<
 /// GetGas — GET /api/v1/gas?chain_id=N. Real fee data from the chain RPC;
 /// fail-closed without an operator-configured endpoint.
 async fn get_gas(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
-    require_auth(req.headers(), &state.jwt_secret)?;
+    require_auth(req.headers(), &state)?;
     let chain_id: i64 = req
         .uri()
         .query()
@@ -1401,8 +1425,92 @@ async fn get_gas(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<Http
 }
 
 async fn get_price(state: web::Data<AppState>, req: HttpRequest) -> ApiResult<HttpResponse> {
-    require_auth(req.headers(), &state.jwt_secret)?;
-    Err(ApiError::BadRequest("price feed requires operator configuration (PRICE_API_URL)".into()))
+    require_auth(req.headers(), &state)?;
+    let chain_id: i64 = req
+        .uri()
+        .query()
+        .and_then(|q| {
+            q.split('&').find_map(|kv| {
+                let (k, v) = kv.split_once('=')?;
+                if k == "chain_id" { v.parse().ok() } else { None }
+            })
+        })
+        .unwrap_or(1);
+
+    let coin_id = chain_coin_gecko_id(chain_id);
+    if coin_id.is_empty() {
+        return Err(ApiError::BadRequest(format!(
+            "no CoinGecko coin id configured for chain {chain_id}"
+        )));
+    }
+
+    let price = fetch_token_price(&coin_id)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("price fetch failed: {e}")))?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "chain_id": chain_id,
+        "coin_id": coin_id,
+        "price_usd": price.usd,
+        "usd_24h_change": price.usd_24h_change,
+        "usd_market_cap": price.usd_market_cap,
+    })))
+}
+
+/// chainCoinGeckoID maps an EVM chain id to the CoinGecko coin id used for
+/// native-asset price lookups (mirrors master_wallet/backend/config.go).
+fn chain_coin_gecko_id(chain_id: i64) -> &'static str {
+    match chain_id {
+        1 => "ethereum",
+        56 => "binancecoin",
+        137 => "matic-network",
+        42161 => "arbitrum",
+        10 => "optimism",
+        43114 => "avalanche-2",
+        8453 => "base",
+        _ => "",
+    }
+}
+
+/// CoinGeckoPrice is a subset of the CoinGecko simple/price response.
+#[derive(serde::Deserialize)]
+struct CoinGeckoPrice {
+    #[serde(default)]
+    usd: f64,
+    #[serde(default)]
+    usd_24h_change: f64,
+    #[serde(default)]
+    usd_market_cap: f64,
+}
+
+/// fetch_token_price queries CoinGecko for the USD price of a coin id.
+async fn fetch_token_price(coin_id: &str) -> Result<CoinGeckoPrice, String> {
+    let url = format!(
+        "https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true"
+    );
+    let client = reqwest::Client::builder()
+        .timeout(StdDuration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut req = client.get(&url);
+    if let Ok(key) = env::var("COINGECKO_API_KEY") {
+        if !key.is_empty() {
+            req = req.header("x-cg-demo-api-key", key);
+        }
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    if resp.status().as_u16() != 200 {
+        return Err(format!("CoinGecko returned HTTP {}", resp.status().as_u16()));
+    }
+    let raw: std::collections::HashMap<String, CoinGeckoPrice> =
+        resp.json().await.map_err(|e| e.to_string())?;
+    raw.get(coin_id)
+        .map(|p| CoinGeckoPrice {
+            usd: p.usd,
+            usd_24h_change: p.usd_24h_change,
+            usd_market_cap: p.usd_market_cap,
+        })
+        .ok_or_else(|| format!("no price for {coin_id}"))
 }
 
 async fn health() -> HttpResponse {
@@ -1425,6 +1533,33 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         }
     };
+
+    // Fail-closed license gate: phone home to the SuperAdmin control plane and
+    // only serve protected routes while the license is valid. This closes the
+    // P0 gap (previously this reference implementation ran unlicensed).
+    let control_plane_url = env::var("TWO_PARTY_GATE_URL").unwrap_or_default();
+    let control_plane_token = env::var("TWO_PARTY_GATE_TOKEN").unwrap_or_default();
+    let license_key = env::var("WL_LICENSE_KEY").unwrap_or_default();
+    let product = env::var("WL_PRODUCT").unwrap_or_else(|_| "master_wallet".into());
+    let instance_id = env::var("WL_INSTANCE_ID")
+        .unwrap_or_else(|_| std::env::var("HOSTNAME").unwrap_or_else(|_| "default".into()));
+    let heartbeat_interval = env::var("HEARTBEAT_INTERVAL")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(StdDuration::from_secs)
+        .unwrap_or_else(|| StdDuration::from_secs(30));
+
+    let gate = state.gate.clone();
+    tokio::spawn(license_gate::LicenseGate::heartbeat_loop(
+        gate,
+        control_plane_url,
+        control_plane_token,
+        license_key,
+        product,
+        instance_id,
+        heartbeat_interval,
+    ));
+
     let bind = state.bind_addr.clone();
     let host = state.clone();
     info!("Self-Hosted MasterWallet listening on {bind}");

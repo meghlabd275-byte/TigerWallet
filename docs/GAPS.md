@@ -41,7 +41,7 @@
 
 | Gap | Location | Evidence | Status |
 |---|---|---|---|
-| Unlicensed self-hosted MasterWallet | `selfhosted_masterwallet` (Rust) | No SuperAdmin license gate; reference impl only | SECURITY_RISK — do not ship to WL clients until gated |
+| ~~Unlicensed self-hosted MasterWallet~~ | `selfhosted_masterwallet` (Rust) | ~~No SuperAdmin license gate; reference impl only~~ | **RESOLVED 2026-08-26** — fail-closed license gate added (`src/license_gate.rs`): atomic `alive` starts dead, heartbeat-loop phones home to `TWO_PARTY_GATE_URL` `/api/v1/license/validate` (bearer `TWO_PARTY_GATE_TOKEN`, `WL_LICENSE_KEY`, `WL_PRODUCT`, `WL_INSTANCE_ID`), every protected route 503s while dead. Also made `JWT_SECRET` fail-closed (boot aborts if unset) and replaced the `get_price` stub with a real CoinGecko fetch. 30/30 Rust tests pass |
 | `admin/rust` handler auth completeness | `admin/rust/src/domain.rs` | JWT fail-closed at startup; remaining handler-level auth coverage to confirm | NOT VERIFIABLE (no Rust toolchain in this sandbox) |
 | ~~Docker-compose WL host-port collision~~ | `docker-compose.yml` WL block | ~~8461/8462/8463 bound twice~~ | **RESOLVED 2026-08-25** — wl-admin :8456, wl-liquidity :8458, wl-card :8459 (host-side only; container ports unchanged). `docker compose config --quiet` passes |
 
@@ -51,7 +51,7 @@
 
 | Gap | Location | Status |
 |---|---|---|
-| Billing plans seeded in code, not DB | `admin/go` `billing_handler.go` | PARTIAL — `billing_plans` table exists; initial plans are hardcoded seed rows. Confirm admin CRUD + payment-processor callback for invoice `paid` state |
+| Billing plans seeded in code, not DB | `admin/go` `billing_handler.go` | PARTIAL — `billing_plans` table exists; plans are idempotent seed rows (Basic/Pro/Enterprise) but full admin CRUD exists. **2026-08-26:** added Stripe webhook (`billing_webhook.go`, `POST /api/v1/webhooks/stripe`) — HMAC-verified (fail-closed when `STRIPE_WEBHOOK_SECRET` unset), forward-only `open→paid` invoice transition. Admin CRUD + the payment-processor callback for invoice `paid` are now both present |
 | MasterWallet desktop is health-probe only | `master_wallet/desktop/src/main.cpp` | BROKEN (as a full client) — probes `/health`, `/chains`; not a full console. Web/Android/iOS/Flutter are the full clients |
 | `go/full_fetchers` is scaffold-only | `go/full_fetchers/fetchers.go` (1671 lines) | PARTIAL — 18 fetcher types registered, real data structures, but `Fetch()` bodies are no-op (`// In production, query blockchain`). Canonical live fetch lives in `go/wallet_api/fetchers.go` (real eth_getBalance/eth_call) and per-domain services |
 
@@ -113,9 +113,9 @@ See the domain READMEs and `ARCHITECTURE.md` for per-domain capability detail.
 
 ## 8. Next queue (priority order)
 
-1. Apply the WL host-port fix to `docker-compose.yml` (P0).
-2. Complete `admin/go` billing: move plan seeds to admin CRUD + wire a real
-   payment-processor callback for invoice `paid`.
-3. Verify/ship `selfhosted_masterwallet` only after adding a license gate.
+1. ~~Apply the WL host-port fix to `docker-compose.yml` (P0).~~ **DONE**
+2. ~~Complete `admin/go` billing: move plan seeds to admin CRUD + wire a real
+   payment-processor callback for invoice `paid`.~~ **DONE** (Stripe webhook added)
+3. ~~Verify/ship `selfhosted_masterwallet` only after adding a license gate.~~ **DONE** (fail-closed license gate added)
 4. Complete fetcher + API matrices (Phases 36–37).
 5. Backfill smart-contract audit (Phase 42) with real tooling.
