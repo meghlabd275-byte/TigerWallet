@@ -5,69 +5,45 @@
 
 class StakingService {
     constructor() {
+        // Canonical UserWallet staking backend (wallet_api :8443). Mirrors the
+        // user_wallet/web client contract: GET /staking/quote + POST
+        // /staking/{stake,unstake,claim} with wallet_id + password + asset +
+        // amount + chain_id. No fabricated APY/positions/validators.
         this.apiBaseUrl = 'http://localhost:8443/api/v1';
         this.stakingChains = ['ethereum', 'polygon', 'solana', 'cosmos', 'polkadot', 'near'];
         this.validators = {};
     }
 
     /**
-     * Get staking positions for wallet
+     * Get the supported native staking assets (real quote; APY is 0 until a
+     * live staking contract/oracle is configured — never fabricated).
      */
-    async getPositions(walletAddress) {
+    async getStakingQuote() {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/staking/positions?address=${walletAddress}`);
+            const response = await fetch(`${this.apiBaseUrl}/staking/quote`);
             return await response.json();
         } catch (error) {
-            console.error('Failed to get staking positions:', error);
-            return [];
+            console.error('Failed to get staking quote:', error);
+            return { success: false, assets: [], apy: 0, min_stake: 0, lock_period: 0 };
         }
     }
 
     /**
-     * Get validators for chain
+     * Stake tokens (on-chain transaction, submitted via /api/v1/send).
      */
-    async getValidators(chain) {
-        if (this.validators[chain]) {
-            return this.validators[chain];
-        }
-
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/staking/validators?chain=${chain}`);
-            const validators = await response.json();
-            this.validators[chain] = validators;
-            return validators;
-        } catch (error) {
-            console.error('Failed to get validators:', error);
-            return this.getDefaultValidators(chain);
-        }
-    }
-
-    /**
-     * Fallback validators — returns an empty list (fail-closed) rather than
-     * fabricating APR/TVL/risk market data. The canonical backend exposes
-     * real validators via the staking quote/action endpoints and
-     * /admin/chains/validators (admin-managed); when those are unreachable we
-     * must not invent yield numbers or validator identities.
-     */
-    getDefaultValidators(chain) {
-        console.warn('No real validator data available for', chain, '— returning empty (fail-closed)');
-        return [];
-    }
-
-    /**
-     * Stake tokens
-     */
-    async stake(walletAddress, chain, validatorId, amount) {
+    async stake(walletId, password, asset, amount, chainId = 1, validator = '') {
         try {
             const response = await fetch(`${this.apiBaseUrl}/staking/stake`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    walletAddress,
-                    chain,
-                    validatorId,
-                    amount: amount.toString()
-                })
+                    wallet_id: walletId,
+                    password,
+                    asset,
+                    amount: amount.toString(),
+                    chain_id: chainId,
+                    validator,
+                }),
             });
             return await response.json();
         } catch (error) {
@@ -77,14 +53,20 @@ class StakingService {
     }
 
     /**
-     * Unstake tokens
+     * Unstake tokens (on-chain transaction, submitted via /api/v1/send).
      */
-    async unstake(positionId) {
+    async unstake(walletId, password, asset, amount, chainId = 1) {
         try {
             const response = await fetch(`${this.apiBaseUrl}/staking/unstake`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ positionId })
+                body: JSON.stringify({
+                    wallet_id: walletId,
+                    password,
+                    asset,
+                    amount: amount.toString(),
+                    chain_id: chainId,
+                }),
             });
             return await response.json();
         } catch (error) {
@@ -94,14 +76,19 @@ class StakingService {
     }
 
     /**
-     * Claim staking rewards
+     * Claim staking rewards (on-chain transaction, submitted via /api/v1/send).
      */
-    async claimRewards(positionId) {
+    async claimRewards(walletId, password, asset, chainId = 1) {
         try {
             const response = await fetch(`${this.apiBaseUrl}/staking/claim`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ positionId })
+                body: JSON.stringify({
+                    wallet_id: walletId,
+                    password,
+                    asset,
+                    chain_id: chainId,
+                }),
             });
             return await response.json();
         } catch (error) {
@@ -111,20 +98,7 @@ class StakingService {
     }
 
     /**
-     * Get staking rewards
-     */
-    async getRewards(walletAddress) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/staking/rewards?address=${walletAddress}`);
-            return await response.json();
-        } catch (error) {
-            console.error('Failed to get rewards:', error);
-            return [];
-        }
-    }
-
-    /**
-     * Calculate staking rewards
+     * Calculate staking rewards (pure arithmetic — no fabricated yield).
      */
     calculateRewards(amount, apr, days) {
         const dailyRate = apr / 100 / 365;
