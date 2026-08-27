@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tigerwallet/billing/internal/database"
 	"github.com/tigerwallet/billing/internal/models"
 	"github.com/tigerwallet/billing/internal/services"
 )
@@ -295,7 +296,7 @@ func (h *BillingHandler) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	rows, err := services.DatabasePool.Query(c.Request.Context(), `
+	rows, err := database.Pool.Query(c.Request.Context(), `
 		SELECT id, tenant_id, invoice_number, stripe_invoice_id, amount, amount_due, 
 			amount_paid, currency, status, due_date, paid_at, invoice_url, invoice_pdf, 
 			created_at, updated_at
@@ -333,7 +334,7 @@ func (h *BillingHandler) GetInvoice(c *gin.Context) {
 	}
 
 	var inv models.Invoice
-	err = services.DatabasePool.QueryRow(c.Request.Context(), `
+	err = database.Pool.QueryRow(c.Request.Context(), `
 		SELECT id, tenant_id, invoice_number, stripe_invoice_id, amount, amount_due, 
 			amount_paid, currency, status, due_date, paid_at, invoice_url, invoice_pdf, 
 			created_at, updated_at
@@ -350,7 +351,7 @@ func (h *BillingHandler) GetInvoice(c *gin.Context) {
 	}
 
 	// Get line items
-	rows, err := services.DatabasePool.Query(c.Request.Context(), `
+	rows, err := database.Pool.Query(c.Request.Context(), `
 		SELECT id, invoice_id, description, quantity, unit_price, amount, created_at
 		FROM line_items WHERE invoice_id = $1
 	`, invoiceID)

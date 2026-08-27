@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -134,11 +133,11 @@ type Payment struct {
 
 // Global variables
 var (
-	db     *pgxpool.Pool
-	redis  *redis.Client
-	config Config
-	logger *log.Logger
-	jwtSecret []byte
+	db          *pgxpool.Pool
+	redisClient *redis.Client
+	config      Config
+	logger      *log.Logger
+	jwtSecret   []byte
 )
 
 // ============ INITIALIZATION ============
@@ -253,8 +252,8 @@ func initRedis() error {
 	if err != nil {
 		return err
 	}
-	redis = redis.NewClient(opt)
-	return redis.Ping(context.Background()).Err()
+	redisClient = redis.NewClient(opt)
+	return redisClient.Ping(context.Background()).Err()
 }
 
 // ============ HTTP HANDLERS ============
@@ -267,7 +266,7 @@ func HealthCheck(c *gin.Context) {
 	}
 	
 	redisStatus := "healthy"
-	if err := redis.Ping(ctx).Err(); err != nil {
+	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
@@ -320,7 +319,6 @@ func CreateSubscription(c *gin.Context) {
 
 	// Get plan details
 	var plan Plan
-	var priceMonthly float64
 	err := db.QueryRow(context.Background(), `
 		SELECT id, name, tier, price_monthly, price_yearly FROM billing_plans WHERE id = $1
 	`, req.PlanID).Scan(&plan.ID, &plan.Name, &plan.Tier, &plan.PriceMonthly, &plan.PriceYearly)
@@ -423,7 +421,7 @@ func RecordUsage(c *gin.Context) {
 	}
 
 	// Update Redis counter
-	redis.IncrBy(context.Background(), fmt.Sprintf("usage:%s:%s", req.ClientID, req.Metric), req.Count)
+	redisClient.IncrBy(context.Background(), fmt.Sprintf("usage:%s:%s", req.ClientID, req.Metric), req.Count)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "usage recorded"})
 }
@@ -706,6 +704,6 @@ func main() {
 	}
 
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }

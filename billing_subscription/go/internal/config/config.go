@@ -90,7 +90,7 @@ func Load() *Config {
 			PoolSize: getIntEnv("BILLING_REDIS_POOL_SIZE", 50),
 		},
 		JWT: JWTConfig{
-			Secret:          getEnv("BILLING_JWT_SECRET", "tigerwallet-jwt-secret-key"),
+			Secret:          getEnv("BILLING_JWT_SECRET", ""),
 			Expiration:      getDurationEnv("JWT_EXPIRATION", 24*time.Hour),
 			RefreshDuration: getDurationEnv("JWT_REFRESH_DURATION", 7*24*time.Hour),
 		},

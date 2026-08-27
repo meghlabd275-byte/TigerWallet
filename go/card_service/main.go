@@ -24,6 +24,9 @@ import (
 
 func main() {
 	cfg := loadCfg()
+	if cfg.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	gin.SetMode(gin.ReleaseMode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -87,7 +90,7 @@ func loadCfg() config {
 		Port:            g("PORT", "8457"),
 		DBURL:           g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisAddr:       g("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:       g("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
+		JWTSecret:       g("JWT_SECRET", ""),
 		CoinGeckoAPIKey: g("COINGECKO_API_KEY", ""),
 	}
 }

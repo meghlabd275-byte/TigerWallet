@@ -49,7 +49,7 @@ services:
       WALLET_API_PORT: "8443"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
       ETHERSCAN_API_KEY: "${ETHERSCAN_API_KEY:-}"
       COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
       # Upstream DeFi/utility services proxied through /api/v1/* (defi_proxy.go).
@@ -100,7 +100,7 @@ services:
       DB_NAME: tigerwallet_admin
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: tigerwallet-jwt-secret-key
+      JWT_SECRET: "${ADMIN_JWT_SECRET:-change-me-in-production}"
       SUPER_ADMIN_PORT: 8082
     depends_on:
       postgres:
@@ -125,7 +125,7 @@ services:
       DB_PASSWORD: tigerwallet
       DB_NAME: tigerwallet_admin
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: tigerwallet-jwt-secret-key
+      JWT_SECRET: "${ADMIN_JWT_SECRET:-change-me-in-production}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,7 +187,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
       ETHEREUM_RPC_URL: "${ETHEREUM_RPC_URL:-https://ethereum.publicnode.com}"
       WALLET_API_URL: "http://wallet-api:8443"
     depends_on:
@@ -207,7 +207,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -225,7 +225,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -243,7 +243,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -275,7 +275,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
       TRANSAK_ENV: "${TRANSAK_ENV:-staging}"
       TRANSAK_API_KEY: "${TRANSAK_API_KEY:-}"
       MOONPAY_API_KEY: "${MOONPAY_API_KEY:-}"
@@ -297,7 +297,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
       COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
     depends_on:
       postgres:
@@ -347,7 +347,7 @@ services:
       PORT: "8095"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "tigerwallet-white-label-jwt-secret-change-in-production"
+      JWT_SECRET: "${WHITE_LABEL_JWT_SECRET:-change-me-in-production}"
       SUPER_ADMIN: "admin"
     depends_on:
       postgres:
@@ -420,7 +420,7 @@ services:
     environment:
       DB_HOST: postgres
       REDIS_HOST: redis
-      JWT_SECRET: tigerwallet-jwt-secret-key
+      JWT_SECRET: "${ADMIN_JWT_SECRET:-change-me-in-production}"
       SUPER_ADMIN_SECRET: "${SUPER_ADMIN_SECRET:-tigerwallet-super-admin-secret-change-me}"
     depends_on:
       postgres:
@@ -567,7 +567,7 @@ services:
       PORT: "8471"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "tigerwallet-jwt-secret-change-in-production"
+      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
     depends_on:
       postgres:
         condition: service_healthy

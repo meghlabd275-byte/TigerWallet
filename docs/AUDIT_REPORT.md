@@ -288,7 +288,7 @@ liquidity add/remove + market-maker status. Multi-client (web/desktop/android/io
 
 | Finding | Severity | Status |
 |---|---|---|
-| Hardcoded JWT dev-secret fallback `"tigerwallet-dev-secret-change-in-production"` in ~20 services incl. `go/wallet_api/config.go`, `mm_bot_platform/bot_api/main.go` (twice), `go/*` fleet | **P0** (if deployed with default env) | SECURITY_RISK — must be fail-closed in production (no default, or random-per-process). `ENVIRONMENT.md` already mandates env injection; the defaults remain the residual risk |
+| Hardcoded JWT dev-secret fallback `"tigerwallet-dev-secret-change-in-production"` in ~20 services incl. `go/wallet_api/config.go`, `mm_bot_platform/bot_api/main.go` (twice), `go/*` fleet | **P0** (if deployed with default env) | **RESOLVED** — all JWT defaults changed to `""` and every affected service now fails closed at startup (`log.Fatalf("JWT_SECRET environment variable must be set")`). Docker Compose JWT literals parameterized via `${JWT_SECRET:-}`, `${ADMIN_JWT_SECRET:-}`, `${WHITE_LABEL_JWT_SECRET:-}`. |
 | Unlicensed `selfhosted_masterwallet` | P0 | SECURITY_RISK |
 | `go/wallet_api` mounts `/api/v1/admin/*` inside the user-serving service | P1 (arch) | Review: role-gated but concentrates admin in user backend |
 | Human-readable `pw`-style defaults for DB URL in bot_api config | P1 | Build-time default only; override needed |
@@ -309,6 +309,22 @@ AES-256-GCM at rest; user web clears mnemonic post-backup).
   remediate via deployment secrets, not by hardcoding different secrets.
 
 ---
+
+## 7b. Remediation performed in this delivery
+
+The following real defects were found and fixed (verified with `go build -mod=readonly ./...`
+and `go vet ./...` across all affected modules):
+
+1. `billing_subscription/go/cmd/main.go` (orphan monolith) — removed unused `jwt` import,
+   renamed shadowing `redis` → `redisClient`, removed dead `priceMonthly`; now compiles.
+2. `billing_subscription/go/internal/handlers/billing_handler.go` — fixed
+   `services.DatabasePool` → `database.Pool` (3 refs) and added `database` import.
+3. `billing_subscription/go/go.mod` / `go.sum` — added direct `github.com/gin-contrib/cors
+   v1.5.0`, removed duplicate indirect stripe entry; `go.sum` regenerated.
+4. **JWT fail-closed hardening (P0)** — removed empty/hardcoded HS256 fallback key from 21
+   services and added startup `log.Fatalf` guard when `JWT_SECRET` (or
+   `BILLING_JWT_SECRET`) is unset, so an empty signing key can never be forged. Root
+   `docker-compose.yml` secrets are now env-parameterized (realm-consistent).
 
 ## 8. Verification position summary
 

@@ -37,7 +37,7 @@ func LoadConfig() *AppConfig {
 		Port:            envOr("WALLET_API_PORT", "8443"),
 		DatabaseURL:     envOr("DATABASE_URL", "postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisAddr:       envOr("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:       envOr("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
+		JWTSecret:       envOr("JWT_SECRET", ""),
 		CoinGeckoAPIKey: os.Getenv("COINGECKO_API_KEY"),
 		EtherscanAPIKey: os.Getenv("ETHERSCAN_API_KEY"),
 		AdminBootstrapEmail: os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),

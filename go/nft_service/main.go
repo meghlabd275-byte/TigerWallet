@@ -30,7 +30,7 @@ import (
 // jwtSecret is the shared HS256 secret used by wallet_api to sign JWTs. NFT
 // service validates tokens issued by wallet_api so a single auth realm covers
 // all services. Override via JWT_SECRET env (must match wallet_api).
-var jwtSecret = getEnv("JWT_SECRET", "tigerwallet-dev-secret-change-in-production")
+var jwtSecret = getEnv("JWT_SECRET", "")
 
 func getEnv(key, dflt string) string {
 	if v := os.Getenv(key); v != "" {
@@ -1695,6 +1695,9 @@ func (ns *NFTService) AuthMiddleware() gin.HandlerFunc {
 // ============================================================================
 
 func main() {
+	if jwtSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	log.Println("TigerWallet NFT Service")
 	log.Println("========================")
 	log.Printf("Starting on port %s", cfg.Port)

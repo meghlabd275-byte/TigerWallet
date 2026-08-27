@@ -27,6 +27,9 @@ var (
 
 func main() {
 	appConfig = LoadConfig()
+	if appConfig.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 
 	// Connect to PostgreSQL + Redis (best-effort; service still boots for
 	// read-only/public endpoints if DB is temporarily unavailable).

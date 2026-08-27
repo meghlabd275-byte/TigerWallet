@@ -161,6 +161,9 @@ func main() {
 	logger.Info().Msg("Starting TigerWallet White Label System")
 
 	cfg := loadConfig()
+	if cfg.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	jwtSecret = cfg.JWTSecret
 	redisClient = initRedis(cfg.RedisURL)
 	defer redisClient.Close()
@@ -231,7 +234,7 @@ func loadConfig() *Config {
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
 		SuperAdmin:  getEnv("SUPER_ADMIN", "admin"),
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
-		JWTSecret:   getEnv("JWT_SECRET", "tigerwallet-white-label-jwt-secret-change-in-production"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
 	}
 }
 

@@ -32,7 +32,7 @@ func loadConfig() config {
 		Port:      envOr("PORT", "8454"),
 		DBURL:     envOr("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisAddr: envOr("REDIS_ADDR", "localhost:6379"),
-		JWTSecret: envOr("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
+		JWTSecret: envOr("JWT_SECRET", ""),
 	}
 }
 
@@ -51,6 +51,9 @@ type service struct {
 
 func main() {
 	cfg := loadConfig()
+	if cfg.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	gin.SetMode(gin.ReleaseMode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -85,6 +85,9 @@ var defaultTiers = []map[string]interface{}{
 
 func main() {
 	cfg := loadCfg()
+	if cfg.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable must be set")
+	}
 	gin.SetMode(gin.ReleaseMode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -201,7 +204,7 @@ func loadCfg() config {
 		Port:      g("PORT", "8471"),
 		DBURL:     g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisAddr: g("REDIS_ADDR", "localhost:6379"),
-		JWTSecret: g("JWT_SECRET", "tigerwallet-dev-secret-change-in-production"),
+		JWTSecret: g("JWT_SECRET", ""),
 	}
 }
 
@@ -1613,7 +1616,7 @@ func secretsEncryptionKey() []byte {
 		k = os.Getenv("JWT_SECRET")
 	}
 	if k == "" {
-		k = "tigerwallet-dev-secret-change-in-production"
+		log.Fatalf("SECRETS_ENC_KEY or JWT_SECRET environment variable must be set")
 	}
 	h := sha256.Sum256([]byte(k))
 	return h[:]
