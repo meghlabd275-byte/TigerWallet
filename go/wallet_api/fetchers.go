@@ -27,9 +27,10 @@ type BalanceResult struct {
 	ChainID  int64   `json:"chain_id"`
 	Symbol   string  `json:"symbol"`
 	Address  string  `json:"address"`
-	Balance  string  `json:"balance"`   // raw wei
-	BalanceF float64 `json:"balance_f"` // human-readable
-	USDValue float64 `json:"usd_value"` // fiat value
+	Balance  string  `json:"balance"`     // raw wei
+	BalanceWei string `json:"balance_wei"` // raw wei (alias, for client compat: web/android read balance_wei)
+	BalanceF float64 `json:"balance_f"`   // human-readable
+	USDValue float64 `json:"usd_value"`   // fiat value
 }
 
 type TokenBalance struct {

@@ -90,8 +90,11 @@ class WalletConnectSocket(
     }
 
     companion object {
-        /** HTTP API base; mirrors UserWalletApiService.DEFAULT_BASE_URL. */
-        private const val API_BASE_URL = "http://localhost:8443/api/v1"
+        /** HTTP API base; mirrors UserWalletApiService.DEFAULT_BASE_URL. The
+         * Android emulator maps the host's localhost to 10.0.2.2, so the
+         * WalletConnect WS proxy must target 10.0.2.2:8443 (localhost is
+         * unreachable inside the emulator and would leave dApp pairing dead). */
+        private const val API_BASE_URL = "http://10.0.2.2:8443/api/v1"
 
         fun wsBase(): String {
             val httpBase = API_BASE_URL.trimEnd('/')

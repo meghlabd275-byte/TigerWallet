@@ -406,12 +406,13 @@ func handleBalance(c *gin.Context) {
 	ethPrice := FetchETHPrice(ctx)
 	human := weiToFloat(bal, 18)
 	result := BalanceResult{
-		ChainID:  chainID,
-		Symbol:   chain.Symbol,
-		Address:  address,
-		Balance:  bal.String(),
-		BalanceF: human,
-		USDValue: human * ethPrice,
+		ChainID:    chainID,
+		Symbol:     chain.Symbol,
+		Address:    address,
+		Balance:    bal.String(),
+		BalanceWei: bal.String(),
+		BalanceF:   human,
+		USDValue:   human * ethPrice,
 	}
 	_ = store.SetCache(ctx, cacheK, result, 30*time.Second)
 	c.JSON(http.StatusOK, result)

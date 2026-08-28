@@ -19,8 +19,9 @@ import java.util.concurrent.TimeUnit
  * TigerWallet UserWallet API Service — Android.
  *
  * Mirrors `user_wallet/web/src/services/api.ts` + `contexts/OnboardingContext.tsx`:
- * the no-registration self-custody model. Talks to the WL standalone user-wallet
- * backend (web's localhost:8461; Android emulator maps that to 10.0.2.2:8461).
+ * the no-registration self-custody model. Talks to the canonical TigerWallet
+ * UserWallet backend (go/wallet_api :8443; Android emulator maps the host's
+ * localhost to 10.0.2.2:8443).
  *
  * Every value comes from a real backend fetch — no stubs, no fabricated data.
  * The transparent ephemeral session ([ensureSession]) auto-provisions a random
@@ -32,8 +33,11 @@ import java.util.concurrent.TimeUnit
 object UserWalletApiService {
     private const val TAG = "UserWalletApi"
 
-    // Android emulator maps the host's localhost to 10.0.2.2.
-    private const val DEFAULT_BASE_URL = "http://10.0.2.2:8461/api/v1"
+    // Android emulator maps the host's localhost to 10.0.2.2. The canonical
+    // UserWallet backend is go/wallet_api (:8443), which exposes all 70+ routes
+    // the clients need (the wl_user_wallet :8461 clone only has 44 routes and
+    // is missing ~21 endpoint groups Android relies on).
+    private const val DEFAULT_BASE_URL = "http://10.0.2.2:8443/api/v1"
 
     private const val PREFS = "userwallet_prefs"
     private const val TOKEN_KEY = "userwallet_token"
@@ -92,7 +96,7 @@ object UserWalletApiService {
 
     /** /health lives at the server root (outside /api/v1). */
     private fun healthUrl(): String =
-        (baseUrl.replace(Regex("/api/v1/?$"), "").ifEmpty { "http://10.0.2.2:8461" }) + "/health"
+        (baseUrl.replace(Regex("/api/v1/?$"), "").ifEmpty { "http://10.0.2.2:8443" }) + "/health"
 
     private fun errorFromResponse(response: okhttp3.Response): String {
         return try {
@@ -482,21 +486,36 @@ object UserWalletApiService {
         val usdValue: Double
     )
 
-    /** GET /wallets/:id/balance -> { address, balance_wei, chain_id }. */
+    /**
+     * GET /balance?address=&chain_id= -> canonical BalanceResult
+     * { chain_id, symbol, address, balance, balance_wei, balance_f, usd_value }.
+     * The canonical backend's /balance takes an ADDRESS (not a wallet id); if
+     * given a wallet id we resolve it to the wallet's address + chain_id first
+     * (mirror web getBalance). balance_wei is the raw-wei alias the client reads.
+     */
     fun getBalance(walletId: String): Balance {
-        val req = requestBuilder("/wallets/$walletId/balance").get().build()
+        var address = walletId
+        var chainId = 1
+        if (!walletId.startsWith("0x")) {
+            val w = getWallets().find { it.id == walletId }
+            if (w != null) {
+                address = w.address
+                chainId = w.chainId
+            }
+        }
+        val req = requestBuilder("/balance?address=$address&chain_id=$chainId").get().build()
         client.newCall(req).execute().use { response ->
             if (!response.isSuccessful) throw httpException(response)
             val json = JSONObject(response.body?.string() ?: "{}")
-            val chainId = json.optInt("chain_id")
+            val cid = json.optInt("chain_id", chainId)
             return Balance(
                 walletId = walletId,
-                chainId = chainId,
-                symbol = symbolFor(chainId),
-                address = json.optString("address"),
-                balanceWei = json.optString("balance_wei"),
-                balanceF = weiToFloat(json.optString("balance_wei")),
-                usdValue = 0.0 // no price feed — honest, never fabricated (mirror web)
+                chainId = cid,
+                symbol = json.optString("symbol").ifEmpty { symbolFor(cid) },
+                address = json.optString("address").ifEmpty { address },
+                balanceWei = json.optString("balance_wei", json.optString("balance")),
+                balanceF = json.optDouble("balance_f", 0.0),
+                usdValue = json.optDouble("usd_value", 0.0)
             )
         }
     }
@@ -528,25 +547,40 @@ object UserWalletApiService {
         val createdAt: String
     )
 
-    /** GET /wallets/:id/transactions -> { transactions: [...] }. */
+    /**
+     * GET /transactions?address=&chain_id= -> { transactions: [{ hash, to, value, ... }] }.
+     * The canonical backend's /transactions takes an ADDRESS (not a wallet id);
+     * we resolve walletId -> address + chain_id first (mirror web). Response
+     * keys are hash/value (canonical), with amount/tx_hash as fallback aliases.
+     */
     fun getTransactions(
         walletId: String,
         network: String? = null,
         token: String? = null
     ): List<Transaction> {
         if (walletId.isEmpty()) return emptyList()
-        val req = requestBuilder("/wallets/$walletId/transactions").get().build()
+        var address = walletId
+        var chainId = 1
+        if (!walletId.startsWith("0x")) {
+            val w = getWallets().find { it.id == walletId }
+            if (w != null) {
+                address = w.address
+                chainId = w.chainId
+            }
+        }
+        if (network != null) chainId = chainIdFor(network)
+        val req = requestBuilder("/transactions?address=$address&chain_id=$chainId").get().build()
         val raw = executeList(req, "transactions").map {
             Transaction(
-                id = it.optString("id"),
-                txHash = it.optString("tx_hash"),
+                id = it.optString("id", it.optString("hash")),
+                txHash = it.optString("hash", it.optString("tx_hash")),
                 type = it.optString("type"),
                 status = it.optString("status"),
                 from = it.optString("from"),
                 to = it.optString("to"),
-                amount = it.optString("amount"),
+                amount = it.optString("value", it.optString("amount")),
                 token = it.optString("token"),
-                chainId = it.optInt("chain_id"),
+                chainId = it.optInt("chain_id", chainId),
                 createdAt = it.optString("created_at")
             )
         }
@@ -587,8 +621,10 @@ object UserWalletApiService {
     )
 
     /**
-     * WL POST /wallets/:id/send { to, amount, password, gas_limit, chain_id, unlock_token }
-     * -> { transaction_hash, status, from }
+     * POST /send { wallet_id, to, value, password, chain_id, unlock_token,
+     * gas_limit, max_fee_gwei, max_priority_gwei } -> { tx_hash, raw_tx, chain_id, nonce }.
+     * The canonical backend uses the FLAT /send route with wallet_id in the JSON
+     * body (not /wallets/:id/send). Field is `value` (ether), not `amount`.
      */
     fun sendTransaction(
         walletId: String,
@@ -602,35 +638,35 @@ object UserWalletApiService {
         maxPriorityGwei: String? = null
     ): SendResult {
         val body = JSONObject().apply {
+            put("wallet_id", walletId)
             put("to", to)
-            put("amount", value)
-            put("password", password)
+            put("value", value)
+            if (password.isNotEmpty()) put("password", password)
             if (chainId != null) put("chain_id", chainId)
             if (unlockToken != null && unlockToken.isNotEmpty()) put("unlock_token", unlockToken)
             if (gasLimit != null) put("gas_limit", gasLimit)
             if (!maxFeeGwei.isNullOrEmpty()) put("max_fee_gwei", maxFeeGwei)
             if (!maxPriorityGwei.isNullOrEmpty()) put("max_priority_gwei", maxPriorityGwei)
         }.toString()
-        val req = requestBuilder("/wallets/$walletId/send")
+        val req = requestBuilder("/send")
             .post(body.toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
         return SendResult(
-            transactionHash = json.optString("transaction_hash"),
-            status = json.optString("status"),
+            transactionHash = json.optString("tx_hash", json.optString("transaction_hash")),
+            status = json.optString("status", "ok"),
             from = json.optString("from")
         )
     }
 
     /**
-     * WL POST /wallets/:id/auto-send { to, amount, password, chain_id, gas_limit, unlock_token }
-     * -> { transaction_hash, auto_approved, auto_approval_reason }
-     *
-     * The backend's requireApproval gate classifies the tx; if it qualifies
-     * for the AUTO fast path (license alive + non-treasury tx), it is signed
-     * + approved within a second. Otherwise the response carries
-     * auto_approved=false + a reason (treasury/fee/revenue needs SuperAdmin
-     * two-party co-sign) and the client surfaces that to the user.
+     * POST /auto-send?master_wallet_id= { wallet_id, to, value, password,
+     * chain_id, gas_limit, unlock_token, max_fee_gwei, max_priority_gwei }
+     * -> { tx_hash, auto_approved, auto_approval_reason, raw_tx, chain_id }.
+     * The canonical backend uses the FLAT /auto-send route with wallet_id in the
+     * JSON body (not /wallets/:id/auto-send). The backend auto-signs + auto-
+     * approves within a second when the MasterWallet policy allows it; the
+     * client surfaces auto_approved + the reason. Field is `value`, not `amount`.
      */
     fun autoSendTransaction(
         walletId: String,
@@ -644,21 +680,22 @@ object UserWalletApiService {
         maxPriorityGwei: String? = null
     ): AutoSendResult {
         val body = JSONObject().apply {
+            put("wallet_id", walletId)
             put("to", to)
-            put("amount", value)
-            put("password", password)
+            put("value", value)
+            if (password.isNotEmpty()) put("password", password)
             if (chainId != null) put("chain_id", chainId)
             if (gasLimit != null) put("gas_limit", gasLimit)
             if (unlockToken != null && unlockToken.isNotEmpty()) put("unlock_token", unlockToken)
             if (!maxFeeGwei.isNullOrEmpty()) put("max_fee_gwei", maxFeeGwei)
             if (!maxPriorityGwei.isNullOrEmpty()) put("max_priority_gwei", maxPriorityGwei)
         }.toString()
-        val req = requestBuilder("/wallets/$walletId/auto-send")
+        val req = requestBuilder("/auto-send")
             .post(body.toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
         return AutoSendResult(
-            txHash = json.optString("transaction_hash"),
+            txHash = json.optString("tx_hash", json.optString("transaction_hash")),
             autoApproved = json.optBoolean("auto_approved", false),
             autoApprovalReason = json.optString("auto_approval_reason")
         )
@@ -771,15 +808,16 @@ object UserWalletApiService {
         )
     }
 
-    /** WL POST /wallets/:id/sign { message, password } -> { signature, address }. */
+    /** POST /sign { wallet_id, message, password } -> { signature }. */
     data class SignResult(val signature: String, val address: String)
 
     fun signMessage(walletId: String, password: String, message: String): SignResult {
         val body = JSONObject().apply {
+            put("wallet_id", walletId)
             put("message", message)
-            put("password", password)
+            if (password.isNotEmpty()) put("password", password)
         }.toString()
-        val req = requestBuilder("/wallets/$walletId/sign")
+        val req = requestBuilder("/sign")
             .post(body.toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
@@ -959,8 +997,8 @@ object UserWalletApiService {
             toToken = json.optString("to_token"),
             fromAmount = json.optString("from_amount"),
             toAmount = json.optString("to_amount"),
-            priceImpact = json.optDouble("price_impact"),
-            route = json.optString("route")
+            priceImpact = json.optDouble("price_impact", json.optString("price_impact", "0").toDoubleOrNull() ?: 0.0),
+            route = json.optString("route", "swap")
         )
     }
 
@@ -1059,8 +1097,8 @@ object UserWalletApiService {
             toToken = json.optString("to_token"),
             fromAmount = json.optString("from_amount"),
             toAmount = json.optString("to_amount"),
-            priceImpact = json.optDouble("price_impact"),
-            route = json.optString("route"),
+            priceImpact = json.optDouble("price_impact", json.optString("price_impact", "0").toDoubleOrNull() ?: 0.0),
+            route = json.optString("route", "swap")
         )
     }
 
@@ -1076,8 +1114,13 @@ object UserWalletApiService {
     }
 
     // ==================== AMM swap (real on-chain getAmountsOut + calldata) ====================
+    /**
+     * GET /amm/quote?chain_id=&token_in=&token_out=&amount_in= -> { amount_out,
+     * router, ... }. The canonical backend binds token_in/token_out/amount_in
+     * (NOT from_token/to_token/from_amount); using the wrong keys 400s.
+     */
     fun getAmmQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
-        val path = "/amm/quote?from_token=$fromToken&to_token=$toToken&from_amount=$fromAmount&chain_id=$chainId"
+        val path = "/amm/quote?chain_id=$chainId&token_in=$fromToken&token_out=$toToken&amount_in=$fromAmount"
         val json = execute(requestBuilder(path).get().build())
         return SwapQuote(
             fromToken = json.optString("token_in", fromToken),
@@ -1089,14 +1132,21 @@ object UserWalletApiService {
         )
     }
 
+    /**
+     * POST /amm/swap { from, chain_id, token_in, token_out, amount_in, amount_out_min? }
+     * -> calldata for swapExactTokensForTokens (broadcast via /send). The
+     * canonical backend binds token_in/token_out/amount_in (NOT from_token/
+     * to_token/from_amount) and requires the sender `from` address. We resolve
+     * walletId -> address for `from`. No tx hash is fabricated here.
+     */
     fun ammSwap(walletId: String, password: String, fromToken: String, toToken: String, fromAmount: String, chainId: Int): JSONObject {
+        val from = getWallets().find { it.id == walletId }?.address ?: walletId
         val body = JSONObject().apply {
-            put("wallet_id", walletId)
-            put("password", password)
-            put("from_token", fromToken)
-            put("to_token", toToken)
-            put("from_amount", fromAmount)
+            put("from", from)
             put("chain_id", chainId)
+            put("token_in", fromToken)
+            put("token_out", toToken)
+            put("amount_in", fromAmount)
         }.toString()
         return execute(requestBuilder("/amm/swap").post(body.toRequestBody(jsonMediaType)).build())
     }
@@ -1114,8 +1164,8 @@ object UserWalletApiService {
     private fun stakingAction(action: String, walletId: String, password: String, asset: String, amount: String?, chainId: Int): JSONObject {
         val body = JSONObject().apply {
             put("wallet_id", walletId)
-            put("password", password)
-            put("asset", asset)
+            if (password.isNotEmpty()) put("password", password)
+            put("token", asset)
             if (amount != null) put("amount", amount)
             put("chain_id", chainId)
         }.toString()
@@ -1199,14 +1249,29 @@ object UserWalletApiService {
         execute(requestBuilder("/approvals/$approvalId").delete().build())
 
     // ==================== Keystore V3 (Web3 Secret Storage) ====================
+    /**
+     * POST /keystore/export { wallet_id, password, export_password }
+     * -> Web3 Secret Storage V3 keystore JSON (application/json body, raw).
+     * The canonical backend requires BOTH the wallet password (to decrypt the
+     * seed) and a separate export_password (to re-encrypt the V3 keystore).
+     */
     fun exportKeystore(walletId: String, password: String): JSONObject {
-        val body = JSONObject().put("wallet_id", walletId).put("password", password).toString()
+        val body = JSONObject().apply {
+            put("wallet_id", walletId)
+            put("password", password)
+            put("export_password", password)
+        }.toString()
         return execute(requestBuilder("/keystore/export").post(body.toRequestBody(jsonMediaType)).build())
     }
 
+    /**
+     * POST /keystore/import { keystore_json, password, label, chain_id? }
+     * -> { wallet_id, address, label, chain_id, source }.
+     * The canonical backend binds `keystore_json` (NOT `keystore`).
+     */
     fun importKeystore(keystore: String, password: String, label: String?): Wallet {
         val body = JSONObject().apply {
-            put("keystore", keystore)
+            put("keystore_json", keystore)
             put("password", password)
             if (label != null) put("label", label)
         }.toString()
