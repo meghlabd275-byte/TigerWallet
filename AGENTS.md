@@ -161,3 +161,34 @@
   master_wallet_desktop binary). main.cpp is a 61-line health-probe but the C++ services
   (1535-line master_wallet_service.cpp, real OpenSSL) are real and compile. Real MW UI
   = React web App.tsx (380 lines, 18 pages not 13).
+
+## Session 8 (2026-08-28) — admin-tier fail-closed 2FA enforcement (commit d117cc2)
+- AUDIT FINDING: only admin/go enforced TOTP at login; super_admin/go and
+  white_label_admin/go issued a JWT after bcrypt+password with NO TOTP check,
+  and admin/web had no 2FA input field. All three tiers had TOTP infra but
+  login never read it. SUPER_ADMIN (highest privilege) had the worst variant:
+  its handleEnable2FA was a stub that just flipped two_factor_enabled=true
+  with NO secret, so even adding login enforcement would have been meaningless.
+- super_admin/go (:8082): handleLogin now SELECTs two_factor_secret +
+  two_factor_enabled and, when enabled AND secret present, validates via
+  totp.Validate (pquerna/otp added to go.mod). Stub handleEnable2FA replaced
+  with real TOTP setup (totp.Generate, persist secret, return otpauth URI +
+  QR). New handleVerify2FA (validate -> enable flag). New route
+  POST /api/v1/admin/2fa/verify. handleDisable2FA clears flag+secret.
+  go build + vet pass.
+- white_label_admin/go: Login now enforces via the existing real RFC-6238
+  verifyTOTP (from-scratch HMAC-SHA1 in totp.go). New Verify2FA handler +
+  route POST /auth/2fa/verify closes the enrollment loop. go build + vet pass.
+- admin/web: api.ts login() sends two_factor_code; LoginPage renders a
+  6-digit 2FA input when backend signals two_factor_required. tsc --noEmit: 0.
+- NO LOCKOUT RISK: enforcement triggers only when two_factor_enabled=true AND
+  a non-empty secret exists, and secrets are only enabled through the
+  verified setup+verify flow (stub-set flags had no secret => not enforced
+  until real re-enrollment).
+- VERIFIED ISOLATION (admin apps): grep for private_key/mnemonic/ecdsa/
+  secp256k1 across admin/go, super_admin/go, white_label_admin/go => 0
+  matches. Admin cannot broadcast withdrawals (fail-closed; crypto movement
+  stays with MasterWallet :8450). WL admin scoped via TenantScope
+  (WHERE white_label_id=$1). Kill switch superadmin-only. Admin cannot create
+  super_admin.
+
