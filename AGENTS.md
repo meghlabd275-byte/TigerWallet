@@ -81,3 +81,21 @@
   `super_admin/web` = 41 pages; `white_label_admin/web` = 31 pages; `user_wallet/web` = 19.
 - Chain registry counts are authoritative at 120 EVM (`chains_evm_data.go`) + 66 non-EVM
   (`chains_nonevm_data.go`). Do not restore the marketing "500–1000+" claims.
+
+## Session 6 (2026-08-28) — master-directive re-audit
+- Re-verified P0 fixes (no regressions): permission_service audit SQL parameterized +
+  superAdminMiddleware-gated; super_admin has NO self-registration; web_nextjs
+  wallet/import no longer proxies create.
+- Fixed: services/go/*.go (9 standalone demos) — was a broken package (8 func main in
+  one dir + treasury_service.go with none). All now carry `//go:build ignore` tags
+  (still runnable via `go run <file>`). staking_service.go: placeholder
+  "your-opensea-key" -> OPENSEA_API_KEY env; unused math/big import removed.
+- Exact-hash sweep (3317 files): 63 identical groups, ALL Category B/C/D — nothing
+  safe to delete (per-browser extension dirs, per-module go/*/id.go, per-module go.sum,
+  super_admin vs wl_admin models.go, admin vs super_admin cpp/rust scaffolding,
+  bots vs project_party per-app scaffolding, shared Android XML, tooling configs).
+  No identical .md/.txt files.
+- Go toolchain is NOT present in this sandbox (/tmp/go was session-local); Go compile
+  verification requires installing a toolchain first.
+- master_wallet/desktop/src/main.cpp remains a 61-line health-probe; real MW clients
+  are web (13 pages)/android(14kt)/ios(13 swift)/flutter(20 dart). Full console gap open.

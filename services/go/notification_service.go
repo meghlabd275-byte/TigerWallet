@@ -1,3 +1,9 @@
+//go:build ignore
+
+// Standalone reference/demo service. Run individually with: go run <file>
+// (Tagged "ignore" so the services/go directory is not a broken package —
+//  these files are not part of any deployed build; deployed services live
+//  under their own modules, e.g. go/*, */go.)
 // TigerSwap Notification Service - Production-Ready Implementation
 // Email, SMS, Push, Telegram, Discord webhooks
 // Multi-channel notification management with templates

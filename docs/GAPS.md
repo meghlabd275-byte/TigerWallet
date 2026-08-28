@@ -118,4 +118,61 @@ See the domain READMEs and `ARCHITECTURE.md` for per-domain capability detail.
    payment-processor callback for invoice `paid`.
 3. Verify/ship `selfhosted_masterwallet` only after adding a license gate.
 4. Complete fetcher + API matrices (Phases 36–37).
-5. Backfill smart-contract audit (Phase 42) with real tooling.
+
+---
+
+## 9. Verified 2026-08-28 (session 6 — re-run of the master directive)
+
+### Re-verified FIXES from prior sessions (no regression)
+
+- `permission_service` audit SQL injection → FIXED (parameterized `client_id`,
+  strict-parsed `LIMIT`; route behind `superAdminMiddleware`).
+- `super_admin/go` open admin self-registration → FIXED (only `POST /auth/login`
+  + `/auth/refresh`; admin creation is SuperAdmin-only).
+- `frontend/web_nextjs` `/wallet/import` route → FIXED (no longer a byte-copy of
+  `/wallet/create`; now targets the real import endpoint).
+
+### Fixed in session 6
+
+- `services/go/*.go` (9 standalone demo scripts): the directory was a **broken
+  Go package** (8 `func main()` in one dir + 1 file with none). All 9 now carry
+  a `//go:build ignore` tag, so each is still runnable via `go run <file>` while
+  the directory no longer breaks sweep builds. `services/go/staking_service.go`
+  placeholder `"your-opensea-key"` now reads `OPENSEA_API_KEY` from env.
+
+### Duplicate audit (exact-hash sweep over 3317 files, excl. .git/node_modules)
+
+63 identical-content groups found; **all classified Category B/C/D — safe to
+delete: none** (Phase 0 safety rule; see `docs/PRODUCTION_AUDIT_2026-08-26.md`
+for the full classification table):
+
+- per-browser extension copies (admin / super_admin / white_label_admin) — KEPT
+  (genuinely different manifests; browser↔chrome shims).
+- `go/*/id.go` (byte-identical 10-line stdlib util per independent Go module) —
+  KEPT (each module must be self-contained).
+- identical `go.sum` files across `go/*` modules — KEPT (Go requires co-located
+  go.sum).
+- `super_admin` vs `white_label_admin` `internal/models/models.go` — KEPT
+  (separate deployables).
+- `admin` vs `super_admin` `cpp/processor.hpp` + CMakeLists, `rust/database/mod.rs`
+  — KEPT (separate deployables).
+- `bots` vs `project_party` scaffolding (Android res/xml, desktop Electron,
+  extension popup/background/index) — KEPT (two independent apps).
+- shared Android drawable XML across apps, tooling configs (postcss, tsconfig,
+  .dockerignore) — KEPT (standard per-app boilerplate).
+
+No identical `.md`/`.txt` files exist.
+
+### Open gaps (carried over, unchanged)
+
+- `master_wallet/desktop/src/main.cpp` — still a health-probe CLI (61 lines); C++
+  services under `desktop/src/services` exist (auth/passkeys/AA/paymaster/privacy/
+  super-admin/tax/ws) but the full console is Web/Android/iOS/Flutter/React.
+- `go/full_fetchers` — orphan scaffold (19 no-op `Fetch()` bodies, **zero
+  importers**). Canonical fetch path: `go/wallet_api/fetchers.go`. Kept as
+  documented scaffold; implementing it would duplicate canonical fetchers.
+- Billions-of-addresses sharding design — still missing (`database/`).
+- Smart-contract security audit (`smart_contracts/` 105 sol) — needs auditor
+  tooling; NOT VERIFIABLE here.
+- `fiat_gateway/go/fiat_gateway.go` contains Solidity, not Go — relocation
+  candidate (P2).

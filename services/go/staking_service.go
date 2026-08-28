@@ -1,3 +1,9 @@
+//go:build ignore
+
+// Standalone reference/demo service. Run individually with: go run <file>
+// (Tagged "ignore" so the services/go directory is not a broken package —
+//  these files are not part of any deployed build; deployed services live
+//  under their own modules, e.g. go/*, */go.)
 package main
 
 import (
@@ -8,8 +14,8 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -892,7 +898,7 @@ func main() {
 
 	// Example: NFT service
 	nftConfig := NFTConfig{
-		OpenSeaAPIKey: "your-opensea-key",
+		OpenSeaAPIKey: os.Getenv("OPENSEA_API_KEY"),
 	}
 
 	nft := NewNFTService(nftConfig)

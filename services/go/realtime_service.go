@@ -1,3 +1,9 @@
+//go:build ignore
+
+// Standalone reference/demo service. Run individually with: go run <file>
+// (Tagged "ignore" so the services/go directory is not a broken package —
+//  these files are not part of any deployed build; deployed services live
+//  under their own modules, e.g. go/*, */go.)
 // TigerSwap Real-Time Trading Service - Go Implementation
 // WebSocket-based price feeds, order book, and trade updates
 // High-performance streaming for TigerSwap trading platform
