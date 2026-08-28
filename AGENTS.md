@@ -192,3 +192,12 @@
   (WHERE white_label_id=$1). Kill switch superadmin-only. Admin cannot create
   super_admin.
 
+
+## Session 7 — hygiene (route-scope fix + sqlite scrub + theme audit)
+- master_wallet/desktop App.tsx: 4 new pages resolve via firstWalletId() to
+  canonical /api/v1/master-wallet/:id/... (audit confirmed; no flat endpoints).
+- scrub-stale sqlite hashes removed from 4 go.sum files (defi_service,
+  blockchain_rpc_service, staking_hub, white_label) via go mod tidy; no
+  applications import SQLite. Theme audit found no hardcoded 'light'/'dark'
+  and single ThemeContext provider per surface; extension uses its own
+  chrome.storage.local 'theme' key (separate surface, acceptable).
