@@ -122,3 +122,42 @@
   Analytics added); also fixed a pre-existing broken template-literal comment
   that made App.tsx never compile. tsc reports 0 syntax errors.
 - Go toolchain re-pinned in-session at /tmp/go/bin (go1.22.5).
+
+## Session 7 (2026-08-28) — build-real gap fixes (UserWallet clients + admin 2FA + WL hardening)
+- Go toolchain now verified at /tmp/goroot/go (GOROOT=/tmp/goroot/go; builds pass).
+- USERWALLET EXTENSION BUG FIXED: user_wallet/extension/src/popup.js sendTransaction
+  + autoSendTransaction POSTed `amount` but wallet_api sendTxReq binds `json:"value"`
+  required -> every send returned HTTP 400. Now sends `value` (canonical field).
+- USERWALLET DESKTOP (desktop_app/, Tauri) gaps CLOSED:
+  - Swap page was a STUB (hardcoded "Rate: 1 ETH = 3500 USDT", no swap-btn listener).
+    Now fetches real indicative quote from /api/v1/swap/quote (live CoinGecko) on input
+    change + executes via /swap/execute -> /send (on-chain, no fabricated tx hash).
+  - loadChains was a hardcoded 7-chain list. Now fetches live /api/v1/chains (fallback
+    only when backend unreachable).
+  - ADDED import flow (showImportWallet -> POST /wallets with mnemonic, server-side
+    BIP-39 re-derive; mnemonic never persisted client-side).
+  - ADDED auto-sign toggle on send page (checkbox -> /auto-send when checked).
+  - ADDED cloud backup export (exportEncryptedBackup -> POST /wallets/:id/export-
+    encrypted-seed, password-verified AES-256-GCM blob downloaded for Google Drive/iCloud).
+  - node --check passes on desktop_app/src/app.js.
+- ADMIN 2FA ENFORCEMENT (admin/go): login SKIPPED 2FA (empty no-op). Now fail-closed:
+  AdminLoginRequest gained TwoFactorCode; Login validates via totp.Validate against
+  the TwoFactorAuth record (user_type=admin) when admin.TwoFactorEnabled. Enable2FA
+  now syncs two_factor_enabled=true onto the Admin record (was divergent -> bypass).
+  Disable2FA: fixed broken sha256-vs-bcrypt password comparison (always failed -> 2FA
+  un-disableable); now bcrypt.CompareHashAndPassword + admin pepper; syncs flag off.
+  TwoFactorService now holds *config.Config (pepper); wired via NewTwoFactorHandler(db,
+  redis, cfg) in main.go. go build + go vet pass (admin/go).
+- PROJECT_PARTY JWT HARDENING (project_party/go): jwtSecret() returned a hardcoded
+  dev default 'project-party-dev-secret-change-in-production' when JWT_SECRET unset
+  (WL clone log.Fatal'd). Now fail-closed log.Fatal. go build + go vet pass.
+- WL PRODUCT AUDIT (all 6 wl_*/go): ALL REAL with fail-closed wlgate license gates
+  (heartbeat to permission_service/license_service; 503 if not alive, 403 if fetcher
+  disabled by SuperAdmin). No auth bypass, no stubs, no forbidden SuperAdmin exposure
+  to WL tenants. Independently self-hostable (separate Go modules, no canonical imports).
+  wl_user_wallet is fully standalone (own wlcrypto+middleware, no wl-shared dep).
+- MASTERWALLET DESKTOP C++ BUILDS: cmake 4.4 (pip cmake) + libcurl4-openssl-dev +
+  libssl-dev installed; master_wallet/desktop builds clean (libmasterwallet_core.a +
+  master_wallet_desktop binary). main.cpp is a 61-line health-probe but the C++ services
+  (1535-line master_wallet_service.cpp, real OpenSSL) are real and compile. Real MW UI
+  = React web App.tsx (380 lines, 18 pages not 13).
