@@ -1,7 +1,8 @@
 // Package store provides PostgreSQL persistence for the standalone WL-Liquidity
 // backend. It owns its own database (wl_liquidity) — independent of
 // TigerWallet cloud. Tables: users (with role), liquidity_sources (DEX pools /
-// aggregator config), liquidity_routes (per-source routing shares).
+// aggregator config), liquidity_routes (per-source routing shares), and the
+// P2P trade surface: p2p_orders / p2p_trades / p2p_messages.
 //
 // REAL PostgreSQL only. No fabricated pool data: the sources table starts
 // empty and is populated by admin CRUD.
@@ -10,9 +11,11 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -76,6 +79,38 @@ func (s *Store) Migrate(ctx context.Context) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_liq_routes_source ON liquidity_routes(source_id)`,
+		// P2P trade surface. An order is a buy/sell advertisement: the creator
+		// fills one side (buyer_id or seller_id), the taker fills the other when
+		// a trade is initiated. Both sides are nullable on the order.
+		`CREATE TABLE IF NOT EXISTS p2p_orders (
+			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			buyer_id   UUID REFERENCES users(id),
+			seller_id  UUID REFERENCES users(id),
+			asset      VARCHAR(128) NOT NULL,
+			amount     NUMERIC NOT NULL DEFAULT 0,
+			price      NUMERIC NOT NULL DEFAULT 0,
+			status     VARCHAR(32) NOT NULL DEFAULT 'open',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_p2p_orders_status ON p2p_orders(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_p2p_orders_asset ON p2p_orders(asset)`,
+		`CREATE TABLE IF NOT EXISTS p2p_trades (
+			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			order_id   UUID NOT NULL REFERENCES p2p_orders(id) ON DELETE CASCADE,
+			buyer_id   UUID NOT NULL REFERENCES users(id),
+			seller_id  UUID NOT NULL REFERENCES users(id),
+			status     VARCHAR(32) NOT NULL DEFAULT 'open',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_p2p_trades_order ON p2p_trades(order_id)`,
+		`CREATE TABLE IF NOT EXISTS p2p_messages (
+			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			trade_id   UUID NOT NULL REFERENCES p2p_trades(id) ON DELETE CASCADE,
+			from_user  UUID NOT NULL REFERENCES users(id),
+			body       TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_p2p_messages_trade ON p2p_messages(trade_id)`,
 	}
 	for _, st := range stmts {
 		if _, err := s.db.Exec(ctx, st); err != nil {
@@ -333,6 +368,228 @@ func (s *Store) DeleteRoute(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ==================== P2P orders ====================
+
+// Order is a P2P buy/sell advertisement. Amount/Price are NUMERIC scanned as
+// strings (same precision handling as Source reserves). BuyerID/SellerID are
+// nullable: the creator fills one side, the taker fills the other at trade
+// initiation.
+type Order struct {
+	ID        uuid.UUID
+	BuyerID   *uuid.UUID
+	SellerID  *uuid.UUID
+	Asset     string
+	Amount    string
+	Price     string
+	Status    string
+	CreatedAt time.Time
+}
+
+func (s *Store) CreateOrder(ctx context.Context, o *Order) (*Order, error) {
+	var out Order
+	err := s.db.QueryRow(ctx,
+		`INSERT INTO p2p_orders (buyer_id, seller_id, asset, amount, price)
+		 VALUES ($1,$2,$3,$4,$5)
+		 RETURNING id, buyer_id, seller_id, asset, amount, price, status, created_at`,
+		o.BuyerID, o.SellerID, o.Asset, o.Amount, o.Price).
+		Scan(&out.ID, &out.BuyerID, &out.SellerID, &out.Asset, &out.Amount, &out.Price, &out.Status, &out.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListOrders returns orders, optionally filtered by asset and/or status.
+func (s *Store) ListOrders(ctx context.Context, asset, status string) ([]Order, error) {
+	q := `SELECT id, buyer_id, seller_id, asset, amount, price, status, created_at FROM p2p_orders`
+	args := []any{}
+	where := ""
+	if asset != "" {
+		args = append(args, asset)
+		where += ` AND asset=$` + strconv.Itoa(len(args))
+	}
+	if status != "" {
+		args = append(args, status)
+		where += ` AND status=$` + strconv.Itoa(len(args))
+	}
+	if where != "" {
+		q += ` WHERE` + where[4:]
+	}
+	q += ` ORDER BY created_at DESC`
+	rows, err := s.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Order{}
+	for rows.Next() {
+		var o Order
+		if err := rows.Scan(&o.ID, &o.BuyerID, &o.SellerID, &o.Asset, &o.Amount, &o.Price, &o.Status, &o.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetOrder(ctx context.Context, id uuid.UUID) (*Order, error) {
+	var out Order
+	err := s.db.QueryRow(ctx,
+		`SELECT id, buyer_id, seller_id, asset, amount, price, status, created_at
+		 FROM p2p_orders WHERE id=$1`, id).
+		Scan(&out.ID, &out.BuyerID, &out.SellerID, &out.Asset, &out.Amount, &out.Price, &out.Status, &out.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *Store) UpdateOrderStatus(ctx context.Context, id uuid.UUID, status string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE p2p_orders SET status=$1 WHERE id=$2`, status, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ==================== P2P trades ====================
+
+// Trade is one execution against an order. Status lifecycle:
+// open -> confirmed -> released (terminal), or open/confirmed -> disputed.
+type Trade struct {
+	ID        uuid.UUID
+	OrderID   uuid.UUID
+	BuyerID   uuid.UUID
+	SellerID  uuid.UUID
+	Status    string
+	CreatedAt time.Time
+}
+
+// CreateTrade inserts the trade and marks the parent order 'pending' in one
+// transaction so an order can never be taken twice without a status change.
+func (s *Store) CreateTrade(ctx context.Context, t *Trade) (*Trade, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var out Trade
+	err = tx.QueryRow(ctx,
+		`INSERT INTO p2p_trades (order_id, buyer_id, seller_id)
+		 VALUES ($1,$2,$3)
+		 RETURNING id, order_id, buyer_id, seller_id, status, created_at`,
+		t.OrderID, t.BuyerID, t.SellerID).
+		Scan(&out.ID, &out.OrderID, &out.BuyerID, &out.SellerID, &out.Status, &out.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE p2p_orders SET status='pending' WHERE id=$1`, t.OrderID); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *Store) GetTrade(ctx context.Context, id uuid.UUID) (*Trade, error) {
+	var out Trade
+	err := s.db.QueryRow(ctx,
+		`SELECT id, order_id, buyer_id, seller_id, status, created_at
+		 FROM p2p_trades WHERE id=$1`, id).
+		Scan(&out.ID, &out.OrderID, &out.BuyerID, &out.SellerID, &out.Status, &out.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *Store) UpdateTradeStatus(ctx context.Context, id uuid.UUID, status string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE p2p_trades SET status=$1 WHERE id=$2`, status, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ==================== P2P trade messages ====================
+
+type Message struct {
+	ID        uuid.UUID
+	TradeID   uuid.UUID
+	FromUser  uuid.UUID
+	Body      string
+	CreatedAt time.Time
+}
+
+func (s *Store) CreateMessage(ctx context.Context, m *Message) (*Message, error) {
+	var out Message
+	err := s.db.QueryRow(ctx,
+		`INSERT INTO p2p_messages (trade_id, from_user, body)
+		 VALUES ($1,$2,$3)
+		 RETURNING id, trade_id, from_user, body, created_at`,
+		m.TradeID, m.FromUser, m.Body).
+		Scan(&out.ID, &out.TradeID, &out.FromUser, &out.Body, &out.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (s *Store) ListMessages(ctx context.Context, tradeID uuid.UUID) ([]Message, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, trade_id, from_user, body, created_at
+		 FROM p2p_messages WHERE trade_id=$1 ORDER BY created_at ASC`, tradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Message{}
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.TradeID, &m.FromUser, &m.Body, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ==================== P2P user profile ====================
+
+// TradeStats aggregates a user's real P2P trade counters (as buyer or seller).
+type TradeStats struct {
+	Total     int
+	Completed int
+	Disputed  int
+}
+
+func (s *Store) TradeStats(ctx context.Context, userID uuid.UUID) (*TradeStats, error) {
+	var st TradeStats
+	err := s.db.QueryRow(ctx,
+		`SELECT COUNT(*),
+		        COUNT(*) FILTER (WHERE status='released'),
+		        COUNT(*) FILTER (WHERE status='disputed')
+		 FROM p2p_trades WHERE buyer_id=$1 OR seller_id=$1`, userID).
+		Scan(&st.Total, &st.Completed, &st.Disputed)
+	if err != nil {
+		return nil, err
+	}
+	return &st, nil
 }
 
 // ==================== helpers ====================

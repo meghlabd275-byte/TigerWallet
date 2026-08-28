@@ -100,20 +100,31 @@ func buildRouter(cfg *config.Config, svc *handlers.Svc, gate *wlgate.Gate) *gin.
 		mw.Use(wlgate.JWTAuth(cfg.JWTSecret))
 		mw.Use(gate.Middleware(cfg.Product, wlgate.SimpleFetcher))
 		{
-			// Cardholder routes (own cards): list, get, balance, transactions.
+			// Cardholder routes (own cards): apply, list, get, balance,
+			// transactions (list/detail/topup), funding rates.
+			mw.POST("/cards/apply", svc.ApplyForCard)
 			mw.GET("/cards", svc.ListCards)
+			mw.GET("/cards/rates", svc.GetRates)
 			mw.GET("/cards/:id", svc.GetCard)
 			mw.GET("/cards/:id/balance", svc.Balance)
 			mw.GET("/cards/:id/transactions", svc.ListTransactions)
 			mw.POST("/cards/:id/transactions", svc.RecordTransaction)
+			mw.GET("/cards/:id/transactions/:txid", svc.GetTransaction)
+			mw.POST("/cards/:id/transactions/topup", svc.TopUpCard)
 
-			// Admin-gated card operations: issue + freeze/unfreeze. Role is read
+			// Admin-gated card operations: issue, lifecycle (activate/block/
+			// cancel + generic status), limits, and aggregates. Role is read
 			// from the real users.role column (default 'user').
 			admin := mw.Group("")
 			admin.Use(svc.RequireRole("admin", "super_admin"))
 			{
 				admin.POST("/cards", svc.IssueCard)
 				admin.PUT("/cards/:id/status", svc.UpdateCardStatus)
+				admin.POST("/cards/:id/activate", svc.ActivateCard)
+				admin.POST("/cards/:id/block", svc.BlockCard)
+				admin.POST("/cards/:id/cancel", svc.CancelCard)
+				admin.PUT("/cards/:id/limits", svc.UpdateCardLimits)
+				admin.GET("/admin/stats", svc.AdminStats)
 			}
 		}
 	}

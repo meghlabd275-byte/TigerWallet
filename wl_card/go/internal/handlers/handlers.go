@@ -230,7 +230,9 @@ func (s *Svc) GetCard(c *gin.Context) {
 	c.JSON(http.StatusOK, s.cardJSON(card))
 }
 
-// UpdateCardStatus freezes / unfreezes a card. Admin-gated.
+// UpdateCardStatus sets any lifecycle status (freeze/unfreeze/block/cancel/
+// reactivate). Admin-gated. Distinct lifecycle shortcuts exist at
+// /cards/:id/activate|block|cancel.
 func (s *Svc) UpdateCardStatus(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -238,7 +240,7 @@ func (s *Svc) UpdateCardStatus(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Status string `json:"status" binding:"required,oneof=active frozen"`
+		Status string `json:"status" binding:"required,oneof=pending active frozen blocked cancelled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -314,12 +316,7 @@ func (s *Svc) ListTransactions(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(txns))
 	for i := range txns {
-		t := &txns[i]
-		out = append(out, gin.H{
-			"id": t.ID, "card_id": t.CardID, "amount": t.Amount,
-			"merchant": t.Merchant, "category": t.Category, "status": t.Status,
-			"created_at": t.CreatedAt,
-		})
+		out = append(out, s.txJSON(&txns[i]))
 	}
 	c.JSON(http.StatusOK, gin.H{"transactions": out, "count": len(out)})
 }
@@ -347,28 +344,240 @@ func (s *Svc) RecordTransaction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be a positive number"})
 		return
 	}
-	txn, card, err := s.store.RecordTransaction(c.Request.Context(), id, req.Amount, req.Merchant, req.Category, req.Direction)
+	txn, card, err := s.store.RecordTransaction(c.Request.Context(), id, req.Amount, req.Merchant, req.Category, req.Direction, "PURCHASE")
 	if err != nil {
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
-		case errors.Is(err, store.ErrCardNotActive):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "card_status": card.Status})
-		case errors.Is(err, store.ErrInsufficientFunds):
-			c.JSON(http.StatusPaymentRequired, gin.H{"error": err.Error(), "balance": card.Balance})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		}
+		s.respondTxError(c, err, card)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
-		"transaction": gin.H{
-			"id": txn.ID, "card_id": txn.CardID, "amount": txn.Amount,
-			"merchant": txn.Merchant, "category": txn.Category, "status": txn.Status,
-			"created_at": txn.CreatedAt,
-		},
-		"balance": card.Balance,
+		"transaction": s.txJSON(txn),
+		"balance":     card.Balance,
 	})
+}
+
+// respondTxError maps store transaction errors to HTTP responses.
+func (s *Svc) respondTxError(c *gin.Context, err error, card *store.Card) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+	case errors.Is(err, store.ErrCardNotActive):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "card_status": card.Status})
+	case errors.Is(err, store.ErrInsufficientFunds):
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": err.Error(), "balance": card.Balance})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+}
+
+// ==================== Card application & lifecycle ====================
+
+// ApplyForCard lets an end user apply for a card. A real PAN/CVV is generated
+// and AES-GCM-encrypted at rest, but the card is created in 'pending' status
+// and the PAN/CVV are never returned — an admin activates it via
+// /cards/:id/activate.
+func (s *Svc) ApplyForCard(c *gin.Context) {
+	if err := s.requireEncKey(c); err != nil {
+		return
+	}
+	var req struct {
+		HolderName string `json:"holder_name" binding:"required"`
+		Currency   string `json:"currency"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	currency := req.Currency
+	if currency == "" {
+		currency = "USD"
+	}
+	pan, err := generatePAN()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "card generation failed"})
+		return
+	}
+	cvv, err := generateCVV()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "card generation failed"})
+		return
+	}
+	panEnc, err := wlcrypto.EncryptSeedAtRest([]byte(pan), s.cfg.CardEncKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	cvvEnc, err := wlcrypto.EncryptSeedAtRest([]byte(cvv), s.cfg.CardEncKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	card := &store.Card{
+		UserID:         wlgate.UserID(c),
+		CardNumberHash: sha256Hex(pan),
+		PANEncrypted:   panEnc,
+		CVVEncrypted:   cvvEnc,
+		HolderName:     req.HolderName,
+		Status:         "pending",
+		Balance:        "0",
+		Currency:       currency,
+	}
+	created, err := s.store.CreateCard(c.Request.Context(), card)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, s.cardJSON(created))
+}
+
+// setCardStatus is the shared implementation behind the lifecycle shortcut
+// endpoints (activate/block/cancel). Admin-gated.
+func (s *Svc) setCardStatus(c *gin.Context, status string) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	card, err := s.store.UpdateCardStatus(c.Request.Context(), id, status)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, s.cardJSON(card))
+}
+
+// ActivateCard transitions a card to 'active' (e.g. approving a pending
+// application or unblocking). Admin-gated.
+func (s *Svc) ActivateCard(c *gin.Context) { s.setCardStatus(c, "active") }
+
+// BlockCard transitions a card to 'blocked'. Admin-gated.
+func (s *Svc) BlockCard(c *gin.Context) { s.setCardStatus(c, "blocked") }
+
+// CancelCard transitions a card to 'cancelled' (terminal). Admin-gated.
+func (s *Svc) CancelCard(c *gin.Context) { s.setCardStatus(c, "cancelled") }
+
+// UpdateCardLimits sets a card's daily/monthly spending limits. Admin-gated.
+func (s *Svc) UpdateCardLimits(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		DailyLimit   string `json:"daily_limit" binding:"required"`
+		MonthlyLimit string `json:"monthly_limit" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if parseFloat(req.DailyLimit, -1) < 0 || parseFloat(req.MonthlyLimit, -1) < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "limits must be non-negative numbers"})
+		return
+	}
+	card, err := s.store.UpdateCardLimits(c.Request.Context(), id, req.DailyLimit, req.MonthlyLimit)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, s.cardJSON(card))
+}
+
+// GetRates returns the card funding rates (USD per unit). Backed by the
+// store's static rates stub until a real oracle is wired in.
+func (s *Svc) GetRates(c *gin.Context) {
+	rates := s.store.Rates(c.Request.Context())
+	c.JSON(http.StatusOK, gin.H{"rates": rates, "count": len(rates)})
+}
+
+// GetTransaction returns a single transaction on a card. Cardholder (own
+// card) or admin.
+func (s *Svc) GetTransaction(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	txID, err := uuid.Parse(c.Param("txid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid txid"})
+		return
+	}
+	card, err := s.store.GetCard(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "card not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	uid := wlgate.UserID(c)
+	role, _ := c.Get("role")
+	if card.UserID != uid && role != "admin" && role != "super_admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your card"})
+		return
+	}
+	txn, err := s.store.GetTransaction(c.Request.Context(), id, txID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, s.txJSON(txn))
+}
+
+// TopUpCard credits the card balance with an explicit tx_type='TOP_UP'
+// transaction. Rejected with 409 if the card is not active.
+func (s *Svc) TopUpCard(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var req struct {
+		Amount string `json:"amount" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if parseFloat(req.Amount, 0) <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount must be a positive number"})
+		return
+	}
+	txn, card, err := s.store.TopUp(c.Request.Context(), id, req.Amount)
+	if err != nil {
+		s.respondTxError(c, err, card)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"transaction": s.txJSON(txn),
+		"balance":     card.Balance,
+	})
+}
+
+// ==================== Admin ====================
+
+// AdminStats returns aggregate counts/volumes across users, cards, and
+// transactions. Admin-gated.
+func (s *Svc) AdminStats(c *gin.Context) {
+	stats, err := s.store.Stats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }
 
 // ==================== Health ====================
@@ -399,7 +608,18 @@ func (s *Svc) cardJSON(c *store.Card) gin.H {
 	return gin.H{
 		"id": c.ID, "user_id": c.UserID, "card_number_masked": masked,
 		"holder_name": c.HolderName, "status": c.Status, "balance": c.Balance,
-		"currency": c.Currency, "created_at": c.CreatedAt,
+		"currency": c.Currency, "kyc_level": c.KYCLevel,
+		"daily_limit": c.DailyLimit, "monthly_limit": c.MonthlyLimit,
+		"created_at": c.CreatedAt,
+	}
+}
+
+// txJSON renders a card transaction for API responses.
+func (s *Svc) txJSON(t *store.CardTransaction) gin.H {
+	return gin.H{
+		"id": t.ID, "card_id": t.CardID, "amount": t.Amount,
+		"merchant": t.Merchant, "category": t.Category, "type": t.TxType,
+		"status": t.Status, "created_at": t.CreatedAt,
 	}
 }
 

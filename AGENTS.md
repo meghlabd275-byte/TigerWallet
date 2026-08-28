@@ -247,3 +247,15 @@
   {+POST, +:id/close}; /copytrading/{traders,follow} (proxied to :8006);
   /bridge/{routes,quote,transfer} (proxied to bridge_service).
 
+## Session 7 (2026-08-28) — wl_liquidity P2P trade surface
+- wl_liquidity/go extended from 14 -> 25 routes with the canonical p2p_trading
+  surface, all PostgreSQL-persisted (own DB, wl_shared/wlgate unchanged):
+  POST/GET /api/v1/orders + GET /orders/:id; POST /trades, GET /trades/:id,
+  POST /trades/:id/{confirm,release,dispute}, GET/POST /trades/:id/messages,
+  GET /users/:address (uuid-or-email lookup + real trade counters).
+- New tables (idempotent CREATE TABLE IF NOT EXISTS in store.Migrate):
+  p2p_orders (buyer_id/seller_id nullable FK users, asset, amount/price NUMERIC,
+  status open->pending->completed), p2p_trades (order_id FK, buyer/seller FK,
+  status open->confirmed->released / disputed), p2p_messages (trade_id FK,
+  from_user, body). Trade create runs in a tx that also marks the order pending;
+  release marks the parent order completed.

@@ -106,6 +106,23 @@ func buildRouter(cfg *config.Config, svc *handlers.Svc, gate *wlgate.Gate) *gin.
 			mw.GET("/pools", svc.Pools)
 			mw.GET("/best_dex", svc.BestDEX)
 
+			// P2P trade surface (clone of canonical p2p_trading): orders,
+			// the trade lifecycle (open -> confirmed -> released / disputed),
+			// per-trade chat messages, and user profile lookups.
+			mw.POST("/orders", svc.CreateOrder)
+			mw.GET("/orders", svc.ListOrders)
+			mw.GET("/orders/:id", svc.GetOrder)
+
+			mw.POST("/trades", svc.CreateTrade)
+			mw.GET("/trades/:id", svc.GetTrade)
+			mw.POST("/trades/:id/confirm", svc.ConfirmTrade)
+			mw.POST("/trades/:id/release", svc.ReleaseTrade)
+			mw.POST("/trades/:id/dispute", svc.DisputeTrade)
+			mw.GET("/trades/:id/messages", svc.ListMessages)
+			mw.POST("/trades/:id/messages", svc.CreateMessage)
+
+			mw.GET("/users/:address", svc.GetUserProfile)
+
 			// Admin-gated writes: sources POST/PUT/DELETE + routes POST/DELETE.
 			// Role is read from the real users.role column (default 'user').
 			admin := mw.Group("")

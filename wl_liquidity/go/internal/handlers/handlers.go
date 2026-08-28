@@ -2,8 +2,9 @@
 // standalone clone of the TigerWallet liquidity aggregator — but
 // PostgreSQL-persisted (real liquidity sources + routes). REAL bcrypt + JWT
 // auth, REAL PostgreSQL persistence, real constant-product (x*y=k) quote math
-// across persisted sources, and a fail-closed license gate (wlgate). No stubs,
-// no fakes, no mocks, no demos. No fabricated pool data: starts empty,
+// across persisted sources, the P2P trade surface (orders, trade lifecycle,
+// trade messages, user profiles), and a fail-closed license gate (wlgate). No
+// stubs, no fakes, no mocks, no demos. No fabricated pool data: starts empty,
 // populated by admin CRUD.
 package handlers
 
@@ -439,6 +440,322 @@ func (s *Svc) Pools(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"pools": out, "count": len(out)})
 }
 
+// ==================== P2P orders ====================
+
+// CreateOrder posts a P2P buy/sell advertisement. The caller may pin one side
+// (buyer_id or seller_id); the authenticated user fills the other side. With
+// neither side given the caller is the seller of an open advertisement.
+func (s *Svc) CreateOrder(c *gin.Context) {
+	var req struct {
+		BuyerID  string `json:"buyer_id"`
+		SellerID string `json:"seller_id"`
+		Asset    string `json:"asset" binding:"required"`
+		Amount   string `json:"amount"`
+		Price    string `json:"price"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	buyer, ok := parseOptionalUUID(c, req.BuyerID)
+	if !ok {
+		return
+	}
+	seller, ok := parseOptionalUUID(c, req.SellerID)
+	if !ok {
+		return
+	}
+	caller := wlgate.UserID(c)
+	switch {
+	case buyer == nil && seller == nil:
+		seller = &caller
+	case buyer == nil:
+		buyer = &caller
+	case seller == nil:
+		seller = &caller
+	}
+	if *buyer == *seller {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "buyer and seller must differ"})
+		return
+	}
+	if req.Amount == "" {
+		req.Amount = "0"
+	}
+	if req.Price == "" {
+		req.Price = "0"
+	}
+	created, err := s.store.CreateOrder(c.Request.Context(), &store.Order{
+		BuyerID: buyer, SellerID: seller, Asset: req.Asset, Amount: req.Amount, Price: req.Price,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, orderJSON(created))
+}
+
+// ListOrders lists orders, with optional ?asset= and ?status= filters.
+func (s *Svc) ListOrders(c *gin.Context) {
+	orders, err := s.store.ListOrders(c.Request.Context(), c.Query("asset"), c.Query("status"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(orders))
+	for i := range orders {
+		out = append(out, orderJSON(&orders[i]))
+	}
+	c.JSON(http.StatusOK, gin.H{"orders": out, "count": len(out)})
+}
+
+func (s *Svc) GetOrder(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	o, err := s.store.GetOrder(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, orderJSON(o))
+}
+
+// ==================== P2P trade lifecycle ====================
+
+// CreateTrade initiates a trade against an open order. The open side of the
+// order is filled by the authenticated taker; the trade starts 'open' and the
+// parent order moves to 'pending'.
+func (s *Svc) CreateTrade(c *gin.Context) {
+	var req struct {
+		OrderID string `json:"order_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	orderID, err := uuid.Parse(req.OrderID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order_id"})
+		return
+	}
+	o, err := s.store.GetOrder(c.Request.Context(), orderID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if o.Status != "open" {
+		c.JSON(http.StatusConflict, gin.H{"error": "order is not open"})
+		return
+	}
+	caller := wlgate.UserID(c)
+	buyer, seller := caller, caller
+	if o.BuyerID != nil {
+		buyer = *o.BuyerID
+	}
+	if o.SellerID != nil {
+		seller = *o.SellerID
+	}
+	if buyer == seller {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot trade with yourself"})
+		return
+	}
+	t, err := s.store.CreateTrade(c.Request.Context(), &store.Trade{
+		OrderID: o.ID, BuyerID: buyer, SellerID: seller,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, tradeJSON(t))
+}
+
+func (s *Svc) GetTrade(c *gin.Context) {
+	t, ok := s.loadTrade(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, tradeJSON(t))
+}
+
+// ConfirmTrade: buyer marks the fiat/payment leg as done (open -> confirmed).
+func (s *Svc) ConfirmTrade(c *gin.Context) {
+	s.transitionTrade(c, "open", "confirmed", "buyer")
+}
+
+// ReleaseTrade: seller releases the asset to the buyer (confirmed -> released).
+// The parent order is completed at the same time.
+func (s *Svc) ReleaseTrade(c *gin.Context) {
+	s.transitionTrade(c, "confirmed", "released", "seller")
+}
+
+// DisputeTrade flags a non-terminal trade as disputed. Either party may open a
+// dispute; an optional reason is persisted as a trade message.
+func (s *Svc) DisputeTrade(c *gin.Context) {
+	t, ok := s.loadTrade(c)
+	if !ok {
+		return
+	}
+	caller := wlgate.UserID(c)
+	if caller != t.BuyerID && caller != t.SellerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only a trade party can open a dispute"})
+		return
+	}
+	if t.Status != "open" && t.Status != "confirmed" {
+		c.JSON(http.StatusConflict, gin.H{"error": "trade cannot be disputed in status " + t.Status})
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := s.store.UpdateTradeStatus(c.Request.Context(), t.ID, "disputed"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Reason != "" {
+		_, _ = s.store.CreateMessage(c.Request.Context(), &store.Message{
+			TradeID: t.ID, FromUser: caller, Body: "dispute: " + req.Reason,
+		})
+	}
+	t.Status = "disputed"
+	c.JSON(http.StatusOK, tradeJSON(t))
+}
+
+// transitionTrade applies a buyer/seller-gated status transition and reports
+// the updated trade.
+func (s *Svc) transitionTrade(c *gin.Context, from, to, actor string) {
+	t, ok := s.loadTrade(c)
+	if !ok {
+		return
+	}
+	caller := wlgate.UserID(c)
+	party := t.BuyerID
+	if actor == "seller" {
+		party = t.SellerID
+	}
+	if caller != party {
+		c.JSON(http.StatusForbidden, gin.H{"error": "only the " + actor + " can " + to + " this trade"})
+		return
+	}
+	if t.Status != from {
+		c.JSON(http.StatusConflict, gin.H{"error": "trade is not " + from})
+		return
+	}
+	if err := s.store.UpdateTradeStatus(c.Request.Context(), t.ID, to); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if to == "released" {
+		if err := s.store.UpdateOrderStatus(c.Request.Context(), t.OrderID, "completed"); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	t.Status = to
+	c.JSON(http.StatusOK, tradeJSON(t))
+}
+
+// loadTrade parses :id and loads the trade, writing the error response on
+// failure.
+func (s *Svc) loadTrade(c *gin.Context) (*store.Trade, bool) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return nil, false
+	}
+	t, err := s.store.GetTrade(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "trade not found"})
+			return nil, false
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return nil, false
+	}
+	return t, true
+}
+
+// ==================== P2P trade messages ====================
+
+func (s *Svc) ListMessages(c *gin.Context) {
+	t, ok := s.loadTrade(c)
+	if !ok {
+		return
+	}
+	msgs, err := s.store.ListMessages(c.Request.Context(), t.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(msgs))
+	for i := range msgs {
+		out = append(out, messageJSON(&msgs[i]))
+	}
+	c.JSON(http.StatusOK, gin.H{"messages": out, "count": len(out)})
+}
+
+func (s *Svc) CreateMessage(c *gin.Context) {
+	t, ok := s.loadTrade(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Body string `json:"body" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	m, err := s.store.CreateMessage(c.Request.Context(), &store.Message{
+		TradeID: t.ID, FromUser: wlgate.UserID(c), Body: req.Body,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, messageJSON(m))
+}
+
+// ==================== P2P user profile ====================
+
+// GetUserProfile looks up a user by :address (a user UUID or email) and returns
+// the profile with real P2P trade counters from p2p_trades.
+func (s *Svc) GetUserProfile(c *gin.Context) {
+	address := c.Param("address")
+	var u *store.User
+	var err error
+	if id, perr := uuid.Parse(address); perr == nil {
+		u, err = s.store.GetUserByID(c.Request.Context(), id)
+	} else {
+		u, err = s.store.GetUserByEmail(c.Request.Context(), address)
+	}
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	stats, err := s.store.TradeStats(c.Request.Context(), u.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"address": address, "id": u.ID, "email": u.Email, "role": u.Role,
+		"is_active": u.IsActive, "created_at": u.CreatedAt,
+		"total_trades": stats.Total, "completed_trades": stats.Completed,
+		"disputed_trades": stats.Disputed,
+	})
+}
+
 // ==================== Health ====================
 
 func (s *Svc) Health(c *gin.Context) {
@@ -503,6 +820,42 @@ func calculateQuote(src *store.Source, fromToken, toToken string, amount float64
 }
 
 // ==================== helpers ====================
+
+func orderJSON(o *store.Order) gin.H {
+	return gin.H{
+		"id": o.ID, "buyer_id": o.BuyerID, "seller_id": o.SellerID,
+		"asset": o.Asset, "amount": o.Amount, "price": o.Price,
+		"status": o.Status, "created_at": o.CreatedAt,
+	}
+}
+
+func tradeJSON(t *store.Trade) gin.H {
+	return gin.H{
+		"id": t.ID, "order_id": t.OrderID, "buyer_id": t.BuyerID,
+		"seller_id": t.SellerID, "status": t.Status, "created_at": t.CreatedAt,
+	}
+}
+
+func messageJSON(m *store.Message) gin.H {
+	return gin.H{
+		"id": m.ID, "trade_id": m.TradeID, "from_user": m.FromUser,
+		"body": m.Body, "created_at": m.CreatedAt,
+	}
+}
+
+// parseOptionalUUID parses an optional UUID request field ("" -> nil). On a
+// parse failure it writes the 400 response and reports ok=false.
+func parseOptionalUUID(c *gin.Context, s string) (*uuid.UUID, bool) {
+	if s == "" {
+		return nil, true
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid uuid: " + s})
+		return nil, false
+	}
+	return &id, true
+}
 
 func sourceJSON(s *store.Source) gin.H {
 	return gin.H{
