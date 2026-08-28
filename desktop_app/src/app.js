@@ -109,6 +109,10 @@ class TigerWalletApp {
         
         // Create wallet
         document.getElementById('create-wallet-btn')?.addEventListener('click', () => this.showCreateWallet());
+        document.getElementById('import-wallet-btn')?.addEventListener('click', () => this.showImportWallet());
+
+        // Cloud backup (export encrypted seed blob for Google Drive)
+        document.getElementById('backup-btn')?.addEventListener('click', () => this.exportEncryptedBackup());
         
         // Send transaction
         document.getElementById('simulate-btn')?.addEventListener('click', () => this.simulateTransaction());
@@ -285,6 +289,90 @@ class TigerWalletApp {
         }
     }
     
+    // Import an existing wallet from a 24-word BIP-39 mnemonic. Submits the
+    // user's mnemonic to the canonical wallet_api (POST /api/v1/wallets with
+    // a mnemonic) which re-derives the address server-side. The mnemonic is
+    // never persisted client-side beyond this request.
+    async showImportWallet() {
+        const mnemonic = prompt('Enter your 24-word recovery phrase:');
+        if (!mnemonic || mnemonic.trim().split(/\s+/).length < 12) {
+            alert('A valid 12/24-word recovery phrase is required');
+            return;
+        }
+        const password = prompt('Set a master password for this imported wallet (min 8 chars):');
+        if (!password || password.length < 8) {
+            alert('Password must be at least 8 characters');
+            return;
+        }
+        const name = prompt('Wallet name (optional):') || 'Imported Wallet';
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/wallets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label: name, password, mnemonic: mnemonic.trim() })
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                alert('Wallet import failed: ' + err);
+                return;
+            }
+            const wallet = await res.json();
+            this.wallets.push({
+                id: this.generateId(),
+                wallet_id: wallet.id,
+                name,
+                address: wallet.address,
+                balance: '0',
+                tokens: [],
+                unlocked: false
+            });
+            localStorage.setItem('tigerwallet-wallets', JSON.stringify(this.wallets));
+            localStorage.setItem('tigerwallet-master', await this.hashPassword(password));
+            // The mnemonic returned by import is empty (only set on create);
+            // do not store it. Warn the user to keep their own seed safe.
+            alert('Wallet imported successfully! Keep your 24-word seed safe — it is your only recovery method.');
+            this.showDashboard();
+        } catch (e) {
+            alert('Wallet import error: ' + e.message);
+        }
+    }
+
+    // Export the wallet's AES-256-GCM encrypted seed blob (POST
+    // /api/v1/wallets/:id/export-encrypted-seed). The backend returns a
+    // password-verified blob the user can save to Google Drive / iCloud for
+    // cloud recovery. The raw seed never leaves the backend unencrypted.
+    async exportEncryptedBackup() {
+        if (!this.wallets.length) { alert('No wallet loaded to back up'); return; }
+        const wallet = this.wallets[0];
+        const password = prompt('Enter wallet password to verify backup export:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/wallets/${encodeURIComponent(wallet.wallet_id ?? wallet.id)}/export-encrypted-seed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                alert('Backup export failed: ' + err);
+                return;
+            }
+            const blob = await res.json();
+            // Trigger a download of the encrypted blob (the user then uploads
+            // it to their own Google Drive / iCloud manually).
+            const json = JSON.stringify(blob, null, 2);
+            const a = document.createElement('a');
+            const file = new Blob([json], { type: 'application/json' });
+            a.href = URL.createObjectURL(file);
+            a.download = `tigerwallet-backup-${wallet.address.slice(0, 8)}.json`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            alert('Encrypted backup downloaded. Store it in your Google Drive / iCloud. To restore, use the Import flow or /wallets/import-encrypted-seed.');
+        } catch (e) {
+            alert('Backup export error: ' + e.message);
+        }
+    }
+
     async loadChains() {
         // Fetch the live chain registry from the UserWallet backend
         // (/api/v1/chains). Falls back to a minimal list only when the
@@ -500,7 +588,11 @@ class TigerWalletApp {
                 alert('Password is required to sign the transaction');
                 return;
             }
-            const res = await fetch('http://localhost:8443/api/v1/send', {
+            // Auto-sign toggle: when enabled, broadcast via /auto-send so the
+            // MasterWallet auto-signs + auto-approves (no manual approval).
+            const autoSend = document.getElementById('auto-send-toggle')?.checked;
+            const endpoint = autoSend ? 'auto-send' : 'send';
+            const res = await fetch(`http://localhost:8443/api/v1/${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

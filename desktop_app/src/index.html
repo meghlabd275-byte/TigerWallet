@@ -24,6 +24,7 @@
                     <button id="unlock-btn" class="btn-primary">Unlock Wallet</button>
                     <div class="login-options">
                         <button id="create-wallet-btn" class="btn-secondary">Create New Wallet</button>
+                        <button id="import-wallet-btn" class="btn-secondary">Import Wallet</button>
                     </div>
                 </div>
             </div>
@@ -145,6 +146,9 @@
                             </select>
                         </div>
                         <div class="simulation-result" id="simulation-result"></div>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary)">
+                            <input type="checkbox" id="auto-send-toggle"> Auto-sign via MasterWallet (no manual approval)
+                        </label>
                         <button id="simulate-btn" class="btn-secondary">Simulate First</button>
                         <button id="send-btn" class="btn-primary">Send</button>
                     </div>
@@ -195,6 +199,9 @@
                                 <button class="copy-btn">📋 Copy</button>
                             </div>
                         </div>
+                        <button id="backup-btn" class="btn-secondary" style="margin-top:16px;width:100%;">
+                            ☁️ Export Encrypted Backup (Google Drive)
+                        </button>
                     </div>
                 </div>
 
