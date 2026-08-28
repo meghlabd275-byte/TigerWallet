@@ -12,11 +12,13 @@
 ## Known gaps (verified)
 - master_wallet/desktop: C++ main is a health-probe only; React UI has 3 of 7 pages.
 - user_wallet has NO desktop dir (desktop app is repo-root `desktop_app/` Tauri).
-- user_wallet/extension: localhost-only host permission, no window.ethereum injection, background.js stub.
-- admin/web & white_label_admin/web: no Login page (manual localStorage token).
-- admin/rust handlers stubbed auth; admin/go billing plans hardcoded.
-- master_wallet extensions: 5 byte-identical copies; missing icon PNGs.
-- Committed 8.2MB ELF binary at `master_wallet/main`.
+- user_wallet/extension: PRODUCTION-CAPABLE (MV3 + EIP-1193 window.ethereum via src/inpage.js MAIN world + src/contentScript.js bridge + functional src/background.js) as of Round 4. Earlier "no window.ethereum injection, background.js stub" note is STALE.
+- admin/web & white_label_admin/web: HAVE real Login pages (LoginPage.tsx / Login.tsx) as of 2026-08-28 audit — earlier "no Login page" note is stale.
+- admin/rust has REAL DB-backed auth (bcrypt+lockout, JWT_SECRET fail-closed) — earlier "stubbed auth" note is stale.
+- admin/go billing: invoices created "open", marked "paid" only via real Stripe webhook signature verification (billing_webhook.go). Plans may still be hardcoded — verify before relying.
+- selfhosted_masterwallet (Rust) is NOW license-gated (license_gate.rs + heartbeat + require_auth on all protected routes) — Session 6 note "unlicensed reference impl" is STALE.
+- master_wallet extensions: single source at master_wallet/extensions/extension/ with manifest.<browser>.json variants (chrome/brave/edge/firefox/safari) + build.sh (Round 2). The old "5 byte-identical copies + missing icons" is RESOLVED.
+- The 8.2MB ELF binary at `master_wallet/main` has been REMOVED (Round 2). Resolved.
 
 ## Confirmed duplicates
 - fiat_onramp vs fiat_ramp (~480 shared lines); push_notifications ⊂ notifications;
