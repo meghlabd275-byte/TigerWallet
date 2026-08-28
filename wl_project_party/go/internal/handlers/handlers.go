@@ -7,11 +7,17 @@
 package handlers
 
 import (
+	"context"
 	"errors"
+	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -215,6 +221,132 @@ func (h *Handlers) DeleteToken(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deleted": id})
+}
+
+// VerifyTokenContract performs REAL on-chain verification of a token's
+// contract address: connects to the chain RPC (PP_RPC_URL) and calls the
+// ERC-20 standard methods via eth_call — name(), symbol(), decimals(),
+// totalSupply(). If all succeed, contract_verified is set true (fail-closed:
+// any error leaves it false). This prevents listing tokens with fake or
+// non-existent contracts. Mirrors the canonical project_party/go handler.
+func (h *Handlers) VerifyTokenContract(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	tc, err := h.store.GetTokenContractForVerification(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(tc.ContractAddress) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token has no contract_address"})
+		return
+	}
+	if !common.IsHexAddress(tc.ContractAddress) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid hex address format"})
+		return
+	}
+	addr := common.HexToAddress(tc.ContractAddress)
+
+	if h.cfg.RPCURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "on-chain verification not configured (PP_RPC_URL unset)"})
+		return
+	}
+	client, err := ethclient.Dial(h.cfg.RPCURL)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "RPC connection failed", "detail": err.Error()})
+		return
+	}
+	defer client.Close()
+
+	// ERC-20 method selectors: name()=0x06fdde03, symbol()=0x95d89b41,
+	// decimals()=0x313ce567, totalSupply()=0x18160ddd.
+	nameData := callEVMContract(ctx, client, addr, common.FromHex("0x06fdde03"))
+	if nameData == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement name() — not a valid ERC-20"})
+		return
+	}
+	symbolData := callEVMContract(ctx, client, addr, common.FromHex("0x95d89b41"))
+	if symbolData == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement symbol() — not a valid ERC-20"})
+		return
+	}
+	decimalsData := callEVMContract(ctx, client, addr, common.FromHex("0x313ce567"))
+	if decimalsData == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement decimals() — not a valid ERC-20"})
+		return
+	}
+	totalSupplyData := callEVMContract(ctx, client, addr, common.FromHex("0x18160ddd"))
+	if totalSupplyData == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "contract does not implement totalSupply() — not a valid ERC-20"})
+		return
+	}
+
+	onChainName := decodeABIString(nameData)
+	onChainSymbol := decodeABIString(symbolData)
+	onChainDecimals := int(decimalsData[31])
+	onChainTotalSupply := new(big.Int).SetBytes(totalSupplyData[:32]).String()
+
+	if err := h.store.SetTokenVerified(ctx, id, onChainTotalSupply); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database update failed", "detail": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message":           "contract verified on-chain",
+		"contract_verified": true,
+		"on_chain_name":     onChainName,
+		"on_chain_symbol":   onChainSymbol,
+		"on_chain_decimals": onChainDecimals,
+		"on_chain_supply":   onChainTotalSupply,
+		"db_name":           tc.Name,
+		"db_symbol":         tc.Symbol,
+		"match":             strings.EqualFold(onChainSymbol, tc.Symbol),
+	})
+}
+
+// callEVMContract performs a real eth_call to the given contract with the
+// given calldata at the latest block. Returns nil on any error or all-zero
+// return (fail-closed).
+func callEVMContract(ctx context.Context, client *ethclient.Client, to common.Address, data []byte) []byte {
+	if len(data) == 0 {
+		return nil
+	}
+	result, err := client.CallContract(ctx, ethereum.CallMsg{To: &to, Data: data}, nil)
+	if err != nil || len(result) < 32 {
+		return nil
+	}
+	allZero := true
+	for _, b := range result {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return nil
+	}
+	return result
+}
+
+// decodeABIString decodes an ABI-encoded string from an eth_call return
+// (32-byte offset + 32-byte length + data padded to 32).
+func decodeABIString(data []byte) string {
+	if len(data) < 64 {
+		return ""
+	}
+	length := new(big.Int).SetBytes(data[32:64]).Int64()
+	if length <= 0 || int(length) > len(data)-64 {
+		return ""
+	}
+	return string(data[64 : 64+length])
 }
 
 // ==================== Listings ====================

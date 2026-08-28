@@ -68,6 +68,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS is_featured BOOL DEFAULT false`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS submission_date TIMESTAMPTZ`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`,
+		// On-chain contract verification columns (verify-contract handler).
+		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS contract_verified BOOL DEFAULT false`,
+		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS rejection_reason TEXT`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS total_supply NUMERIC(36,18) DEFAULT 0`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
@@ -269,6 +272,39 @@ func (s *Store) DeleteToken(ctx context.Context, id uuid.UUID) error {
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// TokenContract is the on-chain verification record for a token.
+type TokenContract struct {
+	ID              uuid.UUID
+	Name            string
+	Symbol          string
+	ContractAddress string
+	ChainID         int64
+	Verified        bool
+}
+
+// GetTokenContractForVerification returns the fields needed for on-chain
+// contract verification (name/symbol/contract_address/chain_id/verified).
+func (s *Store) GetTokenContractForVerification(ctx context.Context, id uuid.UUID) (*TokenContract, error) {
+	var t TokenContract
+	err := s.db.QueryRow(ctx,
+		`SELECT id, name, symbol, contract_address, chain_id, contract_verified FROM tokens WHERE id=$1`, id).
+		Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Verified)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// SetTokenVerified marks a token's contract as on-chain verified, recording
+// the verification timestamp. Fail-closed: only the verify handler calls this
+// after a successful real eth_call to name/symbol/decimals/totalSupply.
+func (s *Store) SetTokenVerified(ctx context.Context, id uuid.UUID, onChainSupply string) error {
+	_, err := s.db.Exec(ctx,
+		`UPDATE tokens SET contract_verified=true, verified_at=NOW(), total_supply=$2::numeric WHERE id=$1`,
+		id, onChainSupply)
+	return err
 }
 
 // ==================== Listings ====================
