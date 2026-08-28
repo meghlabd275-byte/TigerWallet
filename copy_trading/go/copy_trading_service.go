@@ -8,9 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"sort"
@@ -20,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/tigerwallet/wl-shared/wlgate"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -38,6 +37,17 @@ type Config struct {
 	DBName       string `json:"db_name"`
 	RedisHost    string `json:"redis_host"`
 	RedisPort    string `json:"redis_port"`
+	// White-label license gate (fail-closed). The copy-trading product is a WL
+	// product; without a valid license validated against the TigerWallet
+	// SuperAdmin control plane, no request is served.
+	ControlPlaneURL    string `json:"control_plane_url"`
+	ControlPlaneToken  string `json:"control_plane_token"`
+	WLClientID         string `json:"wl_client_id"`
+	LicenseKey         string `json:"license_key"`
+	Product            string `json:"product"`
+	InstanceID         string `json:"instance_id"`
+	HeartbeatInterval  time.Duration `json:"heartbeat_interval"`
+	JWTSecret          string        `json:"jwt_secret"`
 }
 
 // ============================================================================
@@ -606,15 +616,32 @@ func generateCopiedTradeID(followerID, tradeID string) string {
 
 func main() {
 	config := Config{
-		ServerPort: "8099",
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "tigerwallet"),
-		DBPassword: getEnv("DB_PASSWORD", "password"),
-		DBName:     getEnv("DB_NAME", "tigerwallet_copytrading"),
-		RedisHost:  getEnv("REDIS_HOST", "localhost"),
-		RedisPort:  getEnv("REDIS_PORT", "6379"),
+		ServerPort:        "8099",
+		DBHost:           getEnv("DB_HOST", "localhost"),
+		DBPort:           getEnv("DB_PORT", "5432"),
+		DBUser:           getEnv("DB_USER", "tigerwallet"),
+		DBPassword:       getEnv("DB_PASSWORD", "password"),
+		DBName:           getEnv("DB_NAME", "tigerwallet_copytrading"),
+		RedisHost:        getEnv("REDIS_HOST", "localhost"),
+		RedisPort:        getEnv("REDIS_PORT", "6379"),
+		ControlPlaneURL:   getEnv("TWO_PARTY_GATE_URL", ""),
+		ControlPlaneToken: getEnv("TWO_PARTY_GATE_TOKEN", ""),
+		WLClientID:        getEnv("WL_CLIENT_ID", ""),
+		LicenseKey:        getEnv("WL_LICENSE_KEY", ""),
+		Product:           getEnv("WL_PRODUCT", "copy_trading"),
+		InstanceID:        getEnv("WL_INSTANCE_ID", "default"),
+		HeartbeatInterval: getDurationEnv("HEARTBEAT_INTERVAL", 30*time.Second),
+		JWTSecret:         getEnv("JWT_SECRET", ""),
 	}
+
+	// Fail-closed license gate (mirrors wl_shared/wlgate). The copy-trading
+	// product starts DEAD and only serves requests once a valid license has
+	// been validated against the TigerWallet SuperAdmin control plane.
+	gate := wlgate.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go gate.HeartbeatLoop(ctx, config.ControlPlaneURL, config.ControlPlaneToken,
+		config.LicenseKey, config.Product, config.InstanceID, config.HeartbeatInterval)
 
 	service, err := NewCopyTradingService(config)
 	if err != nil {
@@ -635,7 +662,8 @@ func main() {
 		c.Next()
 	})
 
-	api := router.Group("/api/v1/copytrading")
+	// License gate on every API route (fail-closed 503 when not authorized).
+	api := router.Group("/api/v1/copytrading", gate.Middleware(config.Product, wlgate.CategoryFetcher))
 	{
 		api.GET("/traders", service.GetTraders)
 		api.GET("/traders/:id", service.GetTrader)
@@ -650,7 +678,11 @@ func main() {
 	}
 
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "healthy", "service": "copytrading"})
+		c.JSON(200, gin.H{
+			"status":  "healthy",
+			"service": "copytrading",
+			"licensed": gate.IsAlive(),
+		})
 	})
 
 	go func() {
@@ -663,7 +695,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
+	cancel()
 	fmt.Println("Shutting down copy trading service...")
 }
 
@@ -672,6 +704,15 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getDurationEnv(key string, def time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return def
 }
 
 func parseInt(s string) int {

@@ -888,11 +888,12 @@ func handleTokenRegistry(c *gin.Context) {
 	chainIDStr := c.Query("chain_id")
 	if chainIDStr == "" {
 		// Return the full registry grouped by chain.
-		out := make(map[string]interface{}, len(defaultTokenRegistry))
-		for cid, toks := range defaultTokenRegistry {
+		reg := allRegistryTokens()
+		out := make(map[string]interface{}, len(reg))
+		for cid, toks := range reg {
 			out[fmt.Sprintf("%d", cid)] = toks
 		}
-		c.JSON(http.StatusOK, gin.H{"tokens": out, "count": len(defaultTokenRegistry)})
+		c.JSON(http.StatusOK, gin.H{"tokens": out, "count": len(out)})
 		return
 	}
 	chainID, err := strconv.ParseInt(chainIDStr, 10, 64)
@@ -906,6 +907,74 @@ func handleTokenRegistry(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"chain_id": chainID, "tokens": toks, "count": len(toks)})
+}
+
+// handleAdminListTokens returns the full DB-backed token registry (active +
+// inactive) for the MasterWallet owner dashboard.
+func handleAdminListTokens(c *gin.Context) {
+	chainIDStr := c.Query("chain_id")
+	var toks []RegistryToken
+	var err error
+	if chainIDStr != "" {
+		var cid int64
+		cid, err = strconv.ParseInt(chainIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
+			return
+		}
+		toks, err = store.ListRegistryTokens(c.Request.Context(), cid)
+	} else {
+		toks, err = store.ListRegistryTokens(c.Request.Context(), 0)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"tokens": toks, "count": len(toks)})
+}
+
+// handleAdminCreateToken adds/updates a token in the UserWallet registry.
+// Invoked by the MasterWallet owner (POST /api/v1/admin/tokens) and by the
+// ProjectParty approval flow over HTTP (authorized boundary — no cross-domain
+// package import).
+func handleAdminCreateToken(c *gin.Context) {
+	var req RegistryToken
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.ChainID == 0 || req.Symbol == "" || req.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chain_id, symbol, and name are required"})
+		return
+	}
+	if req.Source == "" {
+		req.Source = "admin"
+	}
+	req.IsActive = true
+	if err := store.UpsertRegistryToken(c.Request.Context(), req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"status": "ok", "chain_id": req.ChainID, "symbol": req.Symbol})
+}
+
+// handleAdminDeleteToken deactivates a token from the UserWallet registry.
+func handleAdminDeleteToken(c *gin.Context) {
+	chainID, err := strconv.ParseInt(c.Param("chain_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
+		return
+	}
+	symbol := c.Param("symbol")
+	if symbol == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "symbol is required"})
+		return
+	}
+	if err := store.DeactivateRegistryToken(c.Request.Context(), chainID, symbol); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "deactivated": true, "chain_id": chainID, "symbol": symbol})
 }
 
 // handleExportKeystore exports a wallet's private key as a standard Web3 Secret

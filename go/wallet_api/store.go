@@ -44,6 +44,9 @@ func NewStore(ctx context.Context, dbURL, redisAddr string) (*Store, error) {
 	if err := s.migrate(ctx); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if err := s.seedTokenRegistry(ctx); err != nil {
+		return nil, fmt.Errorf("seed token registry: %w", err)
+	}
 	return s, nil
 }
 
@@ -212,6 +215,30 @@ CREATE TABLE IF NOT EXISTS price_alerts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_price_alerts_user ON price_alerts(user_id);
+
+-- Token registry: the canonical list of tokens/coins available in UserWallet
+-- per chain. Seeded from the curated defaultTokenRegistry on startup, and
+-- mutated at runtime by the MasterWallet owner / ProjectParty approval flow
+-- over the authorized HTTP admin endpoint (POST /api/v1/admin/tokens). This
+-- replaces the compile-time-only in-memory map so approved listings actually
+-- appear in UserWallet.
+CREATE TABLE IF NOT EXISTS token_registry (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chain_id BIGINT NOT NULL,
+    contract TEXT NOT NULL DEFAULT '',
+    symbol TEXT NOT NULL,
+    name TEXT NOT NULL,
+    decimals INT NOT NULL DEFAULT 18,
+    logo_uri TEXT DEFAULT '',
+    is_native BOOLEAN NOT NULL DEFAULT false,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    source TEXT NOT NULL DEFAULT 'default',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (chain_id, contract, symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_token_registry_chain ON token_registry(chain_id);
+CREATE INDEX IF NOT EXISTS idx_token_registry_symbol ON token_registry(symbol);
 ` + portfolioSchemaSQL
 
 // ---- User operations ----
@@ -575,4 +602,100 @@ type TxLogRecord struct {
 	ToAddr   string    `json:"to_addr"`
 	Value    string    `json:"value"`
 	Status   string    `json:"status"`
+}
+
+// ---- Token registry (DB-backed, runtime-mutable) ----
+
+// RegistryToken is a row in token_registry: a token/coin available in UserWallet
+// for a given chain. Populated by the curated defaults and by the MasterWallet
+// owner / ProjectParty approval flow over POST /api/v1/admin/tokens.
+type RegistryToken struct {
+	ID         uuid.UUID `json:"id"`
+	ChainID    int64     `json:"chain_id"`
+	Contract   string    `json:"contract"`
+	Symbol     string    `json:"symbol"`
+	Name       string    `json:"name"`
+	Decimals   int       `json:"decimals"`
+	LogoURI    string    `json:"logo_uri"`
+	IsNative   bool      `json:"is_native"`
+	IsActive   bool      `json:"is_active"`
+	Source     string    `json:"source"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// seedTokenRegistry inserts the curated defaultTokenRegistry into the DB on
+// startup (idempotent ON CONFLICT DO NOTHING).
+func (s *Store) seedTokenRegistry(ctx context.Context) error {
+	for chainID, toks := range defaultTokenRegistry {
+		for i := range toks {
+			t := &toks[i]
+			_, err := s.PG.Exec(ctx,
+				`INSERT INTO token_registry (chain_id, contract, symbol, name, decimals, source)
+				 VALUES ($1,$2,$3,$4,$5,'default')
+				 ON CONFLICT (chain_id, contract, symbol) DO NOTHING`,
+				chainID, t.Contract, t.Symbol, t.Name, t.Decimals)
+			if err != nil {
+				return fmt.Errorf("seed chain %d token %s: %w", chainID, t.Symbol, err)
+			}
+		}
+	}
+	return nil
+}
+
+// ListRegistryTokens returns all active registry tokens, optionally filtered by chain.
+func (s *Store) ListRegistryTokens(ctx context.Context, chainID int64) ([]RegistryToken, error) {
+	var rows pgx.Rows
+	var err error
+	if chainID > 0 {
+		rows, err = s.PG.Query(ctx,
+			`SELECT id, chain_id, contract, symbol, name, decimals, logo_uri, is_native, is_active, source, created_at, updated_at
+			 FROM token_registry WHERE is_active = true AND chain_id = $1 ORDER BY created_at ASC`, chainID)
+	} else {
+		rows, err = s.PG.Query(ctx,
+			`SELECT id, chain_id, contract, symbol, name, decimals, logo_uri, is_native, is_active, source, created_at, updated_at
+			 FROM token_registry WHERE is_active = true ORDER BY chain_id ASC, created_at ASC`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []RegistryToken{}
+	for rows.Next() {
+		var t RegistryToken
+		if err := rows.Scan(&t.ID, &t.ChainID, &t.Contract, &t.Symbol, &t.Name, &t.Decimals,
+			&t.LogoURI, &t.IsNative, &t.IsActive, &t.Source, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// UpsertRegistryToken inserts or updates a token in the registry. Used by the
+// admin endpoint (MasterWallet owner / ProjectParty approval flow).
+func (s *Store) UpsertRegistryToken(ctx context.Context, t RegistryToken) error {
+	_, err := s.PG.Exec(ctx,
+		`INSERT INTO token_registry (chain_id, contract, symbol, name, decimals, logo_uri, is_native, is_active, source)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		 ON CONFLICT (chain_id, contract, symbol) DO UPDATE SET
+		   name=EXCLUDED.name, decimals=EXCLUDED.decimals, logo_uri=EXCLUDED.logo_uri,
+		   is_native=EXCLUDED.is_native, is_active=EXCLUDED.is_active, source=EXCLUDED.source,
+		   updated_at=NOW()`,
+		t.ChainID, t.Contract, t.Symbol, t.Name, t.Decimals, t.LogoURI, t.IsNative, t.IsActive, t.Source)
+	return err
+}
+
+// DeactivateRegistryToken marks a token inactive (soft delete) by chain+symbol.
+func (s *Store) DeactivateRegistryToken(ctx context.Context, chainID int64, symbol string) error {
+	ct, err := s.PG.Exec(ctx,
+		`UPDATE token_registry SET is_active=false, updated_at=NOW()
+		 WHERE chain_id=$1 AND symbol=$2`, chainID, symbol)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("no token for chain_id=%d symbol=%s", chainID, symbol)
+	}
+	return nil
 }

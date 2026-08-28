@@ -40,6 +40,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/tigerwallet/wl-shared/wlgate"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -90,6 +91,16 @@ func main() {
 	}
 	gin.SetMode(gin.ReleaseMode)
 
+	// Fail-closed SuperAdmin license gate (mirrors wl_shared/wlgate). The
+	// canonical bot_api starts DEAD and only serves requests once a valid
+	// license has been validated against the TigerWallet SuperAdmin control
+	// plane, so SuperAdmin can suspend/revoke the product at any time.
+	gate := wlgate.New()
+	hbCtx, hbCancel := context.WithCancel(context.Background())
+	defer hbCancel()
+	go gate.HeartbeatLoop(hbCtx, cfg.ControlPlaneURL, cfg.ControlPlaneToken,
+		cfg.LicenseKey, cfg.Product, cfg.InstanceID, cfg.HeartbeatInterval)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -115,10 +126,14 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.GET("/api/v1/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "bot_api"}) })
+	r.GET("/api/v1/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "bot_api", "licensed": gate.IsAlive()})
+	})
 	r.GET("/api/v1/public/tiers", svc.publicTiers)
 
-	auth := r.Group("/api/v1", svc.auth())
+	// License gate on every authenticated route (fail-closed 503 when the
+	// product is not authorized; per-fetcher disable by SuperAdmin).
+	auth := r.Group("/api/v1", gate.Middleware(cfg.Product, wlgate.CategoryFetcher), svc.auth())
 	{
 		auth.POST("/auth/login", svc.login)
 		auth.POST("/auth/register", svc.register)
@@ -191,7 +206,14 @@ func main() {
 	srv.Shutdown(c2)
 }
 
-type config struct{ Port, DBURL, RedisAddr, JWTSecret string }
+type config struct {
+	Port, DBURL, RedisAddr, JWTSecret string
+	// SuperAdmin control-plane license gate (fail-closed). The canonical
+	// bot_api is controllable by TigerWallet SuperAdmin via the same control
+	// plane as white-label products.
+	ControlPlaneURL, ControlPlaneToken, LicenseKey, Product, InstanceID string
+	HeartbeatInterval                                                    time.Duration
+}
 
 func loadCfg() config {
 	g := func(k, d string) string {
@@ -200,11 +222,25 @@ func loadCfg() config {
 		}
 		return d
 	}
+	gd := func(k string, d time.Duration) time.Duration {
+		if v := os.Getenv(k); v != "" {
+			if d, err := time.ParseDuration(v); err == nil {
+				return d
+			}
+		}
+		return d
+	}
 	return config{
-		Port:      g("PORT", "8471"),
-		DBURL:     g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
-		RedisAddr: g("REDIS_ADDR", "localhost:6379"),
-		JWTSecret: g("JWT_SECRET", ""),
+		Port:              g("PORT", "8471"),
+		DBURL:             g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
+		RedisAddr:         g("REDIS_ADDR", "localhost:6379"),
+		JWTSecret:         g("JWT_SECRET", ""),
+		ControlPlaneURL:   g("TWO_PARTY_GATE_URL", ""),
+		ControlPlaneToken: g("TWO_PARTY_GATE_TOKEN", ""),
+		LicenseKey:        g("WL_LICENSE_KEY", ""),
+		Product:           g("WL_PRODUCT", "bot_api"),
+		InstanceID:        g("WL_INSTANCE_ID", "default"),
+		HeartbeatInterval: gd("HEARTBEAT_INTERVAL", 30*time.Second),
 	}
 }
 

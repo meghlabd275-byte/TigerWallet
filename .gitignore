@@ -132,6 +132,8 @@ go/fiat/fiat_service
 go/monitoring_service/monitoring_service
 go/perpetual_service/perpetual_service
 go/rpc_service/rpc_service
+# Single-file copy_trading service binary
+copy_trading/go/copy-trading
 *.test
 /go/social_recovery_service/social_recovery_service
 /go/signature_service/signature_service

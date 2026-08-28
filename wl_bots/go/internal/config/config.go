@@ -25,6 +25,7 @@ type Config struct {
 	BCryptCost        int
 	JWTExpiry         time.Duration
 	HeartbeatInterval time.Duration
+	BotCoreURL        string // Rust bot_core execution plane (BOT_CORE_URL)
 }
 
 func Load() *Config {
@@ -41,6 +42,7 @@ func Load() *Config {
 		BCryptCost:        getInt("BCRYPT_COST", 12),
 		JWTExpiry:         getDuration("JWT_EXPIRY", 24*time.Hour),
 		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		BotCoreURL:        getEnv("BOT_CORE_URL", "http://localhost:8472"),
 	}
 }
 

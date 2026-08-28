@@ -7,7 +7,11 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -55,13 +59,19 @@ func validRoles() map[string]bool {
 }
 
 type Svc struct {
-	cfg   *config.Config
-	store *store.Store
-	gate  *wlgate.Gate
+	cfg       *config.Config
+	store     *store.Store
+	gate      *wlgate.Gate
+	httpClient *http.Client // shared HTTP client for dispatch to bot_core
 }
 
 func New(cfg *config.Config, s *store.Store, g *wlgate.Gate) *Svc {
-	return &Svc{cfg: cfg, store: s, gate: g}
+	return &Svc{
+		cfg:   cfg,
+		store: s,
+		gate:  g,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+	}
 }
 
 // ==================== Auth (real bcrypt + JWT) ====================
@@ -289,29 +299,243 @@ func (s *Svc) DeleteBot(c *gin.Context) {
 }
 
 func (s *Svc) StartBot(c *gin.Context) {
-	s.transitionBot(c, "running", "start requested")
-}
-
-func (s *Svc) StopBot(c *gin.Context) {
-	s.transitionBot(c, "stopped", "stop requested")
-}
-
-func (s *Svc) PauseBot(c *gin.Context) {
-	s.transitionBot(c, "paused", "pause requested")
-}
-
-func (s *Svc) transitionBot(c *gin.Context, status, logMsg string) {
 	b, ok := s.fetchOwnedBot(c)
 	if !ok {
 		return
 	}
-	if err := s.store.SetBotStatus(c.Request.Context(), b.ID, status); err != nil {
+	if err := s.store.SetBotStatus(c.Request.Context(), b.ID, "running"); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
 		return
 	}
-	_ = s.store.AppendBotLog(c.Request.Context(), b.ID, "info", logMsg)
-	b.Status = status
+	_ = s.store.AppendBotLog(c.Request.Context(), b.ID, "info", "start requested")
+	// Dispatch real start to the Rust bot_core execution plane (same async
+	// best-effort pattern as canonical mm_bot_platform/bot_api). DB status
+	// already succeeded; dispatch failures are logged, not fatal.
+	s.dispatchBotCore(c, b, "start")
+	b.Status = "running"
 	c.JSON(http.StatusOK, botJSON(b))
+}
+
+func (s *Svc) StopBot(c *gin.Context) {
+	b, ok := s.fetchOwnedBot(c)
+	if !ok {
+		return
+	}
+	if err := s.store.SetBotStatus(c.Request.Context(), b.ID, "stopped"); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
+		return
+	}
+	_ = s.store.AppendBotLog(c.Request.Context(), b.ID, "info", "stop requested")
+	s.dispatchBotCore(c, b, "stop")
+	b.Status = "stopped"
+	c.JSON(http.StatusOK, botJSON(b))
+}
+
+func (s *Svc) PauseBot(c *gin.Context) {
+	b, ok := s.fetchOwnedBot(c)
+	if !ok {
+		return
+	}
+	if err := s.store.SetBotStatus(c.Request.Context(), b.ID, "paused"); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
+		return
+	}
+	_ = s.store.AppendBotLog(c.Request.Context(), b.ID, "info", "pause requested")
+	s.dispatchBotCore(c, b, "pause")
+	b.Status = "paused"
+	c.JSON(http.StatusOK, botJSON(b))
+}
+
+// dispatchBotCore sends a real start/stop/pause command to the Rust bot_core
+// execution plane at /dispatch/<action>. For "start" it builds the StartReq
+// tagged-enum payload bot_core expects (marketmaker/arbitrage/sniper) from the
+// bot row; for stop/pause it sends {bot_id}. This mirrors the canonical
+// mm_bot_platform/bot_api dispatchBotCore exactly (best-effort async dispatch:
+// the DB status update already succeeded and the execution plane may be down
+// for maintenance). No fake execution: signal-only bot types
+// (grid/dca/momentum/etc.) have no real runner in bot_core yet and are
+// skipped (logged), with the DB status still transitioning to running.
+func (s *Svc) dispatchBotCore(c *gin.Context, b *store.Bot, action string) {
+	var body []byte
+	if action == "start" {
+		payload, err := s.buildStartPayload(c, b)
+		if err != nil {
+			log.Printf("dispatchBotCore start %s: failed to build payload: %v", b.ID, err)
+			return
+		}
+		body = payload
+	} else {
+		body, _ = json.Marshal(map[string]string{"bot_id": b.ID.String()})
+	}
+	req, err := http.NewRequestWithContext(c.Request.Context(), "POST",
+		s.botCoreURL()+"/dispatch/"+action, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("dispatchBotCore: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		log.Printf("dispatchBotCore %s %s: %v (bot_core unreachable)", action, b.ID, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		log.Printf("dispatchBotCore %s %s: bot_core returned %d", action, b.ID, resp.StatusCode)
+	}
+}
+
+func (s *Svc) botCoreURL() string {
+	if s.cfg.BotCoreURL != "" {
+		return s.cfg.BotCoreURL
+	}
+	return "http://localhost:8472"
+}
+
+// buildStartPayload builds the StartReq tagged-enum JSON that bot_core's
+// dispatch_start endpoint expects, mapping bot_type -> strategy kind:
+//   market_maker -> marketmaker, arbitrage -> arbitrage, sniper -> sniper.
+// Other bot types are signal-only in bot_core and have no real execution
+// runner; their start dispatch is skipped (returns errStopDispatch). This is
+// honest: no fake execution is emitted.
+func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
+	userID := wlgate.UserID(c)
+	cfg := b.Config
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	switch b.BotType {
+	case "market_maker":
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		payload := map[string]any{
+			"kind":       "marketmaker",
+			"bot_id":     b.ID.String(),
+			"exchange":   cexCreds.exchange,
+			"api_key":    cexCreds.apiKey,
+			"secret_key": cexCreds.apiSecret,
+			"symbol":     b.Pair,
+			"order_size": cfgFloat(cfg, "order_size", 0.01),
+			"spread_bps": cfgFloat(cfg, "spread_bps", 10),
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if v, ok := cfg["passphrase"].(string); ok && v != "" {
+			payload["passphrase"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "arbitrage":
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		payload := map[string]any{
+			"kind":          "arbitrage",
+			"bot_id":        b.ID.String(),
+			"exchange":      cexCreds.exchange,
+			"api_key":       cexCreds.apiKey,
+			"secret_key":    cexCreds.apiSecret,
+			"symbol":        b.Pair,
+			"threshold_bps": cfgFloat(cfg, "threshold_bps", 50),
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "sniper":
+		payload := map[string]any{
+			"kind":   "sniper",
+			"bot_id": b.ID.String(),
+			"symbol": b.Pair,
+		}
+		if mu, ok := cfg["mempool_url"].(string); ok && mu != "" {
+			payload["mempool_url"] = mu
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		if mta, ok := cfg["min_target_amount"].(float64); ok {
+			payload["min_target_amount"] = int64(mta)
+		}
+		return json.Marshal(payload)
+
+	default:
+		// Signal-only bot types have no real execution runner in bot_core.
+		return nil, errStopDispatch
+	}
+}
+
+// errStopDispatch signals that a bot type has no bot_core execution runner and
+// its start dispatch should be skipped (the DB status still transitions).
+var errStopDispatch = errors.New("bot type has no bot_core execution runner")
+
+func cfgFloat(cfg map[string]any, key string, def float64) float64 {
+	if v, ok := cfg[key].(float64); ok {
+		return v
+	}
+	return def
+}
+
+// cexCreds holds the decrypted CEX API key + secret for a bot dispatch.
+type cexCreds struct {
+	exchange  string
+	apiKey    string
+	apiSecret string
+}
+
+// fetchCEXCreds resolves the per-user API key (from api_keys, AES-GCM
+// encrypted at rest) and the platform-level API secret (from
+// bot_cex_connections, admin-managed) for the given exchange, decrypting both
+// via wlcrypto. Returns an error if no key is configured for the exchange —
+// the caller skips dispatch rather than emitting a payload with empty creds.
+func (s *Svc) fetchCEXCreds(c *gin.Context, userID uuid.UUID, exchange string) (cexCreds, error) {
+	if exchange == "" {
+		return cexCreds{}, errors.New("bot has no exchange configured")
+	}
+	keys, err := s.store.ListAPIKeys(c.Request.Context(), userID)
+	if err != nil {
+		return cexCreds{}, fmt.Errorf("list api keys: %w", err)
+	}
+	var encAPIKey string
+	for i := range keys {
+		if keys[i].Exchange == exchange && keys[i].Enabled {
+			encAPIKey = keys[i].APIKeyEncrypted
+			break
+		}
+	}
+	if encAPIKey == "" {
+		return cexCreds{}, fmt.Errorf("no api key configured for exchange %s", exchange)
+	}
+	apiKey, err := wlcrypto.DecryptSeedAtRest(encAPIKey, s.cfg.JWTSecret)
+	if err != nil {
+		return cexCreds{}, fmt.Errorf("decrypt api key: %w", err)
+	}
+	// Platform-level secret for the same exchange (admin-managed).
+	var apiSecret string
+	conns, err := s.store.ListCEX(c.Request.Context())
+	if err == nil {
+		for i := range conns {
+			if conns[i].Exchange == exchange && conns[i].IsActive {
+				dec, derr := wlcrypto.DecryptSeedAtRest(conns[i].APISecretEncrypted, s.cfg.JWTSecret)
+				if derr == nil {
+					apiSecret = string(dec)
+				}
+				break
+			}
+		}
+	}
+	return cexCreds{exchange: exchange, apiKey: string(apiKey), apiSecret: apiSecret}, nil
 }
 
 func (s *Svc) ListBotExecutions(c *gin.Context) {

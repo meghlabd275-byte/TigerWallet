@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -36,6 +37,7 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+	propagationDBPool = db
 
 	// Initialize Redis cache
 	rdb := initRedis(cfg)
@@ -97,7 +99,7 @@ func main() {
 			}
 			tokensAdmin := tokens.Group("", authMiddleware(), adminOnly()) // admin-only
 			{
-				tokensAdmin.POST("/:id/approve", approveTokenHandler(db))
+				tokensAdmin.POST("/:id/approve", approveTokenHandler(db, cfg))
 				tokensAdmin.POST("/:id/reject", rejectTokenHandler(db))
 				// Admin-only: verify a token's on-chain contract (checksum + ERC-20
 				// interface: name/symbol/decimals/totalSupply eth_call).
@@ -234,6 +236,12 @@ type Config struct {
 	Port     string
 	Database DatabaseConfig
 	Redis    RedisConfig
+	// UserWallet token-registry propagation: when a token is approved, the
+	// approved token is pushed into the UserWallet token registry over the
+	// authorized HTTP admin endpoint (no cross-domain package import). The
+	// service token is issued by the MasterWallet admin / SuperAdmin.
+	WalletAPIURL   string
+	WalletAPIToken string
 }
 
 type DatabaseConfig struct {
@@ -265,6 +273,8 @@ func loadConfig() *Config {
 			Password: getEnv("PROJECT_PARTY_REDIS_PASSWORD", ""),
 			DB:       getEnvInt("PROJECT_PARTY_REDIS_DB", 0),
 		},
+		WalletAPIURL:   getEnv("WALLET_API_URL", "http://localhost:8443"),
+		WalletAPIToken: getEnv("WALLET_API_ADMIN_TOKEN", ""),
 	}
 }
 
@@ -1034,7 +1044,7 @@ func submitTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-func approveTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
+func approveTokenHandler(db *pgxpool.Pool, cfg *Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenID := c.Param("id")
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -1044,8 +1054,117 @@ func approveTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "token not found or not in a reviewable status"})
 			return
 		}
+		// Propagate the approved token into the UserWallet token registry over
+		// the authorized HTTP admin endpoint (no cross-domain package import).
+		// Best-effort + logged: the approval DB write is the source of truth;
+		// propagation is a downstream side-effect that surfaces the token in
+		// UserWallet. A failure here does not roll back the approval.
+		go propagateTokenToUserWallet(cfg, tokenID)
 		c.JSON(http.StatusOK, gin.H{"message": "Token approved", "status": "approved"})
 	}
+}
+
+// chainIDForNetwork maps a ProjectParty network/chain name (e.g. "ethereum",
+// "bsc", "polygon") to the canonical EVM chain id used by the UserWallet
+// token registry. Non-EVM / unknown chains return 0 (propagation skipped —
+// the UserWallet registry is EVM-scoped for ERC-20 contract addresses).
+func chainIDForNetwork(network string) int64 {
+	switch strings.ToLower(strings.TrimSpace(network)) {
+	case "ethereum", "eth", "mainnet":
+		return 1
+	case "bsc", "binance", "binance-smart-chain", "bnb":
+		return 56
+	case "polygon", "matic":
+		return 137
+	case "arbitrum", "arbitrum-one":
+		return 42161
+	case "optimism", "op":
+		return 10
+	case "base":
+		return 8453
+	case "avalanche", "avax":
+		return 43114
+	case "fantom", "ftm":
+		return 250
+	}
+	return 0
+}
+
+// propagateTokenToUserWallet fetches the approved token row and POSTs it to
+// the UserWallet token registry (POST /api/v1/admin/tokens). Runs in its own
+// goroutine; failures are logged and non-fatal.
+func propagateTokenToUserWallet(cfg *Config, tokenID string) {
+	if cfg.WalletAPIURL == "" {
+		return
+	}
+	pool := dbPoolForPropagation(cfg)
+	if pool == nil {
+		log.Printf("propagate: no db pool available; skipping token %s", tokenID)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var t struct {
+		Name            string `json:"name"`
+		Symbol          string `json:"symbol"`
+		Decimals        int    `json:"decimals"`
+		ContractAddress string `json:"contract_address"`
+		Chain           string `json:"chain"`
+		LogoURL         string `json:"logo_url"`
+	}
+	err := pool.QueryRow(ctx,
+		`SELECT name, symbol, decimals, contract_address, chain, logo_url FROM tokens WHERE id=$1`, tokenID).
+		Scan(&t.Name, &t.Symbol, &t.Decimals, &t.ContractAddress, &t.Chain, &t.LogoURL)
+	if err != nil {
+		log.Printf("propagate: fetch token %s: %v", tokenID, err)
+		return
+	}
+	chainID := chainIDForNetwork(t.Chain)
+	if chainID == 0 {
+		log.Printf("propagate: token %s chain %q is non-EVM/unknown — skipping UserWallet registry push", tokenID, t.Chain)
+		return
+	}
+	body, _ := json.Marshal(map[string]any{
+		"chain_id":  chainID,
+		"contract":  t.ContractAddress,
+		"symbol":    t.Symbol,
+		"name":      t.Name,
+		"decimals":  t.Decimals,
+		"logo_uri":  t.LogoURL,
+		"is_active": true,
+		"source":    "project_party",
+	})
+	url := strings.TrimRight(cfg.WalletAPIURL, "/") + "/api/v1/admin/tokens"
+	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.WalletAPIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.WalletAPIToken)
+	}
+	resp, err := httpClientForPropagation.Do(req)
+	if err != nil {
+		log.Printf("propagate: POST token %s to UserWallet: %v", tokenID, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		log.Printf("propagate: UserWallet rejected token %s (HTTP %d)", tokenID, resp.StatusCode)
+		return
+	}
+	log.Printf("propagate: token %s (%s) pushed to UserWallet registry chain_id=%d", tokenID, t.Symbol, chainID)
+}
+
+var httpClientForPropagation = &http.Client{Timeout: 10 * time.Second}
+
+// dbPoolForPropagation returns the project_party pgx pool. The pool is set as
+// a package-level var in initDatabase; this indirection keeps the propagation
+// helper testable.
+var propagationDBPool *pgxpool.Pool
+
+func dbPoolForPropagation(cfg *Config) *pgxpool.Pool {
+	if propagationDBPool != nil {
+		return propagationDBPool
+	}
+	return nil
 }
 
 func rejectTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {

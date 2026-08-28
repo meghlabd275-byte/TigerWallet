@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/redis/go-redis/v9 v9.0.0
+	github.com/tigerwallet/wl-shared v0.0.0-00010101000000-000000000000
 	golang.org/x/crypto v0.31.0
 )
 
@@ -48,3 +49,5 @@ require (
 )
 
 replace github.com/rogpeppe/go-internal => github.com/rogpeppe/go-internal v1.12.0
+
+replace github.com/tigerwallet/wl-shared => ../../wl_shared/go

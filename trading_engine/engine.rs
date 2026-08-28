@@ -153,8 +153,8 @@ impl OrderBook {
         let mut bids: Vec<_> = self.bids.iter().cloned().collect();
         let mut asks: Vec<_> = self.asks.iter().cloned().collect();
         
-        bids.sort_by(|a, b| b.price.cmp(&a.price));
-        asks.sort_by(|a, b| a.price.cmp(&b.price));
+        bids.sort_by(|a, b| b.price.unwrap_or(0.0).partial_cmp(&a.price.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+        asks.sort_by(|a, b| a.price.unwrap_or(0.0).partial_cmp(&b.price.unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
         
         let mut bid_idx = 0;
         let mut ask_idx = 0;

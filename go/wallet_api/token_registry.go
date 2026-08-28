@@ -1,8 +1,12 @@
 package main
 
+import "context"
+
 // token_registry.go — curated token list per chain. Real contract addresses,
-// decimals, and symbols. This replaces the disconnected in-memory registry
-// and feeds the fetchers with real token data.
+// decimals, and symbols. The defaults seed the DB-backed token_registry table
+// on startup (store.seedTokenRegistry); runtime additions/updates persist in
+// the table and are made by the MasterWallet owner / ProjectParty approval
+// flow over POST /api/v1/admin/tokens.
 
 var defaultTokenRegistry = map[int64][]TokenInfo{
 	1: { // Ethereum mainnet
@@ -47,11 +51,55 @@ var defaultTokenRegistry = map[int64][]TokenInfo{
 	},
 }
 
-// tokensForChain returns the registry tokens for a chain.
+// tokensForChain returns the registry tokens for a chain. Reads from the
+// DB-backed token_registry (so runtime additions appear); falls back to the
+// curated in-memory defaults if the DB is unavailable (e.g. store not yet
+// initialized during boot).
 func tokensForChain(chainID int64) []TokenInfo {
+	if store != nil && store.PG != nil {
+		rows, err := store.ListRegistryTokens(context.Background(), chainID)
+		if err == nil && len(rows) > 0 {
+			out := make([]TokenInfo, 0, len(rows))
+			for i := range rows {
+				r := &rows[i]
+				out = append(out, TokenInfo{
+					Contract: r.Contract,
+					Symbol:   r.Symbol,
+					Name:     r.Name,
+					Decimals: r.Decimals,
+					Logo:     r.LogoURI,
+					ChainID:  r.ChainID,
+				})
+			}
+			return out
+		}
+	}
 	if toks, ok := defaultTokenRegistry[chainID]; ok {
-		// enrich with live prices (best-effort)
 		return toks
 	}
 	return nil
+}
+
+// allRegistryTokens returns the full registry grouped by chain id (string keys
+// for JSON). Reads from DB with fallback to defaults.
+func allRegistryTokens() map[int64][]TokenInfo {
+	out := map[int64][]TokenInfo{}
+	if store != nil && store.PG != nil {
+		rows, err := store.ListRegistryTokens(context.Background(), 0)
+		if err == nil && len(rows) > 0 {
+			for i := range rows {
+				r := &rows[i]
+				out[r.ChainID] = append(out[r.ChainID], TokenInfo{
+					Contract: r.Contract,
+					Symbol:   r.Symbol,
+					Name:     r.Name,
+					Decimals: r.Decimals,
+					Logo:     r.LogoURI,
+					ChainID:  r.ChainID,
+				})
+			}
+			return out
+		}
+	}
+	return defaultTokenRegistry
 }

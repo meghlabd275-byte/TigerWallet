@@ -306,6 +306,11 @@ func main() {
 			admin.DELETE("/fees/:id", handleAdminDeleteFee)
 			admin.GET("/fees/transactions", handleAdminFeeTransactions)
 			admin.GET("/fees/revenue", handleAdminFeeRevenue)
+
+			// ---- Token registry (MasterWallet owner / ProjectParty approval) ----
+			admin.GET("/tokens", handleAdminListTokens)
+			admin.POST("/tokens", handleAdminCreateToken)
+			admin.DELETE("/tokens/:chain_id/:symbol", handleAdminDeleteToken)
 		}
 	}
 
