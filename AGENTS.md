@@ -192,7 +192,6 @@
   (WHERE white_label_id=$1). Kill switch superadmin-only. Admin cannot create
   super_admin.
 
-
 ## Session 7 — hygiene (route-scope fix + sqlite scrub + theme audit)
 - master_wallet/desktop App.tsx: 4 new pages resolve via firstWalletId() to
   canonical /api/v1/master-wallet/:id/... (audit confirmed; no flat endpoints).
@@ -201,3 +200,50 @@
   applications import SQLite. Theme audit found no hardcoded 'light'/'dark'
   and single ThemeContext provider per surface; extension uses its own
   chrome.storage.local 'theme' key (separate surface, acceptable).
+
+## Session 8 (2026-08-28) — Android P0 retarget + desktop mock purge
+- ANDROID P0 RETARGET (commit 3e0df1b, pushed): user_wallet/android
+  UserWalletApiService.kt pointed at wl_user_wallet :8461 (44 routes) but called
+  ~21 endpoint groups that don't exist there -> 404s. Retargeted to canonical
+  go/wallet_api :8443 (70+ routes) + aligned every field shape: DEFAULT_BASE_URL
+  + healthUrl 8461->8443; WalletConnectSocket localhost:8443->10.0.2.2:8443
+  (emulator can't resolve localhost, dApp pairing was dead); getBalance
+  /wallets/:id/balance -> /balance?address=&chain_id= (resolve walletId first);
+  getTransactions -> /transactions?address=&chain_id=; sendTransaction
+  /wallets/:id/send -> /send (flat, wallet_id in body, amount->value, read tx_hash);
+  autoSendTransaction -> /auto-send (flat); signMessage -> /sign (flat);
+  ammSwap -> /amm/swap with from/chain_id/token_in/token_out/amount_in;
+  getAmmQuote -> /amm/quote?token_in=&token_out=&amount_in= (was wrong keys);
+  stakingAction asset->token; exportKeystore add export_password; importKeystore
+  keystore->keystore_json. /wallets/:id/unlock + /lock remain (canonical).
+- BACKEND BALANCE ALIAS (same commit): go/wallet_api BalanceResult now returns
+  BOTH `balance` and `balance_wei` (alias) so web+android (read balance_wei)
+  work without touching every client. Backward compatible. go build+vet=0.
+- DESKTOP MOCK PURGE (commit 5c25a32): desktop_app staking/bridge/NFT/trading
+  pages were 100% hardcoded mock UI (Bored Ape #1234@45.5ETH, ETH2.0 APY 4.2%,
+  50k fake TOKEN pairs w/ fabricated prices, 505 fake copy-traders) with NO
+  data loaders. Replaced ALL with real canonical-backend fetches: index.html
+  mock cards -> empty dynamic containers; app.js added loadStakingAssets
+  (/staking/quote), stakingAction (/staking/* token binding), loadBridgeRoutes
+  (/chains), fetchBridgeQuote+executeBridge (/bridge/*), loadNFTs (/public/nfts),
+  nav loaders + button listeners + escapeHtml. tradingFeatures.js: Futures
+  loadPairs from /chains+/price + real /perpetual/* positions; Options real
+  /price catalog + empty chain (no fabricated greeks); CopyTrading loadTraders
+  from /copytrading/traders + follow(); Convert via /swap/quote. bridgeService
+  getSupportedRoutes from /bridge/routes. stakingService asset->token. node
+  --check passes all 6 desktop JS. No fabricated data remains.
+- Toolchain: Go 1.22.5 installed at /tmp/go this session (GOPATH=/tmp/gopath
+  GOMODCACHE=/tmp/gomodcache GOFLAGS=-mod=mod). Rust/cmake still NOT installed.
+- CANONICAL ROUTE SHAPES (verified, authoritative for all clients):
+  /balance?address=&chain_id= -> {chain_id,symbol,address,balance,balance_wei,
+  balance_f,usd_value}; /transactions?address=&chain_id= -> {transactions:[
+  {hash,to,value,...}]}; /send {wallet_id,password,to,value,chain_id} ->
+  {tx_hash,raw_tx,chain_id,nonce}; /auto-send (flat, wallet_id in body);
+  /sign {wallet_id,message,password}; /amm/quote?chain_id=&token_in=&token_out=
+  &amount_in=; /amm/swap {from,chain_id,token_in,token_out,amount_in};
+  /staking/{quote,stake,unstake,claim} binds `token` (NOT asset);
+  /keystore/export {wallet_id,password,export_password}; /keystore/import
+  {keystore_json,password,label} -> {wallet_id,address,...}; /perpetual/positions
+  {+POST, +:id/close}; /copytrading/{traders,follow} (proxied to :8006);
+  /bridge/{routes,quote,transfer} (proxied to bridge_service).
+
