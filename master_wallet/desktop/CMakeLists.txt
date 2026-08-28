@@ -43,7 +43,7 @@ target_link_libraries(masterwallet_core
 )
 
 add_executable(master_wallet_desktop
-    src/main.cpp
+    src/console.cpp
 )
 
 target_link_libraries(master_wallet_desktop
