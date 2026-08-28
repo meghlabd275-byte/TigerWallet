@@ -293,7 +293,7 @@ const WalletAPI = {
   // maxFeeGwei / maxPriorityGwei are optional EIP-1559 overrides (gwei
   // strings); max_fee_gwei / max_priority_gwei are omitted when unset.
   sendTransaction: (walletId, password, to, amount, chainId, tokenAddress, unlockToken, maxFeeGwei, maxPriorityGwei) =>
-    api('/send', { method: 'POST', body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined, max_fee_gwei: maxFeeGwei || undefined, max_priority_gwei: maxPriorityGwei || undefined } }),
+    api('/send', { method: 'POST', body: { wallet_id: walletId, password, unlock_token: unlockToken, to, value: amount, chain_id: chainId, token_address: tokenAddress || undefined, max_fee_gwei: maxFeeGwei || undefined, max_priority_gwei: maxPriorityGwei || undefined } }),
   signMessage: (walletId, password, message) => api('/sign', { method: 'POST', body: { wallet_id: walletId, password, message } }),
 
   // Pre-sign dry-run — POST /simulate { chain_id, from, to, value?, data? }
@@ -324,7 +324,7 @@ const WalletAPI = {
     const query = masterWalletId ? `?master_wallet_id=${encodeURIComponent(masterWalletId)}` : '';
     return api(`/auto-send${query}`, {
       method: 'POST',
-      body: { wallet_id: walletId, password, unlock_token: unlockToken, to, amount, chain_id: chainId, token_address: tokenAddress || undefined, max_fee_gwei: maxFeeGwei || undefined, max_priority_gwei: maxPriorityGwei || undefined },
+      body: { wallet_id: walletId, password, unlock_token: unlockToken, to, value: amount, chain_id: chainId, token_address: tokenAddress || undefined, max_fee_gwei: maxFeeGwei || undefined, max_priority_gwei: maxPriorityGwei || undefined },
     });
   },
 

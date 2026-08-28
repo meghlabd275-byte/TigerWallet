@@ -113,6 +113,17 @@ class TigerWalletApp {
         // Send transaction
         document.getElementById('simulate-btn')?.addEventListener('click', () => this.simulateTransaction());
         document.getElementById('send-btn')?.addEventListener('click', () => this.sendTransaction());
+
+        // Swap — live quote on input change + execute on button click.
+        const swapFromAmt = document.getElementById('swap-from-amount');
+        const swapFromTok = document.getElementById('swap-from-token');
+        const swapToTok = document.getElementById('swap-to-token');
+        const swapBtn = document.getElementById('swap-btn');
+        [swapFromAmt, swapFromTok, swapToTok].forEach(el => {
+            el?.addEventListener('input', () => this.fetchSwapQuote());
+            el?.addEventListener('change', () => this.fetchSwapQuote());
+        });
+        swapBtn?.addEventListener('click', () => this.executeSwap());
         
         // QR Scanner
         document.getElementById('qr-scan-btn')?.addEventListener('click', () => this.showQRModal());
@@ -275,7 +286,27 @@ class TigerWalletApp {
     }
     
     async loadChains() {
-        // In production, fetch from Tauri backend
+        // Fetch the live chain registry from the UserWallet backend
+        // (/api/v1/chains). Falls back to a minimal list only when the
+        // backend is unreachable, so the UI remains usable offline.
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/chains');
+            if (res.ok) {
+                const data = await res.json();
+                const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
+                if (Array.isArray(arr) && arr.length) {
+                    this.chains = arr.map(c => ({
+                        id: c.chain_id ?? c.id,
+                        name: c.name,
+                        symbol: c.native_currency || c.symbol || c.native_symbol || 'ETH'
+                    }));
+                    this.renderNetworks();
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('loadChains: backend unreachable, using fallback list', e);
+        }
         this.chains = [
             { id: 1, name: 'Ethereum', symbol: 'ETH' },
             { id: 56, name: 'BNB Chain', symbol: 'BNB' },
@@ -512,6 +543,92 @@ class TigerWalletApp {
         }
     }
     
+    // Swap — fetch a real indicative quote from the backend swap engine
+    // (GET /api/v1/swap/quote), which uses live CoinGecko prices. Never a
+    // hardcoded rate. Updates the on-screen rate + receive amount live.
+    async fetchSwapQuote() {
+        const fromAmt = document.getElementById('swap-from-amount')?.value;
+        const fromTok = document.getElementById('swap-from-token')?.value;
+        const toTok = document.getElementById('swap-to-token')?.value;
+        const rateEl = document.querySelector('.swap-rate');
+        const toAmtEl = document.getElementById('swap-to-amount');
+        if (!fromAmt || !fromTok || !toTok || fromTok === toTok) {
+            if (rateEl) rateEl.textContent = 'Rate: —';
+            if (toAmtEl) toAmtEl.value = '';
+            return;
+        }
+        try {
+            const url = `http://localhost:8443/api/v1/swap/quote?from_token=${encodeURIComponent(fromTok)}&to_token=${encodeURIComponent(toTok)}&from_amount=${encodeURIComponent(fromAmt)}&chain_id=${this.currentNetwork}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                if (rateEl) rateEl.textContent = 'Rate: unavailable';
+                if (toAmtEl) toAmtEl.value = '';
+                return;
+            }
+            const q = await res.json();
+            if (rateEl) rateEl.textContent = `Rate: 1 ${fromTok} = ${q.rate} ${toTok}`;
+            if (toAmtEl) toAmtEl.value = q.to_amount || '';
+            this._lastSwapQuote = q;
+        } catch (e) {
+            if (rateEl) rateEl.textContent = 'Rate: unavailable';
+        }
+    }
+
+    // Execute the swap via the backend swap executor (POST /api/v1/swap/execute),
+    // which returns the on-chain swap action; the client then submits the
+    // constructed calldata via the real /send endpoint. No fabricated tx hash.
+    async executeSwap() {
+        const fromAmt = document.getElementById('swap-from-amount')?.value;
+        const fromTok = document.getElementById('swap-from-token')?.value;
+        const toTok = document.getElementById('swap-to-token')?.value;
+        if (!fromAmt || !fromTok || !toTok) { alert('Enter swap amounts and tokens'); return; }
+        if (fromTok === toTok) { alert('Tokens must differ'); return; }
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const password = prompt('Enter wallet password to sign the swap:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            // Step 1: get the on-chain swap action (calldata) from the backend.
+            const exRes = await fetch('http://localhost:8443/api/v1/swap/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: fromTok, to_token: toTok, amount: fromAmt,
+                    chain_id: this.currentNetwork
+                })
+            });
+            if (!exRes.ok) {
+                const err = await exRes.text();
+                alert('Swap execution unavailable for this pair/chain: ' + err);
+                return;
+            }
+            const action = await exRes.json();
+            // Step 2: submit the returned calldata via the real /send endpoint.
+            const sendRes = await fetch('http://localhost:8443/api/v1/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    wallet_id: wallet.wallet_id ?? wallet.id,
+                    password,
+                    to: action.to || action.router || '',
+                    value: action.value || '0',
+                    data: action.call_data || action.calldata || '',
+                    chain_id: this.currentNetwork
+                })
+            });
+            if (!sendRes.ok) {
+                const err = await sendRes.text();
+                alert('Swap broadcast failed: ' + err);
+                return;
+            }
+            const result = await sendRes.json();
+            alert('Swap submitted: ' + (result.tx_hash || 'pending'));
+            this.navigateTo('transactions');
+        } catch (e) {
+            alert('Swap error: ' + e.message);
+        }
+    }
+
     // QR Scanner Functions
     showQRModal() {
         document.getElementById('qr-modal')?.classList.remove('hidden');
