@@ -11,12 +11,15 @@ use sha3::{Digest, Keccak256};
 use sqlx::types::Json;
 
 use crate::evm_tx;
-use crate::AppState;
+use crate::{ApiError, AppState};
 
 /// JWT gate (self-hosted pillar convention: all routes are authenticated).
 fn authed(req: &HttpRequest, state: &AppState) -> Option<HttpResponse> {
-    match crate::require_auth(req.headers(), &state.jwt_secret) {
+    match crate::require_auth(req.headers(), state) {
         Ok(_) => None,
+        Err(ApiError::ServiceUnavailable(reason)) => {
+            Some(HttpResponse::ServiceUnavailable().json(serde_json::json!({"error": reason})))
+        }
         Err(_) => Some(HttpResponse::Unauthorized().json(serde_json::json!({"error": "unauthorized"}))),
     }
 }

@@ -157,6 +157,10 @@ func main() {
 			authGroup.POST("/refresh", adminHandler.RefreshToken)
 		}
 
+		// Public payment-processor webhook (Stripe). Signed with
+		// STRIPE_WEBHOOK_SECRET; fail-closed when the secret is unset.
+		api.POST("/webhooks/stripe", billingHandler.StripePaymentWebhook)
+
 		// Protected endpoints
 		protected := api.Group("")
 		protected.Use(middleware.AuthMiddleware(authSvc))
