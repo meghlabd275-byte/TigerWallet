@@ -29,6 +29,15 @@ interface DashboardStats {
 interface TxRecord { hash: string; from?: string; to?: string; amount?: string; status?: string; timestamp?: string; }
 interface WalletRecord { id: string; name?: string; address?: string; balance?: string; status?: string; }
 
+// Wallet-scope helper: every wallet-scoped resource lives under
+// /api/v1/master-wallet/:id/...; pages resolve the FIRST wallet once and use
+// it for the route prefix. Falsy id -> backend-only rendering (no fabricated feature).
+async function firstWalletId(): Promise<string | null> {
+  const r = await apiFetch<{ wallets?: WalletRecord[] }>('/api/v1/master-wallet');
+  const id = r?.wallets?.[0]?.id ?? null;
+  return typeof id === 'string' && id ? id : null;
+}
+
 // Fetch helper: returns parsed JSON or null. Never invents data on error.
 async function apiFetch<T = any>(path: string): Promise<T | null> {
   const headers: Record<string, string> = { 'Accept': 'application/json' };
@@ -242,7 +251,8 @@ const MasterUsers = () => {
   useEffect(() => {
     (async () => {
       setLoading(true); setErr(null);
-      const r = await apiFetch<{ users?: UserRecord[] }>('/api/v1/master-wallet/users');
+      const wid = await firstWalletId();
+      const r = wid ? await apiFetch<{ users?: UserRecord[] }>(`/api/v1/master-wallet/${wid}/users`) : null;
       setUsers(r?.users ?? []);
       if (!authToken) setErr('Not authenticated — sign in to load users.');
       setLoading(false);
@@ -284,7 +294,8 @@ const MasterTransactions = () => {
   useEffect(() => {
     (async () => {
       setLoading(true); setErr(null);
-      const r = await apiFetch<{ transactions?: TxRecord[] }>('/api/v1/master-wallet/transactions');
+      const wid = await firstWalletId();
+      const r = wid ? await apiFetch<{ transactions?: TxRecord[] }>(`/api/v1/master-wallet/${wid}/transactions`) : null;
       setTxs(r?.transactions ?? []);
       if (!authToken) setErr('Not authenticated — sign in to load transactions.');
       setLoading(false);
@@ -326,8 +337,10 @@ const MasterAutoSign = () => {
   useEffect(() => {
     (async () => {
       setLoading(true); setErr(null);
-      const r = await apiFetch<{ rules?: RuleRecord[] }>('/api/v1/auto-sign/rules');
-      setRules(r?.rules ?? []);
+      const wid = await firstWalletId();
+      // Canonical auto-sign resource per wallet: GET /master-wallet/:id/auto-sign.
+      const r = wid ? await apiFetch<{ rules?: RuleRecord[]; auto_sign?: RuleRecord[]; rules_item_auto_sign?: RuleRecord[] }>(`/api/v1/master-wallet/${wid}/auto-sign`) : null;
+      setRules(r?.rules ?? r?.auto_sign ?? r?.rules_item_auto_sign ?? []);
       if (!authToken) setErr('Not authenticated — sign in to load policy.');
       setLoading(false);
     })();
@@ -367,8 +380,12 @@ const MasterAnalytics = () => {
   useEffect(() => {
     (async () => {
       setLoading(true); setErr(null);
-      const r = await apiFetch<any>('/api/v1/master-wallet/stats');
-      setStats(r);
+      const wid = await firstWalletId();
+      const vol = wid ? await apiFetch<any>(`/api/v1/master-wallet/${wid}/analytics/volume`) : null;
+      const txc = wid ? await apiFetch<any>(`/api/v1/master-wallet/${wid}/analytics/transactions`) : null;
+      const wlc = wid ? await apiFetch<any>(`/api/v1/master-wallet/${wid}/analytics/wallets`) : null;
+      const merged = wid ? { volume_24h: vol?.volume_24h, tx_count: txc?.tx_count, active_users: wlc?.active_users } : null;
+      setStats(merged);
       if (!authToken) setErr('Not authenticated — sign in to load analytics.');
       setLoading(false);
     })();
