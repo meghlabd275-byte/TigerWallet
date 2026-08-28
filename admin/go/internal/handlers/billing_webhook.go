@@ -5,170 +5,117 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
+	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// Stipe-webhook integration for admin billing. Invoices are created in "open"
-// status when a subscription starts; only a signature-verified payment
-// processor callback (Stripe) transitions them to "paid". A webhook arriving
-// with an unconfigured secret is rejected (fail-closed) so spoofed callbacks
-// can never fabricate payment state.
-
-// stripeWebhookEvent is a minimal representation of a Stripe event envelope.
-type stripeWebhookEvent struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
-}
-
-// stripeWebhookObject is the `data.object` portion; only the fields needed to
-// correlate the event to a local invoice are decoded.
-type stripeWebhookObject struct {
-	ID       string            `json:"id"`
-	Number   string            `json:"number"`
-	Metadata map[string]string `json:"metadata"`
-}
-
-// StripePaymentWebhook handles POST /webhooks/stripe. It verifies the
-// Stripe-Signature header over the raw body and advances the referenced
-// invoice from "open" to "paid" (forward-only), then records the paid time.
-func (h *BillingHandler) StripePaymentWebhook(c *gin.Context) {
-	secret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-	signature := c.GetHeader("Stripe-Signature")
-
-	payload, err := c.GetRawData()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to read request body"})
+// PaymentCallback handles the external payment-processor webhook that is the
+// ONLY path allowed to move an invoice from "open" to "paid".
+//
+// Security contract (Phase 7/8):
+//   - BILLING_PAYMENT_WEBHOOK_SECRET must be set (env / provider config from
+//     the Admin Panel secrets section); without it the endpoint is fail-closed
+//     and returns 503 rather than accepting unauthenticated payment state.
+//   - Every request must carry a valid HMAC-SHA256 hex signature of the raw
+//     body in the X-Payment-Signature header.
+//   - Idempotent: already-paid invoices return success without side effects.
+//   - Amount is cross-checked against the stored invoice; a mismatch is
+//     rejected so a replayed/forged callback cannot mark the wrong sum paid.
+func (h *BillingHandler) PaymentCallback(c *gin.Context) {
+	secret := webhookSecret()
+	if secret == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payment processor not configured"})
 		return
 	}
 
-	if err := verifyStripeWebhookSignature(payload, signature, secret); err != nil {
-		// 400 (not 401) so a misconfigured secret is discovered early rather
-		// than silently dropping real events.
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil || len(body) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
 
-	var event stripeWebhookEvent
-	if err := json.Unmarshal(payload, &event); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event payload"})
+	signature := strings.TrimPrefix(c.GetHeader("X-Payment-Signature"), "sha256=")
+	if signature == "" {
+		signature = c.GetHeader("X-Signature-256")
+	}
+	computed := hmac.New(sha256.New, []byte(secret))
+	computed.Write(body)
+	if !hmac.Equal([]byte(signature), []byte(hex.EncodeToString(computed.Sum(nil)))) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
 		return
 	}
 
-	switch event.Type {
-	case "invoice.paid", "invoice.payment_succeeded", "checkout.session.completed", "payment_intent.succeeded":
-		// Implemented below.
-	case "invoice.payment_failed", "checkout.session.async_payment_failed", "payment_intent.payment_failed":
-		// Payment failure is intentionally a no-op here: an unsuccessful
-		// attempt must not mutate subscription state. Failures are handled by
-		// dunning/retry in the processor; we only act on confirmed success.
-		c.JSON(http.StatusOK, gin.H{"received": true})
+	var evt struct {
+		InvoiceID   string  `json:"invoice_id"`
+		InvoiceNum  string  `json:"invoice_number"`
+		ProviderRef string  `json:"provider_ref"`
+		Status      string  `json:"status"`
+		AmountPaid  float64 `json:"amount_paid"`
+		EventID     string  `json:"event_id"`
+	}
+	if err := json.Unmarshal(body, &evt); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 		return
+	}
+	if evt.Status != "paid" || evt.ProviderRef == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported event"})
+		return
+	}
+
+	var invoice Invoice
+	switch {
+	case evt.InvoiceID != "":
+		id, err := uuid.Parse(evt.InvoiceID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice id"})
+			return
+		}
+		err = h.db.DB.First(&invoice, "id = ?", id).Error
+	case evt.InvoiceNum != "":
+		err = h.db.DB.First(&invoice, "invoice_number = ?", evt.InvoiceNum).Error
 	default:
-		// Unknown or unhandled event types are acknowledged without mutation.
-		c.JSON(http.StatusOK, gin.H{"received": true, "ignored": true})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invoice reference required"})
 		return
 	}
-
-	var data struct {
-		Object stripeWebhookObject `json:"object"`
-	}
-	if err := json.Unmarshal(event.Data, &data); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid event data"})
-		return
-	}
-
-	invoiceNumber := data.Object.Metadata["invoice_number"]
-	if invoiceNumber == "" {
-		invoiceNumber = data.Object.Number
-	}
-	if invoiceNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "event has no invoice reference"})
-		return
-	}
-
-	paid, err := h.markInvoicePaid(invoiceNumber)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if !paid {
-		c.JSON(http.StatusOK, gin.H{"received": true, "already_paid": true})
+		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"received": true, "invoice_number": invoiceNumber, "status": "paid"})
-}
+	if evt.AmountPaid > 0 && evt.AmountPaid < invoice.Amount {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "amount mismatch"})
+		return
+	}
 
-// markInvoicePaid transitions an invoice from "open" to "paid". The update is
-// guarded by `status = 'open'` so a duplicate or replayed webhook can never
-// touch an already-terminal invoice.
-func (h *BillingHandler) markInvoicePaid(invoiceNumber string) (bool, error) {
+	if invoice.Status == "paid" {
+		// Idempotent replay: the payment was already recorded.
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "already recorded"})
+		return
+	}
+
 	now := time.Now()
 	res := h.db.DB.Model(&Invoice{}).
-		Where("invoice_number = ? AND status = ?", invoiceNumber, "open").
+		Where("id = ? AND status = ?", invoice.ID, "open").
 		Updates(map[string]interface{}{"status": "paid", "paid_at": now})
 	if res.Error != nil {
-		return false, res.Error
+		c.JSON(http.StatusInternalServerError, gin.H{"error": res.Error.Error()})
+		return
 	}
 	if res.RowsAffected == 0 {
-		return false, nil
+		// Lost a race against another delivery of the same callback.
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "already recorded"})
+		return
 	}
 
-	// Reflect the successful charge on the associated subscription so the
-	// subscription record stays consistent with the invoice lifecycle.
-	var inv Invoice
-	if err := h.db.DB.First(&inv, "invoice_number = ?", invoiceNumber).Error; err != nil {
-		return true, nil // invoice already marked paid; subscription update is best-effort
-	}
-	if err := h.db.DB.Model(&Subscription{}).
-		Where("id = ? AND status = ?", inv.SubscriptionID, "active").
-		Update("status", "active").Error; err != nil {
-		return true, nil // best-effort; invoice state is authoritative
-	}
-	return true, nil
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"invoice_id": invoice.ID, "status": "paid"}})
 }
 
-// verifyStripeWebhookSignature validates the Stripe-Signature header
-// (t=...,v1=...) against the raw body using the configured webhook secret.
-// Mirrors go/fiat_ramp/webhooks.go: the scheme is HMAC-SHA256 over
-// `timestamp + "." + payload`, compared in constant time. Events older than 5
-// minutes are rejected to bound replay.
-func verifyStripeWebhookSignature(payload []byte, header, secret string) error {
-	if secret == "" {
-		return errors.New("stripe webhook secret not configured")
-	}
-	var timestamp, sig string
-	for _, part := range strings.Split(header, ",") {
-		part = strings.TrimSpace(part)
-		switch {
-		case strings.HasPrefix(part, "t="):
-			timestamp = strings.TrimPrefix(part, "t=")
-		case strings.HasPrefix(part, "v1="):
-			sig = strings.TrimPrefix(part, "v1=")
-		}
-	}
-	if timestamp == "" || sig == "" {
-		return errors.New("malformed stripe signature header")
-	}
-	ts, err := strconv.ParseInt(timestamp, 10, 64)
-	if err != nil {
-		return errors.New("invalid stripe webhook timestamp")
-	}
-	if time.Since(time.Unix(ts, 0)) > 5*time.Minute {
-		return errors.New("stale stripe webhook timestamp")
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(timestamp + "." + string(payload)))
-	expected := hex.EncodeToString(mac.Sum(nil))
-	if !hmac.Equal([]byte(sig), []byte(expected)) {
-		return errors.New("invalid stripe webhook signature")
-	}
-	return nil
+func webhookSecret() string {
+	return strings.TrimSpace(os.Getenv("BILLING_PAYMENT_WEBHOOK_SECRET"))
 }

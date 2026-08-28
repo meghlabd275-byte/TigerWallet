@@ -209,6 +209,20 @@ func (s *Store) migrate(ctx context.Context) error {
 			UNIQUE(wl_client_id, product, fetcher, tx_type, token)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_auto_sign_rules_client_product ON auto_sign_rules(wl_client_id, product)`,
+		// No-resale audit: one row per drifting (client,product,instance)
+		// pair whose machine fingerprint stopped matching the bound one.
+		`CREATE TABLE IF NOT EXISTS wl_fingerprint_violations (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			wl_client_id UUID NOT NULL REFERENCES wl_clients(id) ON DELETE CASCADE,
+			product VARCHAR(64) NOT NULL,
+			instance_id VARCHAR(128) NOT NULL,
+			expected_fingerprint VARCHAR(128),
+			seen_fingerprint VARCHAR(128),
+			hostname VARCHAR(256),
+			first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (wl_client_id, product, instance_id)
+		)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(ctx, q); err != nil {
@@ -216,6 +230,19 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// isUndefinedTable detects PostgreSQL 42P01 (relation does not exist).
+func isUndefinedTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	type sqlStater interface{ SQLState() string }
+	var st sqlStater
+	if errors.As(err, &st) {
+		return st.SQLState() == "42P01"
+	}
+	return false
 }
 
 // --- SuperAdmin account ops ---
@@ -589,6 +616,49 @@ func (s *Store) RecordHeartbeat(ctx context.Context, wlClientID uuid.UUID, produ
 		 ON CONFLICT (wl_client_id, product, instance_id) DO UPDATE SET is_connected=TRUE, last_heartbeat=NOW(), heartbeat_latency_ms=$5, version=$6, hostname=$7, metadata=$8, updated_at=NOW()`,
 		uuid.New(), wlClientID, product, instanceID, latency, version, hostname, mj)
 	return err
+}
+
+// RecordFingerprint persists the declared machine fingerprint onto the product
+// state row (keep it in the metadata JSON so the schema is unchanged) and
+// returns whether it conflicts with a previously bound fingerprint. A
+// conflicting fingerprint means the license silently moved to a different
+// physical machine — the no-resale violation SuperAdmin must see.
+func (s *Store) RecordFingerprint(ctx context.Context, wlClientID uuid.UUID, product, instanceID, fingerprint, hostname string) (conflict bool, err error) {
+	if fingerprint == "" {
+		return false, nil
+	}
+	// Atomic: update the row only if either no fingerprint has been recorded
+	// yet or it matches. Any mismatch leaves the row unchanged and reports
+	// conflict=true.
+	res, err := s.db.Exec(ctx,
+		`UPDATE wl_product_state
+		    SET metadata = COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('machine_fingerprint', $4)
+		  WHERE wl_client_id=$1 AND product=$2 AND instance_id=$3
+		    AND (metadata->>'machine_fingerprint' IS NULL
+		         OR metadata->>'machine_fingerprint' = ''
+		         OR metadata->>'machine_fingerprint' = $4)`,
+		wlClientID, product, instanceID, fingerprint)
+	if err != nil {
+		return false, err
+	}
+	if res.RowsAffected() > 0 {
+		return false, nil
+	}
+	// Existing row carries a different fingerprint: machine drift.
+	if hostname == "" {
+		hostname = "unknown"
+	}
+	_, writeErr := s.db.Exec(ctx,
+		`INSERT INTO wl_fingerprint_violations (id, wl_client_id, product, instance_id, expected_fingerprint, seen_fingerprint, hostname, first_seen_at, last_seen_at)
+		 VALUES ($1,$2,$3,$4, COALESCE((SELECT metadata->>'machine_fingerprint' FROM wl_product_state WHERE wl_client_id=$2 AND product=$3 AND instance_id=$4),''), $5, $6, NOW(), NOW())
+		 ON CONFLICT (wl_client_id, product, instance_id) DO UPDATE SET seen_fingerprint=$5, hostname=$6, last_seen_at=NOW()`,
+		uuid.New(), wlClientID, product, instanceID, fingerprint, hostname)
+	if isUndefinedTable(writeErr) {
+		// Migration not yet applied: treat as conflict anyway, never silently
+		// accept drift because a table is missing.
+		return true, nil
+	}
+	return true, writeErr
 }
 
 // IsProductAlive returns whether the WL product may serve traffic: the WL

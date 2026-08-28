@@ -233,6 +233,166 @@ const MasterWallets = () => {
   );
 };
 
+// Users page — the wallet's owners (required for the multisig/threshold UX).
+const MasterUsers = () => {
+  interface UserRecord { id: string; name?: string; email?: string; role?: string; status?: string; }
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr(null);
+      const r = await apiFetch<{ users?: UserRecord[] }>('/api/v1/master-wallet/users');
+      setUsers(r?.users ?? []);
+      if (!authToken) setErr('Not authenticated — sign in to load users.');
+      setLoading(false);
+    })();
+  }, []);
+  return (
+    <div className="page">
+      <div className="page-head">
+        <h1 className="page-title">Users</h1>
+        <button className="action-btn green">👤 Add User</button>
+      </div>
+      {err && <div className="banner error">{err}</div>}
+      <div className="card table-card">
+        <table className="data-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+          <tbody>
+            {loading && <tr><td colSpan={4} className="empty-hint">Loading…</td></tr>}
+            {!loading && users.length === 0 && <tr><td colSpan={4} className="empty-hint">No users.</td></tr>}
+            {!loading && users.map(u => (
+              <tr key={u.id}>
+                <td>{u.name ?? '—'}</td>
+                <td>{u.email ?? '—'}</td>
+                <td>{u.role ?? '—'}</td>
+                <td><span className={`badge ${u.status === 'active' ? 'ok' : 'muted'}`}>{u.status ?? '—'}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Transactions page — the wallet's indexed transaction feed.
+const MasterTransactions = () => {
+  const [txs, setTxs] = useState<TxRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr(null);
+      const r = await apiFetch<{ transactions?: TxRecord[] }>('/api/v1/master-wallet/transactions');
+      setTxs(r?.transactions ?? []);
+      if (!authToken) setErr('Not authenticated — sign in to load transactions.');
+      setLoading(false);
+    })();
+  }, []);
+  return (
+    <div className="page">
+      <h1 className="page-title">Transactions</h1>
+      {err && <div className="banner error">{err}</div>}
+      <div className="card table-card">
+        <table className="data-table">
+          <thead><tr><th>Hash</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead>
+          <tbody>
+            {loading && <tr><td colSpan={6} className="empty-hint">Loading…</td></tr>}
+            {!loading && txs.length === 0 && <tr><td colSpan={6} className="empty-hint">No transactions.</td></tr>}
+            {!loading && txs.map(t => (
+              <tr key={t.hash}>
+                <td className="mono">{t.hash}</td>
+                <td className="mono">{t.from ?? '—'}</td>
+                <td className="mono">{t.to ?? '—'}</td>
+                <td>{t.amount ?? '—'}</td>
+                <td><span className={`badge ${t.status === 'confirmed' ? 'ok' : 'muted'}`}>{t.status ?? '—'}</span></td>
+                <td>{t.timestamp ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Auto Sign page — the auto-approver policy snapshot from the control plane.
+const MasterAutoSign = () => {
+  interface RuleRecord { name?: string; tx_type?: string; token?: string; action?: string; }
+  const [rules, setRules] = useState<RuleRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr(null);
+      const r = await apiFetch<{ rules?: RuleRecord[] }>('/api/v1/auto-sign/rules');
+      setRules(r?.rules ?? []);
+      if (!authToken) setErr('Not authenticated — sign in to load policy.');
+      setLoading(false);
+    })();
+  }, []);
+  return (
+    <div className="page">
+      <div className="page-head">
+        <h1 className="page-title">Auto-Sign Policy</h1>
+        <button className="action-btn orange">⚙️ Configure</button>
+      </div>
+      {err && <div className="banner error">{err}</div>}
+      <div className="card table-card">
+        <table className="data-table">
+          <thead><tr><th>Transaction Type</th><th>Asset</th><th>Policy</th></tr></thead>
+          <tbody>
+            {loading && <tr><td colSpan={3} className="empty-hint">Loading…</td></tr>}
+            {!loading && rules.length === 0 && <tr><td colSpan={3} className="empty-hint">No rules.</td></tr>}
+            {!loading && rules.map((r, i) => (
+              <tr key={i}>
+                <td>{r.name ?? r.tx_type ?? '—'}</td>
+                <td>{r.token ?? '—'}</td>
+                <td><span className={`badge ${r.action === 'auto' ? 'ok' : 'muted'}`}>{r.action ?? '—'}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// Analytics page — real per-wallet stats from the backend.
+const MasterAnalytics = () => {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      setLoading(true); setErr(null);
+      const r = await apiFetch<any>('/api/v1/master-wallet/stats');
+      setStats(r);
+      if (!authToken) setErr('Not authenticated — sign in to load analytics.');
+      setLoading(false);
+    })();
+  }, []);
+  return (
+    <div className="page">
+      <h1 className="page-title">Analytics</h1>
+      {err && <div className="banner error">{err}</div>}
+      <div className="card">
+        <h2 className="card-title">Live Backend Stats</h2>
+        <div className="page">
+          {loading && <div className="empty-hint">Loading…</div>}
+          {!loading && !stats && <div className="empty-hint">No stats returned.</div>}
+          {!loading && stats && Object.entries(stats.data ?? stats).map(([k, v]) => (
+            <div key={k} className="row-between">
+              <span>{k}</span><span className="mono">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Settings Component — appearance toggle controls the theme applied everywhere.
 const MasterSettings = () => {
   const { isDark, toggle } = useTheme();
@@ -267,8 +427,8 @@ const MasterSettings = () => {
 // so light/dark switching is consistent everywhere.
 const ThemeStyle = () => (
   <style>{`
-    /* The C++ ThemeManager injects a single `:root` palette at startup. These
-       `html[data-theme]` blocks mirror both palettes (kept in sync with
+    /* The C++ ThemeManager injects a single root palette at startup. These
+       html[data-theme] blocks mirror both palettes (kept in sync with
        src/ui/theme.cpp) with higher specificity, so the in-app toggle flips
        the theme without restarting the app. */
     html[data-theme="dark"] {
@@ -369,6 +529,10 @@ const MasterDesktopApp = () => {
           <main className="content">
             {page === 'dashboard' && <MasterDashboard />}
             {page === 'wallets' && <MasterWallets />}
+            {page === 'users' && <MasterUsers />}
+            {page === 'transactions' && <MasterTransactions />}
+            {page === 'auto-sign' && <MasterAutoSign />}
+            {page === 'analytics' && <MasterAnalytics />}
             {page === 'settings' && <MasterSettings />}
           </main>
         </div>

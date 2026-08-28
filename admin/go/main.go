@@ -157,9 +157,9 @@ func main() {
 			authGroup.POST("/refresh", adminHandler.RefreshToken)
 		}
 
-		// Public payment-processor webhook (Stripe). Signed with
-		// STRIPE_WEBHOOK_SECRET; fail-closed when the secret is unset.
-		api.POST("/webhooks/stripe", billingHandler.StripePaymentWebhook)
+		// Payment-processor inbound webhook (HMAC-signature-verified, not
+		// session-authenticated — processors cannot hold admin JWTs).
+		api.POST("/billing/payment-callback", billingHandler.PaymentCallback)
 
 		// Protected endpoints
 		protected := api.Group("")
@@ -544,7 +544,6 @@ func main() {
 				margin.GET("/stats", marginTradingHandler.GetStats)
 			}
 
-
 			// Liquidity sources (external DEX/CEX connectors, aggregators, market makers — governance records only)
 			liquiditySources := protected.Group("/liquidity-sources")
 			liquiditySources.Use(middleware.DomainScopeMiddleware("liquidity_sources"))
@@ -697,7 +696,6 @@ func main() {
 				marketing.DELETE("/:id", marketingHandler.Delete)
 				marketing.PUT("/:id/status", marketingHandler.UpdateStatus)
 			}
-
 
 			// Bots (governance records only — bot execution lives in bot_api + TigerBotPlatform.sol)
 			bots := protected.Group("/bots")

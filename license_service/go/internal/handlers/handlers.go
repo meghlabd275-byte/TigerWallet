@@ -489,11 +489,12 @@ func overlayKilledFetchers(flags []*store.FeatureFlag, killed map[string]string,
 // flag set + pending commands. Fail-closed: any non-active status returns 403.
 func (h *Handlers) ValidateLicense(c *gin.Context) {
 	var req struct {
-		LicenseKey string `json:"license_key" binding:"required"`
-		Product    string `json:"product" binding:"required"`
-		InstanceID string `json:"instance_id" binding:"required"`
-		Version    string `json:"version"`
-		Hostname   string `json:"hostname"`
+		LicenseKey  string `json:"license_key" binding:"required"`
+		Product     string `json:"product" binding:"required"`
+		InstanceID  string `json:"instance_id" binding:"required"`
+		Version     string `json:"version"`
+		Hostname    string `json:"hostname"`
+		Fingerprint string `json:"fingerprint"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -537,6 +538,21 @@ func (h *Handlers) ValidateLicense(c *gin.Context) {
 	}
 	// Record this validation as a heartbeat (the product is alive right now).
 	_ = h.store.RecordHeartbeat(ctx, lic.WLClientID, req.Product, req.InstanceID, 0, req.Version, req.Hostname, nil)
+	// Machine-fingerprint binding: after instance binding, the declared machine
+	// fingerprint must stay pinned to this instance. A mismatch means the
+	// license silently moved to another physical machine (no-resale violation).
+	fingerprint := c.GetHeader("X-Machine-Fingerprint")
+	if fingerprint == "" {
+		fingerprint = req.Fingerprint
+	}
+	if conflict, ferr := h.store.RecordFingerprint(ctx, lic.WLClientID, req.Product, req.InstanceID, fingerprint, req.Hostname); ferr != nil {
+		c.JSON(http.StatusForbidden, gin.H{"valid": false, "alive": false, "reason": "fingerprint_record_failed: " + ferr.Error(), "command": "halt"})
+		return
+	} else if conflict {
+		// Flag for SuperAdmin (violations row exists now) + refuse silently.
+		c.JSON(http.StatusForbidden, gin.H{"valid": false, "alive": false, "reason": "machine_fingerprint_mismatch", "command": "halt"})
+		return
+	}
 	// Mint a fresh signed token.
 	tok := crypto.NewToken(lic.ID.String(), lic.WLClientID.String(), lic.Product, lic.Plan, lic.Status,
 		lic.ValidFrom.Unix(), lic.ValidUntil.Unix(), lic.MaxUsers, lic.MaxWallets, lic.MaxBots, lic.Features, tokenTTL)
@@ -615,6 +631,20 @@ func (h *Handlers) Heartbeat(c *gin.Context) {
 		return
 	}
 	_ = h.store.RecordHeartbeat(ctx, lic.WLClientID, req.Product, req.InstanceID, req.LatencyMs, req.Version, req.Hostname, req.Metrics)
+	// Machine-fingerprint drift check (same contract as /license/validate).
+	fingerprint := c.GetHeader("X-Machine-Fingerprint")
+	if fingerprint == "" {
+		if fp, ok := req.Metrics["fingerprint"].(string); ok {
+			fingerprint = fp
+		}
+	}
+	if conflict, ferr := h.store.RecordFingerprint(ctx, lic.WLClientID, req.Product, req.InstanceID, fingerprint, req.Hostname); ferr != nil {
+		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": "fingerprint_record_failed: " + ferr.Error(), "command": "halt"})
+		return
+	} else if conflict {
+		c.JSON(http.StatusForbidden, gin.H{"alive": false, "reason": "machine_fingerprint_mismatch", "command": "halt"})
+		return
+	}
 	cmds, _ := h.store.DeliverPendingCommands(ctx, lic.WLClientID, req.Product)
 	flags, _ := h.store.ListFeatureFlags(ctx, lic.WLClientID, req.Product)
 	flags = overlayKilledFetchers(flags, h.hub.KilledFetchers(ctx, lic.WLClientID, req.Product), req.Product)

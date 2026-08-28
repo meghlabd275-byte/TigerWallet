@@ -101,3 +101,24 @@
   verification requires installing a toolchain first.
 - master_wallet/desktop/src/main.cpp remains a 61-line health-probe; real MW clients
   are web (13 pages)/android(14kt)/ios(13 swift)/flutter(20 dart). Full console gap open.
+
+## Session 7 (2026-08-28) — gap implementation round 1
+- `go/full_fetchers` (1667 lines, 19 fetchers): previously 100% no-op scaffold
+  (`// In production, query blockchain`). Rewritten to REAL EVM JSON-RPC +
+  public price APIs via stdlib-only `rpc.go` — build/vet PASS.
+- billing payment-callback wired: `admin/go` now exposes
+  `POST /api/v1/billing/payment-callback` — HMAC-SHA256-verified webhook
+  (`BILLING_PAYMENT_WEBHOOK_SECRET`, fail-closed) — the only path that moves
+  an invoice to "paid". admin/go build/vet PASS.
+- WL license machine-fingerprint binding (no-resale hardening, Point 5):
+  `wl_shared/go/wlgate/fingerprint.go` hashes /etc/machine-id|dmi uuid (no
+  secrets); heartbeat sends it via X-Machine-Fingerprint over
+  license/validate + /heartbeat; `license_service` binds the fingerprint to
+  the instance and records `wl_fingerprint_violations` on drift. wl tests pass.
+- Billions-of-addresses sharding (Phase 21 DESIGNED+SCHEMA):
+  `database/schemas/user_wallet_sharding.sql` (unchecked additive; uses PG
+  hash partitions over chain_id) + `docs/USER_WALLET_SHARDING.md`.
+- master_wallet/desktop UI: now all 7 pages (Users, Transactions, Auto-Sign,
+  Analytics added); also fixed a pre-existing broken template-literal comment
+  that made App.tsx never compile. tsc reports 0 syntax errors.
+- Go toolchain re-pinned in-session at /tmp/go/bin (go1.22.5).

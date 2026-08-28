@@ -303,9 +303,23 @@ func (g *Gate) HeartbeatLoop(ctx context.Context, cpURL, token, licenseKey, prod
 
 func (g *Gate) beat(ctx context.Context, client *http.Client, cpURL, token, licenseKey, product, instanceID string) {
 	url := fmt.Sprintf("%s/api/v1/license/validate", cpURL)
-	body := fmt.Sprintf(`{"license_key":%q,"product":%q,"instance_id":%q,"version":"1.0.0"}`, licenseKey, product, instanceID)
+	// Attach the machine fingerprint + hostname: the control plane binds the
+	// license to this physical machine (any drift is flagged for SuperAdmin,
+	// and drift on a different physical machine is rejected by policy).
+	// Nothing secret is transmitted — this is a hash, not an identifier of
+	// value to an attacker.
+	fingerprint := Fingerprint()
+	hostname := Hostname()
+	body := fmt.Sprintf(`{"license_key":%q,"product":%q,"instance_id":%q,"version":"1.0.0","hostname":%q,"fingerprint":%q}`,
+		licenseKey, product, instanceID, hostname, fingerprint)
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if fingerprint != "" {
+		req.Header.Set("X-Machine-Fingerprint", fingerprint)
+	}
+	if hostname != "" {
+		req.Header.Set("X-Machine-Hostname", hostname)
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -368,11 +382,11 @@ func (g *Gate) beat(ctx context.Context, client *http.Client, cpURL, token, lice
 // Fail-closed: if the control plane is unreachable or unconfigured, the
 // withdrawal is REFUSED (no payout without SuperAdmin co-sign).
 type TwoPartyGate struct {
-	cpURL     string
-	token     string
-	product   string
+	cpURL      string
+	token      string
+	product    string
 	wlClientID string
-	client    *http.Client
+	client     *http.Client
 }
 
 func NewTwoPartyGate(cpURL, token, product, wlClientID string) *TwoPartyGate {
