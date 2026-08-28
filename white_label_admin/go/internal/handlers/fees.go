@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -711,6 +712,39 @@ func (s *Svc) Disable2FA(c *gin.Context) {
 	}
 	_, _ = s.db.Exec(ctx, `UPDATE admin_users SET two_factor_enabled=false, two_factor_secret=NULL WHERE id=$1`, middleware.AdminID(c))
 	c.JSON(http.StatusOK, gin.H{"disabled": true})
+}
+
+// Verify2FA completes 2FA enrollment: after Enable2FA stores a fresh TOTP
+// secret, the admin scans it into an authenticator and submits a 6-digit
+// code here. On a valid RFC-6238 code, two_factor_enabled is set true so
+// login-time enforcement activates.
+func (s *Svc) Verify2FA(c *gin.Context) {
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ctx := c.Request.Context()
+	var secret string
+	var enabled bool
+	err := s.db.QueryRow(ctx, `SELECT two_factor_secret, two_factor_enabled FROM admin_users WHERE id=$1`, middleware.AdminID(c)).Scan(&secret, &enabled)
+	if err != nil || strings.TrimSpace(secret) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "2FA not set up - call POST /auth/2fa/enable first"})
+		return
+	}
+	if !verifyTOTP(secret, strings.TrimSpace(req.Code)) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid verification code"})
+		return
+	}
+	_, err = s.db.Exec(ctx, `UPDATE admin_users SET two_factor_enabled=true WHERE id=$1`, middleware.AdminID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	s.audit(ctx, middleware.AdminID(c), "auth.2fa.enable", "admin", middleware.AdminID(c).String(), nil)
+	c.JSON(http.StatusOK, gin.H{"enabled": true})
 }
 
 // Health endpoint.

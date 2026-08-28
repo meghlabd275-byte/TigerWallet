@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -52,8 +53,9 @@ func (s *Svc) deleteFeatureState(name string) {
 // ==================== Auth (real bcrypt + JWT with scopes) ====================
 
 type loginReq struct {
-	Email    string `json:"email" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Email         string `json:"email" binding:"required"`
+	Password      string `json:"password" binding:"required"`
+	TwoFactorCode string `json:"two_factor_code"`
 }
 
 func (s *Svc) Login(c *gin.Context) {
@@ -64,14 +66,15 @@ func (s *Svc) Login(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	var id uuid.UUID
-	var username, hash, role string
+	var username, hash, role, twoFactorSecret string
 	var wlID *uuid.UUID
 	var scopes []string
-	var isActive bool
+	var isActive, twoFactorEnabled bool
 	err := s.db.QueryRow(ctx,
-		`SELECT id, username, password_hash, role, white_label_id, scopes, is_active
+		`SELECT id, username, password_hash, role, white_label_id, scopes, is_active,
+		        two_factor_secret, two_factor_enabled
 		 FROM admin_users WHERE email=$1`, req.Email).
-		Scan(&id, &username, &hash, &role, &wlID, &scopes, &isActive)
+		Scan(&id, &username, &hash, &role, &wlID, &scopes, &isActive, &twoFactorSecret, &twoFactorEnabled)
 	if err != nil || !isActive {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
@@ -79,6 +82,20 @@ func (s *Svc) Login(c *gin.Context) {
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
+	}
+	// Fail-closed TOTP enforcement: when 2FA is enabled and a secret exists,
+	// require a valid 6-digit code (RFC 6238, +/-1 step window). A missing
+	// code returns 401 two_factor_required=true so the panel can prompt.
+	if twoFactorEnabled && strings.TrimSpace(twoFactorSecret) != "" {
+		code := strings.TrimSpace(req.TwoFactorCode)
+		if code == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "two_factor_required", "two_factor_required": true})
+			return
+		}
+		if !verifyTOTP(twoFactorSecret, code) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid two-factor code"})
+			return
+		}
 	}
 	_, _ = s.db.Exec(ctx, `UPDATE admin_users SET last_login=NOW() WHERE id=$1`, id)
 	tok, err := s.issueJWT(id, username, req.Email, role, wlID, scopes)

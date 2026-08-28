@@ -10,11 +10,13 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jackc/pgx/v5 v5.5.1
 	github.com/lib/pq v1.12.3
+	github.com/pquerna/otp v1.4.0
 	github.com/redis/go-redis/v9 v9.3.1
 	golang.org/x/crypto v0.18.0
 )
 
 require (
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/bytedance/sonic v1.10.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect

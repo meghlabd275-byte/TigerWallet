@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/lib/pq"
+	"github.com/pquerna/otp"
+	"github.com/pquerna/otp/totp"
 	"github.com/tigerwallet/super-admin/internal/config"
 	"github.com/tigerwallet/super-admin/internal/database"
 	"github.com/tigerwallet/super-admin/internal/middleware"
@@ -366,6 +368,7 @@ func main() {
 			admin.POST("/logout", handleLogout)
 			admin.POST("/change-password", handleChangePassword)
 			admin.POST("/2fa/enable", handleEnable2FA)
+			admin.POST("/2fa/verify", handleVerify2FA)
 			admin.POST("/2fa/disable", handleDisable2FA)
 
 			// Admin user management — SuperAdmin only (role assignment, suspend, delete)
@@ -540,8 +543,9 @@ func rowsToMaps(rows pgx.Rows) []map[string]interface{} {
 
 func handleLogin(c *gin.Context) {
 	var req struct {
-		Email    string `json:"email" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		Email          string `json:"email" binding:"required"`
+		Password       string `json:"password" binding:"required"`
+		TwoFactorCode  string `json:"two_factor_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -549,8 +553,9 @@ func handleLogin(c *gin.Context) {
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	var id, username, role, hash string
-	err := database.Pool.QueryRow(ctx, `SELECT id, username, role, password_hash FROM admin_users WHERE email=$1 AND is_active=true`, req.Email).Scan(&id, &username, &role, &hash)
+	var id, username, role, hash, twoFactorSecret string
+	var twoFactorEnabled bool
+	err := database.Pool.QueryRow(ctx, `SELECT id, username, role, password_hash, two_factor_secret, two_factor_enabled FROM admin_users WHERE email=$1 AND is_active=true`, req.Email).Scan(&id, &username, &role, &hash, &twoFactorSecret, &twoFactorEnabled)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
@@ -558,6 +563,23 @@ func handleLogin(c *gin.Context) {
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
+	}
+	// Fail-closed TOTP enforcement: when 2FA is enabled AND a TOTP secret exists,
+	// require a valid one-time code. A missing code returns 401 with
+	// two_factor_required=true so the client can prompt. An invalid code is
+	// rejected. Secrets are only ever set through the verified /2fa/setup +
+	// /2fa/verify flow, so this can never lock out an admin who has not
+	// completed real 2FA enrollment.
+	if twoFactorEnabled && strings.TrimSpace(twoFactorSecret) != "" {
+		code := strings.TrimSpace(req.TwoFactorCode)
+		if code == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "two_factor_required", "two_factor_required": true})
+			return
+		}
+		if !totp.Validate(code, twoFactorSecret) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid two-factor code"})
+			return
+		}
 	}
 	adminUUID, err := uuid.Parse(id)
 	if err != nil {
@@ -688,15 +710,69 @@ func handleChangePassword(c *gin.Context) {
 }
 
 func handleEnable2FA(c *gin.Context) {
-	if _, err := dbExec(c, `UPDATE admin_users SET two_factor_enabled=true, updated_at=NOW() WHERE id=$1`, c.GetString("user_id")); err != nil {
+	// Real TOTP setup: generate a fresh secret, persist it to admin_users
+	// (two_factor_enabled stays false until the admin verifies a code via
+	// /2fa/verify). Returns the otpauth URI for authenticator apps + a QR
+	// data URI. No fake/placeholder secrets.
+	userID := c.GetString("user_id")
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "TigerWalletSuperAdmin",
+		AccountName: userID,
+		Period:      30,
+		Digits:      otp.DigitsSix,
+		Algorithm:   otp.AlgorithmSHA1,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate 2FA secret"})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE admin_users SET two_factor_secret=$1, updated_at=NOW() WHERE id=$2`, key.Secret(), userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "2FA enabled"})
+	c.JSON(http.StatusOK, gin.H{
+		"secret":     key.Secret(),
+		"otpauth":    key.URL(),
+		"qr_data":    key.URL(),
+		"message":    "Scan the QR with your authenticator, then POST /2fa/verify with a 6-digit code to enable",
+		"enabled":    false,
+	})
+}
+
+// handleVerify2FA confirms 2FA enrollment: validates a TOTP code against the
+// stored secret and, on success, sets two_factor_enabled=true. Only after this
+// does login-time enforcement activate.
+func handleVerify2FA(c *gin.Context) {
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	userID := c.GetString("user_id")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	var secret string
+	err := database.Pool.QueryRow(ctx, `SELECT two_factor_secret FROM admin_users WHERE id=$1`, userID).Scan(&secret)
+	if err != nil || strings.TrimSpace(secret) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "2FA not set up — call POST /2fa/enable first"})
+		return
+	}
+	if !totp.Validate(strings.TrimSpace(req.Code), secret) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid verification code"})
+		return
+	}
+	if _, err := dbExec(c, `UPDATE admin_users SET two_factor_enabled=true, updated_at=NOW() WHERE id=$1`, userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "2FA enabled", "enabled": true})
 }
 
 func handleDisable2FA(c *gin.Context) {
-	if _, err := dbExec(c, `UPDATE admin_users SET two_factor_enabled=false, updated_at=NOW() WHERE id=$1`, c.GetString("user_id")); err != nil {
+	// Clear both the secret and the flag so a re-enroll requires a fresh setup.
+	if _, err := dbExec(c, `UPDATE admin_users SET two_factor_enabled=false, two_factor_secret=NULL, updated_at=NOW() WHERE id=$1`, c.GetString("user_id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

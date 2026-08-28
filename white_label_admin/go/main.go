@@ -111,6 +111,7 @@ func main() {
 			admin.POST("/auth/refresh", svc.RefreshToken)
 			admin.POST("/auth/change-password", svc.ChangePassword)
 			admin.POST("/auth/2fa/enable", svc.Enable2FA)
+			admin.POST("/auth/2fa/verify", svc.Verify2FA)
 			admin.POST("/auth/2fa/disable", svc.Disable2FA)
 
 			admin.GET("/admins", middleware.RequireScope(roles.WLClient), svc.ListAdmins)

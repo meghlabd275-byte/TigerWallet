@@ -56,10 +56,10 @@ class AdminApiService {
 
   // ==================== AUTHENTICATION ====================
   
-  async login(email: string, password: string): Promise<{ token: string; admin: any }> {
+  async login(email: string, password: string, twoFactorCode?: string): Promise<{ token: string; admin: any; two_factor_required?: boolean }> {
     return this.request('/api/v1/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, two_factor_code: twoFactorCode }),
     });
   }
 

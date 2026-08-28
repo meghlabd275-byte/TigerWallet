@@ -8,6 +8,8 @@ import adminApi from '../services/api';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -17,7 +19,15 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await adminApi.login(email, password);
+      const result = await adminApi.login(email, password, needsTwoFactor ? twoFactorCode : undefined);
+      if (result.two_factor_required) {
+        // Backend enforces TOTP (admin/go): prompt for the 6-digit code and
+        // re-submit the same credentials with the code.
+        setNeedsTwoFactor(true);
+        setError('Two-factor code required. Enter the code from your authenticator.');
+        setLoading(false);
+        return;
+      }
       adminApi.setToken(result.token);
       // Force a reload so App re-evaluates the token gate.
       window.location.reload();
@@ -162,6 +172,45 @@ export default function LoginPage() {
               onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
             />
           </div>
+          {needsTwoFactor && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '0.375rem',
+                }}
+              >
+                Two-Factor Code (6 digits)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={twoFactorCode}
+                onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="123456"
+                required={needsTwoFactor}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--border-primary)',
+                  backgroundColor: 'var(--input-bg)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.9375rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  letterSpacing: '0.25rem',
+                }}
+                onFocus={(e) => (e.target.style.borderColor = 'var(--color-primary)')}
+                onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+              />
+            </div>
+          )}
           <button
             type="submit"
             disabled={loading}
