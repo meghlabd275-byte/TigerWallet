@@ -683,13 +683,13 @@ func removeFavoriteHandler(db *pgxpool.Pool) gin.HandlerFunc {
 
 // ---- Auth (lightweight) ----
 
-// jwtSecret returns the JWT signing secret from env (fail-closed if unset in
-// production; a dev default is used only when JWT_SECRET is empty so local
-// development still works).
+// jwtSecret returns the JWT signing secret from env. Fail-closed: a missing
+// JWT_SECRET is a fatal startup error (no insecure dev default), matching the
+// white-label clone's hardening and the no-security-vulnerability directive.
 func jwtSecret() string {
 	s := os.Getenv("JWT_SECRET")
 	if s == "" {
-		return "project-party-dev-secret-change-in-production"
+		log.Fatal("JWT_SECRET environment variable is required (fail-closed, no default)")
 	}
 	return s
 }
