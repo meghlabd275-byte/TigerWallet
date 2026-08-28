@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/tigerwallet/admin/internal/config"
 	"github.com/tigerwallet/admin/internal/models"
 	"github.com/tigerwallet/admin/internal/services"
 	"github.com/tigerwallet/admin/pkg/database"
@@ -19,10 +20,10 @@ type TwoFactorHandler struct {
 }
 
 // NewTwoFactorHandler creates a new 2FA handler
-func NewTwoFactorHandler(db *database.PostgresDB, redis *redis.Client) *TwoFactorHandler {
+func NewTwoFactorHandler(db *database.PostgresDB, redis *redis.Client, cfg *config.Config) *TwoFactorHandler {
 	return &TwoFactorHandler{
 		db:               db,
-		twoFactorService: services.NewTwoFactorService(db, redis),
+		twoFactorService: services.NewTwoFactorService(db, redis, cfg),
 	}
 }
 

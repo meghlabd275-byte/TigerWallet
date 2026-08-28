@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tigerwallet/admin/internal/config"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/pquerna/otp/totp"
 	"gorm.io/gorm"
 )
 
@@ -36,8 +38,9 @@ func NewAdminHandler(db *database.PostgresDB, redisClient *redis.RedisClient, cf
 
 // AdminLoginRequest represents login request
 type AdminLoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email         string `json:"email" binding:"required,email"`
+	Password      string `json:"password" binding:"required"`
+	TwoFactorCode string `json:"two_factor_code"` // required only when 2FA is enabled
 }
 
 // AdminLoginResponse represents login response
@@ -91,10 +94,26 @@ func (h *AdminHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Check if 2FA is enabled
+	// Enforce 2FA when enabled. Look up the TOTP secret from the
+	// two_factor_auth table (user_type "admin") and validate the supplied
+	// code via the pquerna/otp TOTP validator. This is fail-closed: an
+	// enabled admin MUST supply a valid code to receive a JWT — no bypass.
 	if admin.TwoFactorEnabled {
-		// In production, would require 2FA code here
-		// For now, we'll skip 2FA verification
+		var twoFA models.TwoFactorAuth
+		if err := h.db.Where("user_id = ? AND user_type = ?", admin.ID, "admin").First(&twoFA).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "2FA is enabled but not configured. Contact a super admin."})
+			return
+		}
+		if strings.TrimSpace(req.TwoFactorCode) == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "2FA code required", "two_factor_required": true})
+			return
+		}
+		if !totp.Validate(req.TwoFactorCode, twoFA.Secret) {
+			// Log the failed 2FA attempt (do not reveal which factor failed)
+			h.logActivity(admin.ID, "login", "admin", strconv.FormatUint(uint64(admin.ID), 10), "Failed 2FA verification", c.ClientIP(), c.Request.UserAgent(), "failed", "invalid 2fa code")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid 2FA code"})
+			return
+		}
 	}
 
 	// Reset failed attempts on successful login

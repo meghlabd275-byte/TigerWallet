@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tigerwallet/admin/internal/config"
 	"github.com/tigerwallet/admin/internal/models"
 	"github.com/tigerwallet/admin/pkg/database"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -25,13 +27,15 @@ import (
 type TwoFactorService struct {
 	db    *database.PostgresDB
 	redis *redis.Client
+	cfg   *config.Config
 }
 
 // NewTwoFactorService creates a new 2FA service
-func NewTwoFactorService(db *database.PostgresDB, redis *redis.Client) *TwoFactorService {
+func NewTwoFactorService(db *database.PostgresDB, redis *redis.Client, cfg *config.Config) *TwoFactorService {
 	return &TwoFactorService{
 		db:    db,
 		redis: redis,
+		cfg:   cfg,
 	}
 }
 
@@ -240,6 +244,21 @@ func (s *TwoFactorService) Enable2FA(c *gin.Context, req Enable2FARequest) error
 		return fmt.Errorf("failed to enable 2FA: %w", err)
 	}
 
+	// Sync the two_factor_enabled flag back onto the owning user record so
+	// login-time enforcement (which reads Admin.TwoFactorEnabled /
+	// SuperAdmin.TwoFactorEnabled) actually triggers. Without this, the flag
+	// stays false and login enforcement is bypassed even though a TOTP secret
+	// exists. Fail-closed: a sync error rolls back the whole enablement.
+	if req.UserType == "admin" {
+		if err := s.db.Model(&models.Admin{}).Where("id = ?", req.UserID).
+			Updates(map[string]interface{}{"two_factor_enabled": true, "two_factor_secret": secret}).Error; err != nil {
+			// Roll back the TwoFactorAuth record so state stays consistent.
+			s.db.Model(&models.TwoFactorAuth{}).Where("user_id = ? AND user_type = ?", req.UserID, req.UserType).
+				Update("enabled", false)
+			return fmt.Errorf("failed to sync 2FA flag to admin record: %w", err)
+		}
+	}
+
 	// Delete temporary secret
 	s.redis.Del(c.Request.Context(), redisKey)
 
@@ -305,9 +324,14 @@ func (s *TwoFactorService) Disable2FA(c *gin.Context, req Disable2FARequest) err
 		storedPassword = user.PasswordHash
 	}
 
-	// Verify password (simplified - in production use proper bcrypt)
-	inputHash := fmt.Sprintf("%x", sha256.Sum256([]byte(req.Password)))
-	if inputHash != storedPassword {
+	// Verify password using bcrypt (+ pepper for admin), matching the login
+	// hashing path. The previous implementation compared a sha256 hex digest
+	// to a bcrypt hash, which always failed — so 2FA could never be disabled.
+	inputPassword := req.Password
+	if req.UserType == "admin" {
+		inputPassword = req.Password + s.cfg.PasswordPepper
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(inputPassword)); err != nil {
 		return fmt.Errorf("invalid password")
 	}
 
@@ -320,6 +344,15 @@ func (s *TwoFactorService) Disable2FA(c *gin.Context, req Disable2FARequest) err
 
 	if err != nil {
 		return fmt.Errorf("failed to disable 2FA: %w", err)
+	}
+
+	// Sync the two_factor_enabled flag on the owning admin record so login
+	// enforcement stops requiring a code (mirrors the Enable2FA sync).
+	if req.UserType == "admin" {
+		if err := s.db.Model(&models.Admin{}).Where("id = ?", req.UserID).
+			Updates(map[string]interface{}{"two_factor_enabled": false, "two_factor_secret": ""}).Error; err != nil {
+			return fmt.Errorf("failed to sync 2FA flag to admin record: %w", err)
+		}
 	}
 
 	// Log activity

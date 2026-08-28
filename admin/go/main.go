@@ -92,7 +92,7 @@ func main() {
 	apiKeyHandler := handlers.NewAPIKeyHandler(db)
 	analyticsHandler := handlers.NewAnalyticsHandler(db)
 	superAdminHandler := handlers.NewSuperAdminHandler(db, redisClient, cfg, authSvc)
-	twoFactorHandler := handlers.NewTwoFactorHandler(db, redisClient.Client)
+	twoFactorHandler := handlers.NewTwoFactorHandler(db, redisClient.Client, cfg)
 	notificationHandler := handlers.NewNotificationHandler(db)
 	supportHandler := handlers.NewSupportHandler(db)
 	integrationHandler := handlers.NewIntegrationHandler(db, redisClient.Client)
