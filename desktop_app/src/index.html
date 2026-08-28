@@ -245,37 +245,24 @@
                     <h4>Staking</h4>
                     <div class="staking-tabs">
                         <button class="staking-tab active" data-tab="stake">Stake</button>
-                        <button class="staking-tab" data-tab="earn">Earn</button>
                         <button class="staking-tab" data-tab="pools">Pools</button>
                     </div>
-                    <div class="staking-content">
-                        <div class="staking-pool-selector">
-                            <div class="pool-card active">
-                                <div class="pool-name">ETH 2.0</div>
-                                <div class="pool-apy">APY: 4.2%</div>
-                            </div>
-                            <div class="pool-card">
-                                <div class="pool-name">BNB</div>
-                                <div class="pool-apy">APY: 3.8%</div>
-                            </div>
-                            <div class="pool-card">
-                                <div class="pool-name">SOL</div>
-                                <div class="pool-apy">APY: 6.5%</div>
-                            </div>
-                            <div class="pool-card">
-                                <div class="pool-name">MATIC</div>
-                                <div class="pool-apy">APY: 5.2%</div>
-                            </div>
-                        </div>
-                        <div class="stake-input-section">
-                            <div class="stake-label">Amount</div>
-                            <div class="stake-input-row">
-                                <input type="text" id="stake-amount" placeholder="0.0" class="stake-input">
-                                <button class="max-btn">MAX</button>
-                            </div>
-                        </div>
-                        <button id="stake-btn" class="btn-primary stake-btn">Stake</button>
+                    <div id="staking-pools" class="staking-pool-selector">
+                        <div class="no-transactions">Loading staking assets…</div>
                     </div>
+                    <div class="stake-input-section">
+                        <div class="stake-label">Amount</div>
+                        <div class="stake-input-row">
+                            <input type="text" id="stake-amount" placeholder="0.0" class="stake-input">
+                            <input type="text" id="stake-asset" placeholder="asset symbol (e.g. ETH)" class="stake-input">
+                            <button class="max-btn" id="stake-max-btn">MAX</button>
+                        </div>
+                        <div class="stake-label">Chain ID</div>
+                        <input type="number" id="stake-chain-id" value="1" class="stake-input" style="margin-top:6px">
+                    </div>
+                    <button id="stake-btn" class="btn-primary stake-btn">Stake</button>
+                    <button id="unstake-btn" class="btn-secondary stake-btn" style="margin-left:8px">Unstake</button>
+                    <button id="claim-btn" class="btn-secondary stake-btn" style="margin-left:8px">Claim</button>
                 </div>
 
                 <!-- Bridge Page -->
@@ -284,25 +271,17 @@
                     <div class="bridge-container">
                         <div class="bridge-card">
                             <div class="bridge-label">From</div>
-                            <select id="bridge-from-chain">
-                                <option value="ethereum">Ethereum</option>
-                                <option value="polygon">Polygon</option>
-                                <option value="arbitrum">Arbitrum</option>
-                            </select>
+                            <select id="bridge-from-chain"></select>
                             <input type="text" id="bridge-amount" placeholder="0.0" class="bridge-input">
                         </div>
                         <div class="bridge-icon">🌉</div>
                         <div class="bridge-card">
                             <div class="bridge-label">To</div>
-                            <select id="bridge-to-chain">
-                                <option value="polygon">Polygon</option>
-                                <option value="ethereum">Ethereum</option>
-                                <option value="arbitrum">Arbitrum</option>
-                            </select>
+                            <select id="bridge-to-chain"></select>
                         </div>
-                        <div class="bridge-info">
-                            <div>Estimated Time: ~10-30 minutes</div>
-                            <div>Fee: ~0.1%</div>
+                        <div id="bridge-info" class="bridge-info">
+                            <div>Estimated Time: —</div>
+                            <div>Fee: —</div>
                         </div>
                         <button id="bridge-btn" class="btn-primary bridge-btn">Bridge</button>
                     </div>
@@ -313,34 +292,9 @@
                     <h4>NFT Gallery</h4>
                     <div class="nft-tabs">
                         <button class="nft-tab active">Collectibles</button>
-                        <button class="nft-tab">Activity</button>
-                        <button class="nft-tab">OpenSea</button>
                     </div>
-                    <div class="nft-grid">
-                        <div class="nft-card">
-                            <div class="nft-image">🦍</div>
-                            <div class="nft-name">Bored Ape #1234</div>
-                            <div class="nft-collection">Bored Ape Yacht Club</div>
-                            <div class="nft-price">45.5 ETH</div>
-                        </div>
-                        <div class="nft-card">
-                            <div class="nft-image">👾</div>
-                            <div class="nft-name">CryptoPunk #5678</div>
-                            <div class="nft-collection">CryptoPunks</div>
-                            <div class="nft-price">32.0 ETH</div>
-                        </div>
-                        <div class="nft-card">
-                            <div class="nft-image">🥷</div>
-                            <div class="nft-name">Azuki #9012</div>
-                            <div class="nft-collection">Azuki</div>
-                            <div class="nft-price">15.2 ETH</div>
-                        </div>
-                        <div class="nft-card">
-                            <div class="nft-image">🎨</div>
-                            <div class="nft-name">Doodle #3456</div>
-                            <div class="nft-collection">Doodles</div>
-                            <div class="nft-price">3.5 ETH</div>
-                        </div>
+                    <div id="nft-grid" class="nft-grid">
+                        <div class="no-transactions">Loading NFTs…</div>
                     </div>
                 </div>
 

@@ -39,7 +39,7 @@ class StakingService {
                 body: JSON.stringify({
                     wallet_id: walletId,
                     password,
-                    asset,
+                    token: asset,
                     amount: amount.toString(),
                     chain_id: chainId,
                     validator,
@@ -63,7 +63,7 @@ class StakingService {
                 body: JSON.stringify({
                     wallet_id: walletId,
                     password,
-                    asset,
+                    token: asset,
                     amount: amount.toString(),
                     chain_id: chainId,
                 }),
@@ -86,7 +86,7 @@ class StakingService {
                 body: JSON.stringify({
                     wallet_id: walletId,
                     password,
-                    asset,
+                    token: asset,
                     chain_id: chainId,
                 }),
             });

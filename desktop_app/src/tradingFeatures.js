@@ -5,82 +5,68 @@
 // Futures Trading
 // ============================================================================
 
+const TW_API_BASE = 'http://localhost:8443/api/v1';
+
 class FuturesService {
   constructor() {
-    this.pairs = this.generatePairs();
+    // Pair catalog is populated lazily from the live price feed (GET /price);
+    // no fabricated prices/volumes. Native tokens come from the chain registry.
+    this.pairs = [];
+    this._loaded = false;
   }
 
-  generatePairs() {
-    const pairs = [];
-    const bases = [
-      'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
-      'MATIC', 'LTC', 'UNI', 'ATOM', 'XLM', 'NEAR', 'APT', 'ARB', 'OP', 'INJ',
-      'PEPE', 'SHIB', 'TRX', 'FIL', 'ALGO', 'VET', 'ICP', 'HBAR', 'QNT', 'MKR',
-      'AAVE', 'GRT', 'SNX', 'CRV', 'LDO', 'RUNE', 'STX', 'KAVA', 'FLOW', 'AXS',
-      'SAND', 'MANA', 'ENJ', 'CHZ', 'BAT', 'ZEC', 'DASH', 'XMR', 'NEO', 'EOS',
-    ];
+  // Build the futures pair catalog from the live chain registry + price oracle.
+  // Price/change come from GET /price?token= (CoinGecko-backed); volume/high/
+  // low are NOT fabricated — they default to 0 until a market-data feed exists.
+  async loadPairs() {
+    if (this._loaded) return this.pairs;
+    let bases = [];
+    try {
+      const res = await fetch(`${TW_API_BASE}/chains`);
+      if (res.ok) {
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
+        bases = arr.map(c => c.symbol || c.native_currency).filter(Boolean);
+      }
+    } catch (e) { /* registry unreachable */ }
+    if (!bases.length) bases = ['ETH']; // never fabricate a fake catalog
     const quotes = ['USDT', 'USDC'];
-    const prices = {
-      'BTC': 43250, 'ETH': 2280, 'BNB': 312.5, 'SOL': 98.75, 'XRP': 0.62,
-      'DOGE': 0.082, 'ADA': 0.58, 'AVAX': 38.20, 'DOT': 7.85, 'LINK': 14.50,
-      'MATIC': 0.92, 'LTC': 72.30, 'UNI': 6.25, 'ATOM': 10.45, 'XLM': 0.125,
-      'NEAR': 3.25, 'APT': 9.80, 'ARB': 1.12, 'OP': 2.45, 'INJ': 35.50,
-    };
-
     let id = 0;
-    // Top 200 pre-installed pairs
-    for (let i = 0; i < bases.length; i++) {
+    for (const base of bases) {
       for (const quote of quotes) {
-        if (bases[i] !== quote) {
-          id++;
-          const price = prices[bases[i]] || 10.0;
-          pairs.push({
-            id: `pair-${id}`,
-            base: bases[i],
-            quote: quote,
-            symbol: `${bases[i]}/${quote}`,
-            price: price,
-            change24h: 0,  // real 24h change comes from the backend price feed
-            volume24h: 0,  // real volume comes from the backend market feed
-            high24h: price * 1.05,
-            low24h: price * 0.95,
-            status: 'active',
-            isPreInstalled: id <= 200,
-            category: 'futures',
-            minOrderSize: 0.001,
-            maxOrderSize: 1000000,
-            makerFee: 0.02,
-            takerFee: 0.04,
-          });
-        }
+        if (base === quote) continue;
+        id++;
+        let price = 0, change24h = 0;
+        try {
+          const pr = await fetch(`${TW_API_BASE}/price?token=${encodeURIComponent(base)}`);
+          if (pr.ok) {
+            const pj = await pr.json();
+            price = pj.usd || 0;
+            change24h = pj.usd_24h_change || 0;
+          }
+        } catch (e) { /* leave 0 */ }
+        this.pairs.push({
+          id: `pair-${id}`,
+          base,
+          quote,
+          symbol: `${base}/${quote}`,
+          price,            // live oracle price (0 if unavailable)
+          change24h,        // live 24h change (0 if unavailable)
+          volume24h: 0,     // real volume comes from a market-data feed (none yet)
+          high24h: 0,       // not fabricated
+          low24h: 0,        // not fabricated
+          status: 'active',
+          isPreInstalled: true,
+          category: 'futures',
+          minOrderSize: 0.001,
+          maxOrderSize: 1000000,
+          makerFee: 0.02,
+          takerFee: 0.04,
+        });
       }
     }
-
-    // Additional pairs to reach 50,000+
-    for (let i = 201; i <= 50000; i++) {
-      const base = `TOKEN${i}`;
-      const price = 10.0 + i * 0.001;
-      pairs.push({
-        id: `pair-${i}`,
-        base: base,
-        quote: 'USDT',
-        symbol: `${base}/USDT`,
-        price: price,
-        change24h: 0,  // real 24h change comes from the backend price feed
-        volume24h: 1000 + (i % 10000),
-        high24h: price * 1.05,
-        low24h: price * 0.95,
-        status: 'active',
-        isPreInstalled: false,
-        category: 'futures',
-        minOrderSize: 1,
-        maxOrderSize: 1000000,
-        makerFee: 0.02,
-        takerFee: 0.04,
-      });
-    }
-
-    return pairs;
+    this._loaded = true;
+    return this.pairs;
   }
 
   getAllPairs() {
@@ -93,6 +79,37 @@ class FuturesService {
 
   getPair(symbol) {
     return this.pairs.find(p => p.symbol === symbol);
+  }
+
+  // Real perpetual positions from the canonical backend (GET /perpetual/positions).
+  // Never fabricates a position list.
+  async getPositions() {
+    try {
+      const res = await fetch(`${TW_API_BASE}/perpetual/positions`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.data) ? data.data : (Array.isArray(data.positions) ? data.positions : []);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Open a perpetual position (POST /perpetual/positions). The backend records
+  // + risk-checks the position; the client never fabricates PnL/liquidation.
+  async openPosition({ walletId, password, symbol, side, size, leverage, chainId }) {
+    const res = await fetch(`${TW_API_BASE}/perpetual/positions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet_id: walletId, password, symbol, side, size, leverage, chain_id: chainId })
+    });
+    return res.ok ? await res.json() : { error: await res.text() };
+  }
+
+  async closePosition(positionId) {
+    const res = await fetch(`${TW_API_BASE}/perpetual/positions/${positionId}/close`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    return res.ok ? await res.json() : { error: await res.text() };
   }
 
   calculateRequiredMargin(orderValue, leverage) {
@@ -114,7 +131,8 @@ class FuturesService {
 
 class OptionsService {
   constructor() {
-    this.pairs = this.generatePairs();
+    this.pairs = [];
+    this._loaded = false;
     this.expiries = [
       { value: '1h', label: '1 Hour' },
       { value: '4h', label: '4 Hours' },
@@ -126,44 +144,39 @@ class OptionsService {
     ];
   }
 
-  generatePairs() {
-    const pairs = [];
-    const bases = [
-      'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
-      'MATIC', 'LTC', 'UNI', 'ATOM', 'XLM', 'NEAR', 'APT', 'ARB', 'OP', 'INJ',
-    ];
-    const prices = {
-      'BTC': 43250, 'ETH': 2280, 'BNB': 312.5, 'SOL': 98.75, 'XRP': 0.62,
-      'DOGE': 0.082, 'ADA': 0.58, 'AVAX': 38.20, 'DOT': 7.85, 'LINK': 14.50,
-      'MATIC': 0.92, 'LTC': 72.30, 'UNI': 6.25, 'ATOM': 10.45, 'XLM': 0.125,
-      'NEAR': 3.25, 'APT': 9.80, 'ARB': 1.12, 'OP': 2.45, 'INJ': 35.50,
-    };
-
-    // Top 20 pre-installed
-    for (let i = 0; i < bases.length; i++) {
-      pairs.push({
-        id: `pair-${i}`,
-        symbol: `${bases[i]}/USDT`,
-        base: bases[i],
+  // Build the options pair catalog from the live chain registry + price oracle.
+  // No fabricated prices; currentPrice comes from GET /price (0 if unavailable).
+  async loadPairs() {
+    if (this._loaded) return this.pairs;
+    let bases = [];
+    try {
+      const res = await fetch(`${TW_API_BASE}/chains`);
+      if (res.ok) {
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
+        bases = arr.map(c => c.symbol || c.native_currency).filter(Boolean);
+      }
+    } catch (e) { /* registry unreachable */ }
+    if (!bases.length) bases = ['ETH'];
+    let id = 0;
+    for (const base of bases) {
+      id++;
+      let price = 0;
+      try {
+        const pr = await fetch(`${TW_API_BASE}/price?token=${encodeURIComponent(base)}`);
+        if (pr.ok) { const pj = await pr.json(); price = pj.usd || 0; }
+      } catch (e) { /* leave 0 */ }
+      this.pairs.push({
+        id: `pair-${id}`,
+        symbol: `${base}/USDT`,
+        base,
         quote: 'USDT',
-        currentPrice: prices[bases[i]] || 10.0,
-        isPreInstalled: i < 20,
+        currentPrice: price, // live oracle price (0 if unavailable)
+        isPreInstalled: true,
       });
     }
-
-    // Additional to 50,000+
-    for (let i = 20; i < 50000; i++) {
-      pairs.push({
-        id: `pair-${i}`,
-        symbol: `TOKEN${i}/USDT`,
-        base: `TOKEN${i}`,
-        quote: 'USDT',
-        currentPrice: 10.0 + i * 0.001,
-        isPreInstalled: false,
-      });
-    }
-
-    return pairs;
+    this._loaded = true;
+    return this.pairs;
   }
 
   getPairs() {
@@ -178,46 +191,11 @@ class OptionsService {
     return this.expiries;
   }
 
+  // The options chain is NOT available until a real options market-data feed
+  // (premiums/IV/greeks) is wired to the backend. We refuse to fabricate
+  // bid/ask/premium/greeks — return an empty chain when no feed exists.
   getOptionChain(currentPrice, expiry) {
-    const contracts = [];
-    const step = currentPrice > 1000 ? 500 : currentPrice > 100 ? 50 : currentPrice > 10 ? 5 : 0.5;
-    const range = currentPrice * 0.15;
-
-    for (let strike = currentPrice - range; strike <= currentPrice + range; strike += step) {
-      // Call
-      const callPrice = Math.abs(currentPrice - strike) * 0.5  // premium from backend options feed;
-      contracts.push({
-        id: `call-${strike.toFixed(2)}-${expiry}`,
-        type: 'call',
-        strike: strike,
-        expiry: expiry,
-        bid: callPrice * 0.95,
-        ask: callPrice * 1.05,
-        last: callPrice,
-        change24h: 0,  // real 24h change comes from the backend options feed
-        impliedVolatility: 0,  // real IV comes from the backend options feed
-        delta: 0,  // real delta comes from the backend options feed
-        theta: 0,  // real theta comes from the backend options feed
-      });
-
-      // Put
-      const putPrice = Math.abs(strike - currentPrice) * 0.5  // premium from backend options feed;
-      contracts.push({
-        id: `put-${strike.toFixed(2)}-${expiry}`,
-        type: 'put',
-        strike: strike,
-        expiry: expiry,
-        bid: putPrice * 0.95,
-        ask: putPrice * 1.05,
-        last: putPrice,
-        change24h: 0,  // real 24h change comes from the backend options feed
-        impliedVolatility: 0,  // real IV comes from the backend options feed
-        delta: 0,  // real delta comes from the backend options feed
-        theta: 0,  // real theta comes from the backend options feed
-      });
-    }
-
-    return contracts;
+    return [];
   }
 }
 
@@ -227,67 +205,52 @@ class OptionsService {
 
 class CopyTradingService {
   constructor() {
-    this.traders = this.generateTraders();
+    this.traders = [];
+    this._loaded = false;
   }
 
-  generateTraders() {
-    const traders = [];
-    const preInstalled = [
-      { username: 'CryptoWhale', avatar: '🐋', winRate: 78.5, totalPnL: 125000, pair: 'BTC/USDT', risk: 'medium' },
-      { username: 'DeFiMaster', avatar: '🎯', winRate: 82.3, totalPnL: 98500, pair: 'ETH/USDT', risk: 'low' },
-      { username: 'AltSeason', avatar: '🚀', winRate: 71.2, totalPnL: 87000, pair: 'SOL/USDT', risk: 'high' },
-      { username: 'GridTrader', avatar: '📊', winRate: 85.1, totalPnL: 67800, pair: 'BNB/USDT', risk: 'low' },
-      { username: 'MomentumKing', avatar: '👑', winRate: 75.8, totalPnL: 54200, pair: 'DOGE/USDT', risk: 'high' },
-    ];
+  // Fetch the REAL trader leaderboard from the canonical copy_trading backend
+  // (proxied via wallet_api at GET /copytrading/traders, DB-backed). Never
+  // fabricates a trader roster, win-rate, PnL, or follower counts.
+  async loadTraders() {
+    if (this._loaded) return this.traders;
+    try {
+      const res = await fetch(`${TW_API_BASE}/copytrading/traders`);
+      if (res.ok) {
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : (data.traders || data.data || []);
+        this.traders = arr.map((t, i) => ({
+          id: t.id || `trader-${i + 1}`,
+          username: t.username || t.name || 'Anonymous',
+          avatar: t.avatar || '👤',
+          winRate: t.win_rate ?? t.winRate ?? 0,
+          totalPnL: t.total_pnl ?? t.pnl ?? 0,
+          pnlPercent: t.pnl_percent ?? 0,
+          followers: t.followers ?? 0,
+          copyCount: t.copy_count ?? 0,
+          tradingPair: t.trading_pair || t.pair || '',
+          monthlyPnL: t.monthly_pnl ?? 0,
+          weeklyPnL: t.weekly_pnl ?? 0,
+          dailyPnL: t.daily_pnl ?? 0,
+          maxDrawdown: t.max_drawdown ?? 0,
+          riskLevel: t.risk_level || t.risk || 'medium',
+          isFollowing: !!t.is_following,
+          isPreInstalled: !!t.is_pre_installed,
+        }));
+      }
+    } catch (e) { /* backend unreachable: leave empty */ }
+    this._loaded = true;
+    return this.traders;
+  }
 
-    for (let i = 0; i < preInstalled.length; i++) {
-      const t = preInstalled[i];
-      traders.push({
-        id: `trader-${i + 1}`,
-        username: t.username,
-        avatar: t.avatar,
-        winRate: t.winRate,
-        totalPnL: t.totalPnL,
-        pnlPercent: 0,  // real PnL comes from on-chain history
-        followers: 5000 + i * 2000,
-        copyCount: 1000 + i * 500,
-        tradingPair: t.pair,
-        monthlyPnL: 0,  // real PnL comes from on-chain history
-        weeklyPnL: 0,  // real PnL comes from on-chain history
-        dailyPnL: 0,  // real PnL comes from on-chain history
-        maxDrawdown: 0,  // real drawdown comes from on-chain history
-        riskLevel: t.risk,
-        isFollowing: false,
-        isPreInstalled: true,
-      });
-    }
-
-    const avatars = ['🐵', '🦊', '🦁', '🐯', '🐲'];
-    const pairs = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT'];
-    const risks = ['low', 'medium', 'high'];
-
-    for (let i = 0; i < 500; i++) {
-      traders.push({
-        id: `trader-${i + 100}`,
-        username: `Trader${i + 100}`,
-        avatar: avatars[i % avatars.length],
-        winRate: 0,  // real win-rate comes from on-chain history
-        totalPnL: 1000 + i * 200,
-        pnlPercent: 0,  // real PnL comes from on-chain history
-        followers: 100 + i * 20,
-        copyCount: 50 + i * 10,
-        tradingPair: pairs[i % pairs.length],
-        monthlyPnL: 0,  // real PnL comes from on-chain history
-        weeklyPnL: 0,  // real PnL comes from on-chain history
-        dailyPnL: 0,  // real PnL comes from on-chain history
-        maxDrawdown: 0,  // real drawdown comes from on-chain history
-        riskLevel: risks[i % 3],
-        isFollowing: false,
-        isPreInstalled: false,
-      });
-    }
-
-    return traders;
+  // Follow / stop-following a trader (POST /copytrading/follow).
+  async follow(traderId, walletId) {
+    const res = await fetch(`${TW_API_BASE}/copytrading/follow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trader_id: traderId, wallet_id: walletId })
+    });
+    return res.ok ? await res.json() : { error: await res.text() };
   }
 
   getAllTraders() {
@@ -310,87 +273,75 @@ class CopyTradingService {
 
 class ConvertService {
   constructor() {
-    this.pairs = this.initializePairs();
+    // No hardcoded rates or balances; everything comes from the live backend
+    // (GET /swap/quote for cross-rates, GET /chains for the token catalog).
+    this.pairs = {};
     this.balances = {};
   }
 
-  initializePairs() {
-    const pairs = {};
-    const data = [
-      { from: 'BTC', to: 'USDT', rate: 43250 },
-      { from: 'ETH', to: 'USDT', rate: 2280 },
-      { from: 'BNB', to: 'USDT', rate: 312.5 },
-      { from: 'SOL', to: 'USDT', rate: 98.75 },
-      { from: 'USDC', to: 'USDT', rate: 1.0001 },
-      { from: 'USDT', to: 'USDC', rate: 0.9999 },
-    ];
-
-    for (const p of data) {
-      const key = `${p.from}_${p.to}`;
-      pairs[key] = {
-        from: p.from,
-        to: p.to,
-        rate: p.rate,
-        inverseRate: 1 / p.rate,
-        fee: 0.1,
-        enabled: true,
-      };
-    }
-    return pairs;
-  }
-
-  getAvailableTokens() {
-    return [
-      { symbol: 'USDT', name: 'Tether USD', balance: 50000, icon: '💵' },
-      { symbol: 'USDC', name: 'USD Coin', balance: 25000, icon: '💳' },
-      { symbol: 'BTC', name: 'Bitcoin', balance: 0.5, icon: '₿' },
-      { symbol: 'ETH', name: 'Ethereum', balance: 5, icon: 'Ξ' },
-      { symbol: 'BNB', name: 'BNB', balance: 50, icon: '⬡' },
-      { symbol: 'SOL', name: 'Solana', balance: 100, icon: '◎' },
-    ];
-  }
-
-  getRate(from, to) {
-    const directKey = `${from}_${to}`;
-    if (this.pairs[directKey] && this.pairs[directKey].enabled) {
-      return { rate: this.pairs[directKey].rate, fee: this.pairs[directKey].fee };
-    }
-
-    const reverseKey = `${to}_${from}`;
-    if (this.pairs[reverseKey] && this.pairs[reverseKey].enabled) {
-      return { rate: this.pairs[reverseKey].inverseRate, fee: this.pairs[reverseKey].fee };
-    }
-
-    // Try through USDT
-    const fromUSDT = this.pairs[`${from}_USDT`];
-    const toUSDT = this.pairs[`USDT_${to}`];
-    if (fromUSDT && toUSDT && fromUSDT.enabled && toUSDT.enabled) {
-      const rate = fromUSDT.rate * toUSDT.rate;
-      const fee = (fromUSDT.fee + toUSDT.fee) / 2;
+  // Fetch the live conversion rate from the backend swap engine
+  // (GET /swap/quote, CoinGecko-backed). Returns { rate, fee } or null.
+  async getRate(from, to) {
+    if (from === to) return { rate: 1, fee: 0 };
+    try {
+      const res = await fetch(`${TW_API_BASE}/swap/quote?from_token=${encodeURIComponent(from)}&to_token=${encodeURIComponent(to)}&from_amount=1`);
+      if (!res.ok) return null;
+      const q = await res.json();
+      if (!q.rate) return null;
+      const rate = parseFloat(q.rate);
+      const fee = q.fee ? parseFloat(q.fee) : 0;
       return { rate, fee };
+    } catch (e) {
+      return null;
     }
-
-    return null;
   }
 
-  convert(userId, from, to, amount) {
-    const rateData = this.getRate(from, to);
-    if (!rateData) return null;
+  // Live indicative quote for a real conversion amount (GET /swap/quote).
+  // Never fabricates a "completed" tx; the caller broadcasts via the backend.
+  async getQuote(from, to, amount) {
+    try {
+      const res = await fetch(`${TW_API_BASE}/swap/quote?from_token=${encodeURIComponent(from)}&to_token=${encodeURIComponent(to)}&from_amount=${encodeURIComponent(amount)}`);
+      if (!res.ok) return null;
+      const q = await res.json();
+      return {
+        fromToken: q.from_token || from,
+        toToken: q.to_token || to,
+        fromAmount: parseFloat(q.from_amount || amount),
+        toAmount: parseFloat(q.to_amount || 0),
+        rate: parseFloat(q.rate || 0),
+        minReceived: parseFloat(q.min_received || 0),
+        fee: q.fee ? parseFloat(q.fee) : 0,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
 
-    const fee = amount * rateData.fee / 100;
-    const netAmount = amount - fee;
-    const toAmount = netAmount * rateData.rate;
+  // Available convert tokens come from the live chain registry (no fake balances).
+  async getAvailableTokens() {
+    try {
+      const res = await fetch(`${TW_API_BASE}/chains`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
+      return arr.map(c => ({
+        symbol: c.symbol || c.native_currency || 'ETH',
+        name: c.name || '',
+        balance: 0, // real balances come from the wallet view, never fabricated
+        icon: '🪙',
+      }));
+    } catch (e) {
+      return [];
+    }
+  }
 
-    return {
-      id: `convert-${Date.now()}`,
-      fromToken: from,
-      toToken: to,
-      fromAmount: amount,
-      toAmount: toAmount,
-      rate: rateData.rate,
-      fee: fee,
-      status: 'completed',
-    };
+  // Convert is executed on-chain via the backend swap/amm endpoints; this client
+  // helper only returns the live quote. Callers must broadcast through /send or
+  // /amm/swap. Never returns a fabricated "completed" status.
+  async convert(userId, from, to, amount) {
+    const quote = await this.getQuote(from, to, amount);
+    if (!quote) return null;
+    return { id: `convert-${Date.now()}`, ...quote, status: 'quoted' };
   }
 }
 

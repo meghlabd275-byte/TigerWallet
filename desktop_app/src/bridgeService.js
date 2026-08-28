@@ -6,44 +6,28 @@
 class BridgeService {
     constructor() {
         this.apiBaseUrl = 'http://localhost:8443/api/v1';
-        this.supportedRoutes = this.getSupportedRoutes();
+        this.supportedRoutes = [];
+        this._routesLoaded = false;
         this.bridgeProviders = ['stargate', 'layerzero', 'axelar', 'wormhole', 'allbridge'];
     }
 
     /**
-     * Get supported bridge routes
+     * Get supported bridge routes from the canonical bridge_service
+     * (proxied via wallet_api at GET /bridge/routes). No hardcoded route
+     * catalog; falls back to an empty list when the backend is unreachable.
      */
-    getSupportedRoutes() {
-        return [
-            // Ethereum routes
-            { from: 'ethereum', to: 'polygon', tokens: ['ETH', 'USDT', 'USDC', 'MATIC'], provider: 'stargate', time: '10-15m' },
-            { from: 'ethereum', to: 'arbitrum', tokens: ['ETH', 'USDT', 'USDC'], provider: 'layerzero', time: '15-20m' },
-            { from: 'ethereum', to: 'optimism', tokens: ['ETH', 'USDT', 'USDC'], provider: 'layerzero', time: '15-20m' },
-            { from: 'ethereum', to: 'avalanche', tokens: ['ETH', 'USDT', 'USDC'], provider: 'axelar', time: '20-30m' },
-            { from: 'ethereum', to: 'bsc', tokens: ['ETH', 'BNB', 'USDT'], provider: 'stargate', time: '5-10m' },
-            { from: 'ethereum', to: 'base', tokens: ['ETH', 'USDC'], provider: 'native', time: '5m' },
-            
-            // Polygon routes
-            { from: 'polygon', to: 'ethereum', tokens: ['MATIC', 'USDT', 'USDC'], provider: 'stargate', time: '10-15m' },
-            { from: 'polygon', to: 'arbitrum', tokens: ['MATIC', 'USDC'], provider: 'layerzero', time: '15-20m' },
-            
-            // BSC routes
-            { from: 'bsc', to: 'ethereum', tokens: ['BNB', 'ETH', 'USDT'], provider: 'stargate', time: '5-10m' },
-            { from: 'bsc', to: 'polygon', tokens: ['BNB', 'USDT'], provider: 'axelar', time: '15-20m' },
-            
-            // Avalanche routes
-            { from: 'avalanche', to: 'ethereum', tokens: ['AVAX', 'USDT', 'USDC'], provider: 'axelar', time: '20-30m' },
-            
-            // Solana routes
-            { from: 'solana', to: 'ethereum', tokens: ['SOL', 'USDC'], provider: 'wormhole', time: '15-20m' },
-            { from: 'solana', to: 'polygon', tokens: ['SOL', 'USDC'], provider: 'wormhole', time: '20-30m' },
-            
-            // Arbitrum routes
-            { from: 'arbitrum', to: 'ethereum', tokens: ['ETH', 'USDC'], provider: 'layerzero', time: '15-20m' },
-            
-            // Optimism routes
-            { from: 'optimism', to: 'ethereum', tokens: ['ETH', 'USDC'], provider: 'native', time: '15m' },
-        ];
+    async getSupportedRoutes() {
+        if (this._routesLoaded) return this.supportedRoutes;
+        try {
+            const res = await fetch(`${this.apiBaseUrl}/bridge/routes`);
+            if (res.ok) {
+                const data = await res.json();
+                const arr = Array.isArray(data) ? data : (data.routes || data.data || []);
+                this.supportedRoutes = arr;
+            }
+        } catch (e) { /* backend unreachable: leave empty */ }
+        this._routesLoaded = true;
+        return this.supportedRoutes;
     }
 
     /**

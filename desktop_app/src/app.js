@@ -128,7 +128,23 @@ class TigerWalletApp {
             el?.addEventListener('change', () => this.fetchSwapQuote());
         });
         swapBtn?.addEventListener('click', () => this.executeSwap());
-        
+
+        // Staking actions (real backend /staking/{stake,unstake,claim})
+        document.getElementById('stake-btn')?.addEventListener('click', () => this.stakingAction('stake'));
+        document.getElementById('unstake-btn')?.addEventListener('click', () => this.stakingAction('unstake'));
+        document.getElementById('claim-btn')?.addEventListener('click', () => this.stakingAction('claim'));
+        document.getElementById('stake-max-btn')?.addEventListener('click', () => {
+            const balEl = document.querySelector('.swap-balance');
+            const m = (balEl?.textContent || '').match(/([\d.]+)/);
+            if (m) document.getElementById('stake-amount').value = m[1];
+        });
+
+        // Bridge (real backend /bridge/{quote,transfer})
+        document.getElementById('bridge-from-chain')?.addEventListener('change', () => this.fetchBridgeQuote());
+        document.getElementById('bridge-to-chain')?.addEventListener('change', () => this.fetchBridgeQuote());
+        document.getElementById('bridge-amount')?.addEventListener('input', () => this.fetchBridgeQuote());
+        document.getElementById('bridge-btn')?.addEventListener('click', () => this.executeBridge());
+
         // QR Scanner
         document.getElementById('qr-scan-btn')?.addEventListener('click', () => this.showQRModal());
         document.getElementById('close-qr-modal')?.addEventListener('click', () => this.hideQRModal());
@@ -206,6 +222,14 @@ class TigerWalletApp {
             this.loadTransactions();
         } else if (page === 'wallet') {
             this.loadWalletData();
+        } else if (page === 'staking') {
+            this.loadStakingAssets();
+        } else if (page === 'bridge') {
+            this.loadBridgeRoutes();
+        } else if (page === 'nft') {
+            this.loadNFTs();
+        } else if (page === 'swap') {
+            this.fetchSwapQuote();
         }
     }
     
@@ -805,6 +829,151 @@ class TigerWalletApp {
         const address = document.getElementById('receive-address').textContent;
         navigator.clipboard.writeText(address);
         alert('Address copied!');
+    }
+
+    // ==================== Staking (real backend /staking/quote + actions) ====================
+
+    async loadStakingAssets() {
+        const container = document.getElementById('staking-pools');
+        if (!container) return;
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/staking/quote?chain_id=${this.currentNetwork}`);
+            if (!res.ok) {
+                container.innerHTML = '<div class="empty-state">Staking quote unavailable</div>';
+                return;
+            }
+            const data = await res.json();
+            const assets = Array.isArray(data.assets) ? data.assets : [];
+            if (!assets.length) {
+                container.innerHTML = '<div class="empty-state">No staking assets for this chain</div>';
+                return;
+            }
+            container.innerHTML = assets.map(a => `
+                <div class="pool-card">
+                    <div class="pool-name">${this.escapeHtml(a.symbol || a.token || '')}</div>
+                    <div class="pool-apy">APY: ${a.apy ?? 0}%</div>
+                    <div class="asset-address">Min: ${a.min_stake ?? 0} · Lock: ${a.lock_period ?? 0}s</div>
+                </div>`).join('');
+        } catch (e) {
+            container.innerHTML = '<div class="empty-state">Failed to load staking assets</div>';
+        }
+    }
+
+    async stakingAction(action) {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const asset = document.getElementById('stake-asset')?.value;
+        const amount = document.getElementById('stake-amount')?.value;
+        const chainId = parseInt(document.getElementById('stake-chain-id')?.value || this.currentNetwork, 10);
+        if (!asset) { alert('Enter an asset symbol'); return; }
+        if (action !== 'claim' && !amount) { alert('Enter an amount'); return; }
+        const password = prompt('Enter wallet password to sign:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const body = { wallet_id: wallet.wallet_id ?? wallet.id, password, token: asset, chain_id: chainId };
+            if (amount) body.amount = amount;
+            const res = await fetch(`http://localhost:8443/api/v1/staking/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) { alert('Staking ' + action + ' failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('Staking ' + action + ' OK: ' + JSON.stringify(result.tx_hash || result));
+        } catch (e) {
+            alert('Staking error: ' + e.message);
+        }
+    }
+
+    // ==================== Bridge (real backend /bridge/routes + quote) ====================
+
+    async loadBridgeRoutes() {
+        const fromSel = document.getElementById('bridge-from-chain');
+        const toSel = document.getElementById('bridge-to-chain');
+        if (!fromSel || !toSel) return;
+        try {
+            // Populate chain selects from the public chain registry (no mocks).
+            if (!this.chains || !this.chains.length) await this.loadChains();
+            const opts = (this.chains || []).map(c =>
+                `<option value="${c.id}">${this.escapeHtml(c.name)} (${c.symbol})</option>`).join('');
+            fromSel.innerHTML = opts;
+            toSel.innerHTML = opts;
+        } catch (e) { /* fall back silently */ }
+    }
+
+    async fetchBridgeQuote() {
+        const info = document.getElementById('bridge-info');
+        const fromId = document.getElementById('bridge-from-chain')?.value;
+        const toId = document.getElementById('bridge-to-chain')?.value;
+        const amount = document.getElementById('bridge-amount')?.value;
+        if (!fromId || !toId || !amount) return;
+        try {
+            const url = `http://localhost:8443/api/v1/bridge/quote?from_chain=${fromId}&to_chain=${toId}&amount=${encodeURIComponent(amount)}`;
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const q = await res.json();
+            if (info) info.innerHTML =
+                `<div>Estimated Time: ${q.estimated_time || q.time || '—'}</div><div>Fee: ${q.fee ?? q.fee_percent ?? '—'}${q.fee_percent ? '%' : ''}</div>`;
+        } catch (e) { /* ignore */ }
+    }
+
+    async executeBridge() {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const fromId = document.getElementById('bridge-from-chain')?.value;
+        const toId = document.getElementById('bridge-to-chain')?.value;
+        const amount = document.getElementById('bridge-amount')?.value;
+        if (!fromId || !toId || !amount) { alert('Select chains + amount'); return; }
+        const password = prompt('Enter wallet password to sign:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/bridge/transfer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    wallet_id: wallet.wallet_id ?? wallet.id,
+                    password, from_chain: fromId, to_chain: toId, amount
+                })
+            });
+            if (!res.ok) { alert('Bridge failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('Bridge transfer submitted: ' + (result.tx_hash || result.transfer_id || 'OK'));
+        } catch (e) {
+            alert('Bridge error: ' + e.message);
+        }
+    }
+
+    // ==================== NFT Gallery (real backend /public/nfts) ====================
+
+    async loadNFTs() {
+        const grid = document.getElementById('nft-grid');
+        if (!grid) return;
+        const wallet = this.wallets[0];
+        if (!wallet || !wallet.address) {
+            grid.innerHTML = '<div class="empty-state">No wallet connected</div>';
+            return;
+        }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/public/nfts?address=${wallet.address}&chain_id=${this.currentNetwork}`);
+            if (!res.ok) { grid.innerHTML = '<div class="empty-state">Failed to load NFTs</div>'; return; }
+            const data = await res.json();
+            const nfts = Array.isArray(data.nfts) ? data.nfts : [];
+            if (!nfts.length) { grid.innerHTML = '<div class="empty-state">No NFTs in this wallet</div>'; return; }
+            grid.innerHTML = nfts.map(n => `
+                <div class="nft-card">
+                    <div class="nft-image">${n.image_url ? `<img src="${this.escapeHtml(n.image_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🖼️'}</div>
+                    <div class="nft-name">${this.escapeHtml(n.name || '#' + (n.token_id || ''))}</div>
+                    <div class="nft-collection">${this.escapeHtml(n.collection || n.contract || '')}</div>
+                    <div class="asset-address">${n.standard || 'ERC-721'}</div>
+                </div>`).join('');
+        } catch (e) {
+            grid.innerHTML = '<div class="empty-state">Failed to load NFTs</div>';
+        }
+    }
+
+    escapeHtml(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
     
     formatAddress(address) {
