@@ -29,11 +29,12 @@ export default function Wallets() {
   const [searchParams] = useSearchParams();
   const initialAction = searchParams.get('action');
 
-  const [mode, setMode] = useState<'none' | 'create' | 'import' | 'passkey'>(initialAction === 'import' ? 'import' : initialAction === 'create' ? 'create' : 'none');
+  const [mode, setMode] = useState<'none' | 'create' | 'import' | 'passkey' | 'watch'>(initialAction === 'import' ? 'import' : initialAction === 'create' ? 'create' : 'none');
   const [name, setName] = useState('');
   const [chainId, setChainId] = useState(1);
   const [password, setPassword] = useState('');
   const [mnemonic, setMnemonic] = useState('');
+  const [watchAddress, setWatchAddress] = useState('');
   const [createdMnemonic, setCreatedMnemonic] = useState('');
   const [backupWalletId, setBackupWalletId] = useState<string | null>(null);
   const [backupBlob, setBackupBlob] = useState<string | null>(null);
@@ -113,6 +114,25 @@ export default function Wallets() {
       loadWallets();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to import wallet');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleWatchOnly = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const addr = watchAddress.trim();
+    if (!addr) { setError('Enter an address'); return; }
+    setBusy(true);
+    try {
+      await api.createWatchOnlyWallet({ address: addr, label: name || 'Watch-only', chain_id: chainId });
+      setWatchAddress('');
+      setName('');
+      setMode('none');
+      loadWallets();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to add watch-only wallet');
     } finally {
       setBusy(false);
     }
@@ -261,6 +281,7 @@ export default function Wallets() {
           <button onClick={() => { setMode('create'); setError(''); }}>➕ Create</button>
           <button onClick={() => { setMode('passkey'); setError(''); }}>🔑 Create with Passkey</button>
           <button onClick={() => { setMode('import'); setError(''); }}>📥 Import</button>
+          <button onClick={() => { setMode('watch'); setError(''); }}>👁 Watch-only</button>
         </div>
       </header>
 
@@ -326,6 +347,26 @@ export default function Wallets() {
             <button type="submit" disabled={busy}>{busy ? 'Importing…' : 'Import'}</button>
           </form>
         </div>
+      )}
+
+      {mode === 'watch' && (
+        <form className="wallet-form" onSubmit={handleWatchOnly}>
+          <h2>Watch-only wallet (address tracking — no keys)</h2>
+          <input placeholder="Label" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            placeholder="Address (0x…)"
+            value={watchAddress}
+            onChange={(e) => setWatchAddress(e.target.value)}
+            required
+          />
+          <select value={chainId} onChange={(e) => setChainId(Number(e.target.value))}>
+            {CHAIN_OPTIONS.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+          <button type="submit" disabled={busy}>{busy ? 'Adding…' : 'Add watch-only'}</button>
+          <button type="button" onClick={() => setMode('none')}>Cancel</button>
+        </form>
       )}
 
       {mode === 'passkey' && (

@@ -24,6 +24,8 @@ struct FeaturesView: View {
                     NavigationLink("P2P Trading") { P2PView() }
                     NavigationLink("Price Alerts") { PriceAlertsView() }
                     NavigationLink("ENS") { ENSView() }
+                    NavigationLink("Security") { SecurityView() }
+                    NavigationLink("Terminal") { TerminalView() }
                 }
                 Section("Security & Account") {
                     NavigationLink("Approvals") { ApprovalsView() }

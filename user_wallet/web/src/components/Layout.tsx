@@ -34,6 +34,8 @@ export default function Layout() {
     { path: '/copy-trading', label: 'Copy Trading' },
     { path: '/prediction', label: 'Prediction' },
     { path: '/ens', label: 'ENS' },
+    { path: '/security', label: 'Security' },
+    { path: '/terminal', label: 'Terminal' },
     { path: '/transactions', label: 'Transactions' },
     { path: '/settings', label: 'Settings' }
   ];

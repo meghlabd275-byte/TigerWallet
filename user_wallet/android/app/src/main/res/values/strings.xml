@@ -59,6 +59,12 @@
     <!-- Wallets -->
     <string name="wallets_title">My Wallets</string>
     <string name="wallets_add">Add Wallet</string>
+    <string name="wallets_watch">Watch-only</string>
+    <string name="wallets_watch_title">Add Watch-only Wallet</string>
+    <string name="wallets_watch_label_hint">Label (optional)</string>
+    <string name="wallets_watch_address_hint">Address (0x…)</string>
+    <string name="wallets_watch_submit">Add watch-only</string>
+    <string name="wallets_watch_err">Enter a valid address</string>
     <string name="wallets_cancel">Cancel</string>
     <string name="wallets_new">New Wallet</string>
     <string name="wallets_name_hint">Wallet name</string>

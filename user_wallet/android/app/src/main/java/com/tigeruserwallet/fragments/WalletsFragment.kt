@@ -44,6 +44,7 @@ class WalletsFragment : Fragment() {
     private lateinit var createProgress: CircularProgressIndicator
 
     private var showCreate = false
+    private var showWatch = false
     private var wallets: List<UserWalletApiService.Wallet> = emptyList()
     private var balances: Map<String, UserWalletApiService.Balance?> = emptyMap()
 
@@ -73,6 +74,8 @@ class WalletsFragment : Fragment() {
         )
         createButton.setOnClickListener { onCreateSubmit() }
         binding.addWalletButton.setOnClickListener { toggleCreateForm() }
+        binding.addWatchOnlyButton.setOnClickListener { toggleWatchForm() }
+        binding.watchOnlySubmitButton.setOnClickListener { onWatchOnlySubmit() }
         binding.walletsRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.swipeRefresh.setOnRefreshListener { loadWallets() }
         applyCreateVisibility()
@@ -84,11 +87,45 @@ class WalletsFragment : Fragment() {
         applyCreateVisibility()
     }
 
+    private fun toggleWatchForm() {
+        showWatch = !showWatch
+        binding.watchOnlyFormCard.visibility = if (showWatch) View.VISIBLE else View.GONE
+    }
+
     private fun applyCreateVisibility() {
         binding.createFormCard.visibility = if (showCreate) View.VISIBLE else View.GONE
         binding.addWalletButton.text = getString(
             if (showCreate) R.string.wallets_cancel else R.string.wallets_add
         )
+    }
+
+    /** Enroll a watch-only wallet (address tracking — no keys on this device). */
+    private fun onWatchOnlySubmit() {
+        binding.watchAddressLayout.error = null
+        val label = binding.watchLabelInput.text?.toString().orEmpty().trim()
+        val address = binding.watchAddressInput.text?.toString().orEmpty().trim()
+        if (address.isEmpty()) {
+            binding.watchAddressLayout.error = getString(R.string.wallets_watch_err)
+            return
+        }
+        val chainId = UserWalletApiService.CHAINS[networkSpinner.selectedItemPosition].id
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                UserWalletApiService.ensureSession()
+                UserWalletApiService.createWatchOnlyWallet(label.ifEmpty { "Watch-only" }, address, chainId)
+                withContext(Dispatchers.Main) {
+                    showWatch = false
+                    binding.watchOnlyFormCard.visibility = View.GONE
+                    binding.watchLabelInput.text?.clear()
+                    binding.watchAddressInput.text?.clear()
+                    loadWallets()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    binding.watchAddressLayout.error = e.message ?: getString(R.string.wallets_watch_err)
+                }
+            }
+        }
     }
 
     private fun onCreateSubmit() {

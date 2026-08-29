@@ -40,6 +40,8 @@ import Ramp from './pages/Ramp';
 import CopyTrading from './pages/CopyTrading';
 import Prediction from './pages/Prediction';
 import ENS from './pages/ENS';
+import Security from './pages/Security';
+import Terminal from './pages/Terminal';
 import Layout from './components/Layout';
 
 function AppRoutes() {
@@ -85,6 +87,8 @@ function AppRoutes() {
           <Route path="copy-trading" element={<CopyTrading />} />
           <Route path="prediction" element={<Prediction />} />
           <Route path="ens" element={<ENS />} />
+          <Route path="security" element={<Security />} />
+          <Route path="terminal" element={<Terminal />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

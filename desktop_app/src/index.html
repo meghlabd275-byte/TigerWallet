@@ -86,6 +86,12 @@
                     <button class="nav-item" data-page="ens">
                         <span class="icon">🔤</span> ENS
                     </button>
+                    <button class="nav-item" data-page="security">
+                        <span class="icon">🔐</span> Security
+                    </button>
+                    <button class="nav-item" data-page="terminal">
+                        <span class="icon">📈</span> Terminal
+                    </button>
                     <button class="nav-item" data-page="ramp">
                         <span class="icon">💱</span> Fiat Ramp
                     </button>
@@ -514,6 +520,42 @@
                         <button id="ens-resolve-btn" class="btn-primary">Resolve</button>
                         <div id="ens-result" class="bridge-info" style="margin-top:12px"></div>
                     </div>
+                </div>
+
+                <!-- Security Page -->
+                <div id="security-page" class="page hidden">
+                    <h4>Security Center</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Check URL or Address</label>
+                            <input type="text" id="security-target" placeholder="https://… or 0x…">
+                        </div>
+                        <button id="security-check-btn" class="btn-primary">Check</button>
+                        <button id="security-scan-btn" class="btn-secondary" style="margin-left:8px">Full Scan</button>
+                        <div id="security-result" class="bridge-info" style="margin-top:12px"></div>
+                    </div>
+                </div>
+
+                <!-- Terminal Page -->
+                <div id="terminal-page" class="page hidden">
+                    <h4>Trading Terminal</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Symbol</label>
+                            <input type="text" id="terminal-symbol" value="ETH">
+                        </div>
+                        <div class="input-group">
+                            <label>Range</label>
+                            <select id="terminal-days">
+                                <option value="1">1 day</option>
+                                <option value="7">7 days</option>
+                                <option value="30">30 days</option>
+                            </select>
+                        </div>
+                        <button id="terminal-load-btn" class="btn-primary">Load</button>
+                    </div>
+                    <div id="terminal-ticker" class="bridge-info" style="margin-top:12px"></div>
+                    <canvas id="terminal-canvas" style="width:100%;max-width:100%;margin-top:12px"></canvas>
                 </div>
 
                 <!-- Fiat Ramp Page -->

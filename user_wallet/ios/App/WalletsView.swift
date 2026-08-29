@@ -5,6 +5,7 @@ struct WalletsView: View {
     @State private var wallets: [WalletRecord] = []
     @State private var isLoading = true
     @State private var showingAddWallet = false
+    @State private var showingWatchOnly = false
     @State private var backupPayload: (mnemonic: String, id: String, password: String)?
 
     var body: some View {
@@ -23,8 +24,13 @@ struct WalletsView: View {
             }
             .navigationTitle("Wallets")
             .toolbar {
-                Button(action: { showingAddWallet = true }) {
-                    Image(systemName: "plus")
+                HStack {
+                    Button(action: { showingWatchOnly = true }) {
+                        Image(systemName: "eye")
+                    }
+                    Button(action: { showingAddWallet = true }) {
+                        Image(systemName: "plus")
+                    }
                 }
             }
             .sheet(isPresented: $showingAddWallet) {
@@ -39,6 +45,9 @@ struct WalletsView: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $showingWatchOnly) {
+                WatchOnlyView { _ in loadWallets() }
             }
             .sheet(item: Binding<BackupPayload?>(
                 get: { backupPayload.map { BackupPayload($0) } },
@@ -65,6 +74,75 @@ struct WalletsView: View {
                 }
             } catch {
                 await MainActor.run { self.isLoading = false }
+            }
+        }
+    }
+}
+
+// Watch-only wallet enroll sheet (address tracking — no keys stored).
+struct WatchOnlyView: View {
+    @State private var label = ""
+    @State private var address = ""
+    @State private var chainId = 1
+    @State private var error: String?
+    @State private var isAdding = false
+    @Environment(\.dismiss) var dismiss
+    let onAdded: (WalletRecord?) -> Void
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section("Watch-only Wallet") {
+                    TextField("Label (optional)", text: $label)
+                    TextField("Address (0x…)", text: $address)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .font(.system(.body, design: .monospaced))
+                    Picker("Chain", selection: $chainId) {
+                        Text("Ethereum").tag(1)
+                        Text("BNB Chain").tag(56)
+                        Text("Polygon").tag(137)
+                        Text("Arbitrum").tag(42161)
+                        Text("Optimism").tag(10)
+                        Text("Base").tag(8453)
+                    }
+                }
+                if let error = error {
+                    Section { Text(error).foregroundColor(.red) }
+                }
+            }
+            .navigationTitle("Watch-only")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { enroll() }
+                        .disabled(isAdding || address.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func enroll() {
+        isAdding = true
+        error = nil
+        Task {
+            do {
+                let _ = try await UserWalletApiService.shared.createWatchOnlyWallet(
+                    label: label.isEmpty ? "Watch-only" : label,
+                    address: address.trimmingCharacters(in: .whitespaces),
+                    chainId: chainId)
+                await MainActor.run {
+                    onAdded(nil)
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    self.isAdding = false
+                }
             }
         }
     }

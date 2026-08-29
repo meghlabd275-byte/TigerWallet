@@ -103,6 +103,12 @@ function bindEvents() {
   if (contactAddBtn) contactAddBtn.addEventListener('click', handleAddContact);
   const alertCreateBtn = document.getElementById('alertCreateBtn');
   if (alertCreateBtn) alertCreateBtn.addEventListener('click', handleCreateAlert);
+  const securityCheckBtn = document.getElementById('securityCheckBtn');
+  if (securityCheckBtn) securityCheckBtn.addEventListener('click', handleSecurityCheck);
+  const securityScanBtn = document.getElementById('securityScanBtn');
+  if (securityScanBtn) securityScanBtn.addEventListener('click', handleSecurityScan);
+  const terminalLoadBtn = document.getElementById('terminalLoadBtn');
+  if (terminalLoadBtn) terminalLoadBtn.addEventListener('click', loadTerminal);
   const qrSendBtn = document.getElementById('qrSendBtn');
   if (qrSendBtn) qrSendBtn.addEventListener('click', async () => {
     const w = activeWallet();
@@ -647,7 +653,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -666,6 +672,7 @@ function switchTab(tab) {
   if (tab === 'contacts') loadContacts();
   if (tab === 'devices') loadDevices();
   if (tab === 'alerts') loadAlerts();
+  if (tab === 'terminal') loadTerminal();
 }
 
 // ---- Loaders for the NFT / History / Approvals / Contacts / Devices / Alerts tabs ----
@@ -868,6 +875,99 @@ async function handleCreateAlert() {
   } catch (e) {
     alert('Create alert failed: ' + (e.message || 'error'));
   }
+}
+
+// ---- Security Center + Trading Terminal ----
+
+async function handleSecurityCheck() {
+  const input = document.getElementById('securityTarget');
+  const out = document.getElementById('securityResult');
+  const target = input.value.trim();
+  if (!target) { out.textContent = 'Enter a URL or address.'; return; }
+  out.textContent = 'Checking…';
+  try {
+    const isUrl = target.startsWith('http://') || target.startsWith('https://');
+    const res = isUrl ? await WalletAPI.checkUrl(target) : await WalletAPI.checkAddress(target);
+    out.textContent = res.safe ? `✓ Safe: ${res.reason || 'no threats'}` : `⚠ Flagged: ${res.reason || 'threat detected'}`;
+  } catch (e) {
+    out.textContent = 'Check failed: ' + (e.message || 'error');
+  }
+}
+
+async function handleSecurityScan() {
+  const input = document.getElementById('securityTarget');
+  const out = document.getElementById('securityResult');
+  const target = input.value.trim();
+  if (!target) { out.textContent = 'Enter a URL or address.'; return; }
+  out.textContent = 'Scanning…';
+  try {
+    const res = await WalletAPI.securityScan(target);
+    const threats = Array.isArray(res.threats) ? res.threats : [];
+    out.textContent = threats.length ? '⚠ Threats: ' + threats.map((t) => JSON.stringify(t)).join('; ') : '✓ Safe: no threats detected';
+  } catch (e) {
+    out.textContent = 'Scan failed: ' + (e.message || 'error');
+  }
+}
+
+function parseCandles(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.candles ?? raw?.kline ?? []);
+  return list.map((c) => (Array.isArray(c)
+    ? { t: +c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4] }
+    : { t: +(c.time ?? c.t ?? c.timestamp), o: +(c.open ?? c.o), h: +(c.high ?? c.h), l: +(c.low ?? c.l), c: +(c.close ?? c.c) }))
+    .filter((c) => isFinite(c.o) && isFinite(c.h) && isFinite(c.l) && isFinite(c.c));
+}
+
+async function loadTerminal() {
+  const symbolInput = document.getElementById('terminalSymbol');
+  const daysInput = document.getElementById('terminalDays');
+  const tickerOut = document.getElementById('terminalTicker');
+  const canvas = document.getElementById('terminalCanvas');
+  if (!symbolInput || !canvas) return;
+  const symbol = (symbolInput.value.trim() || 'ETH').toUpperCase();
+  const days = parseInt(daysInput?.value, 10) || 1;
+  try {
+    const ticker = await WalletAPI.getTerminalTicker(symbol);
+    tickerOut.textContent = JSON.stringify(ticker);
+  } catch (e) {
+    tickerOut.textContent = 'Ticker unavailable.';
+  }
+  try {
+    const raw = await WalletAPI.getTerminalKline({ token: symbol, days });
+    drawCandles(canvas, parseCandles(raw));
+  } catch (e) {
+    drawCandles(canvas, []);
+  }
+}
+
+function drawCandles(canvas, candles) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const w = (canvas.width = canvas.offsetWidth || 300);
+  const h = (canvas.height = 160);
+  ctx.clearRect(0, 0, w, h);
+  if (!candles.length) {
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text-secondary') || '#6b7280';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('No candle data.', 12, 20);
+    return;
+  }
+  let min = Infinity, max = -Infinity;
+  for (const c of candles) { if (c.l < min) min = c.l; if (c.h > max) max = c.h; }
+  const span = max - min || 1;
+  const bw = Math.max(1, (w - 8) / candles.length - 1);
+  const y = (v) => h - ((v - min) / span) * (h - 12) - 6;
+  candles.forEach((c, i) => {
+    const up = c.c >= c.o;
+    ctx.strokeStyle = ctx.fillStyle = up ? '#16a34a' : '#dc2626';
+    const x = 4 + i * (bw + 1);
+    ctx.beginPath();
+    ctx.moveTo(x + bw / 2, y(c.h));
+    ctx.lineTo(x + bw / 2, y(c.l));
+    ctx.stroke();
+    const top = y(Math.max(c.o, c.c));
+    const height = Math.max(1, Math.abs(y(c.o) - y(c.c)));
+    ctx.fillRect(x, top, bw, height);
+  });
 }
 
 function activeWallet() {

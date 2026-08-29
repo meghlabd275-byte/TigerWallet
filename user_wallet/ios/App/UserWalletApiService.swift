@@ -598,6 +598,16 @@ final class UserWalletApiService {
         return try await requestRaw("/price-alerts/\(safeId)", method: "DELETE")
     }
 
+    // MARK: - Watch-only wallet enrollment (address tracking — no keys)
+
+    /// POST /wallets/watch-only { label, address, chain_id } -> enroll.
+    func createWatchOnlyWallet(label: String, address: String, chainId: Int = 1) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "label": label, "address": address, "chain_id": chainId,
+        ])
+        return try await requestRaw("/wallets/watch-only", method: "POST", body: payload)
+    }
+
     // Convert is the same path as swap (cross-token conversion).
     func getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int = 1) async throws -> SwapQuote {
         return try await getSwapQuote(fromToken: fromToken, toToken: toToken, fromAmount: fromAmount, chainId: chainId)

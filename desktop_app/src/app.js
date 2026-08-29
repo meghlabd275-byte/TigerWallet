@@ -155,6 +155,9 @@ class TigerWalletApp {
         document.getElementById('contact-add-btn')?.addEventListener('click', () => this.addContact());
         document.getElementById('ens-resolve-btn')?.addEventListener('click', () => this.resolveENS());
         document.getElementById('nft-transfer-btn')?.addEventListener('click', () => this.transferNFT());
+        document.getElementById('security-check-btn')?.addEventListener('click', () => this.securityCheck());
+        document.getElementById('security-scan-btn')?.addEventListener('click', () => this.securityScan());
+        document.getElementById('terminal-load-btn')?.addEventListener('click', () => this.loadTerminalChart());
 
         // QR Scanner
         document.getElementById('qr-scan-btn')?.addEventListener('click', () => this.showQRModal());
@@ -232,6 +235,8 @@ class TigerWalletApp {
             'price-alerts': 'Price Alerts',
             dao: 'DAO Governance',
             ens: 'ENS',
+            security: 'Security Center',
+            terminal: 'Trading Terminal',
             ramp: 'Fiat Ramp',
             dapps: 'dApps',
             approvals: 'Token Approvals',
@@ -258,6 +263,8 @@ class TigerWalletApp {
             this.fetchSwapQuote();
         } else if (page === 'ens') {
             // ENS resolve is input-driven; no auto-load.
+        } else if (page === 'terminal') {
+            this.loadTerminalChart();
         } else if (page === 'kyc') {
             this.loadKYCStatus();
         } else if (page === 'ramp') {
@@ -1593,6 +1600,118 @@ class TigerWalletApp {
         } catch (e) {
             box.innerHTML = '<div class="empty-state">Devices unavailable</div>';
         }
+    }
+
+    // ---- Security Center (/api/v1/security/{check-url,check-address,scan}) ----
+    async securityCheck() {
+        const input = document.getElementById('security-target');
+        const out = document.getElementById('security-result');
+        if (!input || !out) return;
+        const target = input.value.trim();
+        if (!target) { out.textContent = 'Enter a URL or address'; return; }
+        out.textContent = 'Checking...';
+        const isUrl = target.startsWith('http://') || target.startsWith('https://');
+        const path = isUrl
+            ? `http://localhost:8443/api/v1/security/check-url?url=${encodeURIComponent(target)}`
+            : `http://localhost:8443/api/v1/security/check-address?address=${encodeURIComponent(target)}`;
+        try {
+            const res = await fetch(path);
+            if (!res.ok) { out.textContent = `Check failed (HTTP ${res.status})`; return; }
+            const data = await res.json();
+            out.textContent = data.safe ? `✓ Safe: ${this.escapeHtml(data.reason || 'no threats')}` : `⚠ Flagged: ${this.escapeHtml(data.reason || 'threat detected')}`;
+        } catch (e) {
+            out.textContent = 'Check failed (backend unreachable)';
+        }
+    }
+
+    async securityScan() {
+        const input = document.getElementById('security-target');
+        const out = document.getElementById('security-result');
+        if (!input || !out) return;
+        const target = input.value.trim();
+        if (!target) { out.textContent = 'Enter a URL or address'; return; }
+        out.textContent = 'Scanning...';
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/security/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target })
+            });
+            if (!res.ok) { out.textContent = `Scan failed (HTTP ${res.status})`; return; }
+            const data = await res.json();
+            const threats = Array.isArray(data.threats) ? data.threats : [];
+            out.textContent = threats.length
+                ? '⚠ Threats: ' + threats.map(t => this.escapeHtml(JSON.stringify(t))).join('; ')
+                : '✓ Safe: no threats detected';
+        } catch (e) {
+            out.textContent = 'Scan failed (backend unreachable)';
+        }
+    }
+
+    // ---- Trading Terminal (/api/v1/terminal/{kline,ticker}) — real OHLC canvas ----
+    async loadTerminalChart() {
+        const symbolInput = document.getElementById('terminal-symbol');
+        const daysInput = document.getElementById('terminal-days');
+        const tickerOut = document.getElementById('terminal-ticker');
+        const canvas = document.getElementById('terminal-canvas');
+        if (!symbolInput || !daysInput || !canvas) return;
+        const symbol = (symbolInput.value.trim() || 'ETH').toUpperCase();
+        const days = parseInt(daysInput.value, 10) || 1;
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/terminal/ticker/${encodeURIComponent(symbol)}`);
+            if (tickerOut) tickerOut.textContent = res.ok ? JSON.stringify(await res.json()) : 'Ticker unavailable';
+        } catch (e) {
+            if (tickerOut) tickerOut.textContent = 'Ticker unavailable';
+        }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/terminal/kline/${encodeURIComponent(symbol)}?days=${days}`);
+            const raw = res.ok ? await res.json() : null;
+            const list = Array.isArray(raw) ? raw : (raw?.candles ?? raw?.kline ?? []);
+            const candles = list.map((c) => Array.isArray(c)
+                ? { t: +c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4] }
+                : { t: +c.time ?? +c.t ?? +c.timestamp, o: +c.open ?? +c.o, h: +c.high ?? +c.h, l: +c.low ?? +c.l, c: +c.close ?? +c.c })
+                .filter((c) => isFinite(c.o) && isFinite(c.h) && isFinite(c.l) && isFinite(c.c));
+            this.drawCandles(canvas, candles);
+        } catch (e) {
+            this.drawCandles(canvas, []);
+        }
+    }
+
+    drawCandles(canvas, candles) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const w = (canvas.width = canvas.offsetWidth || 800);
+        const h = (canvas.height = 320);
+        const muted = getComputedStyle(canvas).getPropertyValue('--text-secondary') || '#8b949e';
+        ctx.clearRect(0, 0, w, h);
+        if (!candles.length) {
+            ctx.fillStyle = muted;
+            ctx.font = '14px sans-serif';
+            ctx.fillText('No candle data for this symbol/range.', 16, 30);
+            return;
+        }
+        const padX = 60;
+        let min = Infinity, max = -Infinity;
+        for (const c of candles) { if (c.l < min) min = c.l; if (c.h > max) max = c.h; }
+        const span = max - min || 1;
+        const bw = Math.max(2, (w - padX) / candles.length - 2);
+        const y = (v) => h - ((v - min) / span) * (h - 20) - 10;
+        candles.forEach((c, i) => {
+            const up = c.c >= c.o;
+            ctx.strokeStyle = ctx.fillStyle = up ? '#16a34a' : '#dc2626';
+            const x = padX + i * (bw + 2);
+            ctx.beginPath();
+            ctx.moveTo(x + bw / 2, y(c.h));
+            ctx.lineTo(x + bw / 2, y(c.l));
+            ctx.stroke();
+            const top = y(Math.max(c.o, c.c));
+            const height = Math.max(1, Math.abs(y(c.o) - y(c.c)));
+            ctx.fillRect(x, top, bw, height);
+        });
+        ctx.fillStyle = muted;
+        ctx.font = '11px sans-serif';
+        ctx.fillText(max.toFixed(2), 4, y(max) + 4);
+        ctx.fillText(min.toFixed(2), 4, y(min) + 4);
     }
 
     // ---- NFT transfer (/api/v1/nft/transfer — real ERC-721 safeTransferFrom) ----

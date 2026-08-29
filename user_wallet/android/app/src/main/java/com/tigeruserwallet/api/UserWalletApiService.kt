@@ -1143,6 +1143,38 @@ object UserWalletApiService {
         execute(requestBuilder("/price-alerts/${URLEncoder.encode(id, "UTF-8")}").delete().build())
     }
 
+    // ---- Security Center ----
+    fun checkUrl(url: String): JSONObject =
+        execute(requestBuilder("/security/check-url?url=${URLEncoder.encode(url, "UTF-8")}").get().build())
+
+    fun checkAddress(address: String): JSONObject =
+        execute(requestBuilder("/security/check-address?address=${URLEncoder.encode(address, "UTF-8")}").get().build())
+
+    fun securityScan(target: String): JSONObject {
+        val body = JSONObject().put("target", target)
+        return execute(requestBuilder("/security/scan").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    // ---- Trading Terminal (real OHLC kline + 24h ticker) ----
+    fun getTerminalKline(symbol: String, days: Int): JSONObject {
+        val path = "/terminal/kline/${URLEncoder.encode(symbol, "UTF-8")}?days=$days"
+        return execute(requestBuilder(path).get().build())
+    }
+
+    fun getTerminalTicker(symbol: String): JSONObject {
+        val path = "/terminal/ticker/${URLEncoder.encode(symbol, "UTF-8")}"
+        return execute(requestBuilder(path).get().build())
+    }
+
+    // ---- Watch-only wallet enrollment ----
+    fun createWatchOnlyWallet(label: String, address: String, chainId: Int): JSONObject {
+        val body = JSONObject()
+            .put("label", label)
+            .put("address", address)
+            .put("chain_id", chainId)
+        return execute(requestBuilder("/wallets/watch-only").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
     // Convert is the same path as swap (cross-token conversion).
     fun getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {
         val path = "/swap/quote?from_token=$fromToken&to_token=$toToken&from_amount=$fromAmount&chain_id=$chainId"

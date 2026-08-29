@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Trading Terminal"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/terminalSymbolInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Symbol (ETH)"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/terminalDaysInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Range (days, e.g. 1/7/30)"
+        android:inputType="number" />
+
+    <Button
+        android:id="@+id/terminalLoadButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Load" />
+
+    <TextView
+        android:id="@+id/terminalTickerText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="monospace"
+        android:textSize="12sp" />
+
+    <com.tigeruserwallet.ui.CandleChartView
+        android:id="@+id/terminalChart"
+        android:layout_width="match_parent"
+        android:layout_height="320dp"
+        android:layout_marginTop="12dp" />
+
+</LinearLayout>

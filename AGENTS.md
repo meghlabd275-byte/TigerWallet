@@ -503,3 +503,24 @@
   [data-theme] vars, android ThemeManager, ios ThemeManager).
 - NOT compile-verified this session: Kotlin (no Android SDK), Swift (no Xcode),
   Go/Rust toolchains absent (session-local in prior sessions).
+
+## Session 15 (2026-08-29) — residual gap closure (Security/Terminal/watch-only)
+- WEB: added Security.tsx (check-url/check-address/full-scan) + Terminal.tsx
+  (live ticker + real canvas candle chart from /terminal/kline) + watch-only
+  enroll form on Wallets; App.tsx now routes 30 pages. tsc clean.
+- DESKTOP: added Security (check+scan) + Terminal (canvas candles) pages —
+  24→26 nav items/containers. node --check clean.
+- EXTENSION: added Security (check/scan) + Terminal (ticker+candle canvas)
+  tabs — 16→18. node --check clean.
+- ANDROID: added SecurityFragment (+layout), TerminalFragment with a real
+  CandleChartView custom View (+layout); watch-only enroll on WalletsFragment
+  (watchOnlyFormCard in layout + createWatchOnlyWallet API method). Security +
+  Terminal also added to the Features hub. XML parse OK.
+- iOS: SecurityView (check/scan), TerminalView (ticker + real Canvas candle
+  chart, iOS 15+, with a list fallback), watch-only enroll sheet on
+  WalletsView (WatchOnlyView + createWatchOnlyWallet API method). Security +
+  Terminal added to FeaturesView. Brace balance OK.
+- ALL: real backend fetches only; theme inherited on every new page. The ONLY
+  remaining known gap is the extension Google OAuth client_id (deployment
+  config, not code) — same as web/android/ios backup helpers which are
+  complete.

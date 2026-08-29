@@ -39,6 +39,8 @@ class FeaturesFragment : Fragment() {
             "P2P Trading" to ::P2PFragment,
             "Price Alerts" to ::PriceAlertsFragment,
             "ENS" to ::ENSFragment,
+            "Security Center" to ::SecurityFragment,
+            "Trading Terminal" to ::TerminalFragment,
             "Approvals" to ::ApprovalsFragment,
             "Address Book" to ::AddressBookFragment,
             "Devices" to ::DevicesFragment,
