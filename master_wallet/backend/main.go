@@ -63,6 +63,12 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Kill-switch control plane: a SuperAdmin global halt (written by the
+	// kill_switch service :8469 to the shared Redis kill:global key) 503-blocks
+	// every /api/v1/ request. /health + /ws stay reachable. Best-effort: a
+	// Redis outage does not self-paralyze the canonical operator backend.
+	r.Use(KillSwitchMiddleware(store))
+
 	// ---- Public routes ----
 	r.GET("/health", svc.healthCheck)
 	r.GET("/api/v1/health", svc.healthCheck)
@@ -234,6 +240,11 @@ func main() {
 				ff.DELETE("/:flagId", svc.RemoveFeatureFlag)
 			}
 		}
+
+		// Kill-switch status (read-only): any authenticated user can see whether
+		// a SuperAdmin global halt is active. Issuing/resuming a halt is
+		// SuperAdmin-only via the kill_switch service (:8469).
+		protected.GET("/kill-switch/status", svc.GetKillSwitchStatus)
 	}
 
 	srv := &http.Server{

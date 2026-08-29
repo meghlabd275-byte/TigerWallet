@@ -972,6 +972,51 @@ func (h *Handlers) CancelContribution(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"project_id": id, "user_id": userID, "status": "refunded"})
 }
 
+// GetContributionStatus reports the on-chain confirmation state of a launchpad
+// contribution's tx. If a tx_hash query param is supplied and on-chain is
+// configured, it performs a real receipt lookup (fail-closed: never claims a
+// confirmation that didn't happen). Without a tx_hash it returns the DB status.
+func (h *Handlers) GetContributionStatus(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	userID := wlgate.UserID(c)
+	txHash := strings.TrimSpace(c.Query("tx_hash"))
+
+	// DB-side status first (always available).
+	contrib, err := h.store.GetContribution(c.Request.Context(), id, userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no contribution found"})
+		return
+	}
+	dbView := contributionToJSON(contrib)
+
+	if txHash == "" || h.launchpadOnChain == nil {
+		c.JSON(http.StatusOK, gin.H{"contribution": dbView, "on_chain": nil,
+			"note": h.onChainNote(txHash)})
+		return
+	}
+	txCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+	conf, err := h.launchpadOnChain.ConfirmTransaction(txCtx, txHash)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"contribution": dbView,
+			"on_chain": TxConfirmation{Hash: txHash, Confirmed: false, Status: "error"},
+			"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"contribution": dbView, "on_chain": conf})
+}
+
+// onChainNote explains why on-chain confirmation is unavailable.
+func (h *Handlers) onChainNote(txHash string) string {
+	if txHash == "" {
+		return "no tx_hash query param supplied; returning DB status only"
+	}
+	return "on-chain launchpad not configured (PP_LAUNCHPAD_PRIVATE_KEY/PP_LAUNCHPAD_CONTRACT_ADDRESS unset); returning DB status only"
+}
+
 // ContributionHistory returns launchpad contributions for a token (real join).
 func (h *Handlers) ContributionHistory(c *gin.Context) {
 	tokenID, ok := parseTokenID(c)

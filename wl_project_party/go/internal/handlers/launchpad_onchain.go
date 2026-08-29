@@ -307,3 +307,46 @@ func (loc *LaunchpadOnChain) getTokenPrice(ctx context.Context, saleID [32]byte)
 	}
 	return sale.TokenPrice, nil
 }
+
+// TxConfirmation describes the on-chain confirmation state of a broadcast tx.
+type TxConfirmation struct {
+	Hash        string `json:"hash"`
+	Confirmed   bool   `json:"confirmed"`
+	Status      string `json:"status"`            // "success" | "reverted" | "pending" | "not_found"
+	BlockNumber uint64 `json:"block_number,omitempty"`
+	GasUsed     uint64 `json:"gas_used,omitempty"`
+}
+
+// ConfirmTransaction reads a tx's receipt from the chain and reports whether it
+// was mined and its success/revert status. Fail-closed: any RPC error returns
+// ("pending", err) — it never claims a confirmation that didn't happen.
+func (loc *LaunchpadOnChain) ConfirmTransaction(ctx context.Context, txHash string) (TxConfirmation, error) {
+	if loc == nil {
+		return TxConfirmation{Hash: txHash, Confirmed: false, Status: "on-chain not configured"}, fmt.Errorf("on-chain launchpad not configured")
+	}
+	if !common.IsHexAddress(txHash) && len(txHash) != 66 {
+		return TxConfirmation{Hash: txHash, Confirmed: false, Status: "invalid hash"}, fmt.Errorf("invalid tx hash")
+	}
+	hash := common.HexToHash(txHash)
+	receipt, err := loc.client.TransactionReceipt(ctx, hash)
+	if err != nil {
+		// "not found" => pending (tx may still be in mempool).
+		return TxConfirmation{Hash: txHash, Confirmed: false, Status: "pending"}, nil
+	}
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		return TxConfirmation{
+			Hash:        txHash,
+			Confirmed:   true,
+			Status:      "success",
+			BlockNumber: receipt.BlockNumber.Uint64(),
+			GasUsed:     receipt.GasUsed,
+		}, nil
+	}
+	return TxConfirmation{
+		Hash:        txHash,
+		Confirmed:   true,
+		Status:      "reverted",
+		BlockNumber: receipt.BlockNumber.Uint64(),
+		GasUsed:     receipt.GasUsed,
+	}, nil
+}

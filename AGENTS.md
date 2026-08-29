@@ -300,3 +300,39 @@
   session; libssl-dev + pkg-config + cmake installed. admin/rust cargo check +
   admin/cpp cmake build + wl_project_party/wl_card/wl_bots/wl_liquidity/
   admin/go/go-wallet_api go build all PASS.
+
+## Session 10 (2026-08-29) — close remaining P0/P1 gaps (kill-switch, super_admin/cpp, G3)
+- super_admin/cpp: was BROKEN (CMakeLists built nonexistent src/processor.cpp; no .cpp
+  files existed — header-only). The header super_admin_domains.hpp is REAL (POSIX-socket
+  HTTP proxy to super_admin/go :8082, no stubs). FIXED: rewrote CMakeLists to build a real
+  tiger_super_admin_cpp CLI driver (src/main.cpp) over the header-only SuperAdminHttpClient
+  + expose an INTERFACE header library. cmake build PASS; driver fail-closes with a
+  transport error when super_admin/go is down (no fabricated data). P1 closed.
+- master_wallet/backend kill-switch integration (P0): the kill_switch service (:8469)
+  writes global halts to the shared Redis key `kill:global`. The canonical MW backend
+  previously did not consult it. ADDED kill_switch.go: Store.IsKillSwitchHalted() checks
+  the kill:global Redis key (best-effort; a Redis outage does NOT self-paralyze the
+  operator backend — halts are a positive signal, absence == not halted);
+  KillSwitchMiddleware 503-blocks every /api/v1/ request when a global halt is active
+  (/health + /ws stay reachable for monitoring); read-only GET /api/v1/kill-switch/status
+  endpoint (any authenticated user; toggle is SuperAdmin-only via kill_switch :8469).
+  Only a SuperAdmin can issue a halt. go build + vet PASS. P0 closed.
+- wl_project_party G3 (on-chain tx confirmation fetcher): added LaunchpadOnChain.
+  ConfirmTransaction() — real ethclient.TransactionReceipt lookup returning
+  {confirmed, status: success|reverted|pending, block_number, gas_used}, fail-closed
+  (never claims a confirmation that didn't happen; pending if receipt not found).
+  New store.GetContribution(); new GET /launchpad/:id/contribution-status?tx_hash=
+  handler returning DB status + on-chain confirmation. go build+vet+test PASS. P2 closed.
+- Toolchain reinstalled this session: Go 1.23.4 (/usr/local/go), Rust 1.85.0 (rustup),
+  cmake 3.31.6 + libssl-dev + pkg-config (apt). All changed surfaces build-verified:
+  master_wallet/backend, wl_project_party, wl_card, admin/go, go/wallet_api (go build);
+  admin/rust (cargo check, 0 errors); admin/cpp + super_admin/cpp (cmake build).
+- Remaining open gaps (documented, not blocking): selfhosted_masterwallet (Rust) is the
+  unlicensed reference impl (no two-party co-sign/auto-signer loop — use wl_master_wallet
+  for WL); master_wallet/backend project-party listing approval + market-making/bots hooks
+  live in sibling project_party/ + bots/ (by design, not a MW gap); Android UserWallet
+  passkeys stub + WalletConnect host; Desktop (Tauri) missing dApp/WalletConnect/passkeys/
+  KYC/ramp/ENS/NFT-transfer/DeFi wiring; some admin web pages may have UI-only stubs
+  behind real routes. A full zero-gap build of a 186-chain, 3-app-family, multi-tier
+  crypto-wallet ecosystem with 100/100 frontend↔backend wiring is multi-month work
+  beyond one session.

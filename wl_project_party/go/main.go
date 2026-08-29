@@ -131,6 +131,7 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 			mw.POST("/launchpad/:id/contribute", svc.Contribute)
 			mw.POST("/launchpad/:id/claim", svc.Claim)
 			mw.POST("/launchpad/:id/cancel", svc.CancelContribution)
+			mw.GET("/launchpad/:id/contribution-status", svc.GetContributionStatus)
 			// Flat alias: contribution history for a token.
 			mw.GET("/history/:token_id", svc.ContributionHistory)
 

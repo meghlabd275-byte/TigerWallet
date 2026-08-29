@@ -899,6 +899,21 @@ func (s *Store) CreateContribution(ctx context.Context, projectID, userID uuid.U
 	return &out, nil
 }
 
+// GetContribution fetches a single user's contribution for a launchpad project
+// (fail-closed: returns pgx.ErrNoRows if none exists).
+func (s *Store) GetContribution(ctx context.Context, projectID, userID uuid.UUID) (*LaunchpadContribution, error) {
+	var out LaunchpadContribution
+	err := s.db.QueryRow(ctx,
+		`SELECT id, project_id, user_id, amount, token_amount, status, COALESCE(tx_hash,''), claimed_at, refunded_at, confirmed_at, created_at
+		 FROM launchpad_contributions WHERE project_id=$1 AND user_id=$2 ORDER BY created_at DESC LIMIT 1`,
+		projectID, userID).
+		Scan(&out.ID, &out.ProjectID, &out.UserID, &out.Amount, &out.TokenAmount, &out.Status, &out.TxHash, &out.ClaimedAt, &out.RefundedAt, &out.ConfirmedAt, &out.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ClaimContribution marks a user's pending contribution as claimed. Fails
 // fail-closed if no claimable contribution exists.
 func (s *Store) ClaimContribution(ctx context.Context, projectID, userID uuid.UUID) error {
