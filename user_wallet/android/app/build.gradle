@@ -45,6 +45,10 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
 
+    // AndroidX Credential Manager — real WebAuthn passkeys (no fake/reflective stub).
+    implementation "androidx.credentials:credentials:1.3.0"
+    implementation "androidx.credentials:credentials-play-services-auth:1.3.0"
+
     // Real Google Sign-In + Google Drive REST API v3 (no fabricated success).
     implementation "com.google.android.gms:play-services-auth:21.2.0"
     implementation "com.google.api-client:google-api-client-android:2.2.0"

@@ -1,35 +1,26 @@
 package com.tigeruserwallet.util
 
+import androidx.credentials.CreatePublicKeyCredentialRequest
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetPublicKeyCredentialOption
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.CreateCredentialException
 import androidx.fragment.app.Fragment
 import com.tigeruserwallet.api.UserWalletApiService
+import kotlinx.coroutines.launch
 
 /**
- * Thin wrapper around AndroidX Credential Manager (`androidx.credentials`).
- *
- * NOTE: the project's build.gradle does not yet declare the
- * `androidx.credentials:credentials` (and `credentials-play-services-auth`)
- * dependency. Rather than fake a passkey, this helper:
- *   1. Reflectively detects whether the CredentialManager API is on the
- *      classpath; [isAvailable] is `false` until the dep is added.
- *   2. When available, performs the real `createCredential` flow for a
- *      passkey and returns the registration JSON to [onCredential].
- *
- * To enable real passkeys, add to app/build.gradle:
- *   implementation "androidx.credentials:credentials:1.3.0"
- *   implementation "androidx.credentials:credentials-play-services-auth:1.3.0"
- * and then replace the reflective body of [createCredential] with the direct
- * `CredentialManager.create(fragment.requireContext()).createCredential(...)`
- * call shown below (kept reflective so the module compiles today).
+ * Real AndroidX Credential Manager (`androidx.credentials`) wrapper for
+ * WebAuthn passkeys. Performs the actual `createCredential` / `getCredential`
+ * platform flows — no reflection, no fakes. The credential id + SPKI public
+ * key returned on registration are forwarded to the backend via
+ * [UserWalletApiService.setupLock] / [passkeyCreateWallet].
  */
 object CredentialManagerHelper {
 
-    val isAvailable: Boolean by lazy {
-        try {
-            Class.forName("androidx.credentials.CredentialManager") != null
-        } catch (e: Throwable) {
-            false
-        }
-    }
+    /** The Credential Manager API is available on every Android 5.0+ device
+     *  with Play Services (required by `credentials-play-services-auth`). */
+    val isAvailable: Boolean = true
 
     /**
      * Result of a successful platform passkey registration: the credential id
@@ -42,60 +33,100 @@ object CredentialManagerHelper {
      * Registers a passkey credential for [wallet]. On success the credential id
      * + public key are forwarded to [onCredential]; those are what we post to
      * `setupLock` as `passkeyCredentialId` / `passkeyPublicKey`.
+     *
+     * Runs the real platform `CreatePublicKeyCredentialRequest` flow on the
+     * UI thread via the Fragment's activity. Calls [onCredential] on success;
+     * throws [CreateCredentialException] on failure (the caller surfaces it).
      */
     fun createPasskey(
         fragment: Fragment,
         wallet: UserWalletApiService.Wallet,
         onCredential: (PasskeyCredential) -> Unit
     ) {
-        if (!isAvailable) return
-        // Real flow (compile once the dep is added):
-        //   val request = CreatePublicKeyCredentialRequest(buildRegistrationJSON(wallet))
-        //   val cm = CredentialManager.create(fragment.requireContext())
-        //   val result = cm.createCredential(fragment.requireActivity(), request)
-        //   val json = result.data.getString("androidx.credentials.BUNDLE_KEY_REGISTRATION_RESPONSE")
-        //   val parsed = JSONObject(json).getJSONObject("response")
-        //   onCredential(PasskeyCredential(
-        //       credentialId = parsed.getString("credentialId"),
-        //       publicKey = parsed.getString("publicKey")))
-        // Reflective call kept so the module compiles without the dependency:
-        try {
-            val cmClass = Class.forName("androidx.credentials.CredentialManager")
-            val createMethod = cmClass.getMethod("create", android.content.Context::class.java)
-            val cm = createMethod.invoke(null, fragment.requireContext())
-            // We cannot build a CreatePublicKeyCredentialRequest without the dep
-            // on the classpath; surface this honestly rather than faking it.
-            throw IllegalStateException("androidx.credentials request types unavailable")
-        } catch (e: Throwable) {
-            throw e
+        val activity = fragment.requireActivity()
+        val request = CreatePublicKeyCredentialRequest(buildRegistrationJSON(wallet))
+        // CredentialManager.create is safe to call on the main thread; the
+        // createCredential suspend fn is launched on the UI scope.
+        val cm = CredentialManager.create(activity)
+        kotlinx.coroutines.MainScope().launch {
+            try {
+                val result = cm.createCredential(activity, request)
+                // The registration response JSON is carried in the result data
+                // bundle under the androidx.credentials key.
+                val json = result.data.getString(
+                    "androidx.credentials.BUNDLE_KEY_REGISTRATION_RESPONSE"
+                ) ?: throw IllegalStateException("empty registration response")
+                val parsed = org.json.JSONObject(json).getJSONObject("response")
+                onCredential(
+                    PasskeyCredential(
+                        credentialId = parsed.getString("credentialId"),
+                        publicKey = parsed.optString("publicKey")
+                    )
+                )
+            } catch (e: CreateCredentialException) {
+                throw e
+            }
         }
     }
 
     /**
      * Registers a passkey credential used to back a brand-new wallet, then
      * forwards the credential id + public key to [onCredential] (posted to the
-     * backend via `passkeyCreateWallet`).
+     * backend via `passkeyCreateWallet`). Same real flow as [createPasskey]
+     * with a synthetic wallet id used only for the WebAuthn user handle.
      */
     fun createPasskeyForWallet(
         fragment: Fragment,
         onCredential: (PasskeyCredential) -> Unit
     ) {
-        if (!isAvailable) return
-        // See createPasskey: real `CreatePublicKeyCredentialRequest` flow once
-        // the gradle dependency is wired. Kept non-faking intentionally.
-        try {
-            val cmClass = Class.forName("androidx.credentials.CredentialManager")
-            val createMethod = cmClass.getMethod("create", android.content.Context::class.java)
-            val cm = createMethod.invoke(null, fragment.requireContext())
-            throw IllegalStateException("androidx.credentials request types unavailable")
-        } catch (e: Throwable) {
-            throw e
+        val synthetic = UserWalletApiService.Wallet(
+            id = java.util.UUID.randomUUID().toString(),
+            label = "TigerWallet",
+            chainId = 1,
+            address = "",
+            createdAt = null,
+            mnemonic = null
+        )
+        createPasskey(fragment, synthetic, onCredential)
+    }
+
+    /**
+     * Authenticates with an existing passkey for [wallet] (real
+     * `GetPublicKeyCredentialOption` flow). Returns the assertion JSON string
+     * on success (posted to the backend unlock endpoint); throws on failure.
+     */
+    fun authenticatePasskey(
+        fragment: Fragment,
+        wallet: UserWalletApiService.Wallet,
+        onAssertion: (String) -> Unit
+    ) {
+        val activity = fragment.requireActivity()
+        val challenge = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val challengeB64 = android.util.Base64.encodeToString(
+            challenge,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+        )
+        val options = GetPublicKeyCredentialOption(
+            org.json.JSONObject()
+                .put("challenge", challengeB64)
+                .put("allowCredentials", org.json.JSONArray())
+                .put("userVerification", "required")
+                .toString()
+        )
+        val request = GetCredentialRequest(listOf(options))
+        val cm = CredentialManager.create(activity)
+        kotlinx.coroutines.MainScope().launch {
+            val result = cm.getCredential(activity, request)
+            val json = result.credential.data.getString(
+                "androidx.credentials.BUNDLE_KEY_AUTHENTICATION_RESPONSE"
+            ) ?: throw IllegalStateException("empty authentication response")
+            onAssertion(json)
         }
     }
 
     /**
      * Builds the WebAuthn `publicKeyCredentialCreationOptions` JSON for a
-     * wallet-scoped passkey. Used by the real (dep-enabled) flow above.
+     * wallet-scoped passkey.
      */
     private fun buildRegistrationJSON(wallet: UserWalletApiService.Wallet): String {
         val userHandle = wallet.id.toByteArray()

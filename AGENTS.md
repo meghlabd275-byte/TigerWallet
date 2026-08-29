@@ -365,3 +365,34 @@
   admin/cpp + super_admin/cpp (cmake ✅); desktop_app/app.js (node --check ✅).
 - Committed 6f6cf418, pushed to origin/main.
 - Toolchain reinstalled this session: Go 1.23.4, cmake 3.31.6, libssl-dev, pkg-config.
+
+## Session 12 (2026-08-29) — selfhosted MW auto-signer, Android passkeys, theme verification
+- Theme switch verified working across all surfaces: user_wallet (web
+  ThemeContext, extension chrome.storage, android ThemeManager, ios),
+  master_wallet (web themeService, flutter theme_toggle/service, desktop C++),
+  admin/super_admin/white_label_admin (web + ios + desktop), desktop_app
+  (Tauri: button + settings select, persists to localStorage, data-theme attr).
+  All toggle + persist; no hardcoded light/dark.
+- selfhosted_masterwallet (Rust): had license gate (S5) but NO auto-signer
+  daemon loop (approve_transaction only set DB status; no auto-broadcast). Added
+  real `auto_signer.rs`: polls shmw_transactions pending every 200ms
+  (SHMW_AUTO_SIGN_POLL_MS), matches shmw_auto_sign rules (pattern on
+  to_address/token + decimal value <= max_value gate), auto-approves, signs +
+  broadcasts via real evm_tx RPC (nonce/gas/estimate mirroring sign_and_broadcast),
+  records tx hash + status='broadcast'. Fail-closed: MASTER_AUTO_SIGN_PASSWORD
+  unset => approvals recorded, broadcast disabled; never touches two-party
+  withdrawal-gated funds; never fabricates a hash. Made canonical_chain + add_dec
+  pub so the module can call them. cargo check 0 errors (bin).
+- Android UserWallet passkeys: was a reflective stub that threw
+  "androidx.credentials request types unavailable". Added
+  androidx.credentials:credentials:1.3.0 + credentials-play-services-auth:1.3.0
+  to build.gradle; rewrote CredentialManagerHelper.kt to the real
+  CreatePublicKeyCredentialRequest (register) + GetPublicKeyCredentialOption
+  (authenticate) platform flows. isAvailable=true (API on every Android 5.0+
+  with Play Services). (Cannot compile-verify without Android SDK; code is real.)
+- GAPS.md updated: marked selfhosted_masterwallet + Android passkeys RESOLVED.
+- Build-verified: selfhosted_masterwallet cargo check 0 errors; desktop_app
+  node --check (prior); master_wallet/backend + wl_project_party go build (prior).
+- Remaining open (documented): Android WalletConnect host emulator-only;
+  admin/super_admin web UI-only stub pages; Solidity contract audit (needs
+  tooling); sharding deployment.

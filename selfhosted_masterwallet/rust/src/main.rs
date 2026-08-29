@@ -29,6 +29,7 @@ use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 
+mod auto_signer;
 mod chains_data;
 mod crypto;
 mod evm_tx;
@@ -470,7 +471,7 @@ pub fn chain_rpc_endpoint(chain_id: i64) -> String {
 
 /// Canonical curated chain metadata (mirrors chains.go supportedChains):
 /// chain_id → (blockchain name, decimals). Falls back to the seeded registry.
-fn canonical_chain(chain_id: i64) -> Option<(String, u32)> {
+pub fn canonical_chain(chain_id: i64) -> Option<(String, u32)> {
     let curated: Option<&'static str> = match chain_id {
         1 => Some("ethereum"),
         56 => Some("bsc"),
@@ -991,7 +992,7 @@ async fn sign_and_broadcast(state: web::Data<AppState>, req: HttpRequest, path: 
 }
 
 /// Add two decimal-string non-negative integers.
-fn add_dec(a: &str, b: &str) -> Result<String, String> {
+pub fn add_dec(a: &str, b: &str) -> Result<String, String> {
     let mut x = evm_tx::dec_to_be(a)?;
     let y = evm_tx::dec_to_be(b)?;
     if y.len() > x.len() {
@@ -1559,6 +1560,11 @@ async fn main() -> std::io::Result<()> {
         instance_id,
         heartbeat_interval,
     ));
+
+    // Auto-signer daemon: polls pending txs, auto-approves + signs + broadcasts
+    // matching ones (fail-closed if MASTER_AUTO_SIGN_PASSWORD unset; never
+    // touches two-party withdrawal-gated funds). Mirrors the Go canonical.
+    tokio::spawn(auto_signer::run(state.pool.clone()));
 
     let bind = state.bind_addr.clone();
     let host = state.clone();

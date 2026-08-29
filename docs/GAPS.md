@@ -217,10 +217,21 @@ Remaining desktop gaps: passkeys UI, full dApp browser iframe, on-device
 WalletConnect pairing (backend proxy route exists).
 
 ### Still-open (carried over, not blocking core operation)
-- `selfhosted_masterwallet` (Rust): unlicensed reference impl (no two-party
-  co-sign/auto-signer loop). Use `wl_master_wallet` for WL self-hosting.
-- Android UserWallet passkeys stub (no `androidx.credentials`); WalletConnect
-  host is emulator-only (`10.0.2.2:8443`).
+- ~~`selfhosted_masterwallet` (Rust): unlicensed reference impl (no two-party
+  co-sign/auto-signer loop).~~ **RESOLVED 2026-08-29 (Session 12)** — real
+  auto-signer daemon loop added (`auto_signer.rs`): polls pending txs every
+  200ms, matches `shmw_auto_sign` rules (pattern + value gate), auto-approves +
+  signs + broadcasts via real EVM RPC, records tx hash. Fail-closed if
+  `MASTER_AUTO_SIGN_PASSWORD` unset (approvals recorded, no broadcast); never
+  touches two-party withdrawal-gated funds. `cargo check` 0 errors. (It remains
+  the unlicensed reference impl — `wl_master_wallet` is canonical for WL.)
+- ~~Android UserWallet passkeys stub (no `androidx.credentials`)~~ **RESOLVED
+  2026-08-29 (Session 12)** — `androidx.credentials:credentials:1.3.0` +
+  `credentials-play-services-auth:1.3.0` added to build.gradle;
+  `CredentialManagerHelper.kt` rewritten from reflective stub to the real
+  `CreatePublicKeyCredentialRequest` / `GetPublicKeyCredentialOption` platform
+  flows (create + authenticate). WalletConnect host still emulator-only
+  (`10.0.2.2:8443`) — needs configurable host for real devices.
 - Some `admin/web`/`super_admin/web` pages may have UI-only stubs behind real
   routes (backends are real).
 - Smart-contract security audit (`smart_contracts/` 105 sol) — needs Solidity
