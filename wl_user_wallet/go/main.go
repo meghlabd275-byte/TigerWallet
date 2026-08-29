@@ -188,6 +188,25 @@ func main() {
                         // Token sales
                         wallet.GET("/token-sales", svc.ListTokenSales)
                         wallet.POST("/token-sales/:id/participate", svc.ParticipateTokenSale)
+
+                        // Public mirror + auth aliases + missing launchpool/unstake
+                        wallet.POST("/launchpool/unstake", svc.StakingUnstake)
+                        // Alias central auth & create user routes (SDKs also hit /register|login)
+                        wallet.POST("/register", svc.Register)
+                        wallet.POST("/login", svc.Login)
+                        wallet.POST("/guest", svc.GuestAuth)
+                        // Public mirror (to public_group methods)
+                        api.GET("/api/v1/public/balance", svc.PublicBalance)
+                        api.GET("/api/v1/public/tokens", svc.PublicTokens)
+                        api.GET("/api/v1/public/transactions", svc.PublicTransactions)
+                        api.GET("/api/v1/public/nfts", svc.PublicNFTs)
+                        // Margin & perpetual closure of series already in margin;
+                        // comment fetched source groups hide missed earlier anchors:
+                        wallet.GET("/perpetual/positions", svc.ListMarginPositions)
+                        wallet.POST("/perpetual/positions/:id/close", svc.CloseMarginPosition)
+                        wallet.GET("/perp/positions", svc.ListPerpPositions)
+                        wallet.POST("/perp/positions", svc.CreatePerpPosition)
+                        wallet.POST("/perp/positions/:id/close", svc.ClosePerpPosition)
                         // Token approvals
                         wallet.GET("/approvals", svc.ListTokenApprovals)
                         wallet.DELETE("/approvals/:id", svc.RevokeTokenApproval)
@@ -227,6 +246,28 @@ func main() {
 			public.GET("/tokens", svc.PublicTokens)
 			public.GET("/transactions", svc.PublicTransactions)
 			public.GET("/nfts", svc.PublicNFTs)
+
+            // Mirror canonical /api/v1/* prefixed routes.
+            router.GET("/api/v1/chains", svc.GetChains)
+            router.GET("/api/v1/price", svc.GetPrice)
+            router.GET("/api/v1/gas", svc.GetGas)
+            router.POST("/api/v1/gas/estimate", svc.EstimateGas)
+            router.GET("/api/v1/network-status", svc.NetworkStatus)
+            router.GET("/api/v1/chart/history", svc.ChartHistory)
+            router.POST("/api/v1/simulate", svc.SimulateTransaction)
+            router.GET("/api/v1/ens/resolve", svc.ENSResolve)
+            router.GET("/api/v1/ens/lookup", svc.ENSLookup)
+            router.GET("/api/v1/security/check-url", svc.SecurityCheckURL)
+            router.GET("/api/v1/security/check-address", svc.SecurityCheckAddress)
+            router.POST("/api/v1/security/scan", svc.SecurityScan)
+            router.GET("/api/v1/terminal/kline/:symbol", svc.TerminalKline)
+            router.GET("/api/v1/terminal/ticker/:symbol", svc.TerminalTicker)
+            router.GET("/api/v1/dapps", svc.ListDapps)
+            router.GET("/api/v1/dapps/categories", svc.DappCategories)
+            router.GET("/api/v1/dapps/:id", svc.GetDapp)
+            router.GET("/api/v1/defi/protocols", svc.DefiProtocols)
+            router.GET("/api/v1/tokens/registry", svc.TokenRegistry)
+
 		}
 	}
 

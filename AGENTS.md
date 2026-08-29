@@ -612,3 +612,14 @@
   deliberately-skipped /api/v1/* duplicate-prefix variants — flat paths
   exposed once.
 - Per-fetcher kill switch remains (middleware.Gate + wl_control_plane flags.)
+
+## Session 19 (2026-08-29) — wl_user_wallet **complete parity** (0 route misses)
+- CLOSED the last 10 remaining route-diffs: /api/v1/public/{balance,tokens,
+  transactions,nfts} mirror, /auth/{register,login,guest} aliases at router
+  root, /launchpool/unstake -> svc.StakingUnstake, /perpetual/positions
+  (+:id/close) mapping to margin handlers, /perp flat names, wallet/user
+  admin.
+- WL now registers ~138 route definitions over canonical 102 — zero missing,
+  each with real implementations or fail-fast use of existing handlers.
+  Build+vet=0 via go1.22.5 session-local /tmp/go.
+- CategoryFetcher per-fetcher gate intact; SuperAdmin can disable each.
