@@ -336,3 +336,32 @@
   behind real routes. A full zero-gap build of a 186-chain, 3-app-family, multi-tier
   crypto-wallet ecosystem with 100/100 frontend↔backend wiring is multi-month work
   beyond one session.
+
+## Session 11 (2026-08-29) — gap-MD reconciliation, SQLite verification, desktop wiring
+- Read all gap/audit MD files (docs/GAPS.md, docs/FEATURE_GAP_REPORT.md,
+  docs/AUDIT_REPORT.md, docs/PRODUCTION_AUDIT_2026-08-26.md, root master audit)
+  and marked every gap against the current tree.
+- VERIFIED already-resolved (stale MD entries corrected): master_wallet/desktop
+  health-probe → real console.cpp (S7/8); go/full_fetchers no-op scaffold → real
+  EVM JSON-RPC Fetch() bodies, zero "In production" markers (S7);
+  selfhosted_masterwallet license gate (S5); fiat_gateway Solidity misplacement
+  removed (canonical go/fiat_ramp with real HMAC webhooks).
+- SQLite removal — VERIFIED COMPLETE: full scan of all Go modules = zero SQLite
+  usage. Every GORM Open uses postgres.Open (116 sites); pgxpool (295);
+  database/sql "postgres" (12). admin/rust sqlx uses only the postgres feature.
+  No gorm.io/driver/sqlite / mattn/go-sqlite3 / modernc.org/sqlite imports. The
+  repo is PostgreSQL + Redis only. admin/rust/target/ build artifacts are
+  untracked. (User's explicit "remove sqlite" requirement is satisfied.)
+- Desktop (Tauri) feature wiring EXTENDED: desktop_app/src/app.js now wires ENS
+  resolve, KYC status, fiat-ramp providers, and dApp catalog + WalletConnect to
+  canonical go/wallet_api routes. Real fetches, fail-closed empty states, no
+  fabricated data. node --check PASS. Transaction-submitted notifications
+  already present ("Transaction broadcast: <tx_hash>", "Swap submitted: ...").
+- Updated docs/GAPS.md (P1 §3, §9, new §10 Session-11 section) and
+  docs/FEATURE_GAP_REPORT.md (full_fetchers, admin/rust, desktop, scorecard) to
+  reflect sessions 7-10 resolutions — no stale "BROKEN/MISSING" entries remain
+  for fixed items.
+- Build-verified: master_wallet/backend + wl_project_party (go build ✅);
+  admin/cpp + super_admin/cpp (cmake ✅); desktop_app/app.js (node --check ✅).
+- Committed 6f6cf418, pushed to origin/main.
+- Toolchain reinstalled this session: Go 1.23.4, cmake 3.31.6, libssl-dev, pkg-config.
