@@ -55,17 +55,18 @@
 | ~~MasterWallet desktop is health-probe only~~ | `master_wallet/desktop/src/console.cpp` | **RESOLVED 2026-08-28** — replaced by a real C++ console driver (`console.cpp`, 218 lines) routing commands to `MasterWalletService` → canonical backend :8450. No fabricated balances; fails loudly when backend down/unauthenticated. Full clients remain Web/Android/iOS/Flutter. |
 | ~~`go/full_fetchers` is scaffold-only~~ | `go/full_fetchers/fetchers.go` | **RESOLVED 2026-08-28** — `Fetch()` bodies rewritten to REAL EVM JSON-RPC (`rpc.go`, real `eth_call`/`eth_getBalance` via stdlib HTTP). Zero "In production, query blockchain" no-op markers remain. Documented scaffold with zero importers; canonical live fetch is `go/wallet_api/fetchers.go`. |
 
+
 ---
 
 ## 4. OPEN — P2 (major gaps)
 
 | Gap | Location | Status |
 |---|---|---|
-| No horizontal-scaling plan for billions of addresses | `database/`, `go/wallet_api` | MISSING — sharding/partitioning design (Phase 21) not documented |
-| Fetcher master audit (Phase 36) | fleet-wide | NOT VERIFIABLE IN FULL — enumerated in `docs/audit/REPOSITORY_INVENTORY.md` §6; the 22-field per-fetcher template not yet completed |
-| API audit (Phase 37) | `go/wallet_api`, `master_wallet/backend`, `admin/go`, `super_admin/go` | PARTIAL — canonical wallets verified; full route×auth×consumer matrix pending |
+| ~~No horizontal-scaling plan for billions of addresses~~ | `database/schemas/user_wallet_sharding.sql`, `docs/USER_WALLET_SHARDING.md` | **RESOLVED 2026-08-28** — PG hash-partition schema over chain_id + design doc (unchecked, additive) |
+| ~~Fetcher master audit (Phase 36)~~ | `docs/FETCHER_AUDIT.md` | **RESOLVED 2026-08-29** — full per-fetcher matrix with provider/auth/chains/consumer/status for all Go/Rust/Python fetchers |
+| ~~API audit (Phase 37)~~ | `docs/API_AUDIT.md` | **RESOLVED 2026-08-29** — route×auth matrix for all 15 canonical services + cross-domain boundary checks (Phases 10–12, 54) |
 | Smart-contract security audit (Phase 42) | `smart_contracts/` (105 .sol) | NOT VERIFIABLE — needs Solidity tooling + auditor |
-| `fiat_gateway/go/fiat_gateway.go` is actually Solidity | `fiat_gateway/` | PARTIAL — misplacement; relocated candidate |
+| ~~`fiat_gateway/go/fiat_gateway.go` is actually Solidity~~ | `fiat_gateway/` | **RESOLVED (pre-2026-08-29)** — directory removed from tree in commit `0cb9c75b` ("Remove duplicate services and replace stubbed implementations with real ones"); canonical fiat ramp is `go/fiat_ramp` (:8451) with HMAC-verified Stripe/MoonPay/Transak webhooks |
 
 ---
 
@@ -117,7 +118,9 @@ See the domain READMEs and `ARCHITECTURE.md` for per-domain capability detail.
 2. ~~Complete `admin/go` billing: move plan seeds to admin CRUD + wire a real
    payment-processor callback for invoice `paid`.~~ **DONE** (Stripe webhook added)
 3. ~~Verify/ship `selfhosted_masterwallet` only after adding a license gate.~~ **DONE** (fail-closed license gate added)
-4. Complete fetcher + API matrices (Phases 36–37).
+4. ~~Complete fetcher + API matrices (Phases 36–37).~~ **DONE 2026-08-29** (`docs/FETCHER_AUDIT.md`, `docs/API_AUDIT.md`)
+5. Smart-contract security audit (Phase 42) — needs Solidity tooling + external auditor; NOT VERIFIABLE in this sandbox.
+6. Live-provider verification for `cex_connectors`, `dex_connectors`, `price_oracle` (real code; end-to-end provider run pending).
 
 ---
 

@@ -1,9 +1,9 @@
 package middleware
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/tigerwallet/admin/pkg/auth"
@@ -264,15 +264,18 @@ func RequestIDMiddleware() gin.HandlerFunc {
 	}
 }
 
+// generateRequestID returns a random RFC-4122 v4 UUID. The previous
+// implementation used strings.ReplaceAll on a template, which replaced every
+// placeholder with the SAME computed digit — producing near-constant IDs that
+// broke request tracing and audit correlation.
 func generateRequestID() string {
-	// Simple request ID generation
-	return strings.ReplaceAll(
-		strings.ReplaceAll(
-			strings.ReplaceAll(
-				strings.ReplaceAll(
-					"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx",
-					"x", fmt.Sprintf("%x", time.Now().UnixNano()%16)),
-				"y", fmt.Sprintf("%x", (time.Now().UnixNano()%4)+8)),
-			"-", ""),
-		"_", "-")
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failure is practically unreachable; fall back to a
+		// nanotime-derived ID rather than returning a constant.
+		return fmt.Sprintf("%x-%x", time.Now().UnixNano(), time.Now().Unix())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

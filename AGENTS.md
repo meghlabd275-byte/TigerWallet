@@ -396,3 +396,30 @@
 - Remaining open (documented): Android WalletConnect host emulator-only;
   admin/super_admin web UI-only stub pages; Solidity contract audit (needs
   tooling); sharding deployment.
+
+## Session 13 (2026-08-29, this chat) — bug fixes + Phase 36/37 audits (rebased onto S9-12)
+- NOTE: ran concurrently with Sessions 9-12 above (separate sandbox); this
+  session's entry was renumbered 9->13 on rebase. Its toolchain was Go 1.22.12
+  at /tmp/go122/go (session-local, gone); Sessions 9-12 installed Go 1.23.4 +
+  Rust 1.85.
+- BUG FIX (admin/go auth middleware): generateRequestID used strings.ReplaceAll on
+  a template — every placeholder got the SAME computed digit -> near-constant
+  request IDs (tracing/audit correlation broken). Replaced with crypto/rand
+  RFC-4122 v4 UUID (nanotime fallback). Imports: strings -> crypto/rand.
+- BUG FIX (admin/go PagerDuty): CreateService hardcoded escalation policy id
+  "PXXXXXX" (would create broken services). Now a required validated param
+  (fail-closed on empty). No in-repo callers — safe signature change.
+- PHASE 36 DONE: docs/FETCHER_AUDIT.md — full per-fetcher matrix (provider/auth/
+  chains/output/consumers/status). 14 fetcher groups COMPLETE (traced to real
+  RPC/REST); cex_connectors/dex_connectors/price_oracle PARTIAL (real code, live-
+  provider run pending); fetcher_core/gateway (Rust) NOT VERIFIABLE at the time.
+  0 fake/hardcoded-data fetchers remain in production paths.
+- PHASE 37 DONE: docs/API_AUDIT.md — route×auth matrix for 15 canonical services
+  (wallet_api 123, master_wallet 93, admin/go 354, super_admin 285, wl_admin 170,
+  wl_user_wallet 51, wl_master_wallet 77, wl_card 19, wl_liquidity 25, wl_bots 45,
+  wl_project_party 81, license_service 39, permission_bridge 15, kill_switch 5) +
+  cross-domain boundary checks (Phases 10-12, 54): all PASS. Billing webhook
+  idempotency VERIFIED (event-id dedup + forward-only open->paid conditional UPDATE).
+- Build+vet=0 at the time for all 14 canonical Go modules (Go 1.22.12);
+  wlgate tests pass.
+

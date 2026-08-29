@@ -165,15 +165,20 @@ func (p *PagerDutyClient) AddNote(ctx context.Context, incidentID, userID, conte
 	return p.post(ctx, "/incidents/"+incidentID+"/notes", note, nil)
 }
 
-// CreateService creates a PagerDuty service
-func (p *PagerDutyClient) CreateService(ctx context.Context, name, description string) (string, error) {
+// CreateService creates a PagerDuty service. escalationPolicyID must be a real
+// PagerDuty escalation-policy ID (e.g. from PAGERDUTY_ESCALATION_POLICY_ID) —
+// the PagerDuty API rejects service creation without a valid policy reference.
+func (p *PagerDutyClient) CreateService(ctx context.Context, name, description, escalationPolicyID string) (string, error) {
+	if escalationPolicyID == "" {
+		return "", fmt.Errorf("escalation policy ID is required")
+	}
 	service := map[string]interface{}{
 		"service": map[string]interface{}{
 			"name":        name,
 			"description": description,
 			"status":      "active",
 			"escalation_policy": map[string]interface{}{
-				"id":   "PXXXXXX", // Would be actual policy ID
+				"id":   escalationPolicyID,
 				"type": "escalation_policy_reference",
 			},
 		},
