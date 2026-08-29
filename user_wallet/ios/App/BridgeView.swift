@@ -1,13 +1,10 @@
 import SwiftUI
 
-// Bridge tab. Cross-chain transfer from one chain to another.
-//
-// Honest implementation: the backend exposes no dedicated bridge endpoint, so
-// the on-chain leg is broadcast via /send (sendTransaction). An indicative
-// convert rate is shown via getConvertQuote (real CoinGecko cross-rate). On
-// success shows "Transaction submitted to the blockchain network" — mirrors
-// SendView. The user's own address on the destination chain is the recipient
-// by default (bridge-to-self).
+// Bridge tab. Real cross-chain transfer via the bridge_service proxy:
+// POST /bridge/quote for a live quote, POST /bridge/transfer to initiate the
+// transfer. On success shows "Transaction submitted to the blockchain network".
+// The user's own address on the destination chain is the recipient by default
+// (bridge-to-self).
 struct BridgeView: View {
     @State private var wallets: [WalletRecord] = []
     @State private var selectedWalletId: String?
@@ -16,10 +13,9 @@ struct BridgeView: View {
 
     @State private var token = "ETH"
     @State private var amount = ""
-    @State private var password = ""
     @State private var recipientOverride = ""
 
-    @State private var quote: UserWalletApiService.SwapQuote?
+    @State private var quote: [String: Any]?
     @State private var isQuoting = false
     @State private var isBridging = false
     @State private var errorMessage: String?
@@ -50,12 +46,11 @@ struct BridgeView: View {
     }
 
     private var canBridge: Bool {
-        guard let w = selectedWallet else { return false }
+        guard selectedWallet != nil else { return false }
         return !isBridging
             && !amount.trimmingCharacters(in: .whitespaces).isEmpty
             && !recipient.isEmpty
-            && password.count >= 8
-            && w.chain_id == fromChainId
+            && fromChainId != toChainId
     }
 
     var body: some View {
@@ -117,14 +112,10 @@ struct BridgeView: View {
                     }
                 }
 
-                Section("Security") {
-                    SecureField("Wallet password", text: $password)
-                }
-
                 Section {
                     Button(action: fetchQuote) {
                         HStack {
-                            Text("Get Indicative Rate")
+                            Text("Get Quote")
                             Spacer()
                             if isQuoting { ProgressView().tint(.orange) }
                         }
@@ -133,13 +124,10 @@ struct BridgeView: View {
                 }
 
                 if let quote = quote {
-                    Section("Indicative") {
-                        LabeledContent("From", value: "\(quote.from_amount) \(quote.from_token)")
-                        LabeledContent("Est. receive", value: "\(quote.to_amount) \(quote.to_token)")
-                        LabeledContent("Price impact", value: String(format: "%.2f%%", quote.price_impact))
-                        LabeledContent("Route", value: quote.route)
-                        Text("Indicative only. Actual bridge output depends on the bridge contract and network conditions.")
-                            .font(.caption).foregroundColor(.secondary)
+                    Section("Quote") {
+                        ForEach(quote.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
+                            LabeledContent(key, value: String(describing: value))
+                        }
                     }
                 }
 
@@ -169,7 +157,6 @@ struct BridgeView: View {
                     message: Text(successDetail),
                     dismissButton: .default(Text("OK")) {
                         amount = ""
-                        password = ""
                         recipientOverride = ""
                         quote = nil
                     }
@@ -201,13 +188,10 @@ struct BridgeView: View {
         quote = nil
         let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
         let a = amount.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Use the same token symbol as to_token: bridging ETH from chain A to
-        // chain B is a same-asset cross-chain move. getConvertQuote yields a
-        // real CoinGecko rate for display.
         Task {
             do {
-                let q = try await UserWalletApiService.shared.getConvertQuote(
-                    fromToken: t, toToken: t, fromAmount: a, chainId: fromChainId)
+                let q = try await UserWalletApiService.shared.getBridgeQuote(
+                    fromChain: fromChainId, toChain: toChainId, token: t, amount: a)
                 await MainActor.run {
                     self.quote = q
                     self.isQuoting = false
@@ -221,23 +205,29 @@ struct BridgeView: View {
         }
     }
 
-    // No dedicated bridge endpoint: broadcast the on-chain leg via /send
-    // (sendTransaction). The recipient is the user's address (or override) on
-    // the destination chain.
+    // Real bridge transfer via POST /bridge/transfer (bridge_service). The
+    // recipient is the user's address (or override) on the destination chain.
     private func performBridge() {
         guard let wallet = selectedWallet else { return }
         isBridging = true
         errorMessage = nil
         let to = recipient
         let value = amount.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             do {
-                let res = try await UserWalletApiService.shared.sendTransaction(
-                    walletId: wallet.id, password: password, to: to,
-                    value: value, chainId: fromChainId)
+                let res = try await UserWalletApiService.shared.bridgeTransfer(body: [
+                    "fromChain": fromChainId,
+                    "toChain": toChainId,
+                    "token": t,
+                    "amount": value,
+                    "from_address": wallet.address,
+                    "to_address": to,
+                ])
                 await MainActor.run {
                     self.isBridging = false
-                    self.successDetail = "Tx hash: \(res.tx_hash)"
+                    let id = res["id"] ?? res["tx_hash"] ?? res
+                    self.successDetail = "Transfer: \(id)"
                     self.showSuccess = true
                 }
             } catch {

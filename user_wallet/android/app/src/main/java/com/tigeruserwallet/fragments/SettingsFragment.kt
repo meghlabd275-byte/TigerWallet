@@ -49,6 +49,17 @@ class SettingsFragment : Fragment() {
             UserWalletApiService.logout()
             (activity as? MainActivity)?.showOnboarding()
         }
+        binding.backendUrlInput.setText(UserWalletApiService.apiBaseUrl())
+        binding.backendUrlSaveButton.setOnClickListener {
+            val url = binding.backendUrlInput.text.toString().trim()
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                UserWalletApiService.setBaseUrl(url)
+                android.widget.Toast.makeText(requireContext(), "Server URL saved", android.widget.Toast.LENGTH_SHORT).show()
+                loadHealth()
+            } else {
+                android.widget.Toast.makeText(requireContext(), "Enter a valid http(s) URL", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
         loadHealth()
         loadAccount()
         refreshThemeLabel()

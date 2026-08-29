@@ -22,6 +22,18 @@ export default function Layout() {
     { path: '/devices', label: 'Devices' },
     { path: '/approvals', label: 'Approvals' },
     { path: '/keystore', label: 'Keystore' },
+    { path: '/trading', label: 'Trading' },
+    { path: '/launchpool', label: 'Launchpool' },
+    { path: '/token-sales', label: 'Token Sales' },
+    { path: '/p2p', label: 'P2P' },
+    { path: '/cards', label: 'Cards' },
+    { path: '/price-alerts', label: 'Price Alerts' },
+    { path: '/dapps', label: 'dApps' },
+    { path: '/dao', label: 'DAO' },
+    { path: '/ramp', label: 'Fiat Ramp' },
+    { path: '/copy-trading', label: 'Copy Trading' },
+    { path: '/prediction', label: 'Prediction' },
+    { path: '/ens', label: 'ENS' },
     { path: '/transactions', label: 'Transactions' },
     { path: '/settings', label: 'Settings' }
   ];

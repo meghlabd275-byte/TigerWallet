@@ -9,7 +9,9 @@ import com.tigeruserwallet.api.UserWalletApiService
 import com.tigeruserwallet.crypto.GoogleDriveBackup
 import com.tigeruserwallet.databinding.ActivityMainBinding
 import com.tigeruserwallet.fragments.DashboardFragment
+import com.tigeruserwallet.fragments.FeaturesFragment
 import com.tigeruserwallet.fragments.OnboardingFragment
+import com.tigeruserwallet.fragments.SendFragment
 import com.tigeruserwallet.fragments.SettingsFragment
 import com.tigeruserwallet.fragments.TransactionsFragment
 import com.tigeruserwallet.fragments.WalletsFragment
@@ -38,7 +40,9 @@ class MainActivity : AppCompatActivity() {
             val frag: Fragment = when (item.itemId) {
                 R.id.nav_dashboard -> DashboardFragment()
                 R.id.nav_wallets -> WalletsFragment()
+                R.id.nav_send -> SendFragment()
                 R.id.nav_transactions -> TransactionsFragment()
+                R.id.nav_more -> FeaturesFragment()
                 R.id.nav_settings -> SettingsFragment()
                 else -> DashboardFragment()
             }
@@ -70,6 +74,14 @@ class MainActivity : AppCompatActivity() {
             .replace(R.id.fragmentContainer, fragment)
             .commit()
         return true
+    }
+
+    /** Push a feature fragment on the back stack (used by FeaturesFragment). */
+    fun navigateToFeature(fragment: Fragment) {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragmentContainer, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     /** Called by OnboardingFragment after a wallet is created/imported. */

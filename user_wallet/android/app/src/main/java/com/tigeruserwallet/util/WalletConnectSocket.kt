@@ -1,5 +1,6 @@
 package com.tigeruserwallet.util
 
+import com.tigeruserwallet.api.UserWalletApiService
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -90,14 +91,12 @@ class WalletConnectSocket(
     }
 
     companion object {
-        /** HTTP API base; mirrors UserWalletApiService.DEFAULT_BASE_URL. The
-         * Android emulator maps the host's localhost to 10.0.2.2, so the
-         * WalletConnect WS proxy must target 10.0.2.2:8443 (localhost is
-         * unreachable inside the emulator and would leave dApp pairing dead). */
-        private const val API_BASE_URL = "http://10.0.2.2:8443/api/v1"
-
+        /** The WS proxy follows the SAME configured backend base URL as every
+         * other API call (UserWalletApiService.apiBaseUrl()) — which is
+         * user-configurable via Settings → Backend Server — so dApp pairing
+         * works on physical devices, not just the emulator. */
         fun wsBase(): String {
-            val httpBase = API_BASE_URL.trimEnd('/')
+            val httpBase = UserWalletApiService.apiBaseUrl().trimEnd('/')
             val wsBase = if (httpBase.startsWith("https")) {
                 "wss" + httpBase.removePrefix("https")
             } else {

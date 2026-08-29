@@ -75,7 +75,16 @@ struct TransactionListResponse: Codable { let transactions: [TransactionRecord] 
 final class UserWalletApiService {
     static let shared = UserWalletApiService()
 
-    private let baseURL: String
+    private let baseURLKey = "userwallet-base-url"
+    private static let defaultBaseURL = "http://localhost:8443/api/v1"
+
+    /// The active backend base URL. A user-configured value (Settings →
+    /// Backend Server) is persisted in UserDefaults and wins over the default
+    /// so the app works against any self-hosted deployment.
+    var baseURL: String {
+        get { UserDefaults.standard.string(forKey: baseURLKey) ?? Self.defaultBaseURL }
+        set { UserDefaults.standard.set(newValue, forKey: baseURLKey) }
+    }
     private let session: URLSession
     private let tokenKey = "userwallet-token"
 
@@ -87,8 +96,12 @@ final class UserWalletApiService {
     var token: String? { storedToken }
     var isAuthenticated: Bool { storedToken != nil }
 
-    init(baseURL: String = "http://localhost:8443/api/v1") {
-        self.baseURL = baseURL
+    init(baseURL: String = UserWalletApiService.defaultBaseURL) {
+        // Seed the persisted value once; afterwards UserDefaults is the source
+        // of truth (a custom URL set via Settings survives restarts).
+        if UserDefaults.standard.string(forKey: baseURLKey) == nil {
+            UserDefaults.standard.set(baseURL, forKey: baseURLKey)
+        }
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
@@ -562,6 +575,27 @@ final class UserWalletApiService {
     func createP2POrder(body: [String: Any]) async throws -> [String: Any] {
         let payload = try JSONSerialization.data(withJSONObject: body)
         return try await requestRaw("/p2p/orders", method: "POST", body: payload)
+    }
+
+    // MARK: - Price alerts (backend watch_alerts engine)
+
+    /// GET /price-alerts -> caller's price alerts.
+    func getPriceAlerts() async throws -> [String: Any] {
+        return try await requestRaw("/price-alerts")
+    }
+
+    /// POST /price-alerts { symbol, target_price, direction } -> create.
+    func createPriceAlert(symbol: String, targetPrice: String, direction: String) async throws -> [String: Any] {
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "symbol": symbol, "target_price": targetPrice, "direction": direction,
+        ])
+        return try await requestRaw("/price-alerts", method: "POST", body: payload)
+    }
+
+    /// DELETE /price-alerts/:id -> remove an alert.
+    func deletePriceAlert(id: String) async throws -> [String: Any] {
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await requestRaw("/price-alerts/\(safeId)", method: "DELETE")
     }
 
     // Convert is the same path as swap (cross-token conversion).

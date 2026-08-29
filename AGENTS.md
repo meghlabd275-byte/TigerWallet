@@ -423,3 +423,83 @@
 - Build+vet=0 at the time for all 14 canonical Go modules (Go 1.22.12);
   wlgate tests pass.
 
+## Session 14 pre-audit (2026-08-29) — UserWallet app-family audit (fetchers + gaps)
+- Backend go/wallet_api :8443 = 124 routes (auth, wallets, send/sign/auto-send/simulate,
+  non_evm, chains, swap/amm, staking, bridge->:8007, lending->:8009, copytrading->:8006,
+  governance->:8454, prediction->:8455, dao, perpetual/margin, terminal, nft, kyc,
+  ramp->:8451, cards->:8457, multisig->:8450 via service token, p2p, launchpool,
+  token-sales, approvals, devices, address-book, price-alerts, fees, security, ens,
+  gas/price/chart, dapps+walletconnect->:8083, passkey, keystore).
+- Client parity ranking: web (65+ endpoints in api.ts, 19 pages) ~= iOS (28 swift,
+  full lending/p2p/dao/passkey) > Android (36 kt, 22 fragments, real passkeys) >
+  desktop_app (Tauri, only 9 pages) > extension (MV3 EIP-1193, narrowest popup).
+- Open gaps: WalletConnect hardcoded 10.0.2.2 (emulator-only) on Android+iOS;
+  extension googleDriveBackup.js Google OAuth client_id TODO; desktop missing pages
+  (approvals/addressbook/devices/KYC/DeFi/DAO/launchpool/token-sales/p2p/cards/
+  price-alerts/dApp/passkeys/NFT-transfer); no UI anywhere for perpetual/margin,
+  launchpool, token-sales, P2P, cards, price-alerts despite backend routes;
+  rust/userwallet_fetchers ~= user_wallet/rust duplicate unresolved;
+  desktop_app at repo root not under user_wallet/ (runtime separation OK).
+- Separation rule verified: no UserWallet app imports MW/admin fetchers; multisig
+  reaches :8450 only via wallet_api service-token proxy.
+
+## Session 14 (2026-08-29) — UserWallet 100/100 frontend<->backend gap closure
+- WEB (user_wallet/web): FIXED dead-route bug — Layout nav had 16 links but
+  App.tsx only routed 4 (dashboard/wallets/transactions/settings). App.tsx now
+  routes all 28 pages. Added 12 pages: Trading(perp+margin), Launchpool,
+  TokenSales, P2P, Cards, PriceAlerts, DApps(pairings/sessions approve+reject),
+  DAO(vote), Ramp(on/off quote), CopyTrading, Prediction, ENS. api.ts gained
+  getPriceAlerts/createPriceAlert/updatePriceAlert/deletePriceAlert +
+  createWatchOnlyWallet; card methods default cardId='default' (backend proxy
+  drops the id segment). theme.css gained the shared themed classes
+  (.primary-btn/.secondary-btn/.quote-box/.success-banner/.record-list/
+  .record-item/.empty-state/.action-row/.category-chip/.form-group select) that
+  existing pages already referenced but were never defined (pre-existing gap).
+  npx tsc --noEmit = 0 errors (npm i --legacy-peer-deps; react-scripts 5 wants
+  typescript 4.9 peer).
+- DESKTOP (desktop_app, Tauri): 9 → 24 pages. index.html nav+containers added
+  for defi, trading, launchpool, token-sales, p2p, cards, price-alerts, dao,
+  ens, ramp, dapps, approvals, address-book, devices, kyc + NFT-transfer form.
+  app.js: titles map, navigateTo cases, 11 loaders + 12 actions all real
+  fetches to :8443 (fail-closed empty states, escapeHtml everywhere,
+  "submitted to the blockchain network" confirmations). node --check all 6 JS OK.
+  (ens/kyc/ramp/dapps loaders existed but had NO html containers — now added.)
+- EXTENSION (user_wallet/extension, MV3): 9 → 16 tabs (added NFTs, Bridge,
+  History, Approvals, Contacts, Devices, Alerts). WalletAPI gained bridge
+  (routes/quote/transfer/history) + price-alerts methods; popup.js got 7
+  loaders + 4 handlers (createElement-based rendering, no innerHTML injection).
+  node --check all 6 extension JS OK.
+- ANDROID (user_wallet/android): FIXED dead-fragment bug — 12 feature
+  fragments (Swap/Send/Receive/Staking/Bridge/NFTs/DeFi/Approvals/AddressBook/
+  Devices/KYC/Keystore) were never instantiated anywhere; bottom nav even
+  lacked a nav_send handler (Send fell through to Dashboard). Added nav_send +
+  nav_more (FeaturesFragment hub w/ 17 buttons, addToBackStack navigation via
+  MainActivity.navigateToFeature) + ic_more drawable. NEW fragments+layouts:
+  RampFragment, CardsFragment, P2PFragment, PriceAlertsFragment, ENSFragment,
+  FeaturesFragment. UserWalletApiService gained createP2POrder, bridge
+  (getBridgeRoutes/getBridgeQuote/executeBridgeTransfer/getBridgeHistory),
+  price alerts (get/create/delete). BridgeFragment rewritten from fake
+  convert-quote+/send to real /bridge/quote+/bridge/transfer. WalletConnect
+  fix: WalletConnectSocket.wsBase() now derives from the configured
+  UserWalletApiService.apiBaseUrl() (was hardcoded 10.0.2.2); base URL is
+  user-configurable+persisted (Settings → Backend Server, BASE_URL_KEY in
+  SharedPreferences) so physical devices work.
+- iOS (user_wallet/ios): TabView 4 → 5 tabs (added More → FeaturesView hub
+  with NavigationLinks to all 17 feature views). NEW views: RampView,
+  CardsView, P2PView, PriceAlertsView, ENSView. UserWalletApiService gained
+  price-alert methods (get/create/delete); baseURL is now persisted+
+  user-configurable (UserDefaults userwallet-base-url, Settings → Backend
+  Server section). BridgeView rewritten from fake getConvertQuote+sendTransaction
+  to real getBridgeQuote+bridgeTransfer. WalletConnectSocket.wsBase() derives
+  from shared.baseURL (was hardcoded localhost).
+- RUST duplicate RESOLVED (kept both, documented): user_wallet/rust = full
+  typed SDK (126 fns, WalletConnect); rust/userwallet_fetchers = fetcher-
+  manager registry crate parallel to rust/admin_fetchers +
+  rust/masterwallet_fetchers (per-domain family, not an exact duplicate — do
+  not consolidate).
+- Verified: separation rule holds (all UserWallet surfaces only call :8443);
+  every new action surfaces "submitted to the blockchain network"; all new
+  pages inherit theme (web data-theme vars, desktop data-theme vars, extension
+  [data-theme] vars, android ThemeManager, ios ThemeManager).
+- NOT compile-verified this session: Kotlin (no Android SDK), Swift (no Xcode),
+  Go/Rust toolchains absent (session-local in prior sessions).

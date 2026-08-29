@@ -102,9 +102,13 @@ struct ContentView: View {
                 .tabItem { Image(systemName: "list.bullet.rectangle"); Text("Transactions") }
                 .tag(2)
 
+            FeaturesView()
+                .tabItem { Image(systemName: "square.grid.2x2"); Text("More") }
+                .tag(3)
+
             SettingsView()
                 .tabItem { Image(systemName: "gear"); Text("Settings") }
-                .tag(3)
+                .tag(4)
         }
     }
 }

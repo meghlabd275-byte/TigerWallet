@@ -23,11 +23,12 @@ final class WalletConnectSocket {
         case notConnected
     }
 
-    /// HTTP API base; mirrors UserWalletApiService's default baseURL.
-    private static let apiBaseURL = "http://localhost:8443/api/v1"
-
+    /// The WS proxy follows the SAME configured backend base URL as every
+    /// other API call (UserWalletApiService.shared.baseURL) — which is
+    /// user-configurable via Settings → Backend Server.
     static func wsBase() -> String {
-        let httpBase = apiBaseURL.hasSuffix("/") ? String(apiBaseURL.dropLast()) : apiBaseURL
+        let raw = UserWalletApiService.shared.baseURL
+        let httpBase = raw.hasSuffix("/") ? String(raw.dropLast()) : raw
         var wsBase = httpBase
         if wsBase.hasPrefix("https") {
             wsBase = "wss" + wsBase.dropFirst("https".count)

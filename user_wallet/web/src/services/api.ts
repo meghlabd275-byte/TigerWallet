@@ -750,12 +750,15 @@ class ApiService {
     return data;
   }
 
-  async getCryptoCardBalance(cardId: string): Promise<unknown> {
+  // The backend cardsProxy maps /cards/<id>/{balance,transactions} onto the
+  // per-user upstream card account — the <id> segment is dropped, so the
+  // default "default" addresses the caller's own card.
+  async getCryptoCardBalance(cardId = 'default'): Promise<unknown> {
     const { data } = await this.client.get(`/cards/${cardId}/balance`);
     return data;
   }
 
-  async getCardTransactions(cardId: string): Promise<unknown> {
+  async getCardTransactions(cardId = 'default'): Promise<unknown> {
     const { data } = await this.client.get(`/cards/${cardId}/transactions`);
     return data;
   }
@@ -1287,6 +1290,38 @@ class ApiService {
       passkey_client_data: params.passkeyClientData,
       unwrapped_unlock_key: params.unwrappedUnlockKey,
     });
+    return data;
+  }
+
+  // ==================== Price alerts ====================
+  // GET /price-alerts — list the user's price alerts.
+  async getPriceAlerts(): Promise<any> {
+    const { data } = await this.client.get('/price-alerts');
+    return data;
+  }
+
+  // POST /price-alerts { symbol, target_price, direction } — create an alert.
+  async createPriceAlert(body: { symbol: string; target_price: number | string; direction?: string }): Promise<any> {
+    const { data } = await this.client.post('/price-alerts', body);
+    return data;
+  }
+
+  // PUT /price-alerts/:id — update an alert (target/direction/enabled).
+  async updatePriceAlert(id: string, body: any): Promise<any> {
+    const { data } = await this.client.put(`/price-alerts/${id}`, body);
+    return data;
+  }
+
+  // DELETE /price-alerts/:id — remove an alert.
+  async deletePriceAlert(id: string): Promise<any> {
+    const { data } = await this.client.delete(`/price-alerts/${id}`);
+    return data;
+  }
+
+  // POST /wallets/watch-only { address, label, chain_id } — track an address
+  // without holding its keys.
+  async createWatchOnlyWallet(body: { address: string; label?: string; chain_id?: number }): Promise<any> {
+    const { data } = await this.client.post('/wallets/watch-only', body);
     return data;
   }
 

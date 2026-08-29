@@ -93,6 +93,16 @@ function bindEvents() {
   if (fiatSellBtn) fiatSellBtn.addEventListener('click', () => handleFiatQuote(true));
   const qrParseBtn = document.getElementById('qrParseBtn');
   if (qrParseBtn) qrParseBtn.addEventListener('click', handleQrPaste);
+  const nftTransferBtn = document.getElementById('nftTransferBtn');
+  if (nftTransferBtn) nftTransferBtn.addEventListener('click', handleNftTransfer);
+  const bridgeQuoteBtn = document.getElementById('bridgeQuoteBtn');
+  if (bridgeQuoteBtn) bridgeQuoteBtn.addEventListener('click', handleBridgeQuote);
+  const bridgeTransferBtn = document.getElementById('bridgeTransferBtn');
+  if (bridgeTransferBtn) bridgeTransferBtn.addEventListener('click', handleBridgeTransfer);
+  const contactAddBtn = document.getElementById('contactAddBtn');
+  if (contactAddBtn) contactAddBtn.addEventListener('click', handleAddContact);
+  const alertCreateBtn = document.getElementById('alertCreateBtn');
+  if (alertCreateBtn) alertCreateBtn.addEventListener('click', handleCreateAlert);
   const qrSendBtn = document.getElementById('qrSendBtn');
   if (qrSendBtn) qrSendBtn.addEventListener('click', async () => {
     const w = activeWallet();
@@ -542,6 +552,19 @@ const WalletAPI = {
   // DeFi protocols.
   getDefiProtocols: () => api('/defi/protocols'),
 
+  // Cross-chain bridge (proxied bridge_service).
+  getBridgeRoutes: () => api('/bridge/routes'),
+  getBridgeQuote: ({ fromChain, toChain, token, amount }) =>
+    api('/bridge/quote', { method: 'POST', body: { fromChain, toChain, token, amount } }),
+  executeBridgeTransfer: (body) => api('/bridge/transfer', { method: 'POST', body }),
+  getBridgeHistory: () => api('/bridge/history'),
+
+  // Price alerts.
+  getPriceAlerts: () => api('/price-alerts'),
+  createPriceAlert: ({ symbol, target_price, direction }) =>
+    api('/price-alerts', { method: 'POST', body: { symbol, target_price, direction } }),
+  deletePriceAlert: (id) => api(`/price-alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // ---- Token registry + trading terminal (public) ----
   getTokenRegistry: (chainId) =>
     api(chainId ? `/tokens/registry?chain_id=${chainId}` : '/tokens/registry'),
@@ -624,7 +647,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -637,6 +660,214 @@ function switchTab(tab) {
   if (tab === 'kyc') loadKyc();
   if (tab === 'defi') loadDefi();
   if (tab === 'dapps') loadDapps();
+  if (tab === 'nfts') loadNfts();
+  if (tab === 'tx') loadTxHistory();
+  if (tab === 'approvals') loadApprovals();
+  if (tab === 'contacts') loadContacts();
+  if (tab === 'devices') loadDevices();
+  if (tab === 'alerts') loadAlerts();
+}
+
+// ---- Loaders for the NFT / History / Approvals / Contacts / Devices / Alerts tabs ----
+
+function renderList(el, items, renderRow, emptyMsg) {
+  el.innerHTML = '';
+  if (!items.length) {
+    const row = document.createElement('div');
+    row.style.cssText = 'color:var(--text-secondary);padding:6px 0;';
+    row.textContent = emptyMsg;
+    el.appendChild(row);
+    return;
+  }
+  items.forEach((item) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);';
+    renderRow(row, item);
+    el.appendChild(row);
+  });
+}
+
+async function loadNfts() {
+  const el = document.getElementById('nftList');
+  if (!el) return;
+  const w = activeWallet();
+  if (!w) { el.innerHTML = '<div style="color:var(--text-secondary);">No wallet.</div>'; return; }
+  try {
+    const res = await WalletAPI.getNFTs(w.address, w.chain_id);
+    const list = Array.isArray(res) ? res : (res.nfts || []);
+    renderList(el, list, (row, n) => {
+      row.textContent = `${n.name || n.collection || 'NFT'} #${n.token_id ?? ''} (${n.contract_address || n.contract || ''})`;
+    }, 'No NFTs on this chain.');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-secondary);">NFTs unavailable.</div>';
+  }
+}
+
+async function handleNftTransfer() {
+  const status = document.getElementById('nftStatus');
+  const w = activeWallet();
+  if (!w) { status.textContent = 'No wallet.'; return; }
+  const contractAddress = document.getElementById('nftContract').value.trim();
+  const tokenId = document.getElementById('nftTokenId').value.trim();
+  const to = document.getElementById('nftTo').value.trim();
+  const password = document.getElementById('nftPassword').value;
+  if (!contractAddress || !tokenId || !to || !password) { status.textContent = 'All fields required.'; return; }
+  status.textContent = 'Submitting…';
+  try {
+    const res = await WalletAPI.transferNFT({ walletId: w.id, password, to, tokenId, contractAddress, chainId: w.chain_id });
+    status.textContent = 'NFT transfer submitted to the blockchain network: ' + (res.transaction_hash || res.tx_hash || JSON.stringify(res));
+  } catch (e) {
+    status.textContent = 'Transfer failed: ' + (e.message || 'error');
+  }
+}
+
+async function handleBridgeQuote() {
+  const out = document.getElementById('bridgeQuoteResult');
+  const fromChain = parseInt(document.getElementById('bridgeFromChain').value, 10);
+  const toChain = parseInt(document.getElementById('bridgeToChain').value, 10);
+  const token = document.getElementById('bridgeToken').value.trim();
+  const amount = document.getElementById('bridgeAmount').value.trim();
+  if (!fromChain || !toChain || !token || !amount) { out.textContent = 'All fields required.'; return; }
+  out.textContent = 'Quoting…';
+  try {
+    const res = await WalletAPI.getBridgeQuote({ fromChain, toChain, token, amount });
+    out.textContent = JSON.stringify(res);
+  } catch (e) {
+    out.textContent = 'Quote failed: ' + (e.message || 'error');
+  }
+}
+
+async function handleBridgeTransfer() {
+  const status = document.getElementById('bridgeStatus');
+  const w = activeWallet();
+  if (!w) { status.textContent = 'No wallet.'; return; }
+  const fromChain = parseInt(document.getElementById('bridgeFromChain').value, 10);
+  const toChain = parseInt(document.getElementById('bridgeToChain').value, 10);
+  const token = document.getElementById('bridgeToken').value.trim();
+  const amount = document.getElementById('bridgeAmount').value.trim();
+  if (!fromChain || !toChain || !token || !amount) { status.textContent = 'All fields required.'; return; }
+  status.textContent = 'Submitting…';
+  try {
+    const res = await WalletAPI.executeBridgeTransfer({ fromChain, toChain, token, amount, from_address: w.address });
+    status.textContent = 'Bridge transfer submitted to the blockchain network: ' + JSON.stringify(res.id || res.tx_hash || res);
+  } catch (e) {
+    status.textContent = 'Bridge failed: ' + (e.message || 'error');
+  }
+}
+
+async function loadTxHistory() {
+  const el = document.getElementById('txList');
+  if (!el) return;
+  const w = activeWallet();
+  if (!w) { el.innerHTML = '<div style="color:var(--text-secondary);">No wallet.</div>'; return; }
+  try {
+    const res = await WalletAPI.getTransactions(w.address, w.chain_id);
+    const list = Array.isArray(res) ? res : (res.transactions || []);
+    renderList(el, list, (row, t) => {
+      row.textContent = `${t.hash || t.tx_hash || ''} → ${t.to || ''} ${t.value || ''}`;
+    }, 'No transactions yet.');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-secondary);">History unavailable.</div>';
+  }
+}
+
+async function loadApprovals() {
+  const el = document.getElementById('approvalsList');
+  if (!el) return;
+  const w = activeWallet();
+  if (!w) { el.innerHTML = '<div style="color:var(--text-secondary);">No wallet.</div>'; return; }
+  try {
+    const res = await WalletAPI.getApprovals(w.address, w.chain_id);
+    const list = Array.isArray(res) ? res : (res.approvals || []);
+    renderList(el, list, (row, a) => {
+      row.textContent = `${a.token || a.token_symbol || ''} → ${a.spender || ''} (${a.allowance || a.amount || ''})`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Revoke';
+      btn.style.cssText = 'padding:2px 8px;font-size:11px;width:auto;margin:0 0 0 8px;';
+      btn.addEventListener('click', async () => {
+        await WalletAPI.revokeApproval({ approvalId: a.id });
+        loadApprovals();
+      });
+      row.appendChild(btn);
+    }, 'No token approvals.');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-secondary);">Approvals unavailable.</div>';
+  }
+}
+
+async function loadContacts() {
+  const el = document.getElementById('contactsList');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getAddressBookContacts();
+    const list = Array.isArray(res) ? res : (res.contacts || []);
+    renderList(el, list, (row, c) => {
+      row.textContent = `${c.name || c.label || ''} — ${c.address || ''}`;
+    }, 'No contacts.');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-secondary);">Contacts unavailable.</div>';
+  }
+}
+
+async function handleAddContact() {
+  const name = document.getElementById('contactName').value.trim();
+  const address = document.getElementById('contactAddress').value.trim();
+  if (!name || !address) { alert('Name and address required.'); return; }
+  try {
+    await WalletAPI.addContact({ name, address, chainId: activeWallet()?.chain_id || 1 });
+    loadContacts();
+  } catch (e) {
+    alert('Add contact failed: ' + (e.message || 'error'));
+  }
+}
+
+async function loadDevices() {
+  const el = document.getElementById('devicesList');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getDevices();
+    const list = Array.isArray(res) ? res : (res.devices || []);
+    renderList(el, list, (row, d) => {
+      row.textContent = `${d.name || d.device_name || d.platform || 'device'} ${d.last_seen || d.synced_at || ''}`;
+    }, 'No linked devices.');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-secondary);">Devices unavailable.</div>';
+  }
+}
+
+async function loadAlerts() {
+  const el = document.getElementById('alertsList');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getPriceAlerts();
+    const list = Array.isArray(res) ? res : (res.alerts || []);
+    renderList(el, list, (row, a) => {
+      row.textContent = `${a.symbol || ''} ${a.direction || ''} $${a.target_price ?? ''}`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Delete';
+      btn.style.cssText = 'padding:2px 8px;font-size:11px;width:auto;margin:0 0 0 8px;';
+      btn.addEventListener('click', async () => {
+        await WalletAPI.deletePriceAlert(a.id);
+        loadAlerts();
+      });
+      row.appendChild(btn);
+    }, 'No price alerts.');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text-secondary);">Alerts unavailable.</div>';
+  }
+}
+
+async function handleCreateAlert() {
+  const symbol = document.getElementById('alertSymbol').value.trim().toUpperCase();
+  const target = document.getElementById('alertTarget').value.trim();
+  const direction = document.getElementById('alertDirection').value.trim().toLowerCase() || 'above';
+  if (!symbol || !target) { alert('Symbol and target required.'); return; }
+  try {
+    await WalletAPI.createPriceAlert({ symbol, target_price: target, direction });
+    loadAlerts();
+  } catch (e) {
+    alert('Create alert failed: ' + (e.message || 'error'));
+  }
 }
 
 function activeWallet() {

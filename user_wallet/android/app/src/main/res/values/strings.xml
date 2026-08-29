@@ -116,6 +116,10 @@
     <string name="settings_username">Username</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_current">Theme: %1$s</string>
+    <string name="settings_backend">Backend Server</string>
+    <string name="settings_backend_desc">API base URL of the UserWallet backend. The default targets the Android emulator; on a physical device set your deployment URL.</string>
+    <string name="settings_backend_hint">http://host:8443/api/v1</string>
+    <string name="settings_backend_save">Save Server URL</string>
     <string name="settings_security">Security</string>
     <string name="settings_reset_desc">Clear all local wallet data and return to onboarding. Your on-chain funds are unaffected, but you will need your recovery phrase to regain access.</string>
 </resources>

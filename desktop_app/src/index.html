@@ -59,6 +59,51 @@
                     <button class="nav-item" data-page="nft">
                         <span class="icon">🖼️</span> NFTs
                     </button>
+                    <button class="nav-item" data-page="defi">
+                        <span class="icon">🏦</span> DeFi
+                    </button>
+                    <button class="nav-item" data-page="trading">
+                        <span class="icon">📊</span> Trading
+                    </button>
+                    <button class="nav-item" data-page="launchpool">
+                        <span class="icon">🚀</span> Launchpool
+                    </button>
+                    <button class="nav-item" data-page="token-sales">
+                        <span class="icon">🪙</span> Token Sales
+                    </button>
+                    <button class="nav-item" data-page="p2p">
+                        <span class="icon">🤝</span> P2P
+                    </button>
+                    <button class="nav-item" data-page="cards">
+                        <span class="icon">💳</span> Cards
+                    </button>
+                    <button class="nav-item" data-page="price-alerts">
+                        <span class="icon">🔔</span> Price Alerts
+                    </button>
+                    <button class="nav-item" data-page="dao">
+                        <span class="icon">🗳️</span> DAO
+                    </button>
+                    <button class="nav-item" data-page="ens">
+                        <span class="icon">🔤</span> ENS
+                    </button>
+                    <button class="nav-item" data-page="ramp">
+                        <span class="icon">💱</span> Fiat Ramp
+                    </button>
+                    <button class="nav-item" data-page="dapps">
+                        <span class="icon">🌐</span> dApps
+                    </button>
+                    <button class="nav-item" data-page="approvals">
+                        <span class="icon">🛡️</span> Approvals
+                    </button>
+                    <button class="nav-item" data-page="address-book">
+                        <span class="icon">📒</span> Address Book
+                    </button>
+                    <button class="nav-item" data-page="devices">
+                        <span class="icon">📱</span> Devices
+                    </button>
+                    <button class="nav-item" data-page="kyc">
+                        <span class="icon">🪪</span> KYC
+                    </button>
                     <button class="nav-item" data-page="transactions">
                         <span class="icon">📋</span> Transactions
                     </button>
@@ -295,6 +340,238 @@
                     </div>
                     <div id="nft-grid" class="nft-grid">
                         <div class="no-transactions">Loading NFTs…</div>
+                    </div>
+                    <h4 style="margin-top:16px">Transfer NFT</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Contract Address</label>
+                            <input type="text" id="nft-transfer-contract" placeholder="0x…">
+                        </div>
+                        <div class="input-group">
+                            <label>Token ID</label>
+                            <input type="text" id="nft-transfer-token-id" placeholder="1">
+                        </div>
+                        <div class="input-group">
+                            <label>Recipient Address</label>
+                            <input type="text" id="nft-transfer-to" placeholder="0x…">
+                        </div>
+                        <button id="nft-transfer-btn" class="btn-primary">Transfer NFT</button>
+                    </div>
+                </div>
+
+                <!-- DeFi Page -->
+                <div id="defi-page" class="page hidden">
+                    <h4>DeFi Protocols</h4>
+                    <div id="defi-protocols" class="assets-list">
+                        <div class="no-transactions">Loading DeFi protocols…</div>
+                    </div>
+                </div>
+
+                <!-- Trading Page -->
+                <div id="trading-page" class="page hidden">
+                    <h4>Trading (Perpetual &amp; Margin)</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Market</label>
+                            <select id="trading-market">
+                                <option value="perpetual">Perpetual</option>
+                                <option value="margin">Margin</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Pair</label>
+                            <input type="text" id="trading-pair" value="ETH-USDT">
+                        </div>
+                        <div class="input-group">
+                            <label>Side</label>
+                            <select id="trading-side">
+                                <option value="long">Long</option>
+                                <option value="short">Short</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Size</label>
+                            <input type="text" id="trading-size" placeholder="0.0">
+                        </div>
+                        <div class="input-group">
+                            <label>Leverage</label>
+                            <input type="number" id="trading-leverage" value="2" min="1" max="125">
+                        </div>
+                        <button id="trading-open-btn" class="btn-primary">Open Position</button>
+                    </div>
+                    <h4 style="margin-top:16px">Open Positions</h4>
+                    <div id="trading-positions" class="assets-list">
+                        <div class="no-transactions">No open positions</div>
+                    </div>
+                </div>
+
+                <!-- Launchpool Page -->
+                <div id="launchpool-page" class="page hidden">
+                    <h4>Launchpool</h4>
+                    <div id="launchpool-pools" class="assets-list">
+                        <div class="no-transactions">Loading pools…</div>
+                    </div>
+                    <div class="send-form" style="margin-top:16px">
+                        <div class="input-group">
+                            <label>Amount</label>
+                            <input type="text" id="launchpool-amount" placeholder="0.0">
+                        </div>
+                        <button id="launchpool-stake-btn" class="btn-primary">Stake</button>
+                        <button id="launchpool-unstake-btn" class="btn-secondary" style="margin-left:8px">Unstake</button>
+                    </div>
+                    <h4 style="margin-top:16px">My Stakes</h4>
+                    <div id="launchpool-stakes" class="assets-list">
+                        <div class="no-transactions">No stakes yet</div>
+                    </div>
+                </div>
+
+                <!-- Token Sales Page -->
+                <div id="token-sales-page" class="page hidden">
+                    <h4>Token Sales</h4>
+                    <div id="token-sales-list" class="assets-list">
+                        <div class="no-transactions">Loading token sales…</div>
+                    </div>
+                </div>
+
+                <!-- P2P Page -->
+                <div id="p2p-page" class="page hidden">
+                    <h4>P2P Trading</h4>
+                    <div id="p2p-adverts" class="assets-list">
+                        <div class="no-transactions">Loading adverts…</div>
+                    </div>
+                    <div class="send-form" style="margin-top:16px">
+                        <div class="input-group">
+                            <label>Advert ID</label>
+                            <input type="text" id="p2p-advert-id" placeholder="advert id">
+                        </div>
+                        <div class="input-group">
+                            <label>Amount</label>
+                            <input type="text" id="p2p-amount" placeholder="0.0">
+                        </div>
+                        <button id="p2p-order-btn" class="btn-primary">Create Order</button>
+                    </div>
+                </div>
+
+                <!-- Cards Page -->
+                <div id="cards-page" class="page hidden">
+                    <h4>Crypto Card</h4>
+                    <div id="card-balance" class="assets-list">
+                        <div class="no-transactions">Loading card balance…</div>
+                    </div>
+                    <h4 style="margin-top:16px">Rates</h4>
+                    <div id="card-rates" class="assets-list"></div>
+                    <h4 style="margin-top:16px">Card Transactions</h4>
+                    <div id="card-transactions" class="transactions-list">
+                        <div class="no-transactions">No card transactions</div>
+                    </div>
+                </div>
+
+                <!-- Price Alerts Page -->
+                <div id="price-alerts-page" class="page hidden">
+                    <h4>Price Alerts</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Symbol</label>
+                            <input type="text" id="alert-symbol" value="ETH">
+                        </div>
+                        <div class="input-group">
+                            <label>Target Price (USD)</label>
+                            <input type="text" id="alert-target" placeholder="0.0">
+                        </div>
+                        <div class="input-group">
+                            <label>Direction</label>
+                            <select id="alert-direction">
+                                <option value="above">Above</option>
+                                <option value="below">Below</option>
+                            </select>
+                        </div>
+                        <button id="alert-create-btn" class="btn-primary">Create Alert</button>
+                    </div>
+                    <h4 style="margin-top:16px">My Alerts</h4>
+                    <div id="price-alerts-list" class="assets-list">
+                        <div class="no-transactions">No price alerts</div>
+                    </div>
+                </div>
+
+                <!-- DAO Page -->
+                <div id="dao-page" class="page hidden">
+                    <h4>DAO Governance</h4>
+                    <div id="dao-proposals" class="assets-list">
+                        <div class="no-transactions">Loading proposals…</div>
+                    </div>
+                    <h4 style="margin-top:16px">Delegates</h4>
+                    <div id="dao-delegates" class="assets-list"></div>
+                </div>
+
+                <!-- ENS Page -->
+                <div id="ens-page" class="page hidden">
+                    <h4>ENS Resolution</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>ENS Name</label>
+                            <input type="text" id="ens-input" placeholder="name.eth">
+                        </div>
+                        <button id="ens-resolve-btn" class="btn-primary">Resolve</button>
+                        <div id="ens-result" class="bridge-info" style="margin-top:12px"></div>
+                    </div>
+                </div>
+
+                <!-- Fiat Ramp Page -->
+                <div id="ramp-page" class="page hidden">
+                    <h4>Fiat On/Off Ramp</h4>
+                    <div id="fiat-providers" class="assets-list">
+                        <div class="no-transactions">Loading providers…</div>
+                    </div>
+                </div>
+
+                <!-- dApps Page -->
+                <div id="dapps-page" class="page hidden">
+                    <h4>dApp Browser</h4>
+                    <div id="dapp-list" class="nft-grid">
+                        <div class="no-transactions">Loading dApps…</div>
+                    </div>
+                </div>
+
+                <!-- Approvals Page -->
+                <div id="approvals-page" class="page hidden">
+                    <h4>Token Approvals</h4>
+                    <div id="approvals-list" class="assets-list">
+                        <div class="no-transactions">Loading approvals…</div>
+                    </div>
+                </div>
+
+                <!-- Address Book Page -->
+                <div id="address-book-page" class="page hidden">
+                    <h4>Address Book</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Label</label>
+                            <input type="text" id="contact-label" placeholder="Alice">
+                        </div>
+                        <div class="input-group">
+                            <label>Address</label>
+                            <input type="text" id="contact-address" placeholder="0x…">
+                        </div>
+                        <button id="contact-add-btn" class="btn-primary">Add Contact</button>
+                    </div>
+                    <div id="contacts-list" class="assets-list" style="margin-top:16px">
+                        <div class="no-transactions">No contacts</div>
+                    </div>
+                </div>
+
+                <!-- Devices Page -->
+                <div id="devices-page" class="page hidden">
+                    <h4>Linked Devices</h4>
+                    <div id="devices-list" class="assets-list">
+                        <div class="no-transactions">Loading devices…</div>
+                    </div>
+                </div>
+
+                <!-- KYC Page -->
+                <div id="kyc-page" class="page hidden">
+                    <h4>KYC Verification</h4>
+                    <div id="kyc-status" class="assets-list">
+                        <div class="no-transactions">Loading KYC status…</div>
                     </div>
                 </div>
 

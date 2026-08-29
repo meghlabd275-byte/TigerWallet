@@ -44,6 +44,7 @@ object UserWalletApiService {
 
     private const val SESSION_KEY = "userwallet_session"
     private const val WALLET_IDS_KEY = "userwallet_wallet_ids"
+    private const val BASE_URL_KEY = "userwallet_base_url"
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -64,7 +65,11 @@ object UserWalletApiService {
 
     fun init(context: Context, url: String = DEFAULT_BASE_URL) {
         appContext = context.applicationContext
-        baseUrl = url
+        // A user-configured server URL (Settings → Backend Server) survives
+        // restarts; it wins over the emulator default so physical devices can
+        // reach a real deployment.
+        baseUrl = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(BASE_URL_KEY, null) ?: url
         SecureBlobStore.init(context)
         authToken = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(TOKEN_KEY, null)
@@ -73,7 +78,11 @@ object UserWalletApiService {
 
     fun setBaseUrl(url: String) {
         baseUrl = url
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
+            ?.putString(BASE_URL_KEY, url)?.apply()
     }
+
+    fun apiBaseUrl(): String = baseUrl
 
     fun setToken(token: String?) {
         authToken = token
@@ -1086,6 +1095,53 @@ object UserWalletApiService {
 
     fun getP2PAdverts(): List<JSONObject> =
         executeList(requestBuilder("/p2p/adverts").get().build(), "adverts")
+
+    fun createP2POrder(advertId: String, amount: String): JSONObject {
+        val body = JSONObject().put("advert_id", advertId).put("amount", amount)
+        return execute(requestBuilder("/p2p/orders").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    // ---- Cross-chain bridge (proxied bridge_service) ----
+    fun getBridgeRoutes(): JSONObject =
+        execute(requestBuilder("/bridge/routes").get().build())
+
+    fun getBridgeQuote(fromChain: Int, toChain: Int, token: String, amount: String): JSONObject {
+        val body = JSONObject()
+            .put("fromChain", fromChain)
+            .put("toChain", toChain)
+            .put("token", token)
+            .put("amount", amount)
+        return execute(requestBuilder("/bridge/quote").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    fun executeBridgeTransfer(fromChain: Int, toChain: Int, token: String, amount: String, fromAddress: String): JSONObject {
+        val body = JSONObject()
+            .put("fromChain", fromChain)
+            .put("toChain", toChain)
+            .put("token", token)
+            .put("amount", amount)
+            .put("from_address", fromAddress)
+        return execute(requestBuilder("/bridge/transfer").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    fun getBridgeHistory(): JSONObject =
+        execute(requestBuilder("/bridge/history").get().build())
+
+    // ---- Price alerts ----
+    fun getPriceAlerts(): List<JSONObject> =
+        executeList(requestBuilder("/price-alerts").get().build(), "alerts")
+
+    fun createPriceAlert(symbol: String, targetPrice: String, direction: String): JSONObject {
+        val body = JSONObject()
+            .put("symbol", symbol)
+            .put("target_price", targetPrice)
+            .put("direction", direction)
+        return execute(requestBuilder("/price-alerts").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    fun deletePriceAlert(id: String) {
+        execute(requestBuilder("/price-alerts/${URLEncoder.encode(id, "UTF-8")}").delete().build())
+    }
 
     // Convert is the same path as swap (cross-token conversion).
     fun getConvertQuote(fromToken: String, toToken: String, fromAmount: String, chainId: Int): SwapQuote {

@@ -20,10 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Cross-chain bridge. There is NO dedicated bridge endpoint, so we honestly
- * use [UserWalletApiService.getConvertQuote] for an indicative rate and
- * broadcast the actual transfer via the standard [sendTransaction] /send path.
- * The user is told the transaction was submitted to the blockchain network.
+ * Cross-chain bridge — real bridge_service integration:
+ * GET /bridge/routes (available routes), POST /bridge/quote (quote),
+ * POST /bridge/transfer (initiate the cross-chain transfer). The user is told
+ * the transaction was submitted to the blockchain network.
  */
 class BridgeFragment : Fragment() {
     private lateinit var walletSpinner: Spinner
@@ -98,25 +98,24 @@ class BridgeFragment : Fragment() {
     private fun readInputs(): Triple<String, String, String>? {
         val token = tokenInput.text.toString().trim()
         val amount = amountInput.text.toString().trim()
-        val recipient = recipientInput.text.toString().trim()
-        if (token.isEmpty() || amount.isEmpty() || recipient.isEmpty()) {
-            Toast.makeText(requireContext(), "Fill token, amount and recipient", Toast.LENGTH_SHORT).show()
+        if (token.isEmpty() || amount.isEmpty()) {
+            Toast.makeText(requireContext(), "Fill token and amount", Toast.LENGTH_SHORT).show()
             return null
         }
-        return Triple(token, amount, recipient)
+        return Triple(token, amount, "")
     }
 
     private fun loadQuote() {
         val (token, amount, _) = readInputs() ?: return
-        val chainId = chainIds[fromChainSpinner.selectedItemPosition]
+        val fromChain = chainIds[fromChainSpinner.selectedItemPosition]
+        val toChain = chainIds[toChainSpinner.selectedItemPosition]
         setLoading(true)
-        quoteTextView.text = "Fetching indicative quote..."
+        quoteTextView.text = "Fetching bridge quote..."
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val q = UserWalletApiService.getConvertQuote(token, token, amount, chainId)
+                val q = UserWalletApiService.getBridgeQuote(fromChain, toChain, token, amount)
                 withContext(Dispatchers.Main) {
-                    quoteTextView.text = "Indicative: ${q.fromAmount} ${q.fromToken} \u2192 ${q.toAmount} ${q.toToken}" +
-                        "\n(broadcast via /send; no dedicated bridge endpoint)"
+                    quoteTextView.text = q.toString(2)
                     setLoading(false)
                 }
             } catch (e: Exception) {
@@ -133,22 +132,19 @@ class BridgeFragment : Fragment() {
             Toast.makeText(requireContext(), "Select a wallet", Toast.LENGTH_SHORT).show()
             return
         }
-        val (_, amount, recipient) = readInputs() ?: return
-        val password = passwordInput.text.toString()
-        if (password.isEmpty()) {
-            Toast.makeText(requireContext(), "Enter wallet password", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val (token, amount, _) = readInputs() ?: return
+        val fromChain = chainIds[fromChainSpinner.selectedItemPosition]
+        val toChain = chainIds[toChainSpinner.selectedItemPosition]
         executeButton.isEnabled = false
         statusTextView.text = "Submitting..."
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val res = UserWalletApiService.sendTransaction(
-                    wallet.id, password, recipient, amount, wallet.chainId
+                val res = UserWalletApiService.executeBridgeTransfer(
+                    fromChain, toChain, token, amount, wallet.address
                 )
                 withContext(Dispatchers.Main) {
-                    statusTextView.text = "\u2713 Transaction submitted to the blockchain network" +
-                        "\nHash: ${res.txHash}"
+                    statusTextView.text = "\u2713 Bridge transfer submitted to the blockchain network" +
+                        "\n" + res.optString("id", res.optString("tx_hash", res.toString()))
                     Toast.makeText(
                         requireContext(),
                         "Transaction submitted to the blockchain network",

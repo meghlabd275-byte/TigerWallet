@@ -145,6 +145,17 @@ class TigerWalletApp {
         document.getElementById('bridge-amount')?.addEventListener('input', () => this.fetchBridgeQuote());
         document.getElementById('bridge-btn')?.addEventListener('click', () => this.executeBridge());
 
+        // New feature pages
+        document.getElementById('trading-open-btn')?.addEventListener('click', () => this.openTradingPosition());
+        document.getElementById('trading-market')?.addEventListener('change', () => this.loadTradingPositions());
+        document.getElementById('launchpool-stake-btn')?.addEventListener('click', () => this.launchpoolAction('stake'));
+        document.getElementById('launchpool-unstake-btn')?.addEventListener('click', () => this.launchpoolAction('unstake'));
+        document.getElementById('p2p-order-btn')?.addEventListener('click', () => this.createP2POrder());
+        document.getElementById('alert-create-btn')?.addEventListener('click', () => this.createPriceAlert());
+        document.getElementById('contact-add-btn')?.addEventListener('click', () => this.addContact());
+        document.getElementById('ens-resolve-btn')?.addEventListener('click', () => this.resolveENS());
+        document.getElementById('nft-transfer-btn')?.addEventListener('click', () => this.transferNFT());
+
         // QR Scanner
         document.getElementById('qr-scan-btn')?.addEventListener('click', () => this.showQRModal());
         document.getElementById('close-qr-modal')?.addEventListener('click', () => this.hideQRModal());
@@ -212,6 +223,21 @@ class TigerWalletApp {
             staking: 'Staking',
             bridge: 'Bridge',
             nft: 'NFT Gallery',
+            defi: 'DeFi',
+            trading: 'Trading',
+            launchpool: 'Launchpool',
+            'token-sales': 'Token Sales',
+            p2p: 'P2P Trading',
+            cards: 'Crypto Card',
+            'price-alerts': 'Price Alerts',
+            dao: 'DAO Governance',
+            ens: 'ENS',
+            ramp: 'Fiat Ramp',
+            dapps: 'dApps',
+            approvals: 'Token Approvals',
+            'address-book': 'Address Book',
+            devices: 'Linked Devices',
+            kyc: 'KYC Verification',
             transactions: 'Transactions',
             settings: 'Settings'
         };
@@ -238,6 +264,28 @@ class TigerWalletApp {
             this.loadFiatProviders();
         } else if (page === 'dapps') {
             this.loadDApps();
+        } else if (page === 'defi') {
+            this.loadDefiProtocols();
+        } else if (page === 'trading') {
+            this.loadTradingPositions();
+        } else if (page === 'launchpool') {
+            this.loadLaunchpool();
+        } else if (page === 'token-sales') {
+            this.loadTokenSales();
+        } else if (page === 'p2p') {
+            this.loadP2PAdverts();
+        } else if (page === 'cards') {
+            this.loadCardInfo();
+        } else if (page === 'price-alerts') {
+            this.loadPriceAlerts();
+        } else if (page === 'dao') {
+            this.loadDao();
+        } else if (page === 'approvals') {
+            this.loadApprovals();
+        } else if (page === 'address-book') {
+            this.loadContacts();
+        } else if (page === 'devices') {
+            this.loadDevices();
         }
     }
     
@@ -1060,7 +1108,525 @@ class TigerWalletApp {
             box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>';
         }
     }
-    
+
+    // ---- DeFi protocols (/api/v1/defi/protocols) ----
+    async loadDefiProtocols() {
+        const box = document.getElementById('defi-protocols');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/defi/protocols');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">DeFi protocols unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.protocols) ? data.protocols : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No DeFi protocols available</div>'; return; }
+            box.innerHTML = list.map(p => `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(p.name || p.protocol || '')}</div>
+                    <div class="asset-address">${this.escapeHtml(p.category || p.chain || '')}${p.tvl != null ? ' · TVL: ' + this.escapeHtml(p.tvl) : ''}${p.apy != null ? ' · APY: ' + this.escapeHtml(p.apy) + '%' : ''}</div>
+                </div>`).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">DeFi protocols unavailable</div>';
+        }
+    }
+
+    // ---- Trading: perpetual + margin positions (/api/v1/{perpetual,margin}/positions) ----
+    tradingMarket() {
+        return document.getElementById('trading-market')?.value === 'margin' ? 'margin' : 'perpetual';
+    }
+
+    async loadTradingPositions() {
+        const box = document.getElementById('trading-positions');
+        if (!box) return;
+        const market = this.tradingMarket();
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/${market}/positions`);
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Positions unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.positions) ? data.positions : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No open positions</div>'; return; }
+            box.innerHTML = list.map(p => {
+                const id = this.escapeHtml(p.id ?? p.position_id ?? '');
+                return `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(p.pair || '')} ${this.escapeHtml(p.side || '')}</div>
+                    <div class="asset-address">size=${this.escapeHtml(p.size ?? '')} lev=${this.escapeHtml(p.leverage ?? '')} pnl=${this.escapeHtml(p.pnl ?? p.unrealized_pnl ?? '0')}</div>
+                    <button class="btn-secondary" onclick="window.app.closeTradingPosition('${id}')">Close</button>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Positions unavailable</div>';
+        }
+    }
+
+    async openTradingPosition() {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const market = this.tradingMarket();
+        const pair = document.getElementById('trading-pair')?.value;
+        const side = document.getElementById('trading-side')?.value;
+        const size = document.getElementById('trading-size')?.value;
+        const leverage = parseInt(document.getElementById('trading-leverage')?.value || '1', 10);
+        if (!pair || !size) { alert('Enter a pair and size'); return; }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/${market}/positions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pair, side, size, leverage, chain_id: this.currentNetwork })
+            });
+            if (!res.ok) { alert('Open position failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('Position submitted to the blockchain network: ' + JSON.stringify(result.id || result.position_id || result));
+            this.loadTradingPositions();
+        } catch (e) {
+            alert('Trading error: ' + e.message);
+        }
+    }
+
+    async closeTradingPosition(id) {
+        const market = this.tradingMarket();
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/${market}/positions/${encodeURIComponent(id)}/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}'
+            });
+            if (!res.ok) { alert('Close position failed: ' + await res.text()); return; }
+            alert('Position close submitted to the blockchain network');
+            this.loadTradingPositions();
+        } catch (e) {
+            alert('Trading error: ' + e.message);
+        }
+    }
+
+    // ---- Launchpool (/api/v1/launchpool/*) ----
+    async loadLaunchpool() {
+        const poolsBox = document.getElementById('launchpool-pools');
+        const stakesBox = document.getElementById('launchpool-stakes');
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/launchpool');
+            if (poolsBox) {
+                if (!res.ok) { poolsBox.innerHTML = '<div class="empty-state">Launchpool unavailable</div>'; }
+                else {
+                    const data = await res.json();
+                    const list = Array.isArray(data.pools) ? data.pools : (Array.isArray(data) ? data : []);
+                    poolsBox.innerHTML = list.length
+                        ? list.map(p => `<div class="provider-card"><div class="nft-name">${this.escapeHtml(p.name || p.symbol || '')}</div><div class="asset-address">${this.escapeHtml(JSON.stringify(p))}</div></div>`).join('')
+                        : '<div class="empty-state">No launchpool pools</div>';
+                }
+            }
+        } catch (e) {
+            if (poolsBox) poolsBox.innerHTML = '<div class="empty-state">Launchpool unavailable</div>';
+        }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/launchpool/stakes');
+            if (stakesBox) {
+                if (!res.ok) { stakesBox.innerHTML = '<div class="empty-state">Stakes unavailable</div>'; return; }
+                const data = await res.json();
+                const list = Array.isArray(data.stakes) ? data.stakes : (Array.isArray(data) ? data : []);
+                stakesBox.innerHTML = list.length
+                    ? list.map(s => `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(s))}</div></div>`).join('')
+                    : '<div class="empty-state">No stakes yet</div>';
+            }
+        } catch (e) {
+            if (stakesBox) stakesBox.innerHTML = '<div class="empty-state">Stakes unavailable</div>';
+        }
+    }
+
+    async launchpoolAction(action) {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const amount = document.getElementById('launchpool-amount')?.value;
+        if (!amount) { alert('Enter an amount'); return; }
+        const password = prompt('Enter wallet password to sign:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/launchpool/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wallet_id: wallet.wallet_id ?? wallet.id, password, amount })
+            });
+            if (!res.ok) { alert('Launchpool ' + action + ' failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('Launchpool ' + action + ' submitted to the blockchain network: ' + JSON.stringify(result.tx_hash || result));
+            this.loadLaunchpool();
+        } catch (e) {
+            alert('Launchpool error: ' + e.message);
+        }
+    }
+
+    // ---- Token sales (/api/v1/token-sales/*) ----
+    async loadTokenSales() {
+        const box = document.getElementById('token-sales-list');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/token-sales');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Token sales unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.sales) ? data.sales : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No active token sales</div>'; return; }
+            box.innerHTML = list.map(s => {
+                const id = this.escapeHtml(s.id ?? s.sale_id ?? '');
+                return `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(s.name || s.symbol || id)}</div>
+                    <div class="asset-address">${this.escapeHtml(JSON.stringify(s))}</div>
+                    <div class="stake-input-row">
+                        <input type="text" id="sale-amount-${id}" placeholder="Amount" class="stake-input">
+                        <button class="btn-primary" onclick="window.app.participateTokenSale('${id}')">Participate</button>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Token sales unavailable</div>';
+        }
+    }
+
+    async participateTokenSale(saleId) {
+        const amount = document.getElementById(`sale-amount-${saleId}`)?.value;
+        if (!amount) { alert('Enter an amount'); return; }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/token-sales/${encodeURIComponent(saleId)}/participate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount })
+            });
+            if (!res.ok) { alert('Participation failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('Participation submitted to the blockchain network: ' + JSON.stringify(result.tx_hash || result));
+            this.loadTokenSales();
+        } catch (e) {
+            alert('Token sale error: ' + e.message);
+        }
+    }
+
+    // ---- P2P trading (/api/v1/p2p/*) ----
+    async loadP2PAdverts() {
+        const box = document.getElementById('p2p-adverts');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/p2p/adverts');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">P2P adverts unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.adverts) ? data.adverts : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No P2P adverts</div>'; return; }
+            box.innerHTML = list.map(a => `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(a.asset || a.token || '')} @ ${this.escapeHtml(a.price ?? '')}</div>
+                    <div class="asset-address">id=${this.escapeHtml(a.id ?? a.advert_id ?? '')} · ${this.escapeHtml(a.side || a.type || '')}</div>
+                </div>`).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">P2P adverts unavailable</div>';
+        }
+    }
+
+    async createP2POrder() {
+        const advertId = document.getElementById('p2p-advert-id')?.value;
+        const amount = document.getElementById('p2p-amount')?.value;
+        if (!advertId || !amount) { alert('Enter an advert id and amount'); return; }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/p2p/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ advert_id: advertId, amount })
+            });
+            if (!res.ok) { alert('P2P order failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('P2P order submitted: ' + JSON.stringify(result.id || result.order_id || result));
+        } catch (e) {
+            alert('P2P error: ' + e.message);
+        }
+    }
+
+    // ---- Crypto card (/api/v1/cards/*) ----
+    async loadCardInfo() {
+        const balBox = document.getElementById('card-balance');
+        const ratesBox = document.getElementById('card-rates');
+        const txBox = document.getElementById('card-transactions');
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/cards/default/balance');
+            if (balBox) {
+                if (!res.ok) { balBox.innerHTML = '<div class="empty-state">Card balance unavailable</div>'; }
+                else {
+                    const data = await res.json();
+                    balBox.innerHTML = `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(data))}</div></div>`;
+                }
+            }
+        } catch (e) {
+            if (balBox) balBox.innerHTML = '<div class="empty-state">Card balance unavailable</div>';
+        }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/cards/rates');
+            if (ratesBox) {
+                if (!res.ok) { ratesBox.innerHTML = '<div class="empty-state">Rates unavailable</div>'; return; }
+                const data = await res.json();
+                const entries = Object.entries(data.rates || data);
+                ratesBox.innerHTML = entries.length
+                    ? entries.map(([k, v]) => `<div class="provider-card"><div class="nft-name">${this.escapeHtml(k)}</div><div class="asset-address">$${this.escapeHtml(v)}</div></div>`).join('')
+                    : '<div class="empty-state">Rates unavailable</div>';
+            }
+        } catch (e) {
+            if (ratesBox) ratesBox.innerHTML = '<div class="empty-state">Rates unavailable</div>';
+        }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/cards/default/transactions');
+            if (txBox) {
+                if (!res.ok) { txBox.innerHTML = '<div class="no-transactions">Card transactions unavailable</div>'; return; }
+                const data = await res.json();
+                const list = Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data) ? data : []);
+                txBox.innerHTML = list.length
+                    ? list.map(t => `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(t))}</div></div>`).join('')
+                    : '<div class="no-transactions">No card transactions</div>';
+            }
+        } catch (e) {
+            if (txBox) txBox.innerHTML = '<div class="no-transactions">Card transactions unavailable</div>';
+        }
+    }
+
+    // ---- Price alerts (/api/v1/price-alerts/*) ----
+    async loadPriceAlerts() {
+        const box = document.getElementById('price-alerts-list');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/price-alerts');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Price alerts unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.alerts) ? data.alerts : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No price alerts</div>'; return; }
+            box.innerHTML = list.map(a => {
+                const id = this.escapeHtml(a.id ?? '');
+                return `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(a.symbol || '')} ${this.escapeHtml(a.direction || '')} $${this.escapeHtml(a.target_price ?? '')}</div>
+                    <button class="btn-secondary" onclick="window.app.deletePriceAlert('${id}')">Delete</button>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Price alerts unavailable</div>';
+        }
+    }
+
+    async createPriceAlert() {
+        const symbol = document.getElementById('alert-symbol')?.value;
+        const target = document.getElementById('alert-target')?.value;
+        const direction = document.getElementById('alert-direction')?.value;
+        if (!symbol || !target) { alert('Enter a symbol and target price'); return; }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/price-alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: symbol.toUpperCase(), target_price: target, direction })
+            });
+            if (!res.ok) { alert('Create alert failed: ' + await res.text()); return; }
+            alert('Price alert created');
+            this.loadPriceAlerts();
+        } catch (e) {
+            alert('Price alert error: ' + e.message);
+        }
+    }
+
+    async deletePriceAlert(id) {
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/price-alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (!res.ok) { alert('Delete alert failed: ' + await res.text()); return; }
+            this.loadPriceAlerts();
+        } catch (e) {
+            alert('Price alert error: ' + e.message);
+        }
+    }
+
+    // ---- DAO governance (/api/v1/dao/*) ----
+    async loadDao() {
+        const propBox = document.getElementById('dao-proposals');
+        const delBox = document.getElementById('dao-delegates');
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/dao/proposals');
+            if (propBox) {
+                if (!res.ok) { propBox.innerHTML = '<div class="empty-state">Proposals unavailable</div>'; }
+                else {
+                    const data = await res.json();
+                    const list = Array.isArray(data.proposals) ? data.proposals : (Array.isArray(data) ? data : []);
+                    propBox.innerHTML = list.length ? list.map(p => {
+                        const id = this.escapeHtml(p.id ?? p.proposal_id ?? '');
+                        return `
+                        <div class="provider-card">
+                            <div class="nft-name">${this.escapeHtml(p.title || id)}</div>
+                            <div class="asset-address">${this.escapeHtml(p.description || '')}</div>
+                            <button class="btn-primary" onclick="window.app.daoVote('${id}', true)">For</button>
+                            <button class="btn-secondary" onclick="window.app.daoVote('${id}', false)">Against</button>
+                        </div>`;
+                    }).join('') : '<div class="empty-state">No active proposals</div>';
+                }
+            }
+        } catch (e) {
+            if (propBox) propBox.innerHTML = '<div class="empty-state">Proposals unavailable</div>';
+        }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/dao/delegates');
+            if (delBox) {
+                if (!res.ok) { delBox.innerHTML = '<div class="empty-state">Delegates unavailable</div>'; return; }
+                const data = await res.json();
+                const list = Array.isArray(data.delegates) ? data.delegates : (Array.isArray(data) ? data : []);
+                delBox.innerHTML = list.length
+                    ? list.map(d => `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(d))}</div></div>`).join('')
+                    : '<div class="empty-state">No delegates</div>';
+            }
+        } catch (e) {
+            if (delBox) delBox.innerHTML = '<div class="empty-state">Delegates unavailable</div>';
+        }
+    }
+
+    async daoVote(proposalId, support) {
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/dao/proposals/${encodeURIComponent(proposalId)}/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ support })
+            });
+            if (!res.ok) { alert('Vote failed: ' + await res.text()); return; }
+            alert('Vote submitted to the blockchain network');
+            this.loadDao();
+        } catch (e) {
+            alert('DAO error: ' + e.message);
+        }
+    }
+
+    // ---- Token approvals (/api/v1/approvals/*) ----
+    async loadApprovals() {
+        const box = document.getElementById('approvals-list');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/approvals');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Approvals unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.approvals) ? data.approvals : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No token approvals</div>'; return; }
+            box.innerHTML = list.map(a => {
+                const id = this.escapeHtml(a.id ?? '');
+                return `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(a.token || a.token_symbol || '')} → ${this.escapeHtml(a.spender || '')}</div>
+                    <div class="asset-address">allowance=${this.escapeHtml(a.allowance ?? a.amount ?? '')}</div>
+                    <button class="btn-secondary" onclick="window.app.revokeApproval('${id}')">Revoke</button>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Approvals unavailable</div>';
+        }
+    }
+
+    async revokeApproval(id) {
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/approvals/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (!res.ok) { alert('Revoke failed: ' + await res.text()); return; }
+            alert('Revocation submitted to the blockchain network');
+            this.loadApprovals();
+        } catch (e) {
+            alert('Approvals error: ' + e.message);
+        }
+    }
+
+    // ---- Address book (/api/v1/address-book/contacts/*) ----
+    async loadContacts() {
+        const box = document.getElementById('contacts-list');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/address-book/contacts');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Contacts unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.contacts) ? data.contacts : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No contacts</div>'; return; }
+            box.innerHTML = list.map(c => {
+                const id = this.escapeHtml(c.id ?? '');
+                return `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(c.label || c.name || '')}</div>
+                    <div class="asset-address">${this.escapeHtml(c.address || '')}</div>
+                    <button class="btn-secondary" onclick="window.app.deleteContact('${id}')">Delete</button>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Contacts unavailable</div>';
+        }
+    }
+
+    async addContact() {
+        const label = document.getElementById('contact-label')?.value;
+        const address = document.getElementById('contact-address')?.value;
+        if (!label || !address) { alert('Enter a label and address'); return; }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/address-book/contacts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ label, address })
+            });
+            if (!res.ok) { alert('Add contact failed: ' + await res.text()); return; }
+            this.loadContacts();
+        } catch (e) {
+            alert('Address book error: ' + e.message);
+        }
+    }
+
+    async deleteContact(id) {
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/address-book/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (!res.ok) { alert('Delete contact failed: ' + await res.text()); return; }
+            this.loadContacts();
+        } catch (e) {
+            alert('Address book error: ' + e.message);
+        }
+    }
+
+    // ---- Linked devices (/api/v1/devices/*) ----
+    async loadDevices() {
+        const box = document.getElementById('devices-list');
+        if (!box) return;
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/devices');
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Devices unavailable</div>'; return; }
+            const data = await res.json();
+            const list = Array.isArray(data.devices) ? data.devices : (Array.isArray(data) ? data : []);
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No linked devices</div>'; return; }
+            box.innerHTML = list.map(d => `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(d.name || d.device_name || d.platform || '')}</div>
+                    <div class="asset-address">${this.escapeHtml(d.last_seen || d.synced_at || '')}</div>
+                </div>`).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Devices unavailable</div>';
+        }
+    }
+
+    // ---- NFT transfer (/api/v1/nft/transfer — real ERC-721 safeTransferFrom) ----
+    async transferNFT() {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const contract = document.getElementById('nft-transfer-contract')?.value;
+        const tokenId = document.getElementById('nft-transfer-token-id')?.value;
+        const to = document.getElementById('nft-transfer-to')?.value;
+        if (!contract || !tokenId || !to) { alert('Enter contract, token id, and recipient'); return; }
+        const password = prompt('Enter wallet password to sign:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const res = await fetch('http://localhost:8443/api/v1/nft/transfer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    wallet_id: wallet.wallet_id ?? wallet.id,
+                    password,
+                    to,
+                    token_id: tokenId,
+                    contract_address: contract,
+                    chain_id: this.currentNetwork
+                })
+            });
+            if (!res.ok) { alert('NFT transfer failed: ' + await res.text()); return; }
+            const result = await res.json();
+            alert('NFT transfer submitted to the blockchain network: ' + (result.transaction_hash || result.tx_hash || JSON.stringify(result)));
+            this.loadNFTs();
+        } catch (e) {
+            alert('NFT transfer error: ' + e.message);
+        }
+    }
+
     formatAddress(address) {
         if (!address) return '';
         return `${address.slice(0, 6)}...${address.slice(-4)}`;

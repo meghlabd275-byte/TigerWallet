@@ -143,6 +143,13 @@
       <button class="tab-btn" data-tab="kycTab">KYC</button>
       <button class="tab-btn" data-tab="defiTab">DeFi</button>
       <button class="tab-btn" data-tab="dappsTab">dApps</button>
+      <button class="tab-btn" data-tab="nftsTab">NFTs</button>
+      <button class="tab-btn" data-tab="bridgeTab">Bridge</button>
+      <button class="tab-btn" data-tab="txTab">History</button>
+      <button class="tab-btn" data-tab="approvalsTab">Approvals</button>
+      <button class="tab-btn" data-tab="contactsTab">Contacts</button>
+      <button class="tab-btn" data-tab="devicesTab">Devices</button>
+      <button class="tab-btn" data-tab="alertsTab">Alerts</button>
     </div>
 
     <!-- Wallets tab -->
@@ -286,6 +293,81 @@
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Active sessions</div>
       <div id="dappSessionsList" style="max-height:120px;overflow-y:auto;font-size:12px;"></div>
       <div id="dappError" class="error hidden"></div>
+    </div>
+
+    <!-- NFTs tab -->
+    <div id="nftsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">My NFTs</div>
+      <div id="nftList" style="max-height:180px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
+      <label for="nftContract">Contract address</label>
+      <input type="text" id="nftContract" placeholder="0x…" />
+      <label for="nftTokenId">Token ID</label>
+      <input type="text" id="nftTokenId" placeholder="1" />
+      <label for="nftTo">Recipient address</label>
+      <input type="text" id="nftTo" placeholder="0x…" />
+      <label for="nftPassword">Wallet password</label>
+      <input type="password" id="nftPassword" placeholder="••••••••" />
+      <button id="nftTransferBtn">Transfer NFT</button>
+      <div id="nftStatus" class="wallet-balance"></div>
+    </div>
+
+    <!-- Bridge tab -->
+    <div id="bridgeTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Cross-Chain Bridge</div>
+      <label for="bridgeFromChain">From chain id</label>
+      <input type="text" id="bridgeFromChain" placeholder="1" />
+      <label for="bridgeToChain">To chain id</label>
+      <input type="text" id="bridgeToChain" placeholder="56" />
+      <label for="bridgeToken">Token</label>
+      <input type="text" id="bridgeToken" placeholder="ETH" />
+      <label for="bridgeAmount">Amount</label>
+      <input type="text" id="bridgeAmount" placeholder="0.0" />
+      <button id="bridgeQuoteBtn" class="secondary">Get Quote</button>
+      <div id="bridgeQuoteResult" class="wallet-balance"></div>
+      <button id="bridgeTransferBtn">Bridge</button>
+      <div id="bridgeStatus" class="wallet-balance"></div>
+    </div>
+
+    <!-- Transactions history tab -->
+    <div id="txTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Transaction History</div>
+      <div id="txList" style="max-height:220px;overflow-y:auto;font-size:12px;"></div>
+    </div>
+
+    <!-- Approvals tab -->
+    <div id="approvalsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Token Approvals</div>
+      <div id="approvalsList" style="max-height:200px;overflow-y:auto;font-size:12px;"></div>
+    </div>
+
+    <!-- Address book tab -->
+    <div id="contactsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Address Book</div>
+      <label for="contactName">Name</label>
+      <input type="text" id="contactName" placeholder="Alice" />
+      <label for="contactAddress">Address</label>
+      <input type="text" id="contactAddress" placeholder="0x…" />
+      <button id="contactAddBtn" class="secondary">Add Contact</button>
+      <div id="contactsList" style="max-height:160px;overflow-y:auto;font-size:12px;margin-top:8px;"></div>
+    </div>
+
+    <!-- Devices tab -->
+    <div id="devicesTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Linked Devices</div>
+      <div id="devicesList" style="max-height:200px;overflow-y:auto;font-size:12px;"></div>
+    </div>
+
+    <!-- Price alerts tab -->
+    <div id="alertsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Price Alerts</div>
+      <label for="alertSymbol">Symbol</label>
+      <input type="text" id="alertSymbol" placeholder="ETH" />
+      <label for="alertTarget">Target price (USD)</label>
+      <input type="text" id="alertTarget" placeholder="0.0" />
+      <label for="alertDirection">Direction</label>
+      <input type="text" id="alertDirection" placeholder="above / below" />
+      <button id="alertCreateBtn" class="secondary">Create Alert</button>
+      <div id="alertsList" style="max-height:160px;overflow-y:auto;font-size:12px;margin-top:8px;"></div>
     </div>
 
     <button id="logoutBtn" class="toggle-auth">Logout</button>
