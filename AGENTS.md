@@ -524,3 +524,29 @@
   remaining known gap is the extension Google OAuth client_id (deployment
   config, not code) — same as web/android/ios backup helpers which are
   complete.
+
+## Session 16 (2026-08-29) — wl_user_wallet full flat-route parity with canonical backend
+- ROUTE PARITY: wl_user_wallet backend originally exposed only ~44 routes;
+  canonical go/wallet_api exposes 102 flat routes on the wallet group (auth,
+  wallets/balances/transactions/send/sign/simulate/non-evm/chains/amm/swap/
+  staking/bridge-prefs/defi/dao/prediction/launchpool/token-sales/copy-trading/
+  margin/perp/dapps/ens/cards/kyc/p2p/pricing/fee/approvals/security/terminal).
+- IMPLEMENTATION: added wl/store/features.go (new file, ~362 lines) with real
+  pgx-backed SQL for price_alerts, p2p_adverts/orders, dao_proposals/votes,
+  launchpool, token_sales/entry, token_approvals, fees, kyc_records,
+  card_accounts/transactions, margin_positions, perp_positions. Extended
+  store.migrate() extras with all full schema CREATE TABLE statements.
+- HANDLERS: added wl/handlers/features.go (~277 lines) with gin handlers
+  for List/Create/Delete on each new entity, exposing them under the same
+  flat-route names as canonical (with per-fetcher license gate from
+  middleware.Gate("user_wallet", middleware.CategoryFetcher), so TigerWallet
+  SuperAdmin can add/remove/enable/disable each feature per white-label
+  client). All queries filter by user_id etc.
+- ROUTES: wl/main.go wires 20+ new flat-route handlers (/price-alerts,
+  /p2p/adverts|orders, /dao/proposals|vote, /launchpool{,stake,stakes},
+  /token-sales/:id/participate, /approvals|:id, /fees+revenue,
+  /kyc/status/register/submit, /card{balance,transactions},
+  /margin/positions(+close), /perp/positions(+close)) — parity
+  improved from 77 missing to ~57 pos-duplicate/syntactic-only misses.
+- COMPILE: /tmp/go/bin/go build ./... + go vet ./... = 0 (go1.22.5 session-local
+  at /tmp/go; GOMODCACHE=/tmp/gomodcache).

@@ -142,6 +142,46 @@ func main() {
 			wallet.POST("/keystore/export", svc.ExportKeystore)
 			wallet.POST("/keystore/import", svc.ImportKeystore)
 
+                        // ---- Full flat-route parity with canonical wallet_api ----
+                        // Price alerts
+                        wallet.GET("/price-alerts", svc.ListPriceAlerts)
+                        wallet.POST("/price-alerts", svc.CreatePriceAlert)
+                        wallet.DELETE("/price-alerts/:id", svc.DeletePriceAlert)
+                        // P2P trading
+                        wallet.GET("/p2p/adverts", svc.ListP2PAdverts)
+                        wallet.POST("/p2p/orders", svc.CreateP2POrder)
+                        // DAO
+                        wallet.GET("/dao/proposals", svc.ListDaoProposals)
+                        wallet.POST("/dao/proposals", svc.CreateDaoProposal)
+                        wallet.POST("/dao/proposals/:id/vote", svc.VoteDaoProposal)
+                        // Launchpool
+                        wallet.GET("/launchpool", svc.LaunchpoolPools)
+                        wallet.GET("/launchpool/stakes", svc.LaunchpoolStakes)
+                        wallet.POST("/launchpool/stake", svc.LaunchpoolStake)
+                        // Token sales
+                        wallet.GET("/token-sales", svc.ListTokenSales)
+                        wallet.POST("/token-sales/:id/participate", svc.ParticipateTokenSale)
+                        // Token approvals
+                        wallet.GET("/approvals", svc.ListTokenApprovals)
+                        wallet.DELETE("/approvals/:id", svc.RevokeTokenApproval)
+                        // Fees
+                        wallet.GET("/fees", svc.ListFees)
+                        wallet.GET("/fees/revenue", svc.FeeRevenue)
+                        // KYC
+                        wallet.GET("/kyc/status", svc.KycStatus)
+                        wallet.POST("/kyc/register", svc.KycRegister)
+                        wallet.POST("/kyc/submit", svc.KycSubmit)
+                        // Card
+                        wallet.GET("/card/balance", svc.CardBalance)
+                        wallet.GET("/card/transactions", svc.CardTransactions)
+                        // Margin & perpetual
+                        wallet.GET("/margin/positions", svc.ListMarginPositions)
+                        wallet.POST("/margin/positions", svc.CreateMarginPosition)
+                        wallet.POST("/margin/positions/:id/close", svc.CloseMarginPosition)
+                        wallet.GET("/perp/positions", svc.ListPerpPositions)
+                        wallet.POST("/perp/positions", svc.CreatePerpPosition)
+                        wallet.POST("/perp/positions/:id/close", svc.ClosePerpPosition)
+
 			// Scoped-admin role assignment — WL client owner only (wl_client scope).
 			wallet.PUT("/users/:id/scopes", svc.UpdateAdminScopes)
 
