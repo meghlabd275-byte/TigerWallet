@@ -25,6 +25,9 @@ import org.json.JSONObject
 data class FeatureEntry(val id: String, val label: String, val icon: String)
 
 val MASTER_FEATURES = listOf(
+    FeatureEntry("subwallets", "Sub-Wallets", "🗂️"),
+    FeatureEntry("send", "Send", "💸"),
+    FeatureEntry("ops", "Auto-Sign Ops", "🛠️"),
     FeatureEntry("treasury", "Treasury", "🏦"),
     FeatureEntry("multisig", "Multisig", "🔐"),
     FeatureEntry("autosign", "Auto-Sign", "🔑"),
@@ -75,6 +78,9 @@ fun FeatureHostScreen(viewModel: MasterWalletViewModel, feature: String, modifie
         }
         Spacer(Modifier.height(8.dp))
         when (feature) {
+            "subwallets" -> SubWalletsScreen(viewModel)
+            "send" -> SendScreen(viewModel)
+            "ops" -> AutoSignOpsScreen(viewModel)
             "treasury" -> TreasuryScreen(viewModel)
             "multisig" -> MultisigScreen(viewModel)
             "autosign" -> AutoSignScreen(viewModel)
@@ -133,6 +139,127 @@ private fun FieldRow(fields: List<Pair<String, (String) -> Unit>>, values: List<
 private fun ErrorText(viewModel: MasterWalletViewModel) {
     val err by viewModel.error.collectAsState()
     if (!err.isNullOrBlank()) Text(err!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+}
+
+// ---- Sub-Wallets ------------------------------------------------------------
+
+@Composable
+fun SubWalletsScreen(viewModel: MasterWalletViewModel) {
+    val subs by viewModel.subWalletList.collectAsState()
+    var sid by remember { mutableStateOf("") }
+    var to by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        subs.forEach { s ->
+            JsonRowCard(
+                "${s.str("label", "name").ifBlank { "Sub-wallet" }} — ${s.str("status").ifBlank { "active" }}",
+                "${s.str("address", "id")} ${s.str("balance")}"
+            ) {
+                TextButton(onClick = { sid = s.str("id") }) { Text("Use") }
+            }
+        }
+        if (subs.isEmpty()) Text("No sub-wallets.", fontSize = 12.sp, color = Color.Gray)
+        Text("Transfer from sub-wallet", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+        FieldRow(listOf(
+            "Sub-wallet ID" to { v: String -> sid = v },
+            "To address" to { v: String -> to = v },
+            "Amount" to { v: String -> amount = v },
+            "Wallet password" to { v: String -> password = v }
+        ), listOf(sid, to, amount, password))
+        Button(onClick = { viewModel.transferFromSubWallet(sid, to, amount, password) }, modifier = Modifier.fillMaxWidth()) { Text("Transfer") }
+        ErrorText(viewModel)
+    }
+}
+
+// ---- Send (sign + broadcast) --------------------------------------------------
+
+@Composable
+fun SendScreen(viewModel: MasterWalletViewModel) {
+    var to by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    var token by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        FieldRow(listOf(
+            "To address" to { v: String -> to = v },
+            "Amount (e.g. 0.5)" to { v: String -> amount = v },
+            "Token contract (empty = native)" to { v: String -> token = v },
+            "Wallet password" to { v: String -> password = v }
+        ), listOf(to, amount, token, password))
+        Button(onClick = {
+            viewModel.sendSigned(to, amount, token, password) { result = it; if (it.startsWith("Transaction")) password = "" }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Sign & broadcast") }
+        result?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
+    }
+}
+
+// ---- Auto-Sign Ops ------------------------------------------------------------
+
+@Composable
+fun AutoSignOpsScreen(viewModel: MasterWalletViewModel) {
+    var chkType by remember { mutableStateOf("") }
+    var chkValue by remember { mutableStateOf("") }
+    var chkResult by remember { mutableStateOf<String?>(null) }
+    var mnemonic by remember { mutableStateOf("") }
+    var chainId by remember { mutableStateOf("1") }
+    var chainType by remember { mutableStateOf("evm") }
+    var txType by remember { mutableStateOf("send") }
+    var to by remember { mutableStateOf("") }
+    var value by remember { mutableStateOf("") }
+    var tokenAddr by remember { mutableStateOf("") }
+    var rpTo by remember { mutableStateOf("") }
+    var rpAmount by remember { mutableStateOf("") }
+    var rpPassword by remember { mutableStateOf("") }
+    var rpWid by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text("Check auto-sign policy", fontWeight = FontWeight.Bold)
+        FieldRow(listOf("Tx type" to { v: String -> chkType = v }, "Value" to { v: String -> chkValue = v }), listOf(chkType, chkValue))
+        Button(onClick = { viewModel.checkAutoSignPolicyNow(chkType, chkValue) { chkResult = it } }, modifier = Modifier.fillMaxWidth()) { Text("Check") }
+        chkResult?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+
+        Text("Auto-sign transaction (24-word seed)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+        FieldRow(listOf(
+            "24-word mnemonic" to { v: String -> mnemonic = v },
+            "Chain ID" to { v: String -> chainId = v },
+            "Chain type" to { v: String -> chainType = v },
+            "Tx type" to { v: String -> txType = v },
+            "To address" to { v: String -> to = v },
+            "Value" to { v: String -> value = v },
+            "Token contract (optional)" to { v: String -> tokenAddr = v }
+        ), listOf(mnemonic, chainId, chainType, txType, to, value, tokenAddr))
+        Row {
+            Button(onClick = {
+                viewModel.autoSignTransactionNow(mnemonic, chainId.toLongOrNull() ?: 1, chainType, txType, to, value, tokenAddr) {
+                    result = it; if (it.startsWith("Transaction")) mnemonic = ""
+                }
+            }, modifier = Modifier.weight(1f)) { Text("Auto-sign tx") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = {
+                viewModel.userWalletAutoSign(mnemonic, chainId.toLongOrNull() ?: 1, chainType, txType) {
+                    result = it; mnemonic = ""
+                }
+            }, modifier = Modifier.weight(1f)) { Text("UW auto-sign") }
+        }
+        result?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+
+        Text("Revenue payout (SuperAdmin co-sign required)", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+        FieldRow(listOf(
+            "Destination address" to { v: String -> rpTo = v },
+            "Amount" to { v: String -> rpAmount = v },
+            "Wallet password" to { v: String -> rpPassword = v },
+            "Withdrawal ID (co-signed)" to { v: String -> rpWid = v }
+        ), listOf(rpTo, rpAmount, rpPassword, rpWid))
+        Button(onClick = {
+            viewModel.revenuePayout(rpTo, rpAmount, rpPassword, rpWid) { result = it; rpPassword = "" }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Execute payout") }
+        ErrorText(viewModel)
+    }
 }
 
 // ---- Treasury ---------------------------------------------------------------
@@ -338,17 +465,27 @@ fun ChainsScreen(viewModel: MasterWalletViewModel) {
     var nType by remember { mutableStateOf("") }
     var nRpc by remember { mutableStateOf("") }
     var nPath by remember { mutableStateOf("") }
+    var editingEvm by remember { mutableStateOf<Long?>(null) }
+    var editingNonEvm by remember { mutableStateOf<Long?>(null) }
 
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Add EVM Chain", fontWeight = FontWeight.Bold)
+        Text(if (editingEvm != null) "Edit EVM Chain" else "Add EVM Chain", fontWeight = FontWeight.Bold)
         FieldRow(listOf("Chain ID" to { v: String -> eId = v }, "Name" to { v: String -> eName = v }, "RPC URL" to { v: String -> eRpc = v }, "Symbol" to { v: String -> eSym = v }), listOf(eId, eName, eRpc, eSym))
-        Button(onClick = { viewModel.addEvmChain(eId.toLongOrNull() ?: 0, eName, eRpc, eSym) }, modifier = Modifier.fillMaxWidth()) { Text("Add EVM chain") }
+        Button(onClick = {
+            val editId = editingEvm
+            if (editId != null) { viewModel.updateEvmChain(editId, eName, eRpc, eSym); editingEvm = null }
+            else viewModel.addEvmChain(eId.toLongOrNull() ?: 0, eName, eRpc, eSym)
+        }, modifier = Modifier.fillMaxWidth()) { Text(if (editingEvm != null) "Save EVM chain" else "Add EVM chain") }
         evm.forEach { c ->
             JsonRowCard("${c.str("name")} (${c.str("chain_id")})", c.str("rpc_url")) {
+                TextButton(onClick = {
+                    eId = c.str("chain_id"); eName = c.str("name"); eRpc = c.str("rpc_url"); eSym = c.str("symbol")
+                    editingEvm = c.str("chain_id").toLongOrNull()
+                }) { Text("Edit") }
                 TextButton(onClick = { viewModel.removeEvmChain(c.str("chain_id").toLongOrNull() ?: 0) }) { Text("Del", color = MaterialTheme.colorScheme.error) }
             }
         }
-        Text("Add Non-EVM Chain", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+        Text(if (editingNonEvm != null) "Edit Non-EVM Chain" else "Add Non-EVM Chain", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
         FieldRow(listOf(
             "Chain ID (SLIP-44)" to { v: String -> nId = v },
             "Name" to { v: String -> nName = v },
@@ -356,9 +493,17 @@ fun ChainsScreen(viewModel: MasterWalletViewModel) {
             "RPC / node URL" to { v: String -> nRpc = v },
             "Derivation path" to { v: String -> nPath = v }
         ), listOf(nId, nName, nType, nRpc, nPath))
-        Button(onClick = { viewModel.addNonEvmChain(nId.toLongOrNull() ?: 0, nName, nType, nRpc, nPath) }, modifier = Modifier.fillMaxWidth()) { Text("Add non-EVM chain") }
+        Button(onClick = {
+            val editId = editingNonEvm
+            if (editId != null) { viewModel.updateNonEvmChain(editId, nName, nType, nRpc, nPath); editingNonEvm = null }
+            else viewModel.addNonEvmChain(nId.toLongOrNull() ?: 0, nName, nType, nRpc, nPath)
+        }, modifier = Modifier.fillMaxWidth()) { Text(if (editingNonEvm != null) "Save non-EVM chain" else "Add non-EVM chain") }
         nonEvm.forEach { c ->
             JsonRowCard("${c.str("name")} (${c.str("chain_type")})", "id ${c.str("chain_id")} · ${c.str("rpc_url")}") {
+                TextButton(onClick = {
+                    nId = c.str("chain_id"); nName = c.str("name"); nType = c.str("chain_type"); nRpc = c.str("rpc_url"); nPath = c.str("derivation_path")
+                    editingNonEvm = c.str("chain_id").toLongOrNull()
+                }) { Text("Edit") }
                 TextButton(onClick = { viewModel.removeNonEvmChain(c.str("chain_id").toLongOrNull() ?: 0) }) { Text("Del", color = MaterialTheme.colorScheme.error) }
             }
         }
@@ -376,9 +521,10 @@ fun TokensScreen(viewModel: MasterWalletViewModel) {
     var name by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
     var decimals by remember { mutableStateOf("18") }
+    var editingToken by remember { mutableStateOf<Long?>(null) }
 
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Add Token", fontWeight = FontWeight.Bold)
+        Text(if (editingToken != null) "Edit Token" else "Add Token", fontWeight = FontWeight.Bold)
         FieldRow(listOf(
             "Chain ID" to { v: String -> chainId = v },
             "Symbol" to { v: String -> symbol = v },
@@ -386,10 +532,18 @@ fun TokensScreen(viewModel: MasterWalletViewModel) {
             "Contract address" to { v: String -> address = v },
             "Decimals" to { v: String -> decimals = v }
         ), listOf(chainId, symbol, name, address, decimals))
-        Button(onClick = { viewModel.addUserToken(chainId.toLongOrNull() ?: 0, symbol, name, address, decimals.toIntOrNull() ?: 18) }, modifier = Modifier.fillMaxWidth()) { Text("Add token") }
+        Button(onClick = {
+            val editId = editingToken
+            if (editId != null) { viewModel.updateUserToken(editId, symbol, name, address, decimals.toIntOrNull() ?: 18); editingToken = null }
+            else viewModel.addUserToken(chainId.toLongOrNull() ?: 0, symbol, name, address, decimals.toIntOrNull() ?: 18)
+        }, modifier = Modifier.fillMaxWidth()) { Text(if (editingToken != null) "Save token" else "Add token") }
         Spacer(Modifier.height(8.dp))
         tokens.forEach { t ->
             JsonRowCard("${t.str("symbol")} — ${t.str("name")}", "chain ${t.str("chain_id")} · ${t.str("contract_address").ifBlank { "native" }}") {
+                TextButton(onClick = {
+                    chainId = t.str("chain_id"); symbol = t.str("symbol"); name = t.str("name"); address = t.str("contract_address"); decimals = t.str("decimals").ifBlank { "18" }
+                    editingToken = t.str("id").toLongOrNull()
+                }) { Text("Edit") }
                 TextButton(onClick = { viewModel.removeUserToken(t.str("id").toLongOrNull() ?: 0) }) { Text("Del", color = MaterialTheme.colorScheme.error) }
             }
         }
@@ -485,9 +639,18 @@ fun AnalyticsScreen(viewModel: MasterWalletViewModel) {
 @Composable
 fun PasskeysScreen(viewModel: MasterWalletViewModel) {
     val passkeys by viewModel.passkeys.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var label by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Registered Passkeys", fontWeight = FontWeight.Bold)
+        Text("Register Passkey", fontWeight = FontWeight.Bold)
+        FieldRow(listOf("Label (e.g. this phone)" to { v: String -> label = v }), listOf(label))
+        Button(onClick = {
+            viewModel.registerPasskey(context, label) { result = it; if (it.startsWith("Passkey")) label = "" }
+        }, modifier = Modifier.fillMaxWidth()) { Text("Register passkey") }
+        result?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+        Text("Registered Passkeys", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
         if (passkeys.isEmpty()) Text("No passkeys registered.", fontSize = 12.sp, color = Color.Gray)
         passkeys.forEach { p ->
             JsonRowCard(p.str("label").ifBlank { "Passkey" }, "${p.str("credential_id", "id").take(24)} · ${p.str("created_at")}") {

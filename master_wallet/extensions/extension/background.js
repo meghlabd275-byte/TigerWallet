@@ -172,6 +172,8 @@ async function handleRelay(payload) {
       return svc.signTransaction(walletId, args[1]);
     case 'listSubWallets':
       return svc.listSubWallets(walletId);
+    case 'transferFromSubWallet':
+      return svc.transferFromSubWallet(walletId, args[1], args[2]);
     case 'createSubWallet':
       return svc.createSubWallet(walletId, args[1]);
     case 'getSubWalletBalance':

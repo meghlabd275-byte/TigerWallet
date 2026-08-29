@@ -570,6 +570,10 @@ class MasterWalletViewModel : ViewModel() {
     val analytics: StateFlow<Map<String, String>> = _analytics.asStateFlow()
     private val _passkeys = MutableStateFlow<List<JSONObject>>(emptyList())
     val passkeys: StateFlow<List<JSONObject>> = _passkeys.asStateFlow()
+    private val _subWalletList = MutableStateFlow<List<JSONObject>>(emptyList())
+    val subWalletList: StateFlow<List<JSONObject>> = _subWalletList.asStateFlow()
+    private val _liveEvent = MutableStateFlow<String?>(null)
+    val liveEvent: StateFlow<String?> = _liveEvent.asStateFlow()
 
     /** Parse either a raw JSON array or a {"<key>":[...]} envelope. */
     private fun parseList(raw: String?, key: String): List<JSONObject> {
@@ -601,6 +605,7 @@ class MasterWalletViewModel : ViewModel() {
             }
             try {
                 when (feature) {
+                    "subwallets" -> _subWalletList.value = parseList(apiGet("/master-wallet/$id/sub-wallets"), "sub_wallets")
                     "treasury" -> {
                         apiGet("/master-wallet/$id/treasury")?.let { _treasury.value = JSONObject(it) }
                         _treasuryTxs.value = parseList(apiGet("/master-wallet/$id/treasury/transactions"), "transactions")
@@ -815,6 +820,161 @@ class MasterWalletViewModel : ViewModel() {
     fun deletePasskey(credId: String) =
         featureAction("passkeys") { id ->
             apiDelete("/master-wallet/$id/passkey/credentials/" + java.net.URLEncoder.encode(credId, "UTF-8"))
+        }
+
+    /** Register a platform passkey via CredentialManager (API 34+) with an
+     *  AndroidKeyStore P-256 fallback, then POST it to the backend. */
+    fun registerPasskey(context: android.content.Context, label: String, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run { onDone("No master wallet selected"); return@launch }
+                val mws = com.tigermaster.services.MasterWalletService()
+                mws.setAuthToken(authToken)
+                val svc = com.tigermaster.services.PasskeyService(context, mws)
+                svc.initialize()
+                val cred = svc.registerPasskey(
+                    masterId = id,
+                    relyingPartyId = "tigerwallet.app",
+                    relyingPartyName = "TigerWallet Master",
+                    userId = id,
+                    userName = "master-owner",
+                    label = label
+                )
+                onDone(if (cred != null) "Passkey registered." else "Passkey registration failed")
+                loadFeature("passkeys")
+            } catch (e: Exception) {
+                onDone(e.message ?: "error")
+            }
+        }
+    }
+
+    /** Live backend /ws feed: real balance/transaction events update the
+     *  dashboard instantly. Disconnect-safe; polling refresh remains. */
+    private var wsService: com.tigermaster.services.WebSocketService? = null
+    private var wsJob: kotlinx.coroutines.Job? = null
+
+    fun startLiveFeed() {
+        if (wsJob != null) return
+        val id = _masterWallet.value?.id ?: return
+        val svc = com.tigermaster.services.WebSocketService()
+        wsService = svc
+        svc.connect(id, authToken)
+        wsJob = viewModelScope.launch {
+            svc.messages.collect { msg ->
+                _liveEvent.value = msg.type + if (msg.data.isNotBlank()) " · " + msg.data.take(80) else ""
+                if (msg.type == "balance" || msg.type == "transaction" || msg.type == "tx" || msg.channel == "transactions") {
+                    loadData()
+                }
+            }
+        }
+    }
+
+    fun stopLiveFeed() {
+        wsJob?.cancel(); wsJob = null
+        wsService?.disconnect(); wsService = null
+    }
+
+    fun transferFromSubWallet(sid: String, to: String, amount: String, password: String) =
+        featureAction("subwallets") { id ->
+            apiPost("/master-wallet/$id/sub-wallets/$sid/transfer",
+                JSONObject().put("to", to).put("amount", amount).put("password", password).toString()) != null
+        }
+
+    fun sendSigned(to: String, amount: String, token: String, password: String, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run { onDone("No master wallet selected"); return@launch }
+                val body = JSONObject().put("to", to).put("amount", amount).put("password", password)
+                if (token.isNotBlank()) body.put("token", token)
+                val resp = apiPost("/master-wallet/$id/sign", body.toString())
+                if (resp != null) {
+                    val obj = JSONObject(resp)
+                    val hash = obj.optString("transaction_hash", obj.optString("tx_hash", obj.optString("hash", "")))
+                    onDone("Transaction submitted to the blockchain network" + (if (hash.isNotBlank()) ": $hash" else ""))
+                    loadData()
+                } else onDone("Send failed")
+            } catch (e: Exception) { onDone(e.message ?: "error") }
+        }
+    }
+
+    fun checkAutoSignPolicyNow(txType: String, value: String, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run { onDone("No master wallet selected"); return@launch }
+                val resp = apiPost("/master-wallet/$id/check-auto-sign-policy",
+                    JSONObject().put("tx_type", txType).put("value", value).toString())
+                if (resp != null) {
+                    val obj = JSONObject(resp)
+                    onDone((if (obj.optBoolean("allowed")) "ALLOWED" else "DENIED") + " — " + obj.optString("reason", ""))
+                } else onDone("Policy check failed")
+            } catch (e: Exception) { onDone(e.message ?: "error") }
+        }
+    }
+
+    fun autoSignTransactionNow(mnemonic: String, chainId: Long, chainType: String, txType: String, to: String, value: String, tokenAddress: String, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run { onDone("No master wallet selected"); return@launch }
+                val body = JSONObject()
+                    .put("mnemonic", mnemonic).put("chain_id", chainId).put("chain_type", chainType)
+                    .put("tx_type", txType).put("to_address", to).put("value", value)
+                if (tokenAddress.isNotBlank()) body.put("token_address", tokenAddress)
+                val resp = apiPost("/master-wallet/$id/auto-sign-transaction", body.toString())
+                if (resp != null) {
+                    val obj = JSONObject(resp)
+                    val hash = obj.optString("transaction_hash", obj.optString("tx_hash", obj.optString("hash", "")))
+                    onDone("Transaction submitted to the blockchain network" + (if (hash.isNotBlank()) ": $hash" else ""))
+                } else onDone("Auto-sign failed")
+            } catch (e: Exception) { onDone(e.message ?: "error") }
+        }
+    }
+
+    fun userWalletAutoSign(mnemonic: String, chainId: Long, chainType: String, txType: String, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run { onDone("No master wallet selected"); return@launch }
+                val resp = apiPost("/master-wallet/$id/user-wallet-auto-sign",
+                    JSONObject().put("mnemonic", mnemonic).put("chain_id", chainId)
+                        .put("chain_type", chainType).put("tx_type", txType).toString())
+                onDone(if (resp != null) "UserWallet auto-sign configuration saved." else "Auto-sign setup failed")
+            } catch (e: Exception) { onDone(e.message ?: "error") }
+        }
+    }
+
+    fun revenuePayout(to: String, amount: String, password: String, withdrawalId: String, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run { onDone("No master wallet selected"); return@launch }
+                val resp = apiPost("/master-wallet/$id/revenue-payout",
+                    JSONObject().put("to", to).put("amount", amount)
+                        .put("password", password).put("withdrawal_id", withdrawalId).toString())
+                if (resp != null) {
+                    val obj = JSONObject(resp)
+                    val hash = obj.optString("transaction_hash", obj.optString("tx_hash", obj.optString("hash", "")))
+                    onDone("Payout submitted to the blockchain network" + (if (hash.isNotBlank()) ": $hash" else ""))
+                } else onDone("Payout failed (SuperAdmin co-sign required)")
+            } catch (e: Exception) { onDone(e.message ?: "error") }
+        }
+    }
+
+    fun updateEvmChain(chainId: Long, name: String, rpcUrl: String, symbol: String) =
+        featureAction("chains") { id ->
+            apiPut("/master-wallet/$id/user-chains/evm/$chainId",
+                JSONObject().put("name", name).put("rpc_url", rpcUrl).put("symbol", symbol).toString()) != null
+        }
+
+    fun updateNonEvmChain(chainId: Long, name: String, chainType: String, rpcUrl: String, derivationPath: String) =
+        featureAction("chains") { id ->
+            apiPut("/master-wallet/$id/user-chains/nonevm/$chainId",
+                JSONObject().put("name", name).put("chain_type", chainType)
+                    .put("rpc_url", rpcUrl).put("derivation_path", derivationPath).toString()) != null
+        }
+
+    fun updateUserToken(tokenId: Long, symbol: String, name: String, contractAddress: String, decimals: Int) =
+        featureAction("tokens") { id ->
+            apiPut("/master-wallet/$id/user-tokens/$tokenId",
+                JSONObject().put("symbol", symbol).put("name", name)
+                    .put("contract_address", contractAddress).put("decimals", decimals).toString()) != null
         }
 
     fun requestWithdrawal(toAddress: String, amountWei: String, currency: String, chainId: Long, onDone: (String) -> Unit) {

@@ -108,6 +108,12 @@
     <div id="tab-wallets" class="section tabpanel">
       <h2>Master Wallets</h2>
       <div id="walletList"><div class="empty">No wallets loaded.</div></div>
+      <h3 class="sub">Send (sign + broadcast)</h3>
+      <input id="sendTo" placeholder="To address" />
+      <input id="sendAmount" placeholder="Amount (e.g. 0.5)" />
+      <input id="sendToken" placeholder="Token contract (empty = native)" />
+      <input id="sendPassword" type="password" placeholder="Wallet password" />
+      <button class="btn" id="sendTxBtn">Send</button>
       <h3 class="sub">Passkeys</h3>
       <div id="passkeyList"><div class="empty">No passkeys registered.</div></div>
       <button class="btn" id="registerPasskeyBtn">↓ Passkey register</button>
@@ -115,6 +121,46 @@
       <button class="btn" id="refreshBtn">↻ Refresh</button>
       <button class="btn secondary" id="themeToggleBtn">Toggle theme</button>
       <button class="btn danger" id="logoutBtn">Sign out</button>
+      <h3 class="sub">Live feed</h3>
+      <div id="liveFeed"><div class="empty">WebSocket idle.</div></div>
+    </div>
+
+    <div id="tab-subwallets" class="section tabpanel hidden">
+      <h2>Sub-Wallets</h2>
+      <div id="subWalletList"><div class="empty">Loading…</div></div>
+      <h3 class="sub">Transfer from sub-wallet</h3>
+      <input id="swTransferSid" placeholder="Sub-wallet ID" />
+      <input id="swTransferTo" placeholder="To address" />
+      <input id="swTransferAmount" placeholder="Amount (e.g. 0.5)" />
+      <input id="swTransferPassword" type="password" placeholder="Wallet password" />
+      <button class="btn" id="subWalletTransferBtn">Transfer</button>
+    </div>
+
+    <div id="tab-ops" class="section tabpanel hidden">
+      <h2>Auto-Sign Ops</h2>
+      <h3 class="sub">Check auto-sign policy</h3>
+      <input id="chkTxType" placeholder="Tx type (send/claim/swap/trade)" />
+      <input id="chkValue" placeholder="Value (e.g. 1.5)" />
+      <button class="btn" id="checkPolicyBtn">Check policy</button>
+      <div id="checkPolicyResult"></div>
+      <h3 class="sub">Auto-sign transaction (24-word seed)</h3>
+      <input id="opsMnemonic" placeholder="24-word mnemonic" />
+      <input id="opsChainId" placeholder="Chain ID (e.g. 1)" />
+      <input id="opsChainType" placeholder="Chain type (evm/solana/bitcoin/cosmos)" />
+      <input id="opsTxType" placeholder="Tx type (send/claim/swap/trade)" />
+      <input id="opsTo" placeholder="To address" />
+      <input id="opsValue" placeholder="Value (e.g. 1.5)" />
+      <input id="opsTokenAddress" placeholder="Token contract (optional)" />
+      <div class="rowin">
+        <button class="btn" id="autoSignTxBtn">Auto-sign tx</button>
+        <button class="btn secondary" id="uwAutoSignBtn">UserWallet auto-sign</button>
+      </div>
+      <h3 class="sub">Revenue payout (SuperAdmin-gated)</h3>
+      <input id="rpTo" placeholder="Destination address" />
+      <input id="rpAmount" placeholder="Amount" />
+      <input id="rpPassword" type="password" placeholder="Wallet password" />
+      <input id="rpWithdrawalId" placeholder="Withdrawal ID (co-signed)" />
+      <button class="btn" id="revenuePayoutBtn">Execute payout</button>
     </div>
 
     <div id="tab-transactions" class="section tabpanel hidden">

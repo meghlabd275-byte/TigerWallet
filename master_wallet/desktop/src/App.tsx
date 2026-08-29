@@ -87,6 +87,49 @@ function asList<T = any>(res: any, ...keys: string[]): T[] {
   return [];
 }
 
+// Auth against the canonical backend: POST /api/v1/auth/{login,register}.
+// Returns null on success; on failure returns the backend's real error string.
+async function backendAuth(mode: 'login' | 'register', email: string, password: string, name?: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${API_BASE}/api/v1/auth/${mode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(mode === 'register' ? { email, password, name } : { email, password }),
+    });
+    const txt = await r.text();
+    const data = txt ? JSON.parse(txt) : {};
+    if (!r.ok) return (data && (data.error || data.message)) || `HTTP ${r.status}`;
+    const token = data?.token || data?.jwt || data?.access_token;
+    if (!token) return 'backend did not return a token';
+    setAuthToken(token);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
+// Live-feed hook: opens the backend /ws stream and calls onEvent for each
+// real message (balance/transaction/ticker). Reconnect-free by design — the
+// polling reload in each page remains the authoritative refresh path.
+function useLiveFeed(onEvent: (msg: any) => void) {
+  useEffect(() => {
+    if (!authToken) return;
+    let ws: WebSocket | null = null;
+    let closed = false;
+    try {
+      ws = new WebSocket(`${API_BASE.replace(/^http/, 'ws')}/ws`);
+      ws.onopen = () => { try { ws?.send(JSON.stringify({ type: 'auth', token: authToken })); } catch { /* ignore */ } };
+      ws.onmessage = (ev) => {
+        try { onEvent(JSON.parse(ev.data as string)); } catch { /* non-JSON frame */ }
+      };
+      ws.onclose = () => { closed = true; };
+      ws.onerror = () => { try { ws?.close(); } catch { /* ignore */ } };
+    } catch { /* live feed is best-effort */ }
+    return () => { if (!closed) { try { ws?.close(); } catch { /* ignore */ } } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken]);
+}
+
 // Theme Context — drives a `data-theme` attribute on the root; the injected
 // `:root` CSS variables (from the C++ ThemeManager) define the palette. This
 // means light/dark switching applies to every page uniformly.
@@ -116,12 +159,15 @@ const MasterSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; s
   const items = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'wallets', label: 'Wallets', icon: '💼' },
+    { id: 'sub-wallets', label: 'Sub-Wallets', icon: '🗂️' },
+    { id: 'send', label: 'Send', icon: '💸' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'transactions', label: 'Transactions', icon: '📜' },
     { id: 'treasury', label: 'Treasury', icon: '🏦' },
     { id: 'multisig', label: 'Multisig', icon: '🔐' },
     { id: 'auto-sign', label: 'Auto Sign', icon: '🔑' },
-    { id: 'fees', label: 'Fees', icon: '💸' },
+    { id: 'ops', label: 'Auto-Sign Ops', icon: '🛠️' },
+    { id: 'fees', label: 'Fees', icon: '💰' },
     { id: 'policies', label: 'Policies', icon: '📏' },
     { id: 'chains', label: 'Chains', icon: '⛓️' },
     { id: 'tokens', label: 'Tokens', icon: '🪙' },
@@ -183,6 +229,18 @@ const MasterDashboard = () => {
   const [recent, setRecent] = useState<TxRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [liveEvent, setLiveEvent] = useState<string | null>(null);
+
+  // Live backend /ws stream: real balance/transaction events refresh the
+  // wallet list immediately instead of waiting for the next poll.
+  const reloadWallets = useCallback(async () => {
+    const w = await apiFetch<{ wallets?: WalletRecord[] } | null>('/api/v1/master-wallet');
+    if (w?.wallets) setWallets(w.wallets);
+  }, []);
+  useLiveFeed((msg) => {
+    setLiveEvent((msg && (msg.type || 'event')) + (msg && msg.data ? ' · ' + JSON.stringify(msg.data).slice(0, 80) : ''));
+    if (msg && (msg.type === 'balance' || msg.type === 'transaction' || msg.type === 'tx')) reloadWallets();
+  });
 
   useEffect(() => {
     (async () => {
@@ -215,6 +273,7 @@ const MasterDashboard = () => {
         <div className="card stat-card"><div className="stat-label">👥 Total Users</div><div className="stat-value big">{loading ? '…' : (stats.totalUsers ?? '—')}</div></div>
         <div className="card stat-card"><div className="stat-label">⏳ Pending Tx</div><div className="stat-value big">{loading ? '…' : (stats.pendingTx ?? '—')}</div></div>
       </div>
+      {liveEvent && <div className="banner">Live: {liveEvent}</div>}
       <div className="grid grid-cols-2 gap-6">
         <div className="card">
           <h2 className="card-title">Quick Actions</h2>
@@ -450,6 +509,210 @@ const MasterAnalytics = () => {
               <span>{k}</span><span className="mono">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Login page — real backend auth; the only way in when no JWT is stored.
+const MasterLogin = ({ onAuthed }: { onAuthed: () => void }) => {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async () => {
+    setBusy(true); setErr(null);
+    const e = await backendAuth(mode, email.trim(), password, name.trim() || undefined);
+    setBusy(false);
+    if (e) { setErr(e); return; }
+    onAuthed();
+  };
+  return (
+    <div className="page" style={{ maxWidth: 420, margin: '4rem auto' }}>
+      <h1 className="page-title">🏦 MasterWallet — {mode === 'login' ? 'Sign in' : 'Register'}</h1>
+      <div className="card">
+        {err && <div className="banner error">{err}</div>}
+        <div className="form-grid" style={{ gridTemplateColumns: '1fr' }}>
+          {mode === 'register' && <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />}
+          <input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+          <button className="action-btn blue" onClick={submit} disabled={busy || !email || !password}>
+            {busy ? 'Authenticating…' : (mode === 'login' ? 'Sign in' : 'Create account')}
+          </button>
+          <button className="link-btn" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
+            {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
+          </button>
+        </div>
+        <div className="empty-hint">Backend: {API_BASE}</div>
+      </div>
+    </div>
+  );
+};
+
+// Sub-wallets page — list + per-sub-wallet balance + transfer (real backend).
+const MasterSubWallets = () => {
+  const res = useWalletResource<any>('/sub-wallets', ['sub_wallets', 'subWallets']);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [form, setForm] = useState({ sid: '', to: '', amount: '', password: '' });
+  const set = (k: string) => (e: any) => setForm({ ...form, [k]: e.target.value });
+  const transfer = async () => {
+    setMsg(null);
+    if (!res.wid) { setMsg('No master wallet.'); return; }
+    try {
+      const r = await apiSend<any>(`/api/v1/master-wallet/${res.wid}/sub-wallets/${form.sid}/transfer`, 'POST',
+        { to: form.to, amount: form.amount, password: form.password });
+      const hash = (r && (r.transaction_hash || r.tx_hash || r.hash)) || '';
+      setMsg('Transfer submitted to the blockchain network' + (hash ? ': ' + hash : ''));
+      setForm({ ...form, password: '' });
+      res.reload();
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  };
+  return (
+    <div className="page">
+      <h1 className="page-title">Sub-Wallets</h1>
+      {msg && <div className="banner">{msg}</div>}
+      {res.err && <div className="banner error">{res.err}</div>}
+      <div className="card table-card">
+        <table className="data-table">
+          <thead><tr><th>Label</th><th>Address</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {res.loading && <tr><td colSpan={5} className="empty-hint">Loading…</td></tr>}
+            {!res.loading && res.items.length === 0 && <tr><td colSpan={5} className="empty-hint">No sub-wallets.</td></tr>}
+            {!res.loading && res.items.map((s: any, i: number) => (
+              <tr key={s.id ?? i}>
+                <td>{s.label ?? s.name ?? '—'}</td>
+                <td className="mono">{s.address ?? '—'}</td>
+                <td>{s.balance ?? '—'}</td>
+                <td><span className={`badge ${s.status === 'active' ? 'ok' : 'muted'}`}>{s.status ?? '—'}</span></td>
+                <td><RowBtn label="Use" onClick={() => setForm({ ...form, sid: s.id })} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="card">
+        <h2 className="card-title">Transfer from sub-wallet</h2>
+        <div className="form-grid">
+          <input placeholder="Sub-wallet ID" value={form.sid} onChange={set('sid')} />
+          <input placeholder="To address" value={form.to} onChange={set('to')} />
+          <input placeholder="Amount" value={form.amount} onChange={set('amount')} />
+          <input placeholder="Wallet password" type="password" value={form.password} onChange={set('password')} />
+          <button className="action-btn blue" onClick={transfer}>Transfer</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Send page — wallet-level sign + broadcast (POST /:id/sign, real chain tx).
+const MasterSend = () => {
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ to: '', amount: '', token: '', password: '' });
+  const set = (k: string) => (e: any) => setForm({ ...form, [k]: e.target.value });
+  const submit = async () => {
+    setMsg(null); setBusy(true);
+    try {
+      const wid = await firstWalletId();
+      if (!wid) { setMsg('No master wallet found.'); return; }
+      const r = await apiSend<any>(`/api/v1/master-wallet/${wid}/sign`, 'POST',
+        { to: form.to, amount: form.amount, token: form.token || undefined, password: form.password });
+      const hash = (r && (r.transaction_hash || r.tx_hash || r.hash)) || '';
+      setMsg('Transaction submitted to the blockchain network' + (hash ? ': ' + hash : ''));
+      setForm({ ...form, password: '' });
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="page">
+      <h1 className="page-title">Send</h1>
+      {msg && <div className="banner">{msg}</div>}
+      <div className="card">
+        <div className="form-grid">
+          <input placeholder="To address" value={form.to} onChange={set('to')} />
+          <input placeholder="Amount (e.g. 0.5)" value={form.amount} onChange={set('amount')} />
+          <input placeholder="Token contract (empty = native)" value={form.token} onChange={set('token')} />
+          <input placeholder="Wallet password" type="password" value={form.password} onChange={set('password')} />
+          <button className="action-btn green" onClick={submit} disabled={busy}>
+            {busy ? 'Broadcasting…' : 'Sign & broadcast'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Ops page — auto-sign policy check, auto-sign transaction, UserWallet
+// auto-sign, and the SuperAdmin-gated revenue payout. All real endpoints.
+const MasterOps = () => {
+  const [msg, setMsg] = useState<string | null>(null);
+  const [check, setCheck] = useState({ txType: '', value: '', result: '' });
+  const [as, setAs] = useState({ mnemonic: '', chainId: '1', chainType: 'evm', txType: 'send', to: '', value: '', tokenAddress: '' });
+  const [rp, setRp] = useState({ to: '', amount: '', password: '', withdrawalId: '' });
+  const wid_ = async () => { const w = await firstWalletId(); if (!w) throw new Error('No master wallet found.'); return w; };
+  const act = async (fn: (wid: string) => Promise<any>) => {
+    setMsg(null);
+    try { return await fn(await wid_()); }
+    catch (e) { setMsg(e instanceof Error ? e.message : String(e)); return null; }
+  };
+  return (
+    <div className="page">
+      <h1 className="page-title">Auto-Sign Ops</h1>
+      {msg && <div className="banner">{msg}</div>}
+      <div className="card">
+        <h2 className="card-title">Check auto-sign policy</h2>
+        <div className="form-grid">
+          <input placeholder="Tx type (send/claim/swap/trade)" value={check.txType} onChange={(e) => setCheck({ ...check, txType: e.target.value })} />
+          <input placeholder="Value (e.g. 1.5)" value={check.value} onChange={(e) => setCheck({ ...check, value: e.target.value })} />
+          <button className="action-btn blue" onClick={async () => {
+            const r = await act((wid) => apiSend(`/api/v1/master-wallet/${wid}/check-auto-sign-policy`, 'POST', { tx_type: check.txType, value: check.value }));
+            if (r) setCheck({ ...check, result: (r.allowed ? 'ALLOWED' : 'DENIED') + (r.reason ? ' — ' + r.reason : '') });
+          }}>Check</button>
+        </div>
+        {check.result && <div className="banner">{check.result}</div>}
+      </div>
+      <div className="card">
+        <h2 className="card-title">Auto-sign transaction (24-word seed)</h2>
+        <div className="form-grid">
+          <input placeholder="24-word mnemonic" value={as.mnemonic} onChange={(e) => setAs({ ...as, mnemonic: e.target.value })} />
+          <input placeholder="Chain ID" value={as.chainId} onChange={(e) => setAs({ ...as, chainId: e.target.value })} />
+          <input placeholder="Chain type (evm/solana/bitcoin/cosmos)" value={as.chainType} onChange={(e) => setAs({ ...as, chainType: e.target.value })} />
+          <input placeholder="Tx type" value={as.txType} onChange={(e) => setAs({ ...as, txType: e.target.value })} />
+          <input placeholder="To address" value={as.to} onChange={(e) => setAs({ ...as, to: e.target.value })} />
+          <input placeholder="Value (e.g. 1.5)" value={as.value} onChange={(e) => setAs({ ...as, value: e.target.value })} />
+          <input placeholder="Token contract (optional)" value={as.tokenAddress} onChange={(e) => setAs({ ...as, tokenAddress: e.target.value })} />
+          <button className="action-btn green" onClick={async () => {
+            const r = await act((wid) => apiSend<any>(`/api/v1/master-wallet/${wid}/auto-sign-transaction`, 'POST', {
+              mnemonic: as.mnemonic, chain_id: parseInt(as.chainId, 10) || 1, chain_type: as.chainType,
+              tx_type: as.txType, to_address: as.to, value: as.value, token_address: as.tokenAddress || undefined,
+            }));
+            if (r) { setMsg('Transaction submitted to the blockchain network: ' + ((r.transaction_hash || r.tx_hash || r.hash) || '')); setAs({ ...as, mnemonic: '' }); }
+          }}>Auto-sign tx</button>
+          <button className="action-btn orange" onClick={async () => {
+            const r = await act((wid) => apiSend(`/api/v1/master-wallet/${wid}/user-wallet-auto-sign`, 'POST', {
+              mnemonic: as.mnemonic, chain_id: parseInt(as.chainId, 10) || 1, chain_type: as.chainType,
+              tx_type: as.txType, to_address: as.to, value: as.value, token_address: as.tokenAddress || undefined,
+            }));
+            if (r) { setMsg('UserWallet auto-sign configuration saved.'); setAs({ ...as, mnemonic: '' }); }
+          }}>UserWallet auto-sign</button>
+        </div>
+      </div>
+      <div className="card">
+        <h2 className="card-title">Revenue payout (SuperAdmin co-sign required)</h2>
+        <div className="form-grid">
+          <input placeholder="Destination address" value={rp.to} onChange={(e) => setRp({ ...rp, to: e.target.value })} />
+          <input placeholder="Amount" value={rp.amount} onChange={(e) => setRp({ ...rp, amount: e.target.value })} />
+          <input placeholder="Wallet password" type="password" value={rp.password} onChange={(e) => setRp({ ...rp, password: e.target.value })} />
+          <input placeholder="Withdrawal ID (co-signed)" value={rp.withdrawalId} onChange={(e) => setRp({ ...rp, withdrawalId: e.target.value })} />
+          <button className="action-btn purple" onClick={async () => {
+            const r = await act((wid) => apiSend<any>(`/api/v1/master-wallet/${wid}/revenue-payout`, 'POST', {
+              to: rp.to, amount: rp.amount, password: rp.password, withdrawal_id: rp.withdrawalId,
+            }));
+            if (r) { setMsg('Payout submitted to the blockchain network: ' + ((r.transaction_hash || r.tx_hash || r.hash) || '')); setRp({ ...rp, password: '' }); }
+          }}>Execute payout</button>
         </div>
       </div>
     </div>
@@ -745,7 +1008,11 @@ const MasterChains = () => {
             {!evm.loading && evm.items.map((c, i) => (
               <tr key={c.chain_id ?? i}>
                 <td>{c.chain_id ?? '—'}</td><td>{c.name ?? '—'}</td><td>{c.symbol ?? '—'}</td><td className="mono">{c.rpc_url ?? '—'}</td>
-                <td><RowBtn label="Remove" kind="danger" onClick={() => evm.wid && act(() => apiSend(`/api/v1/master-wallet/${evm.wid}/user-chains/evm/${c.chain_id}`, 'DELETE'))} /></td>
+                <td>
+                  <RowBtn label="Edit" onClick={() => setEf({ chainId: String(c.chain_id ?? ''), name: c.name ?? '', rpc: c.rpc_url ?? '', symbol: c.symbol ?? '' })} />
+                  <RowBtn label="Save" kind="ok" onClick={() => evm.wid && act(() => apiSend(`/api/v1/master-wallet/${evm.wid}/user-chains/evm/${c.chain_id}`, 'PUT', { name: ef.name, rpc_url: ef.rpc, symbol: ef.symbol }))} />
+                  <RowBtn label="Remove" kind="danger" onClick={() => evm.wid && act(() => apiSend(`/api/v1/master-wallet/${evm.wid}/user-chains/evm/${c.chain_id}`, 'DELETE'))} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -774,7 +1041,11 @@ const MasterChains = () => {
             {!nonEvm.loading && nonEvm.items.map((c, i) => (
               <tr key={c.chain_id ?? i}>
                 <td>{c.chain_id ?? '—'}</td><td>{c.name ?? '—'}</td><td>{c.chain_type ?? '—'}</td><td>{c.symbol ?? '—'}</td>
-                <td><RowBtn label="Remove" kind="danger" onClick={() => nonEvm.wid && act(() => apiSend(`/api/v1/master-wallet/${nonEvm.wid}/user-chains/nonevm/${c.chain_id}`, 'DELETE'))} /></td>
+                <td>
+                  <RowBtn label="Edit" onClick={() => setNf({ chainId: String(c.chain_id ?? ''), name: c.name ?? '', chainType: c.chain_type ?? '', rpc: c.rpc_url ?? '', derivation: c.derivation_path ?? '' })} />
+                  <RowBtn label="Save" kind="ok" onClick={() => nonEvm.wid && act(() => apiSend(`/api/v1/master-wallet/${nonEvm.wid}/user-chains/nonevm/${c.chain_id}`, 'PUT', { name: nf.name, chain_type: nf.chainType, rpc_url: nf.rpc, derivation_path: nf.derivation }))} />
+                  <RowBtn label="Remove" kind="danger" onClick={() => nonEvm.wid && act(() => apiSend(`/api/v1/master-wallet/${nonEvm.wid}/user-chains/nonevm/${c.chain_id}`, 'DELETE'))} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -822,7 +1093,11 @@ const MasterTokens = () => {
               <tr key={t.id ?? i}>
                 <td>{t.symbol ?? '—'}</td><td>{t.name ?? '—'}</td><td>{t.chain_id ?? '—'}</td>
                 <td className="mono">{t.contract_address ?? 'native'}</td>
-                <td><RowBtn label="Remove" kind="danger" onClick={() => res.wid && act(() => apiSend(`/api/v1/master-wallet/${res.wid}/user-tokens/${t.id}`, 'DELETE'))} /></td>
+                <td>
+                  <RowBtn label="Edit" onClick={() => setForm({ chainId: String(t.chain_id ?? ''), symbol: t.symbol ?? '', name: t.name ?? '', address: t.contract_address ?? '', decimals: String(t.decimals ?? 18) })} />
+                  <RowBtn label="Save" kind="ok" onClick={() => res.wid && act(() => apiSend(`/api/v1/master-wallet/${res.wid}/user-tokens/${t.id}`, 'PUT', { symbol: form.symbol, name: form.name, contract_address: form.address, decimals: parseInt(form.decimals, 10) || 18 }))} />
+                  <RowBtn label="Remove" kind="danger" onClick={() => res.wid && act(() => apiSend(`/api/v1/master-wallet/${res.wid}/user-tokens/${t.id}`, 'DELETE'))} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -974,19 +1249,82 @@ const MasterAudit = () => {
   );
 };
 
-// Passkeys page — backend is the relying party; credentials listed from it.
+// base64url-encode an ArrayBuffer (URL-safe, no padding).
+function bufToB64url(buf: ArrayBuffer): string {
+  let bin = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Passkeys page — real platform WebAuthn ceremony (navigator.credentials)
+// registered against the backend relying-party route; credentials listed from
+// the backend (source of truth).
 const MasterPasskeys = () => {
   const res = useWalletResource<any>('/passkey/credentials', ['passkeys', 'credentials']);
   const [msg, setMsg] = useState<string | null>(null);
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
   const del = async (credId: string) => {
     setMsg(null);
     try { await apiSend(`/api/v1/master-wallet/${res.wid}/passkey/credentials/${encodeURIComponent(credId)}`, 'DELETE'); setMsg('Deleted.'); res.reload(); }
     catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   };
+  const register = async () => {
+    setMsg(null); setBusy(true);
+    try {
+      if (!res.wid) throw new Error('No master wallet found.');
+      if (!navigator.credentials || !navigator.credentials.create) {
+        throw new Error('WebAuthn is not available in this runtime.');
+      }
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const userId = new TextEncoder().encode(res.wid).slice(0, 64);
+      const cred = await navigator.credentials.create({
+        publicKey: {
+          rp: { name: 'TigerWallet Master' },
+          user: { id: userId, name: res.wid, displayName: 'MasterWallet Owner' },
+          challenge,
+          pubKeyCredParams: [
+            { type: 'public-key', alg: -7 },
+            { type: 'public-key', alg: -257 },
+          ],
+          timeout: 60000,
+          attestation: 'none',
+          authenticatorSelection: { userVerification: 'preferred' },
+        },
+      }) as PublicKeyCredential | null;
+      if (!cred) throw new Error('Passkey ceremony was cancelled.');
+      const resp = cred.response as any;
+      let publicKeyBytes: ArrayBuffer | null = null;
+      if (typeof resp.getPublicKey === 'function') publicKeyBytes = resp.getPublicKey();
+      if (!publicKeyBytes && resp.publicKey) publicKeyBytes = resp.publicKey;
+      if (!publicKeyBytes) throw new Error('Credential response is missing a SPKI public key.');
+      const transports = typeof resp.getTransports === 'function' ? resp.getTransports() : [];
+      await apiSend(`/api/v1/master-wallet/${res.wid}/passkey/register`, 'POST', {
+        credential_id: cred.id,
+        public_key: bufToB64url(publicKeyBytes),
+        sign_count: 0,
+        transports,
+        label: label.trim() || undefined,
+      });
+      setMsg('Passkey registered.');
+      setLabel('');
+      res.reload();
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
   return (
     <div className="page">
       <h1 className="page-title">Passkeys</h1>
       {msg && <div className="banner">{msg}</div>}
+      <div className="card">
+        <h2 className="card-title">Register Passkey</h2>
+        <div className="form-grid">
+          <input placeholder="Label (e.g. laptop)" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <button className="action-btn blue" onClick={register} disabled={busy}>{busy ? 'Ceremony…' : 'Register passkey'}</button>
+        </div>
+      </div>
       <div className="card table-card">
         <table className="data-table">
           <thead><tr><th>Label</th><th>Credential</th><th>Created</th><th></th></tr></thead>
@@ -1172,9 +1510,18 @@ const ThemeStyle = () => (
   `}</style>
 );
 
-// Main App
+// Main App — auth-gated: no stored JWT => the Login page is the only route.
 const MasterDesktopApp = () => {
   const [page, setPage] = useState('dashboard');
+  const [authed, setAuthed] = useState(!!authToken);
+  if (!authed) {
+    return (
+      <MasterThemeProvider>
+        <ThemeStyle />
+        <MasterLogin onAuthed={() => setAuthed(true)} />
+      </MasterThemeProvider>
+    );
+  }
   return (
     <MasterThemeProvider>
       <ThemeStyle />
@@ -1185,11 +1532,14 @@ const MasterDesktopApp = () => {
           <main className="content">
             {page === 'dashboard' && <MasterDashboard />}
             {page === 'wallets' && <MasterWallets />}
+            {page === 'sub-wallets' && <MasterSubWallets />}
+            {page === 'send' && <MasterSend />}
             {page === 'users' && <MasterUsers />}
             {page === 'transactions' && <MasterTransactions />}
             {page === 'treasury' && <MasterTreasury />}
             {page === 'multisig' && <MasterMultisig />}
             {page === 'auto-sign' && <MasterAutoSign />}
+            {page === 'ops' && <MasterOps />}
             {page === 'fees' && <MasterFees />}
             {page === 'policies' && <MasterPolicies />}
             {page === 'chains' && <MasterChains />}

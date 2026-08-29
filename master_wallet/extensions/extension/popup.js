@@ -317,7 +317,9 @@
   // every reader normalizes first.
   const TABS = [
     ['wallets', 'Wallets'],
+    ['subwallets', 'Sub-Wallets'],
     ['transactions', 'Txs'],
+    ['ops', 'Ops'],
     ['treasury', 'Treasury'],
     ['multisig', 'Multisig'],
     ['autosign', 'Auto-Sign'],
@@ -357,7 +359,8 @@
 
   function loadTab(id) {
     switch (id) {
-      case 'wallets': renderWalletView(); break;
+      case 'wallets': renderWalletView(); startLiveFeed(); break;
+      case 'subwallets': renderSubWallets(); break;
       case 'transactions': renderTransactions(); break;
       case 'treasury': renderTreasury(); break;
       case 'multisig': renderMultisig(); break;
@@ -560,14 +563,20 @@
       renderList('evmChainList', asArray(res, 'chains'),
         (c) => (c.name || '') + ' (' + (c.chain_id || '') + ')' + (c.symbol ? ' · ' + c.symbol : ''),
         (c) => c.rpc_url || '',
-        (c) => [actionBtn('Remove', 'danger', () => runAction(() => relay('removeUserEVMChain', [null, c.chain_id]), renderChains))]);
+        (c) => [
+          actionBtn('Edit', 'secondary', () => fillChainForm('evm', c)),
+          actionBtn('Remove', 'danger', () => runAction(() => relay('removeUserEVMChain', [null, c.chain_id]), renderChains)),
+        ]);
     } catch (e) { renderList('evmChainList', []); }
     try {
       const res = await relay('listUserNonEVMChains');
       renderList('nonEvmChainList', asArray(res, 'chains'),
         (c) => (c.name || '') + ' (' + (c.chain_type || '') + ')' + (c.symbol ? ' · ' + c.symbol : ''),
         (c) => 'chain_id ' + (c.chain_id || '') + ' · ' + (c.rpc_url || ''),
-        (c) => [actionBtn('Remove', 'danger', () => runAction(() => relay('removeUserNonEVMChain', [null, c.chain_id]), renderChains))]);
+        (c) => [
+          actionBtn('Edit', 'secondary', () => fillChainForm('nonEvm', c)),
+          actionBtn('Remove', 'danger', () => runAction(() => relay('removeUserNonEVMChain', [null, c.chain_id]), renderChains)),
+        ]);
     } catch (e) { renderList('nonEvmChainList', []); }
   }
 
@@ -578,7 +587,10 @@
       renderList('tokenList', asArray(res, 'tokens'),
         (t) => (t.symbol || '') + ' — ' + (t.name || '') + (t.is_native ? ' (native)' : ''),
         (t) => 'chain ' + (t.chain_id || '') + ' · ' + truncate(t.contract_address || 'native', 16),
-        (t) => [actionBtn('Remove', 'danger', () => runAction(() => relay('removeUserToken', [null, t.id]), renderTokens))]);
+        (t) => [
+          actionBtn('Edit', 'secondary', () => fillTokenForm(t)),
+          actionBtn('Remove', 'danger', () => runAction(() => relay('removeUserToken', [null, t.id]), renderTokens)),
+        ]);
     } catch (e) { renderList('tokenList', []); setStatus(e.message, true); }
   }
 
@@ -643,6 +655,175 @@
         (w) => w.name || truncate(w.address || '', 14),
         (w) => (w.tx_count != null ? w.tx_count + ' txs' : '') + (w.balance ? ' · ' + w.balance : ''));
     } catch (e) { renderList('analyticsWallets', []); }
+  }
+
+  // ---- Send (wallet-level sign + broadcast, POST /:id/sign) ----
+  async function sendTransaction() {
+    const to = $('sendTo').value.trim();
+    const amount = $('sendAmount').value.trim();
+    const token = $('sendToken').value.trim();
+    const password = $('sendPassword').value;
+    if (!to || !amount || !password) { setStatus('to/amount/password required', true); return; }
+    await runAction(async () => {
+      const res = await relay('signTransaction', [null, { to, amount, token, password }]);
+      const hash = (res && (res.transaction_hash || res.tx_hash || res.hash)) || '';
+      setStatus('Transaction submitted to the blockchain network' + (hash ? ': ' + truncate(hash, 18) : ''));
+      $('sendPassword').value = '';
+    });
+  }
+
+  // ---- Sub-wallets ----
+  async function renderSubWallets() {
+    try {
+      const res = await relay('listSubWallets');
+      renderList('subWalletList', asArray(res, 'sub_wallets'),
+        (s) => (s.label || s.name || 'Sub-wallet') + ' — ' + (s.status || 'active'),
+        (s) => truncate(s.address || s.id || '', 18) + (s.balance != null ? ' · ' + s.balance : ''),
+        (s) => [actionBtn('Use', 'secondary', () => { $('swTransferSid').value = s.id; })]);
+    } catch (e) { renderList('subWalletList', []); setStatus(e.message, true); }
+  }
+
+  async function subWalletTransfer() {
+    const sid = $('swTransferSid').value.trim();
+    const to = $('swTransferTo').value.trim();
+    const amount = $('swTransferAmount').value.trim();
+    const password = $('swTransferPassword').value;
+    if (!sid || !to || !amount || !password) { setStatus('sub-wallet, to, amount, password required', true); return; }
+    await runAction(async () => {
+      const res = await relay('transferFromSubWallet', [null, sid, { to, amount, password }]);
+      const hash = (res && (res.transaction_hash || res.tx_hash || res.hash)) || '';
+      setStatus('Transfer submitted to the blockchain network' + (hash ? ': ' + truncate(hash, 18) : ''));
+      $('swTransferPassword').value = '';
+    }, renderSubWallets);
+  }
+
+  // ---- Auto-sign ops + revenue payout ----
+  async function checkPolicy() {
+    const txType = $('chkTxType').value.trim();
+    const value = $('chkValue').value.trim();
+    if (!txType || !value) { setStatus('tx_type and value required', true); return; }
+    const node = $('checkPolicyResult');
+    node.innerHTML = '';
+    try {
+      const res = await relay('checkAutoSignPolicy', [null, { tx_type: txType, value }]);
+      node.appendChild(el('div', { class: 'kv' },
+        el('b', { text: (res && res.allowed ? 'ALLOWED' : 'DENIED') + ' — ' + ((res && res.reason) || '') })));
+    } catch (e) {
+      node.appendChild(el('div', { class: 'kv' }, (e && e.message) || String(e)));
+    }
+  }
+
+  function opsAutoSignBody() {
+    return {
+      mnemonic: $('opsMnemonic').value.trim(),
+      chain_id: parseInt($('opsChainId').value, 10) || 1,
+      chain_type: $('opsChainType').value.trim() || 'evm',
+      tx_type: $('opsTxType').value.trim() || 'send',
+      to_address: $('opsTo').value.trim(),
+      value: $('opsValue').value.trim(),
+      token_address: $('opsTokenAddress').value.trim(),
+    };
+  }
+
+  async function autoSignTx() {
+    const body = opsAutoSignBody();
+    if (!body.mnemonic || !body.to_address || !body.value) { setStatus('mnemonic, to_address, value required', true); return; }
+    await runAction(async () => {
+      const res = await relay('autoSignTransaction', [null, body]);
+      const hash = (res && (res.transaction_hash || res.tx_hash || res.hash)) || '';
+      setStatus('Transaction submitted to the blockchain network' + (hash ? ': ' + truncate(hash, 18) : ''));
+      $('opsMnemonic').value = '';
+    });
+  }
+
+  async function uwAutoSign() {
+    const body = opsAutoSignBody();
+    if (!body.mnemonic) { setStatus('mnemonic required', true); return; }
+    await runAction(async () => {
+      await relay('userWalletAutoSign', [null, body]);
+      setStatus('UserWallet auto-sign configuration saved.');
+      $('opsMnemonic').value = '';
+    });
+  }
+
+  async function revenuePayout() {
+    const to = $('rpTo').value.trim();
+    const amount = $('rpAmount').value.trim();
+    const password = $('rpPassword').value;
+    const withdrawalId = $('rpWithdrawalId').value.trim();
+    if (!to || !amount || !password || !withdrawalId) { setStatus('to, amount, password, withdrawal_id required', true); return; }
+    await runAction(async () => {
+      const res = await relay('revenuePayout', [null, { to, amount, password, withdrawal_id: withdrawalId }]);
+      const hash = (res && (res.transaction_hash || res.tx_hash || res.hash)) || '';
+      setStatus('Payout submitted to the blockchain network' + (hash ? ': ' + truncate(hash, 18) : ''));
+      $('rpPassword').value = '';
+    });
+  }
+
+  // ---- Chain/token edit (PUT update) --------------------------------------
+  // Editing state: when set, the add button becomes a save (PUT) for that row.
+  const editing = { evm: null, nonEvm: null, token: null };
+
+  function fillChainForm(kind, c) {
+    if (kind === 'evm') {
+      $('evmChainId').value = c.chain_id || '';
+      $('evmName').value = c.name || '';
+      $('evmRpc').value = c.rpc_url || '';
+      $('evmSymbol').value = c.symbol || '';
+      editing.evm = c.chain_id;
+      $('addEvmChainBtn').textContent = 'Save EVM chain';
+    } else {
+      $('neChainId').value = c.chain_id || '';
+      $('neName').value = c.name || '';
+      $('neChainType').value = c.chain_type || '';
+      $('neRpc').value = c.rpc_url || '';
+      $('neDerivation').value = c.derivation_path || '';
+      editing.nonEvm = c.chain_id;
+      $('addNonEvmChainBtn').textContent = 'Save non-EVM chain';
+    }
+  }
+
+  function fillTokenForm(t) {
+    $('tokChainId').value = t.chain_id || '';
+    $('tokSymbol').value = t.symbol || '';
+    $('tokName').value = t.name || '';
+    $('tokAddress').value = t.contract_address || '';
+    $('tokDecimals').value = t.decimals || 18;
+    editing.token = t.id;
+    $('addTokenBtn').textContent = 'Save token';
+  }
+
+  // ---- Live feed (backend /ws via background relay-less direct socket) -----
+  // The popup opens a WebSocket to the canonical backend itself and renders
+  // real events (balances, transactions). On close it stops; nothing is
+  // synthesized.
+  let liveWs = null;
+  async function startLiveFeed() {
+    const node = $('liveFeed');
+    if (liveWs && liveWs.readyState <= 1) return;
+    try {
+      const { MASTER_WALLET_API_URL, mw_auth_token } = await chrome.storage.local.get(['MASTER_WALLET_API_URL', 'mw_auth_token']);
+      if (!mw_auth_token) return;
+      const base = (MASTER_WALLET_API_URL || 'http://localhost:8450').replace(/^http/, 'ws');
+      const authToken = mw_auth_token;
+      liveWs = new WebSocket(base + '/ws');
+      liveWs.onopen = () => {
+        liveWs.send(JSON.stringify({ type: 'auth', token: authToken }));
+        node.innerHTML = '';
+        node.appendChild(el('div', { class: 'empty' }, 'Live feed connected.'));
+      };
+      liveWs.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        node.innerHTML = '';
+        node.appendChild(el('div', { class: 'kv' },
+          el('b', { text: msg.type || 'event' }),
+          el('div', { class: 'muted', text: truncate(JSON.stringify(msg), 120) })));
+        if (msg.type === 'balance' || msg.type === 'transaction' || msg.type === 'tx') renderWalletView();
+      };
+      liveWs.onclose = () => { liveWs = null; };
+      liveWs.onerror = () => { liveWs = null; };
+    } catch { /* live feed is best-effort; polling refresh remains */ }
   }
 
   // ---- Feature actions ----
@@ -711,6 +892,12 @@
     const rpcUrl = $('evmRpc').value.trim();
     const symbol = $('evmSymbol').value.trim();
     if (!chainId || !name || !rpcUrl) { setStatus('chain_id, name, rpc_url required', true); return; }
+    if (editing.evm != null) {
+      await runAction(() => relay('updateUserEVMChain', [null, editing.evm, { name, rpc_url: rpcUrl, symbol }]), () => {
+        editing.evm = null; $('addEvmChainBtn').textContent = 'Add EVM chain'; renderChains();
+      });
+      return;
+    }
     await runAction(() => relay('addUserEVMChain', [null, { chain_id: chainId, name, rpc_url: rpcUrl, symbol }]), renderChains);
   }
 
@@ -721,6 +908,12 @@
     const rpcUrl = $('neRpc').value.trim();
     const derivationPath = $('neDerivation').value.trim();
     if (!chainId || !name || !chainType || !derivationPath) { setStatus('chain_id, name, chain_type, derivation_path required', true); return; }
+    if (editing.nonEvm != null) {
+      await runAction(() => relay('updateUserNonEVMChain', [null, editing.nonEvm, { name, chain_type: chainType, rpc_url: rpcUrl, derivation_path: derivationPath }]), () => {
+        editing.nonEvm = null; $('addNonEvmChainBtn').textContent = 'Add non-EVM chain'; renderChains();
+      });
+      return;
+    }
     await runAction(() => relay('addUserNonEVMChain', [null, { chain_id: chainId, name, chain_type: chainType, rpc_url: rpcUrl, derivation_path: derivationPath }]), renderChains);
   }
 
@@ -731,6 +924,12 @@
     const contractAddress = $('tokAddress').value.trim();
     const decimals = parseInt($('tokDecimals').value, 10) || 18;
     if (!chainId || !symbol || !name) { setStatus('chain_id, symbol, name required', true); return; }
+    if (editing.token != null) {
+      await runAction(() => relay('updateUserToken', [null, editing.token, { symbol, name, contract_address: contractAddress, decimals }]), () => {
+        editing.token = null; $('addTokenBtn').textContent = 'Add token'; renderTokens();
+      });
+      return;
+    }
     await runAction(() => relay('addUserToken', [null, { chain_id: chainId, symbol, name, contract_address: contractAddress, decimals }]), renderTokens);
   }
 
@@ -784,6 +983,12 @@
     bind('createWebhookBtn', createWebhook);
     bind('createNotifBtn', createNotification);
     bind('requestWithdrawalBtn', requestWithdrawal);
+    bind('sendTxBtn', sendTransaction);
+    bind('subWalletTransferBtn', subWalletTransfer);
+    bind('checkPolicyBtn', checkPolicy);
+    bind('autoSignTxBtn', autoSignTx);
+    bind('uwAutoSignBtn', uwAutoSign);
+    bind('revenuePayoutBtn', revenuePayout);
     showTab('wallets');
   }
 

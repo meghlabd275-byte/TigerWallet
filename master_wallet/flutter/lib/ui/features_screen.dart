@@ -75,6 +75,9 @@ class FeaturesScreen extends StatelessWidget {
   const FeaturesScreen({super.key});
 
   static const _features = <(String, IconData, Widget Function())>[
+    ('Sub-Wallets', Icons.account_tree, SubWalletsScreen.new),
+    ('Send', Icons.send, SendScreen.new),
+    ('Auto-Sign Ops', Icons.handyman, AutoSignOpsScreen.new),
     ('Treasury', Icons.account_balance, TreasuryScreen.new),
     ('Multisig', Icons.lock, MultisigScreen.new),
     ('Auto-Sign', Icons.key, AutoSignScreen.new),
@@ -148,6 +151,298 @@ Widget _field(String label, TextEditingController c,
 
 void _snack(BuildContext context, String msg) =>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+// ============================== Sub-Wallets ==================================
+
+class SubWalletsScreen extends StatefulWidget {
+  const SubWalletsScreen({super.key});
+  @override
+  State<SubWalletsScreen> createState() => _SubWalletsScreenState();
+}
+
+class _SubWalletsScreenState extends State<SubWalletsScreen> {
+  final _c = _CrudControllers();
+  int _reload = 0;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mws = context.read<MasterWalletService>();
+    _reload;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sub-Wallets')),
+      body: FutureBuilder<String?>(
+        future: _firstWalletId(mws),
+        builder: (context, wsnap) {
+          final wid = wsnap.data;
+          if (wid == null) return const Center(child: Text('No master wallet.'));
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              AsyncSection<List<Map<String, dynamic>>>(
+                future: mws.getSubWallets(wid),
+                builder: (subs) => Column(
+                  children: [
+                    for (final s in subs)
+                      ListTile(
+                        dense: true,
+                        title: Text('${s['label'] ?? s['name'] ?? 'Sub-wallet'}'),
+                        subtitle: Text('${s['address'] ?? s['id']}'),
+                        trailing: TextButton(
+                          onPressed: () => _c('sid').text = '${s['id']}',
+                          child: const Text('Use'),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              _field('Sub-wallet ID', _c('sid')),
+              _field('To address', _c('to')),
+              _field('Amount', _c('amount'), keyboard: TextInputType.number),
+              _field('Wallet password', _c('password'), obscure: true),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    final r = await mws.transferSubWallet(
+                      walletId: wid,
+                      subWalletId: _c('sid').text.trim(),
+                      to: _c('to').text.trim(),
+                      amount: _c('amount').text.trim(),
+                      password: _c('password').text,
+                    );
+                    if (mounted) {
+                      _snack(context,
+                          'Transfer submitted to the blockchain network: ${r['transaction_hash'] ?? r['tx_hash'] ?? ''}');
+                    }
+                    setState(() => _reload++);
+                  } catch (e) {
+                    if (mounted) _snack(context, '$e');
+                  }
+                },
+                child: const Text('Transfer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ============================== Send (sign + broadcast) ======================
+
+class SendScreen extends StatefulWidget {
+  const SendScreen({super.key});
+  @override
+  State<SendScreen> createState() => _SendScreenState();
+}
+
+class _SendScreenState extends State<SendScreen> {
+  final _c = _CrudControllers();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mws = context.read<MasterWalletService>();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Send')),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          _field('To address', _c('to')),
+          _field('Amount (e.g. 0.5)', _c('amount'), keyboard: TextInputType.number),
+          _field('Token contract (empty = native)', _c('token')),
+          _field('Wallet password', _c('password'), obscure: true),
+          FilledButton(
+            onPressed: () async {
+              try {
+                final wid = await _firstWalletId(mws);
+                if (wid == null) {
+                  if (mounted) _snack(context, 'No master wallet.');
+                  return;
+                }
+                final r = await mws.sendTransaction(
+                  walletId: wid,
+                  chainId: 1,
+                  toAddress: _c('to').text.trim(),
+                  amount: BigInt.parse(
+                      (double.tryParse(_c('amount').text) ?? 0) == 0
+                          ? '0'
+                          : ((double.parse(_c('amount')) * 1e18).toInt()).toString()),
+                  password: _c('password').text,
+                  token: _c('token').text.trim().isEmpty ? null : _c('token').text.trim(),
+                );
+                if (mounted) {
+                  _snack(context,
+                      'Transaction submitted to the blockchain network: ${r.txHash ?? ''}');
+                  _c('password').clear();
+                }
+              } catch (e) {
+                if (mounted) _snack(context, '$e');
+              }
+            },
+            child: const Text('Sign & broadcast'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================== Auto-Sign Ops ================================
+
+class AutoSignOpsScreen extends StatefulWidget {
+  const AutoSignOpsScreen({super.key});
+  @override
+  State<AutoSignOpsScreen> createState() => _AutoSignOpsScreenState();
+}
+
+class _AutoSignOpsScreenState extends State<AutoSignOpsScreen> {
+  final _c = _CrudControllers();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic> _autoSignBody() => {
+        'mnemonic': _c('mnemonic').text.trim(),
+        'chain_id': int.tryParse(_c('chainId').text) ?? 1,
+        'chain_type': _c('chainType').text.trim().isEmpty ? 'evm' : _c('chainType').text.trim(),
+        'tx_type': _c('txType').text.trim().isEmpty ? 'send' : _c('txType').text.trim(),
+        'to_address': _c('to').text.trim(),
+        'value': _c('value').text.trim(),
+        if (_c('tokenAddr').text.trim().isNotEmpty) 'token_address': _c('tokenAddr').text.trim(),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final mws = context.read<MasterWalletService>();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Auto-Sign Ops')),
+      body: FutureBuilder<String?>(
+        future: _firstWalletId(mws),
+        builder: (context, wsnap) {
+          final wid = wsnap.data;
+          if (wid == null) return const Center(child: Text('No master wallet.'));
+          return ListView(
+            padding: const EdgeInsets.all(12),
+            children: [
+              const Text('Check auto-sign policy',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              _field('Tx type (send/claim/swap/trade)', _c('chkType')),
+              _field('Value', _c('chkValue'), keyboard: TextInputType.number),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    final r = await mws.checkAutoSignPolicy(wid, {
+                      'tx_type': _c('chkType').text.trim(),
+                      'value': _c('chkValue').text.trim(),
+                    });
+                    if (mounted) {
+                      _snack(context,
+                          '${r['allowed'] == true ? 'ALLOWED' : 'DENIED'} — ${r['reason'] ?? ''}');
+                    }
+                  } catch (e) {
+                    if (mounted) _snack(context, '$e');
+                  }
+                },
+                child: const Text('Check policy'),
+              ),
+              const Divider(),
+              const Text('Auto-sign transaction (24-word seed)',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              _field('24-word mnemonic', _c('mnemonic')),
+              _field('Chain ID', _c('chainId'), keyboard: TextInputType.number),
+              _field('Chain type (evm/solana/bitcoin/cosmos)', _c('chainType')),
+              _field('Tx type', _c('txType')),
+              _field('To address', _c('to')),
+              _field('Value', _c('value'), keyboard: TextInputType.number),
+              _field('Token contract (optional)', _c('tokenAddr')),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () async {
+                        try {
+                          final r = await mws.autoSignTransaction(wid, _autoSignBody());
+                          if (mounted) {
+                            _snack(context,
+                                'Transaction submitted to the blockchain network: ${r['transaction_hash'] ?? r['tx_hash'] ?? ''}');
+                            _c('mnemonic').clear();
+                          }
+                        } catch (e) {
+                          if (mounted) _snack(context, '$e');
+                        }
+                      },
+                      child: const Text('Auto-sign tx'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        try {
+                          await mws.userWalletAutoSign(wid, _autoSignBody());
+                          if (mounted) {
+                            _snack(context, 'UserWallet auto-sign configuration saved.');
+                            _c('mnemonic').clear();
+                          }
+                        } catch (e) {
+                          if (mounted) _snack(context, '$e');
+                        }
+                      },
+                      child: const Text('UW auto-sign'),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(),
+              const Text('Revenue payout (SuperAdmin co-sign required)',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              _field('Destination address', _c('rpTo')),
+              _field('Amount', _c('rpAmount'), keyboard: TextInputType.number),
+              _field('Wallet password', _c('rpPassword'), obscure: true),
+              _field('Withdrawal ID (co-signed)', _c('rpWid')),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    final r = await mws.revenuePayout(
+                      wid,
+                      _c('rpTo').text.trim(),
+                      _c('rpAmount').text.trim(),
+                      _c('rpPassword').text,
+                      withdrawalId: _c('rpWid').text.trim(),
+                    );
+                    if (mounted) {
+                      _snack(context, 'Payout submitted: ${r?.status ?? ''}');
+                      _c('rpPassword').clear();
+                    }
+                  } catch (e) {
+                    if (mounted) _snack(context, '$e');
+                  }
+                },
+                child: const Text('Execute payout'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
 
 // ============================== Treasury =====================================
 
@@ -786,6 +1081,8 @@ class ChainsScreen extends StatefulWidget {
 class _ChainsScreenState extends State<ChainsScreen> {
   final _c = _CrudControllers();
   int _reload = 0;
+  String? _editingEvm;
+  String? _editingNonEvm;
 
   @override
   void dispose() {
@@ -816,19 +1113,30 @@ class _ChainsScreenState extends State<ChainsScreen> {
               FilledButton(
                 onPressed: () async {
                   try {
-                    await mws.addUserEVMChain(wid, {
-                      'chain_id': int.tryParse(_c('eid').text) ?? 0,
-                      'name': _c('ename').text.trim(),
-                      'rpc_url': _c('erpc').text.trim(),
-                      'symbol': _c('esym').text.trim(),
-                    });
-                    if (mounted) _snack(context, 'EVM chain added');
+                    final editId = _editingEvm;
+                    if (editId != null) {
+                      await mws.updateUserEVMChain(wid, editId, {
+                        'name': _c('ename').text.trim(),
+                        'rpc_url': _c('erpc').text.trim(),
+                        'symbol': _c('esym').text.trim(),
+                      });
+                      _editingEvm = null;
+                      if (mounted) _snack(context, 'EVM chain updated');
+                    } else {
+                      await mws.addUserEVMChain(wid, {
+                        'chain_id': int.tryParse(_c('eid').text) ?? 0,
+                        'name': _c('ename').text.trim(),
+                        'rpc_url': _c('erpc').text.trim(),
+                        'symbol': _c('esym').text.trim(),
+                      });
+                      if (mounted) _snack(context, 'EVM chain added');
+                    }
                     setState(() => _reload++);
                   } catch (e) {
                     if (mounted) _snack(context, '$e');
                   }
                 },
-                child: const Text('Add EVM chain'),
+                child: Text(_editingEvm != null ? 'Save EVM chain' : 'Add EVM chain'),
               ),
               AsyncSection<List<Map<String, dynamic>>>(
                 future: mws.listUserEVMChains(wid),
@@ -839,13 +1147,27 @@ class _ChainsScreenState extends State<ChainsScreen> {
                         dense: true,
                         title: Text('${ch['name']} (${ch['chain_id']})'),
                         subtitle: Text('${ch['rpc_url'] ?? ''}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            await mws.removeUserEVMChain(
-                                wid, '${ch['chain_id']}');
-                            setState(() => _reload++);
-                          },
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () {
+                                _c('eid').text = '${ch['chain_id'] ?? ''}';
+                                _c('ename').text = '${ch['name'] ?? ''}';
+                                _c('erpc').text = '${ch['rpc_url'] ?? ''}';
+                                _c('esym').text = '${ch['symbol'] ?? ''}';
+                                setState(() => _editingEvm = '${ch['chain_id']}');
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                await mws.removeUserEVMChain(
+                                    wid, '${ch['chain_id']}');
+                                setState(() => _reload++);
+                              },
+                            ),
+                          ],
                         ),
                       ),
                   ],
@@ -862,20 +1184,32 @@ class _ChainsScreenState extends State<ChainsScreen> {
               FilledButton(
                 onPressed: () async {
                   try {
-                    await mws.addUserNonEVMChain(wid, {
-                      'chain_id': int.tryParse(_c('nid').text) ?? 0,
-                      'name': _c('nname').text.trim(),
-                      'chain_type': _c('ntype').text.trim(),
-                      'rpc_url': _c('nrpc').text.trim(),
-                      'derivation_path': _c('npath').text.trim(),
-                    });
-                    if (mounted) _snack(context, 'Non-EVM chain added');
+                    final editId = _editingNonEvm;
+                    if (editId != null) {
+                      await mws.updateUserNonEVMChain(wid, editId, {
+                        'name': _c('nname').text.trim(),
+                        'chain_type': _c('ntype').text.trim(),
+                        'rpc_url': _c('nrpc').text.trim(),
+                        'derivation_path': _c('npath').text.trim(),
+                      });
+                      _editingNonEvm = null;
+                      if (mounted) _snack(context, 'Non-EVM chain updated');
+                    } else {
+                      await mws.addUserNonEVMChain(wid, {
+                        'chain_id': int.tryParse(_c('nid').text) ?? 0,
+                        'name': _c('nname').text.trim(),
+                        'chain_type': _c('ntype').text.trim(),
+                        'rpc_url': _c('nrpc').text.trim(),
+                        'derivation_path': _c('npath').text.trim(),
+                      });
+                      if (mounted) _snack(context, 'Non-EVM chain added');
+                    }
                     setState(() => _reload++);
                   } catch (e) {
                     if (mounted) _snack(context, '$e');
                   }
                 },
-                child: const Text('Add non-EVM chain'),
+                child: Text(_editingNonEvm != null ? 'Save non-EVM chain' : 'Add non-EVM chain'),
               ),
               AsyncSection<List<Map<String, dynamic>>>(
                 future: mws.listUserNonEVMChains(wid),
@@ -886,13 +1220,28 @@ class _ChainsScreenState extends State<ChainsScreen> {
                         dense: true,
                         title: Text('${ch['name']} (${ch['chain_type']})'),
                         subtitle: Text('id ${ch['chain_id']}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            await mws.removeUserNonEVMChain(
-                                wid, '${ch['chain_id']}');
-                            setState(() => _reload++);
-                          },
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () {
+                                _c('nid').text = '${ch['chain_id'] ?? ''}';
+                                _c('nname').text = '${ch['name'] ?? ''}';
+                                _c('ntype').text = '${ch['chain_type'] ?? ''}';
+                                _c('nrpc').text = '${ch['rpc_url'] ?? ''}';
+                                _c('npath').text = '${ch['derivation_path'] ?? ''}';
+                                setState(() => _editingNonEvm = '${ch['chain_id']}');
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                await mws.removeUserNonEVMChain(
+                                    wid, '${ch['chain_id']}');
+                                setState(() => _reload++);
+                              },
+                            ),
+                          ],
                         ),
                       ),
                   ],
@@ -917,6 +1266,7 @@ class TokensScreen extends StatefulWidget {
 class _TokensScreenState extends State<TokensScreen> {
   final _c = _CrudControllers();
   int _reload = 0;
+  String? _editingToken;
 
   @override
   void dispose() {
@@ -946,20 +1296,31 @@ class _TokensScreenState extends State<TokensScreen> {
               FilledButton(
                 onPressed: () async {
                   try {
-                    await mws.addUserToken(wid, {
-                      'chain_id': int.tryParse(_c('cid').text) ?? 0,
-                      'symbol': _c('sym').text.trim(),
-                      'name': _c('name').text.trim(),
-                      'contract_address': _c('addr').text.trim(),
-                      'decimals': int.tryParse(_c('dec').text) ?? 18,
-                    });
-                    if (mounted) _snack(context, 'Token added');
+                    final editId = _editingToken;
+                    if (editId != null) {
+                      await mws.updateUserToken(wid, editId, {
+                        'symbol': _c('sym').text.trim(),
+                        'name': _c('name').text.trim(),
+                        'decimals': int.tryParse(_c('dec').text) ?? 18,
+                      });
+                      _editingToken = null;
+                      if (mounted) _snack(context, 'Token updated');
+                    } else {
+                      await mws.addUserToken(wid, {
+                        'chain_id': int.tryParse(_c('cid').text) ?? 0,
+                        'symbol': _c('sym').text.trim(),
+                        'name': _c('name').text.trim(),
+                        'contract_address': _c('addr').text.trim(),
+                        'decimals': int.tryParse(_c('dec').text) ?? 18,
+                      });
+                      if (mounted) _snack(context, 'Token added');
+                    }
                     setState(() => _reload++);
                   } catch (e) {
                     if (mounted) _snack(context, '$e');
                   }
                 },
-                child: const Text('Add token'),
+                child: Text(_editingToken != null ? 'Save token' : 'Add token'),
               ),
               const Divider(),
               AsyncSection<List<Map<String, dynamic>>>(
@@ -972,12 +1333,27 @@ class _TokensScreenState extends State<TokensScreen> {
                         title: Text('${t['symbol']} — ${t['name']}'),
                         subtitle: Text(
                             'chain ${t['chain_id']} · ${t['contract_address'] ?? 'native'}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            await mws.removeUserToken(wid, '${t['id']}');
-                            setState(() => _reload++);
-                          },
+                        trailing: Wrap(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () {
+                                _c('cid').text = '${t['chain_id'] ?? ''}';
+                                _c('sym').text = '${t['symbol'] ?? ''}';
+                                _c('name').text = '${t['name'] ?? ''}';
+                                _c('addr').text = '${t['contract_address'] ?? ''}';
+                                _c('dec').text = '${t['decimals'] ?? 18}';
+                                setState(() => _editingToken = '${t['id']}');
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                await mws.removeUserToken(wid, '${t['id']}');
+                                setState(() => _reload++);
+                              },
+                            ),
+                          ],
                         ),
                       ),
                   ],

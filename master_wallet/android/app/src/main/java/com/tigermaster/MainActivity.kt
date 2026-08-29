@@ -116,9 +116,24 @@ fun DashboardScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modif
     val transactions by viewModel.transactions.collectAsState()
     val subWallets by viewModel.subWallets.collectAsState()
     val volume by viewModel.volumeStats.collectAsState()
+    val liveEvent by viewModel.liveEvent.collectAsState()
+
+    // Live backend /ws feed: starts once a wallet is selected, stops on dispose.
+    LaunchedEffect(wallet?.id) {
+        if (wallet != null) viewModel.startLiveFeed()
+    }
+    DisposableEffect(Unit) {
+        onDispose { viewModel.stopLiveFeed() }
+    }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Dashboard", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+
+        liveEvent?.let {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Text("Live: $it", modifier = Modifier.padding(12.dp), fontSize = 12.sp)
+            }
+        }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {

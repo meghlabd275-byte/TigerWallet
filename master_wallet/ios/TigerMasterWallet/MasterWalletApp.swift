@@ -210,6 +210,7 @@ struct DashboardView: View {
     @EnvironmentObject var appState: MasterAppState
     @EnvironmentObject var themeManager: MasterThemeManager
     @State private var showingCreateWallet = false
+    @StateObject private var liveFeed = LiveFeedModel()
 
     var body: some View {
         NavigationStack {
@@ -294,10 +295,30 @@ struct DashboardView: View {
                 }
             }
             .task {
-                if let wid = appState.masterWallet?.id, appState.subWallets.isEmpty {
-                    appState.loadDashboardData(walletId: wid)
+                if let wid = appState.masterWallet?.id {
+                    if appState.subWallets.isEmpty {
+                        appState.loadDashboardData(walletId: wid)
+                    }
+                    // Live backend /ws feed: real balance/transaction events
+                    // refresh the dashboard instantly.
+                    liveFeed.start(walletId: wid, token: appState.apiService.authToken) {
+                        if let wid = appState.masterWallet?.id {
+                            appState.loadDashboardData(walletId: wid)
+                        }
+                    }
                 }
             }
+            .overlay(alignment: .top) {
+                if let evt = liveFeed.lastEvent {
+                    Text("Live: \(evt)")
+                        .font(.caption)
+                        .padding(8)
+                        .background(.thinMaterial)
+                        .cornerRadius(8)
+                        .padding(.top, 4)
+                }
+            }
+            .onDisappear { liveFeed.stop() }
             .sheet(isPresented: $showingCreateWallet) {
                 CreateMasterWalletSheet()
                     .environmentObject(appState)

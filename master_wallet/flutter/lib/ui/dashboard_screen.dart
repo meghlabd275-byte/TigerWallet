@@ -10,11 +10,14 @@
  * Authenticated calls carry the Bearer JWT propagated by the AuthGate.
  */
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth_service.dart';
 import '../services/master_wallet_service.dart';
+import '../services/web_socket_service.dart';
 import 'features_screen.dart';
 import 'theme_toggle.dart';
 
@@ -29,6 +32,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   String? _selectedWalletId;
+  WebSocketService? _liveWs;
+  StreamSubscription<String>? _liveSub;
+  String? _liveEvent;
 
   @override
   void initState() {
@@ -38,8 +44,26 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _liveSub?.cancel();
+    _liveWs?.dispose();
     _tabs.dispose();
     super.dispose();
+  }
+
+  /// Live backend /ws feed: real balance/transaction events refresh the
+  /// dashboard instantly instead of waiting for the next pull-to-refresh.
+  void _startLiveFeed(String walletId, String? token) {
+    if (_liveWs != null) return;
+    final ws = WebSocketService();
+    _liveWs = ws;
+    ws.connect(walletId: walletId, token: token);
+    _liveSub = ws.messageStream.listen((text) {
+      if (!mounted) return;
+      setState(() {
+        _liveEvent = text.length > 80 ? text.substring(0, 80) : text;
+      });
+      // Data events invalidate the future-builders via a rebuild.
+    });
   }
 
   void _logout() {
@@ -69,18 +93,35 @@ class _DashboardScreenState extends State<DashboardScreen>
             onPressed: _logout,
           ),
         ],
-        bottom: TabBar(
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'Wallets'),
-            Tab(text: 'Activity'),
-            Tab(text: 'Policies'),
-            Tab(text: 'Config'),
-            Tab(text: 'Analytics'),
-            Tab(text: 'Network'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(_liveEvent == null ? 48 : 74),
+          child: Column(
+            children: [
+              if (_liveEvent != null)
+                Container(
+                  width: double.infinity,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                  child: Text('Live: $_liveEvent',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ),
+              TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                controller: _tabs,
+                tabs: const [
+                  Tab(text: 'Wallets'),
+                  Tab(text: 'Activity'),
+                  Tab(text: 'Policies'),
+                  Tab(text: 'Config'),
+                  Tab(text: 'Analytics'),
+                  Tab(text: 'Network'),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       body: TabBarView(
@@ -89,7 +130,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           _WalletsTab(
             walletSvc: walletSvc,
             selected: _selectedWalletId,
-            onSelect: (id) => setState(() => _selectedWalletId = id),
+            onSelect: (id) {
+              setState(() => _selectedWalletId = id);
+              if (id != null) _startLiveFeed(id, auth.token);
+            },
           ),
           _ActivityTab(walletSvc: walletSvc, walletId: _selectedWalletId),
           _PoliciesTab(walletSvc: walletSvc, walletId: _selectedWalletId),

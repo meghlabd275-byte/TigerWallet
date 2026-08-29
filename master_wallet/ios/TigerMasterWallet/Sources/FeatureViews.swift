@@ -30,6 +30,9 @@ struct MoreView: View {
         ("Analytics", "chart.bar.fill", "analytics"),
         ("Passkeys", "person.badge.key.fill", "passkeys"),
         ("Withdraw", "arrow.up.forward.app.fill", "withdraw"),
+        ("Sub-Wallets", "rectangle.stack.fill", "subwallets"),
+        ("Send", "paperplane.fill", "send"),
+        ("Auto-Sign Ops", "wrench.and.screwdriver.fill", "ops"),
     ]
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
@@ -75,8 +78,224 @@ struct MoreView: View {
         case "analytics": MasterAnalyticsView()
         case "passkeys": PasskeysView()
         case "withdraw": WithdrawView()
+        case "subwallets": MasterSubWalletsView()
+        case "send": SendView()
+        case "ops": AutoSignOpsView()
         default: EmptyView()
         }
+    }
+}
+
+// MARK: - Live feed
+
+/// Wraps the real backend /ws stream. Publishes the latest event line and
+/// reloads nothing itself — consumers refresh on balance/transaction events.
+final class LiveFeedModel: ObservableObject {
+    @Published var lastEvent: String?
+    private let ws = WebSocketService()
+    private var started = false
+
+    func start(walletId: String, token: String?, onDataEvent: @escaping () -> Void) {
+        guard !started else { return }
+        started = true
+        ws.onMessage = { [weak self] text in
+            guard let data = text.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            let type = (obj["type"] as? String) ?? (obj["channel"] as? String) ?? "event"
+            Task { @MainActor in
+                self?.lastEvent = type + " · " + String(text.prefix(80))
+                if ["balance", "transaction", "tx", "transactions"].contains(type) { onDataEvent() }
+            }
+        }
+        ws.connect(walletId: walletId, token: token)
+    }
+
+    func stop() { ws.disconnect(); started = false }
+}
+
+// MARK: - Sub-Wallets
+
+struct MasterSubWalletsView: View {
+    @EnvironmentObject var appState: MasterAppState
+    @StateObject private var subs = FeatureLoadState<[SubWallet]>([])
+    @State private var sid = ""
+    @State private var to = ""
+    @State private var amount = ""
+    @State private var password = ""
+    @State private var actionMessage: String?
+
+    var body: some View {
+        Form {
+            Section("Sub-Wallets") {
+                ForEach(subs.items) { s in
+                    Button { sid = s.id } label: {
+                        VStack(alignment: .leading) {
+                            Text(s.name.isEmpty ? "Sub-wallet" : s.name).font(.subheadline)
+                            Text("\(s.address) · \(s.status)").font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
+                if subs.loaded && subs.items.isEmpty { Text("No sub-wallets.").foregroundColor(.secondary) }
+            }
+            Section("Transfer from sub-wallet") {
+                TextField("Sub-wallet ID", text: $sid).textInputAutocapitalization(.never)
+                TextField("To address", text: $to).textInputAutocapitalization(.never)
+                TextField("Amount", text: $amount).keyboardType(.decimalPad)
+                SecureField("Wallet password", text: $password)
+                Button("Transfer") {
+                    guard let wid = walletId(of: appState) else { return }
+                    Task {
+                        do {
+                            let r = try await appState.apiService.transferSubWallet(masterWalletId: wid, subWalletId: sid, to: to, amount: amount, password: password)
+                            actionMessage = "Transfer submitted to the blockchain network: \(r.transactionHash)"
+                            password = ""
+                            await load()
+                        } catch { actionMessage = error.localizedDescription }
+                    }
+                }.disabled(sid.isEmpty || to.isEmpty || amount.isEmpty || password.isEmpty)
+            }
+            if let actionMessage = actionMessage { Section { Text(actionMessage).font(.caption) } }
+            Section { FeatureErrorText(message: subs.error) }
+        }
+        .navigationTitle("Sub-Wallets")
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let wid = walletId(of: appState) else { subs.error = "No master wallet selected"; return }
+        do {
+            subs.items = try await appState.apiService.getSubWallets(masterWalletId: wid)
+            subs.loaded = true
+        } catch { subs.error = error.localizedDescription; subs.loaded = true }
+    }
+}
+
+// MARK: - Send (wallet-level sign + broadcast)
+
+struct SendView: View {
+    @EnvironmentObject var appState: MasterAppState
+    @State private var to = ""
+    @State private var amount = ""
+    @State private var token = ""
+    @State private var password = ""
+    @State private var result: String?
+
+    var body: some View {
+        Form {
+            Section("Send (sign + broadcast)") {
+                TextField("To address", text: $to).textInputAutocapitalization(.never)
+                TextField("Amount (e.g. 0.5)", text: $amount).keyboardType(.decimalPad)
+                TextField("Token contract (empty = native)", text: $token).textInputAutocapitalization(.never)
+                SecureField("Wallet password", text: $password)
+                Button("Sign & broadcast") {
+                    guard let wid = walletId(of: appState) else { result = "No master wallet selected"; return }
+                    Task {
+                        do {
+                            let r = try await appState.apiService.createTransaction(
+                                walletId: wid, to: to, amount: amount, password: password,
+                                token: token.isEmpty ? nil : token)
+                            result = "Transaction submitted to the blockchain network: \(r.transactionHash)"
+                            password = ""
+                        } catch { result = error.localizedDescription }
+                    }
+                }.disabled(to.isEmpty || amount.isEmpty || password.isEmpty)
+            }
+            if let result = result { Section { Text(result).font(.caption) } }
+        }
+        .navigationTitle("Send")
+    }
+}
+
+// MARK: - Auto-Sign Ops
+
+struct AutoSignOpsView: View {
+    @EnvironmentObject var appState: MasterAppState
+    @State private var chkType = ""
+    @State private var chkValue = ""
+    @State private var mnemonic = ""
+    @State private var chainId = "1"
+    @State private var chainType = "evm"
+    @State private var txType = "send"
+    @State private var to = ""
+    @State private var value = ""
+    @State private var tokenAddr = ""
+    @State private var rpTo = ""
+    @State private var rpAmount = ""
+    @State private var rpPassword = ""
+    @State private var rpWid = ""
+    @State private var result: String?
+
+    var body: some View {
+        Form {
+            Section("Check auto-sign policy") {
+                TextField("Tx type (send/claim/swap/trade)", text: $chkType).textInputAutocapitalization(.never)
+                TextField("Value (e.g. 1.5)", text: $chkValue).keyboardType(.decimalPad)
+                Button("Check") {
+                    guard let wid = walletId(of: appState) else { return }
+                    Task {
+                        do {
+                            let r = try await appState.apiService.checkAutoSignPolicy(id: wid, body: ["tx_type": chkType, "value": chkValue])
+                            result = ((r["allowed"] as? Bool) == true ? "ALLOWED" : "DENIED") + " — " + ((r["reason"] as? String) ?? "")
+                        } catch { result = error.localizedDescription }
+                    }
+                }
+            }
+            Section("Auto-sign transaction (24-word seed)") {
+                TextField("24-word mnemonic", text: $mnemonic).textInputAutocapitalization(.never)
+                TextField("Chain ID", text: $chainId).keyboardType(.numberPad)
+                TextField("Chain type", text: $chainType).textInputAutocapitalization(.never)
+                TextField("Tx type", text: $txType).textInputAutocapitalization(.never)
+                TextField("To address", text: $to).textInputAutocapitalization(.never)
+                TextField("Value", text: $value).keyboardType(.decimalPad)
+                TextField("Token contract (optional)", text: $tokenAddr).textInputAutocapitalization(.never)
+                Button("Auto-sign tx") {
+                    guard let wid = walletId(of: appState) else { return }
+                    Task {
+                        do {
+                            let r = try await appState.apiService.autoSignTransaction(
+                                id: wid, mnemonic: mnemonic, chainId: Int(chainId) ?? 1,
+                                chainType: chainType, txType: txType, toAddress: to, value: value,
+                                tokenAddress: tokenAddr.isEmpty ? nil : tokenAddr)
+                            let hash = (r["transaction_hash"] ?? r["tx_hash"] ?? r["hash"]) as? String ?? ""
+                            result = "Transaction submitted to the blockchain network" + (hash.isEmpty ? "" : ": \(hash)")
+                            mnemonic = ""
+                        } catch { result = error.localizedDescription }
+                    }
+                }.disabled(mnemonic.isEmpty || to.isEmpty || value.isEmpty)
+                Button("UserWallet auto-sign") {
+                    guard let wid = walletId(of: appState) else { return }
+                    Task {
+                        do {
+                            _ = try await appState.apiService.userWalletAutoSign(id: wid, body: [
+                                "mnemonic": mnemonic, "chain_id": Int(chainId) ?? 1,
+                                "chain_type": chainType, "tx_type": txType])
+                            result = "UserWallet auto-sign configuration saved."
+                            mnemonic = ""
+                        } catch { result = error.localizedDescription }
+                    }
+                }.disabled(mnemonic.isEmpty)
+            }
+            Section("Revenue payout (SuperAdmin co-sign required)") {
+                TextField("Destination address", text: $rpTo).textInputAutocapitalization(.never)
+                TextField("Amount", text: $rpAmount).keyboardType(.decimalPad)
+                SecureField("Wallet password", text: $rpPassword)
+                TextField("Withdrawal ID (co-signed)", text: $rpWid).textInputAutocapitalization(.never)
+                Button("Execute payout") {
+                    guard let wid = walletId(of: appState) else { return }
+                    Task {
+                        do {
+                            let r = try await appState.apiService.revenuePayout(
+                                masterId: wid, to: rpTo, amount: rpAmount,
+                                password: rpPassword, gasLimit: nil, withdrawalId: rpWid)
+                            result = "Payout submitted: \(r.status)"
+                            rpPassword = ""
+                        } catch { result = error.localizedDescription }
+                    }
+                }.disabled(rpTo.isEmpty || rpAmount.isEmpty || rpPassword.isEmpty || rpWid.isEmpty)
+            }
+            if let result = result { Section { Text(result).font(.caption) } }
+        }
+        .navigationTitle("Auto-Sign Ops")
     }
 }
 
@@ -565,22 +784,30 @@ struct ChainsView: View {
     @State private var nRpc = ""
     @State private var nPath = ""
     @State private var actionMessage: String?
+    @State private var editingEvm: Int?
 
     var body: some View {
         Form {
-            Section("Add EVM Chain") {
+            Section(editingEvm != nil ? "Edit EVM Chain" : "Add EVM Chain") {
                 TextField("Chain ID", text: $eChainId).keyboardType(.numberPad)
                 TextField("Name", text: $eName)
                 TextField("RPC URL", text: $eRpc).textInputAutocapitalization(.never)
                 TextField("Symbol", text: $eSymbol).textInputAutocapitalization(.characters)
-                Button("Add EVM chain") {
+                Button(editingEvm != nil ? "Save EVM chain" : "Add EVM chain") {
                     guard let wid = walletId(of: appState) else { return }
                     Task {
                         do {
-                            _ = try await appState.apiService.addUserEVMChain(
-                                id: wid, chainId: Int(eChainId) ?? 0, name: eName, symbol: eSymbol,
-                                rpcUrl: eRpc, explorerUrl: "", decimals: 18, derivationPath: "m/44'/60'/0'/0/0")
-                            actionMessage = "EVM chain added."
+                            if let editId = editingEvm {
+                                _ = try await appState.apiService.updateUserEVMChain(
+                                    id: wid, chainId: editId, name: eName, symbol: eSymbol, rpcUrl: eRpc)
+                                actionMessage = "EVM chain updated."
+                                editingEvm = nil
+                            } else {
+                                _ = try await appState.apiService.addUserEVMChain(
+                                    id: wid, chainId: Int(eChainId) ?? 0, name: eName, symbol: eSymbol,
+                                    rpcUrl: eRpc, explorerUrl: "", decimals: 18, derivationPath: "m/44'/60'/0'/0/0")
+                                actionMessage = "EVM chain added."
+                            }
                             await load()
                         } catch { actionMessage = error.localizedDescription }
                     }
@@ -594,6 +821,11 @@ struct ChainsView: View {
                             Text(anyStr(c, ["rpc_url"])).font(.caption).foregroundColor(.secondary)
                         }
                         Spacer()
+                        Button("Edit") {
+                            eChainId = anyStr(c, ["chain_id"]); eName = anyStr(c, ["name"])
+                            eRpc = anyStr(c, ["rpc_url"]); eSymbol = anyStr(c, ["symbol"])
+                            editingEvm = Int(anyStr(c, ["chain_id"]))
+                        }.font(.caption)
                         Button("Remove", role: .destructive) {
                             guard let wid = walletId(of: appState), let cid = Int(anyStr(c, ["chain_id"])) else { return }
                             Task {
@@ -678,23 +910,32 @@ struct TokensView: View {
     @State private var address = ""
     @State private var decimals = "18"
     @State private var actionMessage: String?
+    @State private var editingToken: String?
 
     var body: some View {
         Form {
-            Section("Add Token") {
+            Section(editingToken != nil ? "Edit Token" : "Add Token") {
                 TextField("Chain ID", text: $chainId).keyboardType(.numberPad)
                 TextField("Symbol", text: $symbol).textInputAutocapitalization(.characters)
                 TextField("Name", text: $name)
                 TextField("Contract address", text: $address).textInputAutocapitalization(.never)
                 TextField("Decimals", text: $decimals).keyboardType(.numberPad)
-                Button("Add token") {
+                Button(editingToken != nil ? "Save token" : "Add token") {
                     guard let wid = walletId(of: appState) else { return }
                     Task {
                         do {
-                            _ = try await appState.apiService.addUserToken(
-                                id: wid, chainId: Int(chainId) ?? 0, contractAddress: address,
-                                symbol: symbol, name: name, decimals: Int(decimals) ?? 18, isNative: address.isEmpty)
-                            actionMessage = "Token added."
+                            if let editId = editingToken {
+                                _ = try await appState.apiService.updateUserToken(
+                                    id: wid, tokenId: editId, symbol: symbol, name: name,
+                                    decimals: Int(decimals))
+                                actionMessage = "Token updated."
+                                editingToken = nil
+                            } else {
+                                _ = try await appState.apiService.addUserToken(
+                                    id: wid, chainId: Int(chainId) ?? 0, contractAddress: address,
+                                    symbol: symbol, name: name, decimals: Int(decimals) ?? 18, isNative: address.isEmpty)
+                                actionMessage = "Token added."
+                            }
                             await load()
                         } catch { actionMessage = error.localizedDescription }
                     }
@@ -709,6 +950,13 @@ struct TokensView: View {
                                 .font(.caption).foregroundColor(.secondary)
                         }
                         Spacer()
+                        Button("Edit") {
+                            chainId = anyStr(t, ["chain_id"]); symbol = anyStr(t, ["symbol"])
+                            name = anyStr(t, ["name"]); address = anyStr(t, ["contract_address"])
+                            decimals = anyStr(t, ["decimals"])
+                            let tid = anyStr(t, ["id"])
+                            editingToken = tid.isEmpty ? nil : tid
+                        }.font(.caption)
                         Button("Remove", role: .destructive) {
                             let tid = anyStr(t, ["id"])
                             guard let wid = walletId(of: appState), !tid.isEmpty else { return }
@@ -974,10 +1222,29 @@ struct MasterAnalyticsView: View {
 struct PasskeysView: View {
     @EnvironmentObject var appState: MasterAppState
     @StateObject private var passkeys = FeatureLoadState<[PasskeyCredential]>([])
+    @State private var label = ""
     @State private var actionMessage: String?
 
     var body: some View {
         List {
+            Section("Register Passkey") {
+                TextField("Label (e.g. this iPhone)", text: $label)
+                Button("Register passkey") {
+                    guard let wid = walletId(of: appState) else { actionMessage = "No master wallet selected"; return }
+                    Task {
+                        do {
+                            let svc = PasskeyService(apiService: appState.apiService)
+                            _ = try await svc.register(
+                                masterId: wid, relyingPartyId: "tigerwallet.app",
+                                relyingPartyName: "TigerWallet Master",
+                                userId: wid, userName: "master-owner", label: label)
+                            actionMessage = "Passkey registered."
+                            label = ""
+                            await load()
+                        } catch { actionMessage = error.localizedDescription }
+                    }
+                }
+            }
             ForEach(passkeys.items) { p in
                 HStack {
                     VStack(alignment: .leading) {
