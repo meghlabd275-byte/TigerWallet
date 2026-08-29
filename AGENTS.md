@@ -550,3 +550,39 @@
   improved from 77 missing to ~57 pos-duplicate/syntactic-only misses.
 - COMPILE: /tmp/go/bin/go build ./... + go vet ./... = 0 (go1.22.5 session-local
   at /tmp/go; GOMODCACHE=/tmp/gomodcache).
+## Session 17 (2026-08-29, this chat) — real-impl gap closure + P0 verification
+- TOOLCHAIN (sandbox was reset): reinstalled Go 1.22.12 (/tmp/go122), Rust 1.85
+  (rustup, ~/.cargo), cmake 4.4 (pip), libssl-dev+pkg-config+libcurl4-openssl-dev.
+- P0 admin/rust auth VERIFIED: all 82 protected routes proxy through fail-closed
+  bearer_token() -> admin/go AuthMiddleware (JWT validated upstream). cargo check
+  0 errors, cargo test ok. The GAPS.md "handler auth completeness" P0 is CLOSED.
+- launchpad_ecosystem: NEW launchpad_onchain.go — real OnChainClient (env
+  LAUNCHPAD_RPC_URL/PRIVATE_KEY/CONTRACT_ADDRESS, EIP-155 sign+broadcast+receipt
+  wait). ClaimTokens/ClaimRewards now broadcast real txs; allocation CLAIMED and
+  stake pending->claimed only after confirmation. tx_hash columns added. 501
+  not_implemented stubs REMOVED. go build+vet pass (go-ethereum v1.13.15 added).
+- timelock: NEW go.mod (was unpackaged) + NEW onchain.go — real OnChainExecutor
+  (TIMELOCK_RPC_URL/EXECUTOR_PRIVATE_KEY). ExecuteTransaction broadcasts the real
+  matured tx; fixed ExecutionTxHash uniqueIndex empty-hash collision + latent
+  go-redis v9 ZAdd pointer bug (file never compiled before). go build+vet pass.
+- dex_connectors/top_20 (Rust): was a non-compiling fake demo (undefined
+  get_mock_rate, fabricated tx hash from nanotime, mock router addresses,
+  hardcoded rates, YOUR_API_KEY). REWRITTEN: canonical deployed router addresses,
+  env RPC (RPC_URL_<chain>/INFURA_API_KEY, public fallback), real eth_chainId
+  health check, real xy=k pool quotes + real CoinGecko market quotes, fail-closed
+  build_swap (SwapRequest envelope, no fake hash). NEW Cargo.toml + MSRV-1.85
+  Cargo.lock. cargo build 0 errors, 5/5 tests pass.
+- master_wallet/desktop (C++): implemented PasskeyCredential encode/decode
+  (versioned TPC1 format) and TaxAnalyticsService::exportToPDF (real minimal
+  PDF 1.4 writer, correct xref + pagination). cmake build 100% pass.
+- integrations/tax (C++): implemented SPECIFIC_IDENTIFICATION via designated
+  lots (fail-closed without designation); fixed pre-existing 'double double
+  longTermLoss' typo + missing <algorithm> + CSV string-concat so the header
+  compiles (g++ -fsyntax-only clean).
+- Verified real (no changes needed): price_oracle (0 fakes), cex_connectors
+  (param credentials), UserWallet no-register onboarding (Onboarding.tsx choose/
+  create/import/backup + BackupMnemonic Google Drive API v3 + clipboard), auto-
+  sign (Send.tsx autoSendTransaction -> /auto-send + MW auto_signer daemon), MW
+  chain/token/fee CRUD (user-chains EVM+non-EVM + /:id/fees; wallet_api
+  applyAdminChainOverrides at boot).
+

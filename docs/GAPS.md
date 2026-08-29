@@ -42,7 +42,7 @@
 | Gap | Location | Evidence | Status |
 |---|---|---|---|
 | ~~Unlicensed self-hosted MasterWallet~~ | `selfhosted_masterwallet` (Rust) | ~~No SuperAdmin license gate; reference impl only~~ | **RESOLVED 2026-08-26** — fail-closed license gate added (`src/license_gate.rs`): atomic `alive` starts dead, heartbeat-loop phones home to `TWO_PARTY_GATE_URL` `/api/v1/license/validate` (bearer `TWO_PARTY_GATE_TOKEN`, `WL_LICENSE_KEY`, `WL_PRODUCT`, `WL_INSTANCE_ID`), every protected route 503s while dead. Also made `JWT_SECRET` fail-closed (boot aborts if unset) and replaced the `get_price` stub with a real CoinGecko fetch. 30/30 Rust tests pass |
-| `admin/rust` handler auth completeness | `admin/rust/src/domain.rs` | JWT fail-closed at startup; remaining handler-level auth coverage to confirm | NOT VERIFIABLE (no Rust toolchain in this sandbox) |
+| ~~`admin/rust` handler auth completeness~~ | `admin/rust/src/{handlers,domain}.rs` | ~~JWT fail-closed at startup; handler-level auth to confirm~~ | **RESOLVED 2026-08-29** — cargo check 0 errors + tests pass (Rust 1.85); all 82 protected routes proxy through fail-closed `bearer_token()` -> admin/go `AuthMiddleware` (JWT signature validated upstream); missing/malformed header -> 401 |
 | ~~Docker-compose WL host-port collision~~ | `docker-compose.yml` WL block | ~~8461/8462/8463 bound twice~~ | **RESOLVED 2026-08-25** — wl-admin :8456, wl-liquidity :8458, wl-card :8459 (host-side only; container ports unchanged). `docker compose config --quiet` passes |
 
 ---
