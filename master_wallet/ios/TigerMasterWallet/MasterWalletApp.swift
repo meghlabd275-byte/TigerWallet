@@ -185,7 +185,13 @@ struct MasterMainTabView: View {
                     Label("Transactions", systemImage: "arrow.left.arrow.right")
                 }
                 .tag(2)
-            
+
+            MoreView()
+                .tabItem {
+                    Label("More", systemImage: "square.grid.2x2.fill")
+                }
+                .tag(4)
+
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gearshape.fill")

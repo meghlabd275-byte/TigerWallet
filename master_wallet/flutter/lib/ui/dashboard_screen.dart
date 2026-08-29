@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../services/auth_service.dart';
 import '../services/master_wallet_service.dart';
+import 'features_screen.dart';
 import 'theme_toggle.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -54,6 +55,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       appBar: AppBar(
         title: const Text('Master Wallet Dashboard'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.grid_view),
+            tooltip: 'All features',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const FeaturesScreen()),
+            ),
+          ),
           const ThemeToggle(),
           IconButton(
             icon: const Icon(Icons.logout),

@@ -505,6 +505,335 @@ class MasterWalletViewModel : ViewModel() {
             false
         }
     }
+
+    private fun apiPut(endpoint: String, body: String): String? {
+        return try {
+            val url = URL("${ApiConfig.BASE_URL}${ApiConfig.API_VERSION}$endpoint")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "PUT"
+            conn.setRequestProperty("Content-Type", "application/json")
+            authToken?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
+            conn.doOutput = true
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
+            conn.outputStream.write(body.toByteArray())
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.bufferedReader().readText()
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ============================================================================
+    // Feature-governance surfaces (treasury, multisig, fees, policies, users,
+    // chains, tokens, flags, webhooks, notifications, audit, analytics).
+    // Every loader reads the real backend response; nothing is fabricated.
+    // ============================================================================
+
+    private val _selectedFeature = MutableStateFlow<String?>(null)
+    val selectedFeature: StateFlow<String?> = _selectedFeature.asStateFlow()
+    fun openFeature(f: String) { _selectedFeature.value = f }
+    fun closeFeature() { _selectedFeature.value = null }
+
+    private val _fees = MutableStateFlow<List<JSONObject>>(emptyList())
+    val fees: StateFlow<List<JSONObject>> = _fees.asStateFlow()
+    private val _policies = MutableStateFlow<List<JSONObject>>(emptyList())
+    val policies: StateFlow<List<JSONObject>> = _policies.asStateFlow()
+    private val _auditLogs = MutableStateFlow<List<JSONObject>>(emptyList())
+    val auditLogs: StateFlow<List<JSONObject>> = _auditLogs.asStateFlow()
+    private val _notifications = MutableStateFlow<List<JSONObject>>(emptyList())
+    val notifications: StateFlow<List<JSONObject>> = _notifications.asStateFlow()
+    private val _webhooks = MutableStateFlow<List<JSONObject>>(emptyList())
+    val webhooks: StateFlow<List<JSONObject>> = _webhooks.asStateFlow()
+    private val _featureFlags = MutableStateFlow<List<JSONObject>>(emptyList())
+    val featureFlags: StateFlow<List<JSONObject>> = _featureFlags.asStateFlow()
+    private val _multisigWallets = MutableStateFlow<List<JSONObject>>(emptyList())
+    val multisigWallets: StateFlow<List<JSONObject>> = _multisigWallets.asStateFlow()
+    private val _multisigTxs = MutableStateFlow<List<JSONObject>>(emptyList())
+    val multisigTxs: StateFlow<List<JSONObject>> = _multisigTxs.asStateFlow()
+    private val _treasury = MutableStateFlow<JSONObject?>(null)
+    val treasury: StateFlow<JSONObject?> = _treasury.asStateFlow()
+    private val _treasuryTxs = MutableStateFlow<List<JSONObject>>(emptyList())
+    val treasuryTxs: StateFlow<List<JSONObject>> = _treasuryTxs.asStateFlow()
+    private val _autoSignLogs = MutableStateFlow<List<JSONObject>>(emptyList())
+    val autoSignLogs: StateFlow<List<JSONObject>> = _autoSignLogs.asStateFlow()
+    private val _autoSignPolicy = MutableStateFlow<JSONObject?>(null)
+    val autoSignPolicy: StateFlow<JSONObject?> = _autoSignPolicy.asStateFlow()
+    private val _evmChains = MutableStateFlow<List<JSONObject>>(emptyList())
+    val evmChains: StateFlow<List<JSONObject>> = _evmChains.asStateFlow()
+    private val _nonEvmChains = MutableStateFlow<List<JSONObject>>(emptyList())
+    val nonEvmChains: StateFlow<List<JSONObject>> = _nonEvmChains.asStateFlow()
+    private val _userTokens = MutableStateFlow<List<JSONObject>>(emptyList())
+    val userTokens: StateFlow<List<JSONObject>> = _userTokens.asStateFlow()
+    private val _analytics = MutableStateFlow<Map<String, String>>(emptyMap())
+    val analytics: StateFlow<Map<String, String>> = _analytics.asStateFlow()
+    private val _passkeys = MutableStateFlow<List<JSONObject>>(emptyList())
+    val passkeys: StateFlow<List<JSONObject>> = _passkeys.asStateFlow()
+
+    /** Parse either a raw JSON array or a {"<key>":[...]} envelope. */
+    private fun parseList(raw: String?, key: String): List<JSONObject> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            val trimmed = raw.trim()
+            val arr = if (trimmed.startsWith("[")) JSONArray(trimmed)
+            else JSONObject(trimmed).optJSONArray(key) ?: run {
+                val obj = JSONObject(trimmed)
+                var found: JSONArray? = null
+                for (k in obj.keys()) {
+                    val v = obj.optJSONArray(k)
+                    if (v != null) { found = v; break }
+                }
+                found ?: JSONArray()
+            }
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Load one feature surface on demand (called when its screen opens). */
+    fun loadFeature(feature: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = requireWalletId() ?: run {
+                _error.value = "No master wallet selected"
+                return@launch
+            }
+            try {
+                when (feature) {
+                    "treasury" -> {
+                        apiGet("/master-wallet/$id/treasury")?.let { _treasury.value = JSONObject(it) }
+                        _treasuryTxs.value = parseList(apiGet("/master-wallet/$id/treasury/transactions"), "transactions")
+                    }
+                    "multisig" -> {
+                        _multisigWallets.value = parseList(apiGet("/master-wallet/$id/multisig/wallets"), "multisig_wallets")
+                    }
+                    "autosign" -> {
+                        loadAutoSignRules()
+                        _autoSignLogs.value = parseList(apiGet("/master-wallet/$id/auto-sign-logs"), "logs")
+                        apiGet("/master-wallet/$id/auto-sign-policy")?.let {
+                            val obj = JSONObject(it)
+                            _autoSignPolicy.value = obj.optJSONObject("policy") ?: obj
+                        }
+                    }
+                    "fees" -> _fees.value = parseList(apiGet("/master-wallet/$id/fees"), "fees")
+                    "policies" -> _policies.value = parseList(apiGet("/master-wallet/$id/policies"), "policies")
+                    "users" -> loadUsers()
+                    "audit" -> _auditLogs.value = parseList(apiGet("/master-wallet/$id/audit"), "logs")
+                    "notifications" -> _notifications.value = parseList(apiGet("/master-wallet/$id/notifications"), "notifications")
+                    "webhooks" -> {
+                        _webhooks.value = parseList(apiGet("/master-wallet/$id/webhooks"), "webhooks")
+                        _notifications.value = parseList(apiGet("/master-wallet/$id/notifications"), "notifications")
+                    }
+                    "flags" -> _featureFlags.value = parseList(apiGet("/master-wallet/$id/feature-flags"), "feature_flags")
+                    "chains" -> {
+                        _evmChains.value = parseList(apiGet("/master-wallet/$id/user-chains/evm"), "chains")
+                        _nonEvmChains.value = parseList(apiGet("/master-wallet/$id/user-chains/nonevm"), "chains")
+                    }
+                    "tokens" -> _userTokens.value = parseList(apiGet("/master-wallet/$id/user-tokens"), "tokens")
+                    "passkeys" -> _passkeys.value = parseList(apiGet("/master-wallet/$id/passkey/credentials"), "passkeys")
+                    "analytics" -> {
+                        val out = mutableMapOf<String, String>()
+                        apiGet("/master-wallet/$id/analytics/volume")?.let { r ->
+                            val o = JSONObject(r); for (k in o.keys()) out["volume.$k"] = o.optString(k)
+                        }
+                        apiGet("/master-wallet/$id/analytics/transactions")?.let { r ->
+                            val o = JSONObject(r)
+                            if (o.length() <= 8) for (k in o.keys()) out["transactions.$k"] = o.optString(k)
+                            else out["transactions.count"] = parseList(r, "transactions").size.toString()
+                        }
+                        apiGet("/master-wallet/$id/analytics/wallets")?.let { r ->
+                            val o = JSONObject(r)
+                            if (o.length() <= 8) for (k in o.keys()) out["wallets.$k"] = o.optString(k)
+                            else out["wallets.count"] = parseList(r, "wallets").size.toString()
+                        }
+                        _analytics.value = out
+                    }
+                }
+            } catch (e: Exception) {
+                _error.value = e.message
+            }
+        }
+    }
+
+    /** POST a JSON body to a wallet-scoped route, then reload the surface. */
+    private fun featureAction(feature: String, build: (id: String) -> Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
+            try {
+                val id = requireWalletId() ?: run {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                if (!build(id)) {
+                    _error.value = "Request failed"
+                    return@launch
+                }
+                loadFeature(feature)
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun treasuryTransfer(to: String, amount: String, password: String) =
+        featureAction("treasury") { id ->
+            apiPost("/master-wallet/$id/treasury/transfer",
+                JSONObject().put("to", to).put("amount", amount).put("password", password).toString()) != null
+        }
+
+    fun treasurySweep(subWalletId: String, password: String) =
+        featureAction("treasury") { id ->
+            apiPost("/master-wallet/$id/treasury/sweep",
+                JSONObject().put("sub_wallet_id", subWalletId).put("password", password).toString()) != null
+        }
+
+    fun createMultisig(name: String, ownersCsv: String, threshold: Int) =
+        featureAction("multisig") { id ->
+            val owners = JSONArray()
+            ownersCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { owners.put(it) }
+            apiPost("/master-wallet/$id/multisig/wallets",
+                JSONObject().put("name", name).put("owners", owners).put("threshold", threshold).toString()) != null
+        }
+
+    fun loadMultisigTxs(multisigId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = requireWalletId() ?: return@launch
+            _multisigTxs.value = parseList(apiGet("/master-wallet/$id/multisig/wallets/$multisigId/transactions"), "transactions")
+        }
+    }
+
+    fun signMultisig(txId: String) =
+        featureAction("multisig") { id ->
+            apiPost("/master-wallet/$id/multisig/transactions/$txId/sign", "{}") != null
+        }
+
+    fun executeMultisig(txId: String) =
+        featureAction("multisig") { id ->
+            apiPost("/master-wallet/$id/multisig/transactions/$txId/execute", "{}") != null
+        }
+
+    fun createFee(feeType: String, percentage: Double, fixed: String) =
+        featureAction("fees") { id ->
+            apiPost("/master-wallet/$id/fees",
+                JSONObject().put("fee_type", feeType).put("fee_percentage", percentage).put("fee_fixed", fixed).toString()) != null
+        }
+
+    fun toggleFee(fid: String, active: Boolean) =
+        featureAction("fees") { id ->
+            apiPut("/master-wallet/$id/fees/$fid", JSONObject().put("is_active", active).toString()) != null
+        }
+
+    fun deleteFee(fid: String) =
+        featureAction("fees") { id -> apiDelete("/master-wallet/$id/fees/$fid") }
+
+    fun createPolicy(name: String, policyType: String) =
+        featureAction("policies") { id ->
+            apiPost("/master-wallet/$id/policies",
+                JSONObject().put("name", name).put("policy_type", policyType).toString()) != null
+        }
+
+    fun deletePolicy(pid: String) =
+        featureAction("policies") { id -> apiDelete("/master-wallet/$id/policies/$pid") }
+
+    fun createUser(email: String, password: String, name: String, role: String) =
+        featureAction("users") { id ->
+            apiPost("/master-wallet/$id/users",
+                JSONObject().put("email", email).put("password", password).put("name", name).put("role", role).toString()) != null
+        }
+
+    fun deleteUser(uid: String) =
+        featureAction("users") { id -> apiDelete("/master-wallet/$id/users/$uid") }
+
+    fun setAutoSignPolicyEnabled(enabled: Boolean) =
+        featureAction("autosign") { id ->
+            apiPut("/master-wallet/$id/auto-sign-policy", JSONObject().put("enabled", enabled).toString()) != null
+        }
+
+    fun createWebhook(name: String, url: String, eventsCsv: String) =
+        featureAction("webhooks") { id ->
+            val events = JSONArray()
+            eventsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { events.put(it) }
+            apiPost("/master-wallet/$id/webhooks",
+                JSONObject().put("name", name).put("url", url).put("events", events).toString()) != null
+        }
+
+    fun deleteWebhook(wid: String) =
+        featureAction("webhooks") { id -> apiDelete("/master-wallet/$id/webhooks/$wid") }
+
+    fun createNotification(type: String, title: String, message: String) =
+        featureAction("webhooks") { id ->
+            apiPost("/master-wallet/$id/notifications",
+                JSONObject().put("notification_type", type).put("title", title).put("message", message).toString()) != null
+        }
+
+    fun addFeatureFlag(flagKey: String) =
+        featureAction("flags") { id ->
+            apiPost("/master-wallet/$id/feature-flags",
+                JSONObject().put("flag_key", flagKey).put("is_enabled", true).toString()) != null
+        }
+
+    fun toggleFeatureFlag(flagId: Long, enabled: Boolean) =
+        featureAction("flags") { id ->
+            apiPut("/master-wallet/$id/feature-flags/$flagId", JSONObject().put("is_enabled", enabled).toString()) != null
+        }
+
+    fun removeFeatureFlag(flagId: Long) =
+        featureAction("flags") { id -> apiDelete("/master-wallet/$id/feature-flags/$flagId") }
+
+    fun addEvmChain(chainId: Long, name: String, rpcUrl: String, symbol: String) =
+        featureAction("chains") { id ->
+            apiPost("/master-wallet/$id/user-chains/evm",
+                JSONObject().put("chain_id", chainId).put("name", name).put("rpc_url", rpcUrl).put("symbol", symbol).toString()) != null
+        }
+
+    fun removeEvmChain(chainId: Long) =
+        featureAction("chains") { id -> apiDelete("/master-wallet/$id/user-chains/evm/$chainId") }
+
+    fun addNonEvmChain(chainId: Long, name: String, chainType: String, rpcUrl: String, derivationPath: String) =
+        featureAction("chains") { id ->
+            apiPost("/master-wallet/$id/user-chains/nonevm",
+                JSONObject().put("chain_id", chainId).put("name", name).put("chain_type", chainType)
+                    .put("rpc_url", rpcUrl).put("derivation_path", derivationPath).toString()) != null
+        }
+
+    fun removeNonEvmChain(chainId: Long) =
+        featureAction("chains") { id -> apiDelete("/master-wallet/$id/user-chains/nonevm/$chainId") }
+
+    fun addUserToken(chainId: Long, symbol: String, name: String, contractAddress: String, decimals: Int) =
+        featureAction("tokens") { id ->
+            apiPost("/master-wallet/$id/user-tokens",
+                JSONObject().put("chain_id", chainId).put("symbol", symbol).put("name", name)
+                    .put("contract_address", contractAddress).put("decimals", decimals).toString()) != null
+        }
+
+    fun removeUserToken(tokenId: Long) =
+        featureAction("tokens") { id -> apiDelete("/master-wallet/$id/user-tokens/$tokenId") }
+
+    fun deletePasskey(credId: String) =
+        featureAction("passkeys") { id ->
+            apiDelete("/master-wallet/$id/passkey/credentials/" + java.net.URLEncoder.encode(credId, "UTF-8"))
+        }
+
+    fun requestWithdrawal(toAddress: String, amountWei: String, currency: String, chainId: Long, onDone: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val id = requireWalletId() ?: run {
+                    onDone("No master wallet selected")
+                    return@launch
+                }
+                val resp = apiPost("/master-wallet/$id/withdrawal-request",
+                    JSONObject().put("to_address", toAddress).put("amount_wei", amountWei)
+                        .put("currency", currency).put("chain_id", chainId).toString())
+                onDone(if (resp != null) "Withdrawal request filed (SuperAdmin co-sign required): $resp"
+                else "Withdrawal request failed")
+            } catch (e: Exception) {
+                onDone(e.message ?: "error")
+            }
+        }
+    }
 }
 
 // ============================================================================

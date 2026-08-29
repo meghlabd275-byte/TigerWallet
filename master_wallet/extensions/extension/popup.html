@@ -68,6 +68,20 @@
     .error { color: var(--danger); }
     .hidden { display: none; }
     .empty { padding: 12px; text-align: center; color: var(--text-muted); font-size: 12px; }
+    .tabbar {
+      display: flex; gap: 4px; overflow-x: auto; padding: 8px 10px 0;
+      background: var(--bg); position: sticky; top: 0; z-index: 2;
+    }
+    .tabbar button {
+      flex: 0 0 auto; padding: 6px 10px; font-size: 11px; border: 1px solid var(--border);
+      border-radius: 14px; background: var(--bg-elev); color: var(--text-muted); cursor: pointer;
+    }
+    .tabbar button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: bold; }
+    .kv { font-size: 11px; padding: 6px 10px; background: var(--bg-card); border-radius: 8px; margin-bottom: 6px; }
+    .kv b { display: block; font-size: 12px; }
+    .rowin { display: flex; gap: 6px; }
+    .rowin .btn { width: auto; margin: 0; padding: 6px 10px; font-size: 11px; }
+    h3.sub { font-size: 11px; color: var(--text-muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
   </style>
 </head>
 <body>
@@ -89,20 +103,173 @@
   <!-- Wallet view (shown when logged in) -->
   <div id="walletView" class="hidden">
     <div class="status" id="status">Loadingâ¦</div>
-    <div class="section">
+    <div class="tabbar" id="tabbar"></div>
+
+    <div id="tab-wallets" class="section tabpanel">
       <h2>Master Wallets</h2>
       <div id="walletList"><div class="empty">No wallets loaded.</div></div>
-    </div>
-    <div class="section">
-      <h2>Passkeys</h2>
+      <h3 class="sub">Passkeys</h3>
       <div id="passkeyList"><div class="empty">No passkeys registered.</div></div>
       <button class="btn" id="registerPasskeyBtn">↓ Passkey register</button>
-    </div>
-    <div class="section">
-      <h2>Actions</h2>
+      <h3 class="sub">Actions</h3>
       <button class="btn" id="refreshBtn">↻ Refresh</button>
       <button class="btn secondary" id="themeToggleBtn">Toggle theme</button>
       <button class="btn danger" id="logoutBtn">Sign out</button>
+    </div>
+
+    <div id="tab-transactions" class="section tabpanel hidden">
+      <h2>Transactions</h2>
+      <div id="txList"><div class="empty">Select a wallet.</div></div>
+    </div>
+
+    <div id="tab-treasury" class="section tabpanel hidden">
+      <h2>Treasury</h2>
+      <div id="treasuryOverview"><div class="empty">Loading…</div></div>
+      <h3 class="sub">Transfer</h3>
+      <input id="trTo" placeholder="Destination address" />
+      <input id="trAmount" placeholder="Amount" />
+      <input id="trPassword" type="password" placeholder="Wallet password" />
+      <button class="btn" id="treasuryTransferBtn">Transfer</button>
+      <h3 class="sub">Sweep (sub-wallet → treasury)</h3>
+      <input id="swSubWalletId" placeholder="Sub-wallet ID" />
+      <input id="swPassword" type="password" placeholder="Wallet password" />
+      <button class="btn" id="treasurySweepBtn">Sweep funds</button>
+      <h3 class="sub">Treasury transactions</h3>
+      <div id="treasuryTxList"><div class="empty">None loaded.</div></div>
+    </div>
+
+    <div id="tab-multisig" class="section tabpanel hidden">
+      <h2>Multisig</h2>
+      <div id="multisigList"><div class="empty">Loading…</div></div>
+      <h3 class="sub">Create multisig wallet</h3>
+      <input id="msName" placeholder="Name" />
+      <input id="msOwners" placeholder="Owners (comma-separated addresses)" />
+      <input id="msThreshold" placeholder="Signature threshold (e.g. 2)" />
+      <button class="btn" id="createMultisigBtn">Create</button>
+      <h3 class="sub">Multisig transactions</h3>
+      <div id="multisigTxList"><div class="empty">Select a multisig wallet.</div></div>
+    </div>
+
+    <div id="tab-autosign" class="section tabpanel hidden">
+      <h2>Auto-Sign</h2>
+      <h3 class="sub">Daemon policy</h3>
+      <div id="autoSignPolicy"><div class="empty">Loading…</div></div>
+      <div class="rowin">
+        <button class="btn" id="policyEnableBtn">Enable daemon</button>
+        <button class="btn secondary" id="policyDisableBtn">Disable</button>
+      </div>
+      <h3 class="sub">Rules</h3>
+      <div id="autoSignRuleList"><div class="empty">Loading…</div></div>
+      <input id="asName" placeholder="Rule name" />
+      <input id="asRuleType" placeholder="Rule type (e.g. transfer)" />
+      <input id="asThreshold" placeholder="Max amount (wei)" />
+      <button class="btn" id="createAutoSignBtn">Add rule</button>
+      <h3 class="sub">Auto-sign logs</h3>
+      <div id="autoSignLogList"><div class="empty">Loading…</div></div>
+    </div>
+
+    <div id="tab-fees" class="section tabpanel hidden">
+      <h2>Fees</h2>
+      <div id="feeList"><div class="empty">Loading…</div></div>
+      <input id="feeType" placeholder="Fee type (e.g. transfer)" />
+      <input id="feePercentage" placeholder="Fee percentage (e.g. 0.5)" />
+      <input id="feeFixed" placeholder="Fee fixed (wei, optional)" />
+      <button class="btn" id="createFeeBtn">Add fee</button>
+    </div>
+
+    <div id="tab-policies" class="section tabpanel hidden">
+      <h2>Policies</h2>
+      <div id="policyList"><div class="empty">Loading…</div></div>
+      <input id="polName" placeholder="Policy name" />
+      <input id="polType" placeholder="Policy type (e.g. withdrawal_limit)" />
+      <button class="btn" id="createPolicyBtn">Add policy</button>
+    </div>
+
+    <div id="tab-users" class="section tabpanel hidden">
+      <h2>Users</h2>
+      <div id="userList"><div class="empty">Loading…</div></div>
+      <input id="usrEmail" type="email" placeholder="User email" />
+      <input id="usrPassword" type="password" placeholder="Password (min 8 chars)" />
+      <input id="usrName" placeholder="Name" />
+      <input id="usrRole" placeholder="Role (admin/operator/viewer)" />
+      <button class="btn" id="createUserBtn">Add user</button>
+    </div>
+
+    <div id="tab-chains" class="section tabpanel hidden">
+      <h2>UserWallet Chains</h2>
+      <h3 class="sub">EVM chains</h3>
+      <div id="evmChainList"><div class="empty">Loading…</div></div>
+      <input id="evmChainId" placeholder="Chain ID (e.g. 1)" />
+      <input id="evmName" placeholder="Name (e.g. Ethereum)" />
+      <input id="evmRpc" placeholder="RPC URL" />
+      <input id="evmSymbol" placeholder="Symbol (e.g. ETH)" />
+      <button class="btn" id="addEvmChainBtn">Add EVM chain</button>
+      <h3 class="sub">Non-EVM chains</h3>
+      <div id="nonEvmChainList"><div class="empty">Loading…</div></div>
+      <input id="neChainId" placeholder="Chain ID (SLIP-44, e.g. 9000000000)" />
+      <input id="neName" placeholder="Name (e.g. Bitcoin)" />
+      <input id="neChainType" placeholder="Chain type (solana/bitcoin/cosmos/…)" />
+      <input id="neRpc" placeholder="RPC / node URL" />
+      <input id="neDerivation" placeholder="Derivation path (e.g. m/44'/0'/0'/0/0)" />
+      <button class="btn" id="addNonEvmChainBtn">Add non-EVM chain</button>
+    </div>
+
+    <div id="tab-tokens" class="section tabpanel hidden">
+      <h2>UserWallet Tokens</h2>
+      <div id="tokenList"><div class="empty">Loading…</div></div>
+      <input id="tokChainId" placeholder="Chain ID" />
+      <input id="tokSymbol" placeholder="Symbol (e.g. USDT)" />
+      <input id="tokName" placeholder="Name" />
+      <input id="tokAddress" placeholder="Contract address" />
+      <input id="tokDecimals" placeholder="Decimals (e.g. 18)" />
+      <button class="btn" id="addTokenBtn">Add token</button>
+    </div>
+
+    <div id="tab-flags" class="section tabpanel hidden">
+      <h2>Feature Flags</h2>
+      <div id="flagList"><div class="empty">Loading…</div></div>
+      <input id="flagKey" placeholder="Flag key (e.g. enable_swap)" />
+      <button class="btn" id="addFlagBtn">Add flag</button>
+    </div>
+
+    <div id="tab-webhooks" class="section tabpanel hidden">
+      <h2>Webhooks</h2>
+      <div id="webhookList"><div class="empty">Loading…</div></div>
+      <input id="whName" placeholder="Webhook name" />
+      <input id="whUrl" placeholder="Webhook URL (https://…)" />
+      <input id="whEvents" placeholder="Events (comma-separated, e.g. tx.confirmed)" />
+      <button class="btn" id="createWebhookBtn">Add webhook</button>
+      <h3 class="sub">Notifications</h3>
+      <div id="notifList"><div class="empty">Loading…</div></div>
+      <input id="ntType" placeholder="Type (e.g. alert)" />
+      <input id="ntTitle" placeholder="Title" />
+      <input id="ntMessage" placeholder="Notification message" />
+      <button class="btn" id="createNotifBtn">Send notification</button>
+    </div>
+
+    <div id="tab-audit" class="section tabpanel hidden">
+      <h2>Audit Log</h2>
+      <div id="auditList"><div class="empty">Loading…</div></div>
+    </div>
+
+    <div id="tab-analytics" class="section tabpanel hidden">
+      <h2>Analytics</h2>
+      <h3 class="sub">Volume</h3>
+      <div id="analyticsVolume"><div class="empty">Loading…</div></div>
+      <h3 class="sub">Transactions</h3>
+      <div id="analyticsTx"><div class="empty">Loading…</div></div>
+      <h3 class="sub">Wallets</h3>
+      <div id="analyticsWallets"><div class="empty">Loading…</div></div>
+    </div>
+
+    <div id="tab-withdraw" class="section tabpanel hidden">
+      <h2>Withdrawal Request</h2>
+      <p class="muted">Funds never move without TigerWallet SuperAdmin two-party co-sign. This only files the request.</p>
+      <input id="wdTo" placeholder="Destination address" />
+      <input id="wdAmount" placeholder="Amount (wei)" />
+      <input id="wdCurrency" placeholder="Currency (e.g. ETH)" />
+      <input id="wdChainId" placeholder="Chain ID (e.g. 1)" />
+      <button class="btn" id="requestWithdrawalBtn">Request withdrawal</button>
     </div>
   </div>
 

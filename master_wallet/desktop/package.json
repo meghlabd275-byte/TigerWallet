@@ -1,0 +1,23 @@
+{
+  "name": "tiger-masterwallet-desktop-gui",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MasterWallet desktop GUI (React). Built dist/ is served by the C++ shell or any static host; talks only to the canonical backend at VITE_API_URL (default http://localhost:8450).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.11"
+  }
+}

@@ -349,6 +349,22 @@ async function handleRelay(payload) {
     // ---------- Treasury alias ----------
     case 'getTreasuryOverview':
       return svc.getTreasuryOverview(walletId);
+    // ---------- Update routes (full CRUD parity with backend) ----------
+    case 'updateFee':
+      return svc.updateFee(walletId, args[1], args[2]);
+    case 'updateAutoSignRule':
+      return svc.updateAutoSignRule(walletId, args[1], args[2]);
+    case 'updateUser':
+      return svc.updateUser(walletId, args[1], args[2]);
+    case 'updateNotification':
+      return svc.updateNotification(walletId, args[1], args[2]);
+    case 'updateWebhook':
+      return svc.updateWebhook(walletId, args[1], args[2]);
+    // ---------- Auto-sign daemon policy ----------
+    case 'getAutoSignPolicy':
+      return svc.getAutoSignPolicy(walletId);
+    case 'updateAutoSignPolicy':
+      return svc.updateAutoSignPolicy(walletId, args[1]);
     default:
       throw new Error('Unknown relay action: ' + action);
   }

@@ -457,6 +457,16 @@ class MasterWalletService {
     return res.logs || res || [];
   }
 
+  // Owner/admin daemon policy: enable/disable auto-signer, per-kind toggles,
+  // max auto value. Backend: GET/PUT /api/v1/master-wallet/:id/auto-sign-policy.
+  async getAutoSignPolicy(id) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign-policy', { method: 'GET' });
+  }
+
+  async updateAutoSignPolicy(id, updates) {
+    return authedFetch('/master-wallet/' + this._wid(id) + '/auto-sign-policy', { method: 'PUT', body: updates });
+  }
+
   // ---------- Auto-sign bridge (MasterWallet-owner policy auto-approval of UserWallet txs) ----------
 
   async userWalletAutoSign(id, body) {

@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
 fun MasterMainScreen(viewModel: MasterWalletViewModel) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val isDarkMode by viewModel.isDarkMode.collectAsState()
-    
+    val selectedFeature by viewModel.selectedFeature.collectAsState()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -80,6 +80,12 @@ fun MasterMainScreen(viewModel: MasterWalletViewModel) {
                     onClick = { selectedTab = 2 }
                 )
                 NavigationBarItem(
+                    icon = { Text("🧩") },
+                    label = { Text("More") },
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4; viewModel.closeFeature() }
+                )
+                NavigationBarItem(
                     icon = { Text("⚙️") },
                     label = { Text("Settings") },
                     selected = selectedTab == 3,
@@ -88,11 +94,18 @@ fun MasterMainScreen(viewModel: MasterWalletViewModel) {
             }
         }
     ) { padding ->
-        when (selectedTab) {
+        if (selectedFeature != null) {
+            FeatureHostScreen(
+                viewModel = viewModel,
+                feature = selectedFeature!!,
+                modifier = Modifier.padding(padding)
+            )
+        } else when (selectedTab) {
             0 -> DashboardScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
             1 -> WalletsScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
             2 -> TransactionsScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
             3 -> SettingsScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
+            4 -> MoreScreen(viewModel = viewModel, modifier = Modifier.padding(padding))
         }
     }
 }
