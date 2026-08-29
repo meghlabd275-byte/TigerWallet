@@ -366,6 +366,7 @@
 - Committed 6f6cf418, pushed to origin/main.
 - Toolchain reinstalled this session: Go 1.23.4, cmake 3.31.6, libssl-dev, pkg-config.
 
+
 ## Session 12 (2026-08-29) — selfhosted MW auto-signer, Android passkeys, theme verification
 - Theme switch verified working across all surfaces: user_wallet (web
   ThemeContext, extension chrome.storage, android ThemeManager, ios),
@@ -623,3 +624,40 @@
   each with real implementations or fail-fast use of existing handlers.
   Build+vet=0 via go1.22.5 session-local /tmp/go.
 - CategoryFetcher per-fetcher gate intact; SuperAdmin can disable each.
+
+## Session 20 (2026-08-29) — MasterWallet client feature parity (commit a9f54dbb, pushed to main)
+- GAP CLOSED: MasterWallet android/ios/desktop/extension/flutter exposed only
+  ~25-40% of the backend in UI (services existed but were unwired). All five
+  clients now expose the full backend surface: treasury (transfer+sweep),
+  multisig (create/sign/execute), auto-sign (rules+daemon policy+logs), fees,
+  policies, users, EVM+non-EVM chain governance, token governance, feature
+  flags, webhooks+notifications, audit, analytics, passkeys, withdrawal-request.
+- EXTENSION: popup.html+popup.js went from wallets+passkeys to a 15-tab UI
+  (createElement rendering, no innerHTML injection); background.js relay gained
+  updateFee/updateAutoSignRule/updateUser/updateNotification/updateWebhook +
+  getAutoSignPolicy/updateAutoSignPolicy; masterWalletService.js gained the two
+  auto-sign-policy methods. node --check all OK.
+- DESKTOP: App.tsx was orphaned dead code (no package.json/vite, not in CMake).
+  Now a real Vite GUI (package.json/index.html/vite.config.ts/tsconfig.json/
+  src/main.tsx) with 18 pages (11 new: Treasury/Multisig/Fees/Policies/Chains/
+  Tokens/Flags/Webhooks/Audit/Passkeys/Withdraw + apiSend/asList helpers +
+  .form-grid/.banner CSS). tsc --noEmit=0, vite build OK. console.cpp gained a
+  real `gui` command: POSIX loopback-only static server for dist/ with
+  window.__MASTER_API_URL__ injection + traversal guard (400 on raw .. paths).
+  cmake build PASS + live smoke test PASS (asset 200, traversal 400).
+- ANDROID: new FeatureScreens.kt (14 screens + MoreScreen hub) + More tab in
+  MainActivity; MasterWalletViewModel gained apiPut + 13 feature StateFlows +
+  loadFeature(feature) + featureAction() + ~25 actions, all on Dispatchers.IO.
+- iOS: new Sources/FeatureViews.swift (MoreView hub + 14 views) calling
+  MasterAPIService async methods; More tab in MasterMainTabView.
+- FLUTTER: new lib/ui/features_screen.dart (FeaturesScreen hub + 14 screens)
+  using MasterWalletService + TreasuryService/MultiSigService/AuditService/
+  PolicyEngineService; linked from DashboardScreen AppBar.
+- Theme switch works on every new page: all inherit per-surface theme systems
+  (web data-theme vars, desktop ThemeStyle CSS vars + data-theme, extension
+  [data-theme], android MasterWalletTheme, ios preferredColorScheme, flutter
+  ThemeService).
+- NOT compile-verified (no SDKs in sandbox): Kotlin (no Android SDK), Swift
+  (no Xcode), Dart (no Flutter). Signatures cross-checked against services.
+- Verified builds: extension JS (node --check), desktop GUI (tsc+vite),
+  desktop C++ (cmake + smoke test).
