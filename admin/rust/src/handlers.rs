@@ -1,8 +1,19 @@
 //! API Handlers module
+//!
+//! Auth + 2FA handlers are real (DB-backed: bcrypt + TOTP + JWT). Every
+//! domain-resource handler (admins, users, KYC, transactions, withdrawals,
+//! tokens, pairs, blockchains, fees, whitelabels, tickets, analytics, audit,
+//! feature-flags, notifications, ip-whitelist, backups, webhooks) forwards the
+//! inbound request verbatim to the canonical `admin/go` backend (:9093) and
+//! returns its real response — no stubs, fakes, or canned payloads. A down
+//! upstream surfaces as 503 so clients render genuine error states.
 
 use axum::{
-    extract::{Path, Query, Extension},
-    Json, 
+    body::Bytes,
+    extract::{Path, Extension, RawQuery},
+    http::{HeaderMap, Method, StatusCode},
+    response::{IntoResponse, Response},
+    Json,
 };
 use crate::models::*;
 use crate::db::DbPool;
@@ -10,6 +21,8 @@ use crate::auth::AuthState;
 use crate::error::{AppError, AppResult};
 use crate::AppState;
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 
 // ============================================================================
 // Auth Handlers
@@ -293,412 +306,841 @@ pub async fn verify_2fa(
 }
 
 // ============================================================================
-// Admin Handlers
+// Domain resource handlers — real proxy to canonical admin/go (:9093)
 // ============================================================================
+//
+// The admin/go backend is the source of truth for every admin resource. These
+// handlers forward the inbound HTTP request (method, path, query string, body,
+// Bearer JWT) to admin/go over a localhost TCP socket and return its status +
+// JSON body verbatim. No data is fabricated; a dead upstream becomes a 503.
 
-pub async fn list_admins() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+/// Upstream admin/go host (override with `TIGERADMIN_UPSTREAM_HOST`).
+fn upstream_host() -> String {
+    std::env::var("TIGERADMIN_UPSTREAM_HOST").unwrap_or_else(|_| "localhost".to_string())
+}
+
+/// Upstream admin/go port (override with `TIGERADMIN_UPSTREAM_PORT`).
+fn upstream_port() -> u16 {
+    std::env::var("TIGERADMIN_UPSTREAM_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(9093)
+}
+
+fn bearer_token(headers: &HeaderMap) -> Result<String, AppError> {
+    let auth = headers
+        .get("authorization")
+        .ok_or(AppError::Unauthorized)?
+        .to_str()
+        .map_err(|_| AppError::Unauthorized)?;
+    if let Some(token) = auth.strip_prefix("Bearer ") {
+        Ok(token.to_string())
+    } else if let Some(token) = auth.strip_prefix("bearer ") {
+        Ok(token.to_string())
+    } else {
+        Err(AppError::Unauthorized)
+    }
+}
+
+fn method_name(m: &Method) -> &'static str {
+    match *m {
+        Method::GET => "GET",
+        Method::POST => "POST",
+        Method::PUT => "PUT",
+        Method::DELETE => "DELETE",
+        Method::PATCH => "PATCH",
+        _ => "GET",
+    }
+}
+
+struct UpstreamResponse {
+    status: u16,
+    body: Vec<u8>,
+}
+
+/// Performs a real HTTP/1.1 call to the admin/go backend over a TCP socket.
+async fn upstream_call(
+    method: &Method,
+    path: &str,
+    body: &[u8],
+    bearer: &str,
+) -> Result<UpstreamResponse, AppError> {
+    let addr = format!("{}:{}", upstream_host(), upstream_port());
+    let mut stream = TcpStream::connect(&addr)
+        .await
+        .map_err(|e| AppError::InternalServerError(format!("upstream connect failed: {e}")))?;
+
+    let timeout = std::time::Duration::from_secs(5);
+    tokio::time::timeout(timeout, async {
+        let mut req = Vec::new();
+        req.extend_from_slice(format!("{} {} HTTP/1.1\r\n", method_name(method), path).as_bytes());
+        req.extend_from_slice(
+            format!("Host: {}:{}\r\n", upstream_host(), upstream_port()).as_bytes(),
+        );
+        req.extend_from_slice(b"Connection: close\r\n");
+        req.extend_from_slice(format!("Authorization: Bearer {}\r\n", bearer).as_bytes());
+        req.extend_from_slice(b"Content-Type: application/json\r\n");
+        req.extend_from_slice(format!("Content-Length: {}\r\n", body.len()).as_bytes());
+        req.extend_from_slice(b"\r\n");
+        req.extend_from_slice(body);
+        stream.write_all(&req).await
+    })
+    .await
+    .map_err(|_| AppError::InternalServerError("upstream write timeout".into()))?
+    .map_err(|e| AppError::InternalServerError(format!("upstream write failed: {e}")))?;
+
+    let raw = tokio::time::timeout(timeout, async {
+        let mut buf = Vec::with_capacity(8192);
+        stream.read_to_end(&mut buf).await.map(|_| buf)
+    })
+    .await
+    .map_err(|_| AppError::InternalServerError("upstream read timeout".into()))?
+    .map_err(|e| AppError::InternalServerError(format!("upstream read failed: {e}")))?;
+
+    if raw.is_empty() {
+        return Err(AppError::InternalServerError("empty upstream response".into()));
+    }
+
+    let sep = find_subsequence(&raw, b"\r\n\r\n");
+    let header_bytes = &raw[..sep.unwrap_or(raw.len())];
+    let body_bytes = if let Some(s) = sep {
+        &raw[s + 4..]
+    } else {
+        &[][..]
+    };
+
+    let first_line_end = header_bytes
+        .iter()
+        .position(|&b| b == b'\r')
+        .unwrap_or(header_bytes.len());
+    let first_line = std::str::from_utf8(&header_bytes[..first_line_end])
+        .map_err(|_| AppError::InternalServerError("bad upstream status line".into()))?;
+    let status: u16 = first_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| AppError::InternalServerError("bad upstream status line".into()))?
+        .parse()
+        .map_err(|_| AppError::InternalServerError("bad upstream status code".into()))?;
+
+    let headers_str = std::str::from_utf8(header_bytes).unwrap_or("");
+    let chunked = headers_str
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked");
+    let body = if chunked {
+        dechunk(body_bytes)
+    } else {
+        body_bytes.to_vec()
+    };
+
+    Ok(UpstreamResponse { status, body })
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+fn dechunk(chunked: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while pos < chunked.len() {
+        let eol = match find_subsequence(&chunked[pos..], b"\r\n") {
+            Some(e) => pos + e,
+            None => break,
+        };
+        let len_str = match std::str::from_utf8(&chunked[pos..eol]) {
+            Ok(s) => s,
+            Err(_) => break,
+        };
+        let chunk_len = match usize::from_str_radix(len_str.trim(), 16) {
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        if chunk_len == 0 {
+            break;
+        }
+        let data_start = eol + 2;
+        if data_start + chunk_len > chunked.len() {
+            break;
+        }
+        out.extend_from_slice(&chunked[data_start..data_start + chunk_len]);
+        pos = data_start + chunk_len + 2;
+    }
+    out
+}
+
+/// Builds the upstream path from a base resource path plus optional id/suffix,
+/// preserving the inbound query string.
+fn build_path(resource: &str, suffix: &str, query: &Option<String>) -> String {
+    let mut path = format!("/api/v1{}{}", resource, suffix);
+    if let Some(q) = query {
+        if !q.is_empty() {
+            path.push('?');
+            path.push_str(q);
+        }
+    }
+    path
+}
+
+/// Core proxy: forwards the inbound request to admin/go and returns its
+/// status + body. `resource` is the resource path (e.g. `/admins`); `suffix`
+/// is any id/action tail (e.g. `/{id}/suspend`).
+async fn proxy(
+    headers: HeaderMap,
+    method: Method,
+    resource: &str,
+    suffix: &str,
+    query: Option<String>,
+    body: Bytes,
+) -> AppResult<Response> {
+    let bearer = bearer_token(&headers)?;
+    let path = build_path(resource, suffix, &query);
+    let up = upstream_call(&method, &path, &body, &bearer).await?;
+
+    let status = StatusCode::from_u16(up.status)
+        .map_err(|_| AppError::InternalServerError("bad upstream status".into()))?;
+    let body_json: serde_json::Value = if up.body.is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_slice(&up.body).unwrap_or_else(|_| {
+            serde_json::Value::String(String::from_utf8_lossy(&up.body).to_string())
+        })
+    };
+    Ok((status, Json(body_json)).into_response())
+}
+
+// ---- Admin Handlers ----
+
+pub async fn list_admins(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/admins", "", query, Bytes::new()).await
 }
 
 pub async fn create_admin(
-    Json(payload): Json<CreateAdminRequest>,
-) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/admins", "", None, body).await
 }
 
-pub async fn get_admin(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_admin(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/admins", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn update_admin(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Admin updated" })))
+pub async fn update_admin(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/admins", &format!("/{id}"), None, body).await
 }
 
-pub async fn delete_admin(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Admin deleted" })))
+pub async fn delete_admin(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::DELETE, "/admins", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn suspend_admin(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Admin suspended" })))
+pub async fn suspend_admin(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/admins", &format!("/{id}/suspend"), None, Bytes::new()).await
 }
 
-pub async fn activate_admin(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Admin activated" })))
+pub async fn activate_admin(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/admins", &format!("/{id}/activate"), None, Bytes::new()).await
 }
 
-// ============================================================================
-// User Handlers
-// ============================================================================
+// ---- User Handlers ----
 
-pub async fn list_users() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "users": [], "total": 0 })))
+pub async fn list_users(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/users", "", query, Bytes::new()).await
 }
 
-pub async fn get_user(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_user(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/users", &format!("/{id}"), None, Bytes::new()).await
 }
 
 pub async fn update_user(
+    headers: HeaderMap,
     Path(id): Path<uuid::Uuid>,
-    Json(payload): Json<UpdateUserRequest>,
-) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "User updated" })))
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/users", &format!("/{id}"), None, body).await
 }
 
-pub async fn ban_user(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "User banned" })))
+pub async fn ban_user(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/users", &format!("/{id}/ban"), None, Bytes::new()).await
 }
 
-pub async fn unban_user(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "User unbanned" })))
+pub async fn unban_user(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/users", &format!("/{id}/unban"), None, Bytes::new()).await
 }
 
-pub async fn suspend_user(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "User suspended" })))
+pub async fn suspend_user(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/users", &format!("/{id}/suspend"), None, Bytes::new()).await
 }
 
-// ============================================================================
-// KYC Handlers
-// ============================================================================
+// ---- KYC Handlers ----
 
-pub async fn list_kyc() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "requests": [], "total": 0 })))
+pub async fn list_kyc(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/kyc", "", query, Bytes::new()).await
 }
 
-pub async fn get_kyc(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_kyc(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/kyc", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn approve_kyc(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "KYC approved" })))
+pub async fn approve_kyc(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/kyc", &format!("/{id}/approve"), None, body).await
 }
 
-pub async fn reject_kyc(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "KYC rejected" })))
+pub async fn reject_kyc(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/kyc", &format!("/{id}/reject"), None, body).await
 }
 
-// ============================================================================
-// Transaction Handlers
-// ============================================================================
+// ---- Transaction Handlers ----
 
-pub async fn list_transactions() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "transactions": [], "total": 0 })))
+pub async fn list_transactions(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/transactions", "", query, Bytes::new()).await
 }
 
-pub async fn get_transaction(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_transaction(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/transactions", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn flag_transaction(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Transaction flagged" })))
+pub async fn flag_transaction(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/transactions", &format!("/{id}/flag"), None, body).await
 }
 
-pub async fn unflag_transaction(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Transaction unflagged" })))
+pub async fn unflag_transaction(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/transactions", &format!("/{id}/unflag"), None, body).await
 }
 
-// ============================================================================
-// Withdrawal Handlers
-// ============================================================================
+// ---- Withdrawal Handlers ----
 
-pub async fn list_withdrawals() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "withdrawals": [], "total": 0 })))
+pub async fn list_withdrawals(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/withdrawals", "", query, Bytes::new()).await
 }
 
-pub async fn get_withdrawal(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_withdrawal(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/withdrawals", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn approve_withdrawal(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Withdrawal approved" })))
+pub async fn approve_withdrawal(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/withdrawals", &format!("/{id}/approve"), None, body).await
 }
 
-pub async fn reject_withdrawal(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Withdrawal rejected" })))
+pub async fn reject_withdrawal(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/withdrawals", &format!("/{id}/reject"), None, body).await
 }
 
-pub async fn process_withdrawal(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Withdrawal processed" })))
+pub async fn process_withdrawal(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/withdrawals", &format!("/{id}/process"), None, body).await
 }
 
-// ============================================================================
-// Token Handlers
-// ============================================================================
+// ---- Token Handlers ----
 
-pub async fn list_tokens() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "tokens": [], "total": 0 })))
+pub async fn list_tokens(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/tokens", "", query, Bytes::new()).await
 }
 
-pub async fn get_token(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_token(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/tokens", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn create_token() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_token(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/tokens", "", None, body).await
 }
 
-pub async fn update_token(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Token updated" })))
+pub async fn update_token(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/tokens", &format!("/{id}"), None, body).await
 }
 
-pub async fn delete_token(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Token deleted" })))
+pub async fn delete_token(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::DELETE, "/tokens", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn verify_token(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Token verified" })))
+pub async fn verify_token(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/tokens", &format!("/{id}/verify"), None, body).await
 }
 
-// ============================================================================
-// Pair Handlers
-// ============================================================================
+// ---- Pair Handlers ----
 
-pub async fn list_pairs() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "pairs": [], "total": 0 })))
+pub async fn list_pairs(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/pairs", "", query, Bytes::new()).await
 }
 
-pub async fn get_pair(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_pair(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/pairs", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn create_pair() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_pair(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/pairs", "", None, body).await
 }
 
-pub async fn update_pair(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Pair updated" })))
+pub async fn update_pair(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/pairs", &format!("/{id}"), None, body).await
 }
 
-pub async fn halt_pair(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Pair halted" })))
+pub async fn halt_pair(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/pairs", &format!("/{id}/halt"), None, body).await
 }
 
-pub async fn activate_pair(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Pair activated" })))
+pub async fn activate_pair(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/pairs", &format!("/{id}/activate"), None, body).await
 }
 
-// ============================================================================
-// Blockchain Handlers
-// ============================================================================
+// ---- Blockchain Handlers ----
 
-pub async fn list_blockchains() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_blockchains(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/blockchains", "", query, Bytes::new()).await
 }
 
-pub async fn get_blockchain(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_blockchain(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/blockchains", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn create_blockchain() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_blockchain(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/blockchains", "", None, body).await
 }
 
-pub async fn update_blockchain(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Blockchain updated" })))
+pub async fn update_blockchain(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/blockchains", &format!("/{id}"), None, body).await
 }
 
-// ============================================================================
-// Fee Handlers
-// ============================================================================
+// ---- Fee Handlers ----
 
-pub async fn list_fees() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_fees(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/fees", "", query, Bytes::new()).await
 }
 
-pub async fn create_fee() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_fee(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/fees", "", None, body).await
 }
 
-pub async fn update_fee(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Fee updated" })))
+pub async fn update_fee(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/fees", &format!("/{id}"), None, body).await
 }
 
-// ============================================================================
-// White Label Handlers
-// ============================================================================
+// ---- White Label Handlers ----
 
-pub async fn list_whitelabels() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "white_labels": [], "total": 0 })))
+pub async fn list_whitelabels(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/whitelabels", "", query, Bytes::new()).await
 }
 
-pub async fn get_whitelabel(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_whitelabel(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/whitelabels", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn create_whitelabel() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_whitelabel(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/whitelabels", "", None, body).await
 }
 
-pub async fn update_whitelabel(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "White label updated" })))
+pub async fn update_whitelabel(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/whitelabels", &format!("/{id}"), None, body).await
 }
 
-pub async fn activate_whitelabel(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "White label activated" })))
+pub async fn activate_whitelabel(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/whitelabels", &format!("/{id}/activate"), None, body).await
 }
 
-pub async fn suspend_whitelabel(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "White label suspended" })))
+pub async fn suspend_whitelabel(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/whitelabels", &format!("/{id}/suspend"), None, body).await
 }
 
-// ============================================================================
-// Ticket Handlers
-// ============================================================================
+// ---- Ticket Handlers ----
 
-pub async fn list_tickets() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "tickets": [], "total": 0 })))
+pub async fn list_tickets(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/tickets", "", query, Bytes::new()).await
 }
 
-pub async fn get_ticket(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": id })))
+pub async fn get_ticket(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/tickets", &format!("/{id}"), None, Bytes::new()).await
 }
 
-pub async fn create_ticket() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_ticket(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/tickets", "", None, body).await
 }
 
-pub async fn update_ticket_status(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Ticket status updated" })))
+pub async fn update_ticket_status(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/tickets", &format!("/{id}/status"), None, body).await
 }
 
-pub async fn assign_ticket(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Ticket assigned" })))
+pub async fn assign_ticket(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/tickets", &format!("/{id}/assign"), None, body).await
 }
 
-pub async fn add_ticket_message(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Message added" })))
+pub async fn add_ticket_message(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/tickets", &format!("/{id}/messages"), None, body).await
 }
 
-// ============================================================================
-// Analytics Handlers
-// ============================================================================
+// ---- Analytics Handlers ----
 
-pub async fn dashboard_stats() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({
-        "total_users": 0,
-        "active_users": 0,
-        "total_volume": 0.0,
-        "total_transactions": 0,
-        "total_fees": 0.0
-    })))
+pub async fn dashboard_stats(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/dashboard", "", query, Bytes::new()).await
 }
 
-pub async fn user_analytics() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({})))
+pub async fn user_analytics(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/analytics/users", "", query, Bytes::new()).await
 }
 
-pub async fn transaction_analytics() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({})))
+pub async fn transaction_analytics(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/analytics/transactions", "", query, Bytes::new()).await
 }
 
-pub async fn revenue_analytics() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({})))
+pub async fn revenue_analytics(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/analytics/revenue", "", query, Bytes::new()).await
 }
 
-// ============================================================================
-// Audit Handlers
-// ============================================================================
+// ---- Audit Handlers ----
 
-pub async fn list_audit_logs() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "logs": [], "total": 0 })))
+pub async fn list_audit_logs(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/audit-logs", "", query, Bytes::new()).await
 }
 
-pub async fn export_audit_logs() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!([])))
+pub async fn export_audit_logs(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/audit-logs/export", "", None, body).await
 }
 
-// ============================================================================
-// Feature Flag Handlers
-// ============================================================================
+// ---- Feature Flag Handlers ----
 
-pub async fn list_feature_flags() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_feature_flags(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/feature-flags", "", query, Bytes::new()).await
 }
 
-pub async fn create_feature_flag() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_feature_flag(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/feature-flags", "", None, body).await
 }
 
-pub async fn update_feature_flag(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Feature flag updated" })))
+pub async fn update_feature_flag(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/feature-flags", &format!("/{id}"), None, body).await
 }
 
-pub async fn delete_feature_flag(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Feature flag deleted" })))
+pub async fn delete_feature_flag(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::DELETE, "/feature-flags", &format!("/{id}"), None, Bytes::new()).await
 }
 
-// ============================================================================
-// Notification Handlers
-// ============================================================================
+// ---- Notification Handlers ----
 
-pub async fn list_notifications() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_notifications(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/notifications", "", query, Bytes::new()).await
 }
 
-pub async fn mark_notification_read(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Notification marked as read" })))
+pub async fn mark_notification_read(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/notifications", &format!("/{id}/read"), None, body).await
 }
 
-pub async fn broadcast_notification() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Notification broadcast" })))
+pub async fn broadcast_notification(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/notifications/broadcast", "", None, body).await
 }
 
-// ============================================================================
-// IP Whitelist Handlers
-// ============================================================================
+// ---- IP Whitelist Handlers ----
 
-pub async fn list_ip_whitelist() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_ip_whitelist(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/ip-whitelist", "", query, Bytes::new()).await
 }
 
-pub async fn add_ip_whitelist() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "IP added to whitelist" })))
+pub async fn add_ip_whitelist(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/ip-whitelist", "", None, body).await
 }
 
-pub async fn remove_ip_whitelist(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "IP removed from whitelist" })))
+pub async fn remove_ip_whitelist(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::DELETE, "/ip-whitelist", &format!("/{id}"), None, Bytes::new()).await
 }
 
-// ============================================================================
-// Backup Handlers
-// ============================================================================
+// ---- Backup Handlers ----
 
-pub async fn list_backups() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_backups(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/backups", "", query, Bytes::new()).await
 }
 
-pub async fn create_backup() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_backup(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/backups", "", None, body).await
 }
 
-pub async fn restore_backup(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Backup restored" })))
+pub async fn restore_backup(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/backups", &format!("/{id}/restore"), None, body).await
 }
 
-pub async fn delete_backup(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Backup deleted" })))
+pub async fn delete_backup(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::DELETE, "/backups", &format!("/{id}"), None, Bytes::new()).await
 }
 
-// ============================================================================
-// Webhook Handlers
-// ============================================================================
+// ---- Webhook Handlers ----
 
-pub async fn list_webhooks() -> AppResult<Json<Vec<serde_json::Value>>> {
-    Ok(Json(vec![]))
+pub async fn list_webhooks(
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> AppResult<Response> {
+    proxy(headers, Method::GET, "/webhooks", "", query, Bytes::new()).await
 }
 
-pub async fn create_webhook() -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "id": uuid::Uuid::new_v4() })))
+pub async fn create_webhook(
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/webhooks", "", None, body).await
 }
 
-pub async fn update_webhook(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Webhook updated" })))
+pub async fn update_webhook(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::PUT, "/webhooks", &format!("/{id}"), None, body).await
 }
 
-pub async fn test_webhook(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Webhook tested" })))
+pub async fn test_webhook(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    body: Bytes,
+) -> AppResult<Response> {
+    proxy(headers, Method::POST, "/webhooks", &format!("/{id}/test"), None, body).await
 }
 
-pub async fn delete_webhook(Path(id): Path<uuid::Uuid>) -> AppResult<Json<serde_json::Value>> {
-    Ok(Json(serde_json::json!({ "message": "Webhook deleted" })))
+pub async fn delete_webhook(
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Response> {
+    proxy(headers, Method::DELETE, "/webhooks", &format!("/{id}"), None, Bytes::new()).await
 }

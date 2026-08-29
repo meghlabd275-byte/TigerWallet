@@ -24,6 +24,11 @@ type Config struct {
 	JWTExpiry         time.Duration
 	HeartbeatInterval time.Duration
 	RPCURL            string // EVM RPC endpoint for on-chain token contract verification
+	// On-chain launchpad (real contribute()/claimTokens() txs). If either is
+	// unset, the on-chain path is disabled and handlers return 503 — they NEVER
+	// fabricate a tx hash.
+	LaunchpadPrivateKey   string
+	LaunchpadContractAddr string
 }
 
 func Load() *Config {
@@ -41,6 +46,8 @@ func Load() *Config {
 		JWTExpiry:         getDuration("JWT_EXPIRY", 24*time.Hour),
 		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
 		RPCURL:            getEnv("PP_RPC_URL", ""),
+		LaunchpadPrivateKey:   getEnv("PP_LAUNCHPAD_PRIVATE_KEY", ""),
+		LaunchpadContractAddr: getEnv("PP_LAUNCHPAD_CONTRACT_ADDRESS", ""),
 	}
 }
 

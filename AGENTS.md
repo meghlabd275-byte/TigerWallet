@@ -259,3 +259,44 @@
   status open->confirmed->released / disputed), p2p_messages (trade_id FK,
   from_user, body). Trade create runs in a tx that also marks the order pending;
   release marks the parent order completed.
+
+## Session 9 (2026-08-29) — fake-impl purge + on-chain launchpad (commit pending)
+- DUPLICATE SWEEP (re-run, 3317+ files): all remaining identical groups are
+  Category B/C/D intentional per-app/per-browser/per-module copies (go/*/id.go,
+  per-browser extension manifests, bots vs project_party per-app scaffolding,
+  super_admin vs wl_admin models.go, admin vs super_admin cpp/rust scaffolding).
+  Nothing safe to delete — consolidating would couple separately-deployable apps.
+- admin/rust: handlers.rs had ~70 stub handlers returning hardcoded JSON
+  ({"message":"..."}, [], {"id":<uuid>}) for admins/users/KYC/transactions/
+  withdrawals/tokens/pairs/blockchains/fees/whitelabels/tickets/analytics/audit/
+  feature-flags/notifications/ip-whitelist/backups/webhooks (auth+2FA were
+  already real). REPLACED all stubs with a real HTTP/1.1 proxy to the canonical
+  admin/go backend (:9093) — same pattern as the existing domain.rs proxy.
+  cargo check (lib + bin) PASS, 0 errors.
+- admin/cpp: was BROKEN — root CMakeLists.txt built nonexistent src/processor.cpp;
+  include/CMakeLists.txt referenced nonexistent src/*.cpp + admin_database.hpp/
+  admin_models.hpp + protobuf (unused). admin_handler.cpp returned fake
+  {"token":"test"} / hardcoded empty JSON for every route, and routes used :id
+  but the router only matches {id} (so :id routes never dispatched). FIXED:
+  rewrote root CMakeLists.txt to build all include/*.cpp into a real
+  tiger_admin_cpp executable (OpenSSL+Threads, no protobuf); deleted broken
+  include/CMakeLists.txt; added proxy_to_admin_go() (real TCP HTTP/1.1 call to
+  admin/go :9093, fail-closed 503 on dead upstream) and routed every handler
+  through it; converted :id -> {id} so routes dispatch; added missing
+  IPRateLimiter::initialize() no-arg definition. cmake build PASS (5.5MB binary).
+- wl_project_party G2 (launchpad on-chain): Contribute/Claim were DB-only
+  (no on-chain tx). Implemented real LaunchpadOnChain (ethclient + ABI +
+  contribute()/claimTokens() tx broadcast + receipt wait + tokenPrice eth_call,
+  mirroring canonical project_party/go/cmd/launchpad_onchain.go). New
+  config fields PP_LAUNCHPAD_PRIVATE_KEY/PP_LAUNCHPAD_CONTRACT_ADDRESS; new
+  store.SetContributionOnChain/SetContributionClaimedOnChain + tx_hash/confirmed_at
+  columns; Contribute/Claim handlers broadcast real txs (fail-closed 503 if
+  unconfigured, never fabricate a hash). go build + vet + test PASS.
+- wl_card: Store.Rates() returned hardcoded {BTC:67000,ETH:3500,...} mock.
+  REPLACED with a real CoinGecko price oracle (live USD prices, 60s in-memory
+  TTL cache, stablecoins pinned to 1.0, empty map on failure — never fabricated).
+  go build + vet PASS.
+- Toolchain: Rust 1.85.0 (rustup) + Go 1.23.4 (/usr/local/go) installed this
+  session; libssl-dev + pkg-config + cmake installed. admin/rust cargo check +
+  admin/cpp cmake build + wl_project_party/wl_card/wl_bots/wl_liquidity/
+  admin/go/go-wallet_api go build all PASS.

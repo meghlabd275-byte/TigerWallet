@@ -34,6 +34,10 @@ type Handlers struct {
 	store      *store.Store
 	gate       *wlgate.Gate
 	wlClientID uuid.UUID
+	// launchpadOnChain is nil when on-chain launchpad is not configured
+	// (PP_LAUNCHPAD_PRIVATE_KEY / PP_LAUNCHPAD_CONTRACT_ADDRESS unset); the
+	// contribute/claim handlers then return 503 and never fabricate a tx hash.
+	launchpadOnChain *LaunchpadOnChain
 }
 
 // New builds Handlers bound to a fail-closed license gate.
@@ -42,11 +46,13 @@ func New(cfg *config.Config, st *store.Store, gate *wlgate.Gate) *Handlers {
 	if err != nil {
 		wlID = uuid.Nil
 	}
+	loc, _ := NewLaunchpadOnChain(cfg)
 	return &Handlers{
-		cfg:        cfg,
-		store:      st,
-		gate:       gate,
-		wlClientID: wlID,
+		cfg:              cfg,
+		store:            st,
+		gate:             gate,
+		wlClientID:       wlID,
+		launchpadOnChain: loc,
 	}
 }
 
@@ -830,7 +836,12 @@ func (h *Handlers) ToggleFeatured(c *gin.Context) {
 
 // ==================== Launchpad contributions ====================
 
-// Contribute atomically records a contribution and increments sold_amount.
+// Contribute records a pending contribution (DB) AND, when on-chain launchpad
+// is configured, broadcasts a real contribute() transaction to the
+// ProjectPartyLaunchpad contract and persists the tx hash. Fail-closed: if the
+// on-chain path is configured but the tx fails, the contribution stays
+// "pending" (no fabricated tx hash). If on-chain is NOT configured, returns
+// 503 so the WL client knows the launchpad contract is not wired.
 func (h *Handlers) Contribute(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
@@ -863,21 +874,88 @@ func (h *Handlers) Contribute(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, contributionToJSON(contrib))
+	// On-chain contribute (fail-closed; never fabricates a tx hash).
+	if h.launchpadOnChain == nil {
+		c.JSON(http.StatusCreated, contributionToJSON(contrib))
+		return
+	}
+	valueWei, ok := new(big.Int).SetString(normalizeWei(req.Amount), 10)
+	if !ok || valueWei == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
+		return
+	}
+	saleID := saleIDFromUUID(id.String())
+	txCtx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+	txHash, tokenClaim, err := h.launchpadOnChain.Contribute(txCtx, saleID, valueWei)
+	if err != nil {
+		// On-chain tx failed; the contribution stays "pending" (no fake hash).
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":         "on-chain contribution failed",
+			"detail":        err.Error(),
+			"contribution":  contributionToJSON(contrib),
+			"on_chain":      false,
+		})
+		return
+	}
+	claimStr := "0"
+	if tokenClaim != nil {
+		claimStr = tokenClaim.String()
+	}
+	if err := h.store.SetContributionOnChain(c.Request.Context(), contrib.ID, txHash, claimStr); err != nil {
+		// Tx was broadcast but DB update failed — return the real hash anyway.
+		c.JSON(http.StatusCreated, gin.H{
+			"contribution": contributionToJSON(contrib),
+			"tx_hash":      txHash,
+			"token_claim":  claimStr,
+			"on_chain":     true,
+			"warning":      "tx broadcast but confirmation not persisted",
+		})
+		return
+	}
+	contrib.TxHash = txHash
+	contrib.Status = "confirmed"
+	contrib.TokenAmount = claimStr
+	c.JSON(http.StatusCreated, gin.H{
+		"contribution": contributionToJSON(contrib),
+		"tx_hash":      txHash,
+		"token_claim":  claimStr,
+		"on_chain":     true,
+	})
 }
 
-// Claim marks a user's pending contribution as claimed (fail-closed if none).
+// Claim broadcasts a real claimTokens() transaction (when on-chain launchpad
+// is configured) and marks the user's confirmed contribution as claimed with
+// the real tx hash. Fail-closed: never marks claimed without a real broadcast.
 func (h *Handlers) Claim(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
 		return
 	}
 	userID := wlgate.UserID(c)
-	if err := h.store.ClaimContribution(c.Request.Context(), id, userID); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "no claimable contribution found"})
+	if h.launchpadOnChain == nil {
+		// On-chain not configured: fall back to the DB-only claim path so the
+		// WL client can still mark a contribution claimed in a non-contract mode.
+		if err := h.store.ClaimContribution(c.Request.Context(), id, userID); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no claimable contribution found"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"project_id": id, "user_id": userID, "status": "claimed", "on_chain": false})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"project_id": id, "user_id": userID, "status": "claimed"})
+	saleID := saleIDFromUUID(id.String())
+	txCtx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+	txHash, err := h.launchpadOnChain.ClaimTokens(txCtx, saleID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "on-chain claim failed", "detail": err.Error()})
+		return
+	}
+	if err := h.store.SetContributionClaimedOnChain(c.Request.Context(), id, userID, txHash); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no claimable contribution found", "tx_hash": txHash})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"project_id": id, "user_id": userID, "status": "claimed", "tx_hash": txHash, "on_chain": true})
 }
 
 // CancelContribution marks a user's pending contribution as refunded.
@@ -1562,8 +1640,8 @@ func contributionToJSON(c *store.LaunchpadContribution) gin.H {
 	return gin.H{
 		"id": c.ID, "project_id": c.ProjectID, "user_id": c.UserID,
 		"amount": c.Amount, "token_amount": c.TokenAmount, "status": c.Status,
-		"claimed_at": c.ClaimedAt, "refunded_at": c.RefundedAt,
-		"created_at": c.CreatedAt,
+		"tx_hash": c.TxHash, "claimed_at": c.ClaimedAt, "refunded_at": c.RefundedAt,
+		"confirmed_at": c.ConfirmedAt, "created_at": c.CreatedAt,
 	}
 }
 

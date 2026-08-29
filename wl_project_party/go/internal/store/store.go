@@ -79,6 +79,8 @@ func (s *Store) migrate(ctx context.Context) error {
 		// Launchpad contributions (atomic contribute/claim/cancel workflow).
 		`CREATE TABLE IF NOT EXISTS launchpad_contributions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id UUID NOT NULL REFERENCES launchpad_projects(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, amount NUMERIC(36,18) DEFAULT 0, token_amount NUMERIC(36,18) DEFAULT 0, status VARCHAR(32) NOT NULL DEFAULT 'pending', claimed_at TIMESTAMPTZ, refunded_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_contrib_project ON launchpad_contributions(project_id)`,
+		`ALTER TABLE launchpad_contributions ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(128)`,
+		`ALTER TABLE launchpad_contributions ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS idx_contrib_user ON launchpad_contributions(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_contrib_status ON launchpad_contributions(status)`,
 
@@ -847,8 +849,10 @@ type LaunchpadContribution struct {
 	Amount      string
 	TokenAmount string
 	Status      string
+	TxHash      string
 	ClaimedAt   *time.Time
 	RefundedAt  *time.Time
+	ConfirmedAt *time.Time
 	CreatedAt   time.Time
 }
 
@@ -881,9 +885,9 @@ func (s *Store) CreateContribution(ctx context.Context, projectID, userID uuid.U
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO launchpad_contributions (project_id, user_id, amount, token_amount, status)
 		 VALUES ($1,$2,$3,$4,'pending')
-		 RETURNING id, project_id, user_id, amount, token_amount, status, claimed_at, refunded_at, created_at`,
+		 RETURNING id, project_id, user_id, amount, token_amount, status, tx_hash, claimed_at, refunded_at, confirmed_at, created_at`,
 		projectID, userID, amount, computeTokenAmount(amount, pricePerToken)).
-		Scan(&out.ID, &out.ProjectID, &out.UserID, &out.Amount, &out.TokenAmount, &out.Status, &out.ClaimedAt, &out.RefundedAt, &out.CreatedAt); err != nil {
+		Scan(&out.ID, &out.ProjectID, &out.UserID, &out.Amount, &out.TokenAmount, &out.Status, &out.TxHash, &out.ClaimedAt, &out.RefundedAt, &out.ConfirmedAt, &out.CreatedAt); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE launchpad_projects SET sold_amount = sold_amount + $1 WHERE id=$2`, amount, projectID); err != nil {
@@ -901,6 +905,43 @@ func (s *Store) ClaimContribution(ctx context.Context, projectID, userID uuid.UU
 	tag, err := s.db.Exec(ctx,
 		`UPDATE launchpad_contributions SET status='claimed', claimed_at=NOW()
 		 WHERE project_id=$1 AND user_id=$2 AND status='pending'`, projectID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// SetContributionOnChain records a real on-chain contribution tx hash and marks
+// the contribution confirmed. Fail-closed: an empty txHash is rejected and the
+// contribution is never marked confirmed without a real broadcast.
+func (s *Store) SetContributionOnChain(ctx context.Context, contribID uuid.UUID, txHash string, tokenAmountWei string) error {
+	if txHash == "" {
+		return fmt.Errorf("no tx hash")
+	}
+	tag, err := s.db.Exec(ctx,
+		`UPDATE launchpad_contributions SET status='confirmed', tx_hash=$1, token_amount=$2, confirmed_at=NOW()
+		 WHERE id=$3 AND status='pending'`, txHash, tokenAmountWei, contribID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// SetContributionClaimedOnChain records a real on-chain claimTokens tx hash and
+// marks the contribution claimed. Fail-closed on empty txHash.
+func (s *Store) SetContributionClaimedOnChain(ctx context.Context, projectID, userID uuid.UUID, txHash string) error {
+	if txHash == "" {
+		return fmt.Errorf("no tx hash")
+	}
+	tag, err := s.db.Exec(ctx,
+		`UPDATE launchpad_contributions SET status='claimed', tx_hash=$1, claimed_at=NOW()
+		 WHERE project_id=$2 AND user_id=$3 AND status='confirmed'`, txHash, projectID, userID)
 	if err != nil {
 		return err
 	}

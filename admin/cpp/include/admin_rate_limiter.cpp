@@ -86,6 +86,10 @@ void IPRateLimiter::initialize(int max_requests, int window_seconds) {
     LOG_INFO("IP rate limiter initialized: " + std::to_string(max_requests) + " req/" + std::to_string(window_seconds) + "s");
 }
 
+void IPRateLimiter::initialize() {
+    initialize(max_requests_, window_seconds_);
+}
+
 bool IPRateLimiter::is_allowed(const std::string& ip_address) {
     return check(ip_address).allowed;
 }

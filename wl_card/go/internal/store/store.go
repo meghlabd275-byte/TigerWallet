@@ -9,7 +9,11 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +23,10 @@ import (
 
 type Store struct {
 	db *pgxpool.Pool
+
+	ratesMu      sync.RWMutex
+	ratesCache   map[string]float64
+	ratesCachedAt time.Time
 }
 
 func New(ctx context.Context, databaseURL string) (*Store, error) {
@@ -395,18 +403,95 @@ func (s *Store) TopUp(ctx context.Context, cardID uuid.UUID, amount string) (*Ca
 	return s.RecordTransaction(ctx, cardID, amount, "Top-up", "TOP_UP", "credit", "TOP_UP")
 }
 
-// ==================== Rates (stub) ====================
+// ==================== Rates (real CoinGecko oracle) ====================
 
-// Rates returns static card funding rates (USD per unit). Stub: hardcoded
-// until a real price oracle is wired in.
+// coingeckoIDs maps the supported card-funding crypto symbols to their
+// CoinGecko API ids.
+var coingeckoIDs = map[string]string{
+	"BTC": "bitcoin", "ETH": "ethereum", "USDT": "tether",
+	"BNB": "binancecoin", "MATIC": "matic-network", "SOL": "solana",
+	"USDC": "usd-coin",
+}
+
+// usdStablecoins are symbols that are pegged 1:1 to USD; CoinGecko returns
+// ~1.0 for them, but we force exactly 1.0 so funding math is exact.
+var usdStablecoins = map[string]bool{"USDT": true, "USDC": true}
+
+// Rates returns live USD-per-unit funding rates for the supported crypto
+// assets, fetched from CoinGecko and cached in-memory for 60s. Stablecoins are
+// pinned to 1.0. On any fetch/parse failure the cache (if fresh) is returned,
+// otherwise an empty map — NEVER fabricated/hardcoded rates.
 func (s *Store) Rates(ctx context.Context) map[string]float64 {
-	return map[string]float64{
-		"BTC":  67000,
-		"ETH":  3500,
-		"BNB":  600,
-		"USDT": 1,
-		"USDC": 1,
+	s.ratesMu.RLock()
+	if s.ratesCache != nil && time.Since(s.ratesCachedAt) < 60*time.Second {
+		out := make(map[string]float64, len(s.ratesCache))
+		for k, v := range s.ratesCache {
+			out[k] = v
+		}
+		s.ratesMu.RUnlock()
+		return out
 	}
+	s.ratesMu.RUnlock()
+
+	fetched := s.fetchCryptoRates(ctx)
+	if len(fetched) == 0 {
+		// Fetch failed; return the stale cache if present, else empty.
+		s.ratesMu.RLock()
+		defer s.ratesMu.RUnlock()
+		if s.ratesCache != nil {
+			out := make(map[string]float64, len(s.ratesCache))
+			for k, v := range s.ratesCache {
+				out[k] = v
+			}
+			return out
+		}
+		return map[string]float64{}
+	}
+
+	s.ratesMu.Lock()
+	s.ratesCache = fetched
+	s.ratesCachedAt = time.Now()
+	s.ratesMu.Unlock()
+	return fetched
+}
+
+// fetchCryptoRates pulls live USD prices for the supported crypto assets from
+// CoinGecko. Stablecoins are pinned to 1.0. Returns an empty map on any
+// failure rather than fabricated fallback rates.
+func (s *Store) fetchCryptoRates(ctx context.Context) map[string]float64 {
+	ids := "bitcoin,ethereum,tether,binancecoin,matic-network,solana,usd-coin"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://api.coingecko.com/api/v3/simple/price?ids="+ids+"&vs_currencies=usd", nil)
+	if err != nil {
+		return map[string]float64{}
+	}
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return map[string]float64{}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return map[string]float64{}
+	}
+	var parsed map[string]map[string]float64
+	if json.Unmarshal(body, &parsed) != nil {
+		return map[string]float64{}
+	}
+	out := make(map[string]float64)
+	for sym, id := range coingeckoIDs {
+		if usdStablecoins[sym] {
+			out[sym] = 1.0
+			continue
+		}
+		if inner, ok := parsed[id]; ok {
+			if usd, ok := inner["usd"]; ok && usd > 0 {
+				out[sym] = usd
+			}
+		}
+	}
+	return out
 }
 
 // ==================== Admin stats ====================

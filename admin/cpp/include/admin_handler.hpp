@@ -204,6 +204,15 @@ public:
     std::string to_json(const std::map<std::string, std::string>& data);
     std::string to_json(const std::vector<std::string>& data);
 
+    // Forwards an inbound request to the canonical admin/go backend (:9093)
+    // and returns its real status + body. Used by every domain-resource
+    // handler so the C++ surface never fabricates data. A down upstream
+    // becomes a 503. `method_override`/`path_override` let a handler remap
+    // the verb/path (e.g. POST /:id/approve) before forwarding.
+    HttpResponse proxy_to_admin_go(const HttpRequest& req,
+                                   const std::string& path_override = "",
+                                   HttpMethod method_override = HttpMethod::GET);
+
 private:
     AdminHandler() = default;
     AdminServer* server_ = nullptr;
