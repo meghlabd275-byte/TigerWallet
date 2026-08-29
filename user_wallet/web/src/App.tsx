@@ -42,6 +42,8 @@ import Prediction from './pages/Prediction';
 import ENS from './pages/ENS';
 import Security from './pages/Security';
 import Terminal from './pages/Terminal';
+import Multisig from './pages/Multisig';
+import NonEvm from './pages/NonEvm';
 import Layout from './components/Layout';
 
 function AppRoutes() {
@@ -89,6 +91,8 @@ function AppRoutes() {
           <Route path="ens" element={<ENS />} />
           <Route path="security" element={<Security />} />
           <Route path="terminal" element={<Terminal />} />
+          <Route path="multisig" element={<Multisig />} />
+          <Route path="non-evm" element={<NonEvm />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

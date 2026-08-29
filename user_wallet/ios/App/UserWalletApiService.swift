@@ -510,7 +510,7 @@ final class UserWalletApiService {
 
     // requestRaw returns an untyped [String: Any] JSON object for endpoints
     // whose response shapes are service-specific (fiat/card/p2p).
-    private func requestRaw(_ path: String, method: String = "GET", body: Data? = nil, authenticated: Bool = true) async throws -> [String: Any] {
+    func requestRaw(_ path: String, method: String = "GET", body: Data? = nil, authenticated: Bool = true) async throws -> [String: Any] {
         guard let url = URL(string: baseURL + path) else { throw WalletAPIError.invalidURL }
         var req = URLRequest(url: url)
         req.httpMethod = method

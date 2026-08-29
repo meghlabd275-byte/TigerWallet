@@ -770,56 +770,54 @@ class ApiService {
   }
 
   // ==================== Non-EVM (Solana / Bitcoin / Cosmos) ====================
-  // POST /non_evm/address { seed, chain_type, chain_id } -> { address }
+  // POST /non_evm/address { wallet_id, password, chain_type } -> { address }.
+  // Real derivation from the server-side encrypted seed (mainnet only).
   async nonEvmAddress(params: {
-    seed: string;
+    walletId: string;
+    password: string;
     chainType: string;
-    chainId: number;
-    path?: string;
+    prefix?: string;
   }): Promise<{ address: string }> {
     const { data } = await this.client.post('/non_evm/address', {
-      seed: params.seed,
+      wallet_id: params.walletId,
+      password: params.password,
       chain_type: params.chainType,
-      chain_id: params.chainId,
-      path: params.path,
+      prefix: params.prefix,
     });
     return data;
   }
 
-  // POST /non_evm/sign { seed, chain_type, message_hash } -> { signature }
+  // POST /non_evm/sign { wallet_id, password, message, chain_type } -> { signature }
   async nonEvmSign(params: {
-    seed: string;
+    walletId: string;
+    password: string;
     chainType: string;
-    chainId: number;
-    messageHash: string;
-    path?: string;
+    message: string;
   }): Promise<{ signature: string }> {
     const { data } = await this.client.post('/non_evm/sign', {
-      seed: params.seed,
+      wallet_id: params.walletId,
+      password: params.password,
       chain_type: params.chainType,
-      chain_id: params.chainId,
-      message_hash: params.messageHash,
-      path: params.path,
+      message: params.message,
     });
     return data;
   }
 
-  // POST /non_evm/send { seed, chain_type, to, value, ... } -> { signature, raw_tx }
+  // POST /non_evm/send — sign a non-EVM transaction; `extras` carry the
+  // chain-specific fields (bitcoin_inputs/bitcoin_outputs/cosmos_sign_doc).
+  // Returns the raw signed payload for broadcast.
   async nonEvmSend(params: {
-    seed: string;
+    walletId: string;
+    password: string;
     chainType: string;
-    chainId: number;
-    to: string;
-    value: string;
-    path?: string;
-  }): Promise<{ signature: string; raw_tx?: string; tx_hash?: string }> {
+    [k: string]: any;
+  }): Promise<{ signature?: string; raw_tx?: string; tx_hash?: string }> {
+    const { walletId, password, chainType, ...extras } = params;
     const { data } = await this.client.post('/non_evm/send', {
-      seed: params.seed,
-      chain_type: params.chainType,
-      chain_id: params.chainId,
-      to: params.to,
-      value: params.value,
-      path: params.path,
+      wallet_id: walletId,
+      password,
+      chain_type: chainType,
+      ...extras,
     });
     return data;
   }
@@ -1293,7 +1291,63 @@ class ApiService {
     return data;
   }
 
-  // ==================== Price alerts ====================
+  // ==================== Multisig (proxied to MasterWallet) ====================
+  // GET /wallet/multisig/wallets — list multisig wallets.
+  async listMultisigWallets(): Promise<any> {
+    const { data } = await this.client.get('/wallet/multisig/wallets');
+    return data;
+  }
+
+  // POST /wallet/multisig/wallets — create a multisig wallet.
+  async createMultisigWallet(body: { name: string; owners: string[]; threshold: number; chain_id: number }): Promise<any> {
+    const { data } = await this.client.post('/wallet/multisig/wallets', body);
+    return data;
+  }
+
+  // GET /wallet/multisig/wallets/:id/transactions — list multisig txs.
+  async listMultisigTransactions(walletId: string): Promise<any> {
+    const { data } = await this.client.get(`/wallet/multisig/wallets/${encodeURIComponent(walletId)}/transactions`);
+    return data;
+  }
+
+  // POST /wallet/multisig/wallets/:id/transactions — create a multisig tx.
+  async createMultisigTransaction(walletId: string, body: { to_address: string; value: string; data?: string }): Promise<any> {
+    const { data } = await this.client.post(`/wallet/multisig/wallets/${encodeURIComponent(walletId)}/transactions`, body);
+    return data;
+  }
+
+  // POST /wallet/multisig/transactions/:id/sign — sign a multisig tx.
+  async signMultisigTransaction(txId: string): Promise<any> {
+    const { data } = await this.client.post(`/wallet/multisig/transactions/${encodeURIComponent(txId)}/sign`, {});
+    return data;
+  }
+
+  // POST /wallet/multisig/transactions/:id/execute — execute (broadcast) a
+  // multisig tx once the threshold of signatures is met.
+  async executeMultisigTransaction(txId: string): Promise<any> {
+    const { data } = await this.client.post(`/wallet/multisig/transactions/${encodeURIComponent(txId)}/execute`, {});
+    return data;
+  }
+
+  // Public live price feed (WebSocket /api/v1/ws): real server-pushed tickers.
+  liveFeedWs(onTicker: (t: any) => void, symbols: string[] = ['BTC', 'ETH']): WebSocket | null {
+    try {
+      const wsUrl = API_BASE_URL.replace(/^http/i, 'ws') + '/ws';
+      const ws = new WebSocket(wsUrl);
+      ws.onopen = () => ws.send(JSON.stringify({ action: 'subscribe', symbols }));
+      ws.onmessage = (ev) => {
+        try {
+          const frame = JSON.parse(ev.data);
+          if (frame.type === 'ticker') onTicker(frame);
+        } catch { /* ignore malformed frames */ }
+      };
+      return ws;
+    } catch {
+      return null;
+    }
+  }
+
+// ==================== Price alerts ====================
   // GET /price-alerts — list the user's price alerts.
   async getPriceAlerts(): Promise<any> {
     const { data } = await this.client.get('/price-alerts');

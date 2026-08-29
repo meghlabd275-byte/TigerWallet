@@ -129,6 +129,7 @@
     <div class="card">
       <div class="total-usd">Total Balance</div>
       <div class="total" id="totalUsd">$0.00</div>
+      <div id="liveTicker" style="font-size:11px;color:var(--text-secondary);margin-top:4px;"></div>
       <button class="secondary" id="refreshBtn">Refresh</button>
     </div>
 
@@ -152,6 +153,9 @@
       <button class="tab-btn" data-tab="alertsTab">Alerts</button>
       <button class="tab-btn" data-tab="securityTab">Security</button>
       <button class="tab-btn" data-tab="terminalTab">Terminal</button>
+      <button class="tab-btn" data-tab="cardsTab">Cards</button>
+      <button class="tab-btn" data-tab="multisigTab">Multisig</button>
+      <button class="tab-btn" data-tab="settingsTab">Settings</button>
     </div>
 
     <!-- Wallets tab -->
@@ -392,6 +396,46 @@
       <button id="terminalLoadBtn" class="secondary">Load</button>
       <div id="terminalTicker" class="wallet-balance"></div>
       <canvas id="terminalCanvas" style="width:100%;margin-top:8px"></canvas>
+    </div>
+
+    <!-- Cards tab -->
+    <div id="cardsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Crypto Card</div>
+      <div id="cardBalance" class="wallet-balance"></div>
+      <div id="cardRates" style="font-size:12px;color:var(--text-secondary);margin-top:4px;"></div>
+      <div id="cardTxList" style="max-height:160px;overflow-y:auto;font-size:12px;margin-top:8px;"></div>
+      <button id="cardRefreshBtn" class="secondary" style="margin-top:8px;">Refresh</button>
+    </div>
+
+    <!-- Multisig tab -->
+    <div id="multisigTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Multisig Wallets</div>
+      <label for="msName">Name</label>
+      <input type="text" id="msName" placeholder="Treasury" />
+      <label for="msOwners">Owners (comma-separated)</label>
+      <input type="text" id="msOwners" placeholder="0xabc…, 0xdef…" />
+      <label for="msThreshold">Threshold</label>
+      <input type="text" id="msThreshold" placeholder="2" />
+      <button id="msCreateBtn" class="secondary">Create Multisig</button>
+      <div id="msWalletList" style="max-height:120px;overflow-y:auto;font-size:12px;margin-top:8px;"></div>
+      <label for="msTxWallet" style="margin-top:8px;">Multisig wallet ID</label>
+      <input type="text" id="msTxWallet" placeholder="wallet id" />
+      <label for="msTxTo">To address</label>
+      <input type="text" id="msTxTo" placeholder="0x…" />
+      <label for="msTxValue">Value (wei)</label>
+      <input type="text" id="msTxValue" placeholder="0" />
+      <button id="msTxCreateBtn" class="secondary">Create Transaction</button>
+      <button id="msTxRefreshBtn" class="secondary">Load Transactions</button>
+      <div id="msTxList" style="max-height:160px;overflow-y:auto;font-size:12px;margin-top:8px;"></div>
+    </div>
+
+    <!-- Settings tab -->
+    <div id="settingsTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Settings</div>
+      <label for="settingsApiBase">Backend server (wallet_api URL)</label>
+      <input type="text" id="settingsApiBase" placeholder="http://localhost:8443" />
+      <button id="settingsSaveBtn" class="secondary">Save Backend URL</button>
+      <div id="settingsStatus" style="font-size:12px;color:var(--text-secondary);margin-top:8px;"></div>
     </div>
 
     <button id="logoutBtn" class="toggle-auth">Logout</button>

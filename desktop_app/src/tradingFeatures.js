@@ -5,7 +5,7 @@
 // Futures Trading
 // ============================================================================
 
-const TW_API_BASE = 'http://localhost:8443/api/v1';
+
 
 class FuturesService {
   constructor() {
@@ -22,7 +22,7 @@ class FuturesService {
     if (this._loaded) return this.pairs;
     let bases = [];
     try {
-      const res = await fetch(`${TW_API_BASE}/chains`);
+      const res = await fetch(`${twApiBase()}/chains`);
       if (res.ok) {
         const data = await res.json();
         const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
@@ -38,7 +38,7 @@ class FuturesService {
         id++;
         let price = 0, change24h = 0;
         try {
-          const pr = await fetch(`${TW_API_BASE}/price?token=${encodeURIComponent(base)}`);
+          const pr = await fetch(`${twApiBase()}/price?token=${encodeURIComponent(base)}`);
           if (pr.ok) {
             const pj = await pr.json();
             price = pj.usd || 0;
@@ -85,7 +85,7 @@ class FuturesService {
   // Never fabricates a position list.
   async getPositions() {
     try {
-      const res = await fetch(`${TW_API_BASE}/perpetual/positions`);
+      const res = await fetch(`${twApiBase()}/perpetual/positions`);
       if (!res.ok) return [];
       const data = await res.json();
       return Array.isArray(data.data) ? data.data : (Array.isArray(data.positions) ? data.positions : []);
@@ -97,7 +97,7 @@ class FuturesService {
   // Open a perpetual position (POST /perpetual/positions). The backend records
   // + risk-checks the position; the client never fabricates PnL/liquidation.
   async openPosition({ walletId, password, symbol, side, size, leverage, chainId }) {
-    const res = await fetch(`${TW_API_BASE}/perpetual/positions`, {
+    const res = await fetch(`${twApiBase()}/perpetual/positions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ wallet_id: walletId, password, symbol, side, size, leverage, chain_id: chainId })
@@ -106,7 +106,7 @@ class FuturesService {
   }
 
   async closePosition(positionId) {
-    const res = await fetch(`${TW_API_BASE}/perpetual/positions/${positionId}/close`, {
+    const res = await fetch(`${twApiBase()}/perpetual/positions/${positionId}/close`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     });
     return res.ok ? await res.json() : { error: await res.text() };
@@ -150,7 +150,7 @@ class OptionsService {
     if (this._loaded) return this.pairs;
     let bases = [];
     try {
-      const res = await fetch(`${TW_API_BASE}/chains`);
+      const res = await fetch(`${twApiBase()}/chains`);
       if (res.ok) {
         const data = await res.json();
         const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
@@ -163,7 +163,7 @@ class OptionsService {
       id++;
       let price = 0;
       try {
-        const pr = await fetch(`${TW_API_BASE}/price?token=${encodeURIComponent(base)}`);
+        const pr = await fetch(`${twApiBase()}/price?token=${encodeURIComponent(base)}`);
         if (pr.ok) { const pj = await pr.json(); price = pj.usd || 0; }
       } catch (e) { /* leave 0 */ }
       this.pairs.push({
@@ -215,7 +215,7 @@ class CopyTradingService {
   async loadTraders() {
     if (this._loaded) return this.traders;
     try {
-      const res = await fetch(`${TW_API_BASE}/copytrading/traders`);
+      const res = await fetch(`${twApiBase()}/copytrading/traders`);
       if (res.ok) {
         const data = await res.json();
         const arr = Array.isArray(data) ? data : (data.traders || data.data || []);
@@ -245,7 +245,7 @@ class CopyTradingService {
 
   // Follow / stop-following a trader (POST /copytrading/follow).
   async follow(traderId, walletId) {
-    const res = await fetch(`${TW_API_BASE}/copytrading/follow`, {
+    const res = await fetch(`${twApiBase()}/copytrading/follow`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trader_id: traderId, wallet_id: walletId })
@@ -284,7 +284,7 @@ class ConvertService {
   async getRate(from, to) {
     if (from === to) return { rate: 1, fee: 0 };
     try {
-      const res = await fetch(`${TW_API_BASE}/swap/quote?from_token=${encodeURIComponent(from)}&to_token=${encodeURIComponent(to)}&from_amount=1`);
+      const res = await fetch(`${twApiBase()}/swap/quote?from_token=${encodeURIComponent(from)}&to_token=${encodeURIComponent(to)}&from_amount=1`);
       if (!res.ok) return null;
       const q = await res.json();
       if (!q.rate) return null;
@@ -300,7 +300,7 @@ class ConvertService {
   // Never fabricates a "completed" tx; the caller broadcasts via the backend.
   async getQuote(from, to, amount) {
     try {
-      const res = await fetch(`${TW_API_BASE}/swap/quote?from_token=${encodeURIComponent(from)}&to_token=${encodeURIComponent(to)}&from_amount=${encodeURIComponent(amount)}`);
+      const res = await fetch(`${twApiBase()}/swap/quote?from_token=${encodeURIComponent(from)}&to_token=${encodeURIComponent(to)}&from_amount=${encodeURIComponent(amount)}`);
       if (!res.ok) return null;
       const q = await res.json();
       return {
@@ -320,7 +320,7 @@ class ConvertService {
   // Available convert tokens come from the live chain registry (no fake balances).
   async getAvailableTokens() {
     try {
-      const res = await fetch(`${TW_API_BASE}/chains`);
+      const res = await fetch(`${twApiBase()}/chains`);
       if (!res.ok) return [];
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);

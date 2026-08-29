@@ -33,6 +33,9 @@ struct FeaturesView: View {
                     NavigationLink("Devices") { DevicesView() }
                     NavigationLink("KYC") { KycView() }
                     NavigationLink("Keystore") { KeystoreView() }
+                    NavigationLink("Multisig") { MultisigView() }
+                    NavigationLink("Non-EVM Chains") { NonEvmView() }
+                    NavigationLink("dApps & WalletConnect") { DAppsView() }
                     NavigationLink("Backup") { BackupView() }
                 }
             }

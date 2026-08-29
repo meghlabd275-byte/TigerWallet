@@ -46,6 +46,9 @@ class FeaturesFragment : Fragment() {
             "Devices" to ::DevicesFragment,
             "KYC" to ::KycFragment,
             "Keystore" to ::KeystoreFragment,
+            "Multisig" to ::MultisigFragment,
+            "Non-EVM Chains" to ::NonEvmFragment,
+            "dApps & WalletConnect" to ::DAppsFragment,
         )
         features.forEach { (label, factory) ->
             val btn = Button(requireContext())

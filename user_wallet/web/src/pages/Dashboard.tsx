@@ -9,12 +9,22 @@ export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const [balances, setBalances] = React.useState<BalanceResult[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [livePrices, setLivePrices] = React.useState<Record<string, { symbol: string; last_price: number; change_24h_pct: number }>>({});
 
   React.useEffect(() => {
     api.getBalances().then((data) => {
       setBalances(data.balances || []);
       setLoading(false);
     }).catch(() => setLoading(false));
+  }, []);
+
+  // Public live price feed (WebSocket /api/v1/ws) — real server-pushed tickers.
+  React.useEffect(() => {
+    const ws = api.liveFeedWs((t) => {
+      if (!t?.symbol) return;
+      setLivePrices((prev) => ({ ...prev, [t.symbol]: t }));
+    });
+    return () => ws?.close();
   }, []);
 
   return (
@@ -25,6 +35,17 @@ export default function Dashboard() {
           {theme === 'light' ? '\uD83C\uDF19' : '\u2600\uFE0F'}
         </button>
       </header>
+
+      {Object.keys(livePrices).length > 0 && (
+        <div className="quote-box">
+          {Object.values(livePrices).map((t) => (
+            <span key={t.symbol} style={{ marginRight: 16 }}>
+              {t.symbol} ${Number(t.last_price).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+              ({Number(t.change_24h_pct) >= 0 ? '+' : ''}{Number(t.change_24h_pct).toFixed(2)}%)
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card">

@@ -3,7 +3,29 @@
 // REAL on-chain RPC, REAL BIP-39/32/44 derivation, REAL secp256k1 signing,
 // AES-256-GCM encrypted-seed persistence (PostgreSQL + Redis). No stubs.
 
-const API_BASE = 'http://localhost:8443/api/v1';
+// Backend base URL is user-configurable (Settings tab) and persisted in
+// chrome.storage.local so the extension can point at any self-hosted
+// wallet_api deployment; localhost is only the default.
+let API_BASE = 'http://localhost:8443/api/v1';
+
+function loadApiBase() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get('tw_api_base', (res) => {
+      if (res.tw_api_base) {
+        API_BASE = res.tw_api_base.replace(/\/+$/, '').replace(/\/api\/v1$/, '') + '/api/v1';
+      }
+      resolve(API_BASE);
+    });
+  });
+}
+
+function apiOrigin() {
+  return API_BASE.replace(/\/api\/v1\/?$/, '');
+}
+
+function wsUrl() {
+  return apiOrigin().replace(/^http/i, 'ws') + '/api/v1/ws';
+}
 
 function getToken() {
   return new Promise((resolve) => {
@@ -40,6 +62,7 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   loadTheme();
+  await loadApiBase();
   const token = await getToken();
   if (token) {
     showWallets();
@@ -47,6 +70,7 @@ async function init() {
     showAuth();
   }
   bindEvents();
+  connectLiveFeed();
 }
 
 function bindEvents() {
@@ -57,6 +81,11 @@ function bindEvents() {
   if (guestStartBtn) guestStartBtn.addEventListener('click', handleGuestStart);
   document.getElementById('refreshBtn').addEventListener('click', loadWallets);
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+  document.getElementById('cardRefreshBtn')?.addEventListener('click', loadCards);
+  document.getElementById('msCreateBtn')?.addEventListener('click', createMultisigWallet);
+  document.getElementById('msTxCreateBtn')?.addEventListener('click', createMultisigTx);
+  document.getElementById('msTxRefreshBtn')?.addEventListener('click', loadMultisigTxs);
+  document.getElementById('settingsSaveBtn')?.addEventListener('click', saveSettings);
 
   // Tab navigation
   document.querySelectorAll('.tab-btn').forEach((btn) => {
@@ -565,6 +594,23 @@ const WalletAPI = {
   executeBridgeTransfer: (body) => api('/bridge/transfer', { method: 'POST', body }),
   getBridgeHistory: () => api('/bridge/history'),
 
+  // Multisig (proxied to MasterWallet via /wallet/multisig/*).
+  listMultisigWallets: () => api('/wallet/multisig/wallets'),
+  createMultisigWallet: ({ name, owners, threshold, chain_id }) =>
+    api('/wallet/multisig/wallets', { method: 'POST', body: { name, owners, threshold, chain_id } }),
+  listMultisigTransactions: (walletId) => api(`/wallet/multisig/wallets/${encodeURIComponent(walletId)}/transactions`),
+  createMultisigTransaction: (walletId, { to_address, value, data }) =>
+    api(`/wallet/multisig/wallets/${encodeURIComponent(walletId)}/transactions`, { method: 'POST', body: { to_address, value, data } }),
+  signMultisigTransaction: (txId) =>
+    api(`/wallet/multisig/transactions/${encodeURIComponent(txId)}/sign`, { method: 'POST', body: {} }),
+  executeMultisigTransaction: (txId) =>
+    api(`/wallet/multisig/transactions/${encodeURIComponent(txId)}/execute`, { method: 'POST', body: {} }),
+
+  // Crypto card (proxied card_service :8457).
+  getCardBalance: () => api('/cards/default/balance'),
+  getCardRates: () => api('/cards/rates'),
+  getCardTransactions: () => api('/cards/default/transactions'),
+
   // Price alerts.
   getPriceAlerts: () => api('/price-alerts'),
   createPriceAlert: ({ symbol, target_price, direction }) =>
@@ -653,7 +699,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'settingsTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -673,6 +719,9 @@ function switchTab(tab) {
   if (tab === 'devices') loadDevices();
   if (tab === 'alerts') loadAlerts();
   if (tab === 'terminal') loadTerminal();
+  if (tab === 'cards') loadCards();
+  if (tab === 'multisig') loadMultisigWallets();
+  if (tab === 'settings') loadSettings();
 }
 
 // ---- Loaders for the NFT / History / Approvals / Contacts / Devices / Alerts tabs ----
@@ -1658,4 +1707,155 @@ function toggleTheme() {
   const next = current === 'dark' ? 'light' : 'dark';
   chrome.storage.local.set({ theme: next });
   applyTheme(next);
+}
+
+// ---- Cards / Multisig / Settings / live feed (parity with web+desktop+mobile) ----
+
+async function loadCards() {
+  const balEl = document.getElementById('cardBalance');
+  const ratesEl = document.getElementById('cardRates');
+  const txEl = document.getElementById('cardTxList');
+  if (!balEl) return;
+  try {
+    const [bal, rates, txs] = await Promise.all([
+      WalletAPI.getCardBalance(),
+      WalletAPI.getCardRates(),
+      WalletAPI.getCardTransactions(),
+    ]);
+    balEl.textContent = `Balance: ${bal.balance ?? bal.available ?? 0} ${bal.currency ?? ''}`.trim();
+    const r = rates.rates || rates;
+    ratesEl.textContent = Object.entries(r)
+      .map(([k, v]) => `${k}: $${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}`)
+      .join('  ·  ');
+    renderList(txEl, txs.transactions || txs.data || [], (row, t) => {
+      row.textContent = `${t.merchant || t.description || t.id} · ${t.amount ?? ''} ${t.currency ?? ''} · ${t.status ?? ''}`.trim();
+    }, 'No card transactions');
+  } catch (err) {
+    balEl.textContent = `Cards unavailable: ${err.message}`;
+  }
+}
+
+async function loadMultisigWallets() {
+  const el = document.getElementById('msWalletList');
+  if (!el) return;
+  try {
+    const data = await WalletAPI.listMultisigWallets();
+    renderList(el, data.multisig_wallets || data.wallets || [], (row, w) => {
+      row.textContent = `${w.name || w.id} · ${w.id} · ${w.threshold}-of-${(w.owners || []).length}`;
+    }, 'No multisig wallets');
+  } catch (err) {
+    el.textContent = `Multisig unavailable: ${err.message}`;
+  }
+}
+
+async function createMultisigWallet() {
+  const name = document.getElementById('msName').value.trim();
+  const owners = document.getElementById('msOwners').value.split(',').map((s) => s.trim()).filter(Boolean);
+  const threshold = parseInt(document.getElementById('msThreshold').value, 10) || 0;
+  if (!name || !owners.length || threshold < 1) return alert('Enter name, owners and threshold');
+  try {
+    await WalletAPI.createMultisigWallet({ name, owners, threshold, chain_id: 1 });
+    alert('Multisig wallet created');
+    loadMultisigWallets();
+  } catch (err) {
+    alert(`Create failed: ${err.message}`);
+  }
+}
+
+async function createMultisigTx() {
+  const walletId = document.getElementById('msTxWallet').value.trim();
+  const to_address = document.getElementById('msTxTo').value.trim();
+  const value = document.getElementById('msTxValue').value.trim();
+  if (!walletId || !to_address || !value) return alert('Enter wallet id, to address and value');
+  try {
+    await WalletAPI.createMultisigTransaction(walletId, { to_address, value, data: '' });
+    alert('Multisig transaction created — pending signatures');
+    loadMultisigTxs();
+  } catch (err) {
+    alert(`Create tx failed: ${err.message}`);
+  }
+}
+
+async function loadMultisigTxs() {
+  const el = document.getElementById('msTxList');
+  const walletId = document.getElementById('msTxWallet').value.trim();
+  if (!el || !walletId) return;
+  try {
+    const data = await WalletAPI.listMultisigTransactions(walletId);
+    renderList(el, data.transactions || data.multisig_transactions || [], (row, t) => {
+      row.textContent = `${t.id} → ${t.to_address} · ${t.status}`;
+      const signBtn = document.createElement('button');
+      signBtn.className = 'secondary';
+      signBtn.textContent = 'Sign';
+      signBtn.style.marginLeft = '6px';
+      signBtn.addEventListener('click', async () => {
+        try {
+          await WalletAPI.signMultisigTransaction(t.id);
+          alert('Multisig transaction signed');
+          loadMultisigTxs();
+        } catch (err) { alert(`Sign failed: ${err.message}`); }
+      });
+      const execBtn = document.createElement('button');
+      execBtn.className = 'secondary';
+      execBtn.textContent = 'Execute';
+      execBtn.style.marginLeft = '6px';
+      execBtn.addEventListener('click', async () => {
+        try {
+          const r = await WalletAPI.executeMultisigTransaction(t.id);
+          alert(`Transaction submitted to the blockchain network: ${r.tx_hash || r.status || 'broadcast'}`);
+          loadMultisigTxs();
+        } catch (err) { alert(`Execute failed: ${err.message}`); }
+      });
+      row.appendChild(signBtn);
+      row.appendChild(execBtn);
+    }, 'No multisig transactions');
+  } catch (err) {
+    el.textContent = `Failed: ${err.message}`;
+  }
+}
+
+function loadSettings() {
+  const input = document.getElementById('settingsApiBase');
+  const status = document.getElementById('settingsStatus');
+  if (!input) return;
+  input.value = apiOrigin();
+  if (status) status.textContent = '';
+}
+
+async function saveSettings() {
+  const input = document.getElementById('settingsApiBase');
+  const status = document.getElementById('settingsStatus');
+  const value = (input?.value || '').trim();
+  if (!/^https?:\/\//.test(value)) {
+    if (status) status.textContent = 'Enter a full http(s) URL';
+    return;
+  }
+  await new Promise((resolve) => chrome.storage.local.set({ tw_api_base: value }, resolve));
+  await loadApiBase();
+  if (status) status.textContent = `Saved. Backend: ${apiOrigin()}`;
+}
+
+// Public live price feed (WebSocket /api/v1/ws): real tickers only — the
+// socket transports server-pushed frames, it never fabricates prices.
+function connectLiveFeed() {
+  const el = document.getElementById('liveTicker');
+  if (!el) return;
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl());
+  } catch (_) {
+    return;
+  }
+  const prices = {};
+  ws.onopen = () => ws.send(JSON.stringify({ action: 'subscribe', symbols: ['BTC', 'ETH'] }));
+  ws.onmessage = (ev) => {
+    try {
+      const frame = JSON.parse(ev.data);
+      if (frame.type !== 'ticker' || !frame.symbol) return;
+      prices[frame.symbol] = frame;
+      el.textContent = Object.values(prices)
+        .map((t) => `${t.symbol} $${Number(t.last_price).toLocaleString('en-US', { maximumFractionDigits: 2 })} (${Number(t.change_24h_pct) >= 0 ? '+' : ''}${Number(t.change_24h_pct).toFixed(2)}%)`)
+        .join('   ');
+    } catch (_) { /* ignore malformed frames */ }
+  };
 }

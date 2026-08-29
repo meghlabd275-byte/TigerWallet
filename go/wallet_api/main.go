@@ -91,6 +91,8 @@ func main() {
 	// ---- Trading-terminal market data (read-only public) ----
 	r.GET("/api/v1/terminal/kline/:symbol", handleTerminalKline)
 	r.GET("/api/v1/terminal/ticker/:symbol", handleTerminalTicker)
+	// Public WebSocket live price feed (read-only; see live_feed.go).
+	r.GET("/api/v1/ws", handleLiveFeed)
 
 	// ---- dApp directory (read-only public) ----
 	r.GET("/api/v1/dapps", handleListDApps)

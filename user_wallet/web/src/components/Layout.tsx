@@ -36,6 +36,8 @@ export default function Layout() {
     { path: '/ens', label: 'ENS' },
     { path: '/security', label: 'Security' },
     { path: '/terminal', label: 'Terminal' },
+    { path: '/multisig', label: 'Multisig' },
+    { path: '/non-evm', label: 'Non-EVM' },
     { path: '/transactions', label: 'Transactions' },
     { path: '/settings', label: 'Settings' }
   ];

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TigerWallet Desktop</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="config.js"></script>
     <script src="branding.js"></script>
 </head>
 <body>
@@ -110,6 +111,24 @@
                     <button class="nav-item" data-page="kyc">
                         <span class="icon">🪪</span> KYC
                     </button>
+                    <button class="nav-item" data-page="multisig">
+                        <span class="icon">🔐</span> Multisig
+                    </button>
+                    <button class="nav-item" data-page="non-evm">
+                        <span class="icon">🌐</span> Non-EVM
+                    </button>
+                    <button class="nav-item" data-page="lending">
+                        <span class="icon">🏦</span> Lending
+                    </button>
+                    <button class="nav-item" data-page="prediction">
+                        <span class="icon">🔮</span> Prediction
+                    </button>
+                    <button class="nav-item" data-page="keystore">
+                        <span class="icon">🗝️</span> Keystore
+                    </button>
+                    <button class="nav-item" data-page="hardware-wallet">
+                        <span class="icon">🔌</span> Hardware Wallet
+                    </button>
                     <button class="nav-item" data-page="transactions">
                         <span class="icon">📋</span> Transactions
                     </button>
@@ -154,6 +173,7 @@
                             <div class="balance-change">+0.00% (24h)</div>
                         </div>
                     </div>
+                    <div id="live-ticker" class="assets-list"></div>
                     
                     <div class="assets-section">
                         <h4>Assets</h4>
@@ -409,6 +429,27 @@
                     <div id="trading-positions" class="assets-list">
                         <div class="no-transactions">No open positions</div>
                     </div>
+                    <h4 style="margin-top:16px">Futures Markets</h4>
+                    <div id="futures-pairs" class="assets-list">
+                        <div class="no-transactions">Loading markets…</div>
+                    </div>
+                    <h4 style="margin-top:16px">Copy Trading</h4>
+                    <div id="copy-traders" class="assets-list">
+                        <div class="no-transactions">Loading traders…</div>
+                    </div>
+                    <div class="send-form">
+                        <h4>Follow a trader</h4>
+                        <div class="input-group">
+                            <label>Trader ID</label>
+                            <input type="text" id="copy-trader-id" placeholder="trader id">
+                        </div>
+                        <div class="input-group">
+                            <label>Allocation</label>
+                            <input type="text" id="copy-allocation" placeholder="100">
+                        </div>
+                        <button id="copy-follow-btn" class="btn-primary">Follow Trader</button>
+                    </div>
+                    <div id="copy-follow-result" class="assets-list"></div>
                 </div>
 
                 <!-- Launchpool Page -->
@@ -615,6 +656,244 @@
                     <div id="kyc-status" class="assets-list">
                         <div class="no-transactions">Loading KYC status…</div>
                     </div>
+                    <div class="send-form">
+                        <h4>Register</h4>
+                        <div class="input-group">
+                            <label>Full name</label>
+                            <input type="text" id="kyc-name" placeholder="Legal name">
+                        </div>
+                        <div class="input-group">
+                            <label>Country</label>
+                            <input type="text" id="kyc-country" placeholder="US">
+                        </div>
+                        <button id="kyc-register-btn" class="btn-primary">Register for KYC</button>
+                    </div>
+                    <div class="send-form">
+                        <h4>Submit application</h4>
+                        <div class="input-group">
+                            <label>Date of birth</label>
+                            <input type="text" id="kyc-dob" placeholder="1990-01-01">
+                        </div>
+                        <button id="kyc-submit-btn" class="btn-primary">Submit application</button>
+                    </div>
+                    <div class="send-form">
+                        <h4>Upload document</h4>
+                        <div class="input-group">
+                            <label>Document type</label>
+                            <input type="text" id="kyc-doc-type" placeholder="passport / id_card / driver_license">
+                        </div>
+                        <div class="input-group">
+                            <label>Document file</label>
+                            <input type="file" id="kyc-doc-file">
+                        </div>
+                        <button id="kyc-upload-btn" class="btn-primary">Upload document</button>
+                    </div>
+                    <div id="kyc-result" class="assets-list"></div>
+                </div>
+
+                <!-- Multisig Page -->
+                <div id="multisig-page" class="page hidden">
+                    <div class="send-form">
+                        <h4>Create multisig wallet</h4>
+                        <div class="input-group">
+                            <label>Name</label>
+                            <input type="text" id="ms-name" placeholder="Treasury">
+                        </div>
+                        <div class="input-group">
+                            <label>Owners (comma-separated addresses)</label>
+                            <input type="text" id="ms-owners" placeholder="0xabc…, 0xdef…">
+                        </div>
+                        <div class="input-group">
+                            <label>Threshold (required signatures)</label>
+                            <input type="number" id="ms-threshold" value="2" min="1">
+                        </div>
+                        <button id="ms-create-btn" class="btn-primary">Create Multisig</button>
+                    </div>
+                    <h4>Multisig wallets</h4>
+                    <div id="multisig-list" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>New multisig transaction</h4>
+                        <div class="input-group">
+                            <label>Multisig wallet ID</label>
+                            <input type="text" id="ms-tx-wallet" placeholder="wallet id">
+                        </div>
+                        <div class="input-group">
+                            <label>To address</label>
+                            <input type="text" id="ms-tx-to" placeholder="0x…">
+                        </div>
+                        <div class="input-group">
+                            <label>Value (wei)</label>
+                            <input type="text" id="ms-tx-value" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label>Data (hex, optional)</label>
+                            <input type="text" id="ms-tx-data" placeholder="0x">
+                        </div>
+                        <button id="ms-tx-create-btn" class="btn-primary">Create Transaction</button>
+                    </div>
+                    <h4>Transactions</h4>
+                    <div class="input-group">
+                        <label>Multisig wallet ID</label>
+                        <input type="text" id="ms-tx-list-wallet" placeholder="wallet id">
+                    </div>
+                    <button id="ms-tx-refresh-btn" class="btn-secondary">Load Transactions</button>
+                    <div id="multisig-tx-list" class="assets-list"></div>
+                </div>
+
+                <!-- Non-EVM Page -->
+                <div id="non-evm-page" class="page hidden">
+                    <div class="send-form">
+                        <h4>Derive non-EVM address</h4>
+                        <div class="input-group">
+                            <label>Chain (bitcoin / solana / cosmos / …)</label>
+                            <input type="text" id="nevm-chain" placeholder="solana">
+                        </div>
+                        <button id="nevm-derive-btn" class="btn-primary">Derive Address</button>
+                    </div>
+                    <div id="nevm-address-result" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Send non-EVM transaction</h4>
+                        <div class="input-group">
+                            <label>Chain</label>
+                            <input type="text" id="nevm-send-chain" placeholder="solana">
+                        </div>
+                        <div class="input-group">
+                            <label>To address</label>
+                            <input type="text" id="nevm-send-to" placeholder="destination address">
+                        </div>
+                        <div class="input-group">
+                            <label>Amount</label>
+                            <input type="text" id="nevm-send-amount" placeholder="0.0">
+                        </div>
+                        <div class="input-group">
+                            <label>Wallet password</label>
+                            <input type="password" id="nevm-send-password">
+                        </div>
+                        <button id="nevm-send-btn" class="btn-primary">Send</button>
+                    </div>
+                    <div id="nevm-send-result" class="assets-list"></div>
+                </div>
+
+                <!-- Lending Page -->
+                <div id="lending-page" class="page hidden">
+                    <h4>Markets</h4>
+                    <div id="lending-markets" class="assets-list"></div>
+                    <h4>My positions</h4>
+                    <div id="lending-positions" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Lending action</h4>
+                        <div class="input-group">
+                            <label>Action</label>
+                            <select id="lending-action">
+                                <option value="supply">Supply</option>
+                                <option value="borrow">Borrow</option>
+                                <option value="withdraw">Withdraw</option>
+                                <option value="repay">Repay</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Asset</label>
+                            <input type="text" id="lending-asset" placeholder="ETH">
+                        </div>
+                        <div class="input-group">
+                            <label>Amount</label>
+                            <input type="text" id="lending-amount" placeholder="0.0">
+                        </div>
+                        <div class="input-group">
+                            <label>Wallet password</label>
+                            <input type="password" id="lending-password">
+                        </div>
+                        <button id="lending-action-btn" class="btn-primary">Submit</button>
+                    </div>
+                    <div id="lending-result" class="assets-list"></div>
+                </div>
+
+                <!-- Prediction Page -->
+                <div id="prediction-page" class="page hidden">
+                    <h4>Prediction markets</h4>
+                    <div id="prediction-markets" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Place position</h4>
+                        <div class="input-group">
+                            <label>Market ID</label>
+                            <input type="text" id="prediction-market-id" placeholder="market id">
+                        </div>
+                        <div class="input-group">
+                            <label>Outcome</label>
+                            <input type="text" id="prediction-outcome" placeholder="yes / no">
+                        </div>
+                        <div class="input-group">
+                            <label>Amount</label>
+                            <input type="text" id="prediction-amount" placeholder="0.0">
+                        </div>
+                        <button id="prediction-bet-btn" class="btn-primary">Place Position</button>
+                    </div>
+                    <div id="prediction-result" class="assets-list"></div>
+                </div>
+
+                <!-- Keystore Page -->
+                <div id="keystore-page" class="page hidden">
+                    <div class="send-form">
+                        <h4>Export keystore (Web3 Secret Storage)</h4>
+                        <div class="input-group">
+                            <label>Wallet</label>
+                            <select id="keystore-export-wallet"></select>
+                        </div>
+                        <div class="input-group">
+                            <label>Wallet password</label>
+                            <input type="password" id="keystore-export-password">
+                        </div>
+                        <div class="input-group">
+                            <label>Export encryption password</label>
+                            <input type="password" id="keystore-export-new-password">
+                        </div>
+                        <button id="keystore-export-btn" class="btn-primary">Export Keystore</button>
+                    </div>
+                    <div id="keystore-export-result" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Import keystore</h4>
+                        <div class="input-group">
+                            <label>Keystore JSON</label>
+                            <input type="text" id="keystore-import-json" placeholder='{"version":3,…}'>
+                        </div>
+                        <div class="input-group">
+                            <label>Keystore password</label>
+                            <input type="password" id="keystore-import-password">
+                        </div>
+                        <div class="input-group">
+                            <label>Label</label>
+                            <input type="text" id="keystore-import-label" placeholder="Imported wallet">
+                        </div>
+                        <button id="keystore-import-btn" class="btn-primary">Import Keystore</button>
+                    </div>
+                    <div id="keystore-import-result" class="assets-list"></div>
+                </div>
+
+                <!-- Hardware Wallet Page -->
+                <div id="hardware-wallet-page" class="page hidden">
+                    <div class="send-form">
+                        <h4>Detect device (Ledger / Trezor)</h4>
+                        <button id="hw-detect-btn" class="btn-primary">Detect Hardware Wallet</button>
+                    </div>
+                    <div id="hw-device" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Get address</h4>
+                        <div class="input-group">
+                            <label>Chain</label>
+                            <input type="text" id="hw-chain" placeholder="ethereum">
+                        </div>
+                        <button id="hw-address-btn" class="btn-primary">Get Address</button>
+                    </div>
+                    <div id="hw-address-result" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Sign message</h4>
+                        <div class="input-group">
+                            <label>Message</label>
+                            <input type="text" id="hw-message" placeholder="message to sign">
+                        </div>
+                        <button id="hw-sign-btn" class="btn-primary">Sign Message</button>
+                    </div>
+                    <div id="hw-sign-result" class="assets-list"></div>
                 </div>
 
                 <!-- Transactions Page -->
@@ -658,6 +937,17 @@
                         </div>
                     </div>
                     <div class="settings-section">
+                        <h4>Backend Server</h4>
+                        <div class="setting-item">
+                            <label>wallet_api URL</label>
+                            <input type="text" id="settings-api-base" placeholder="http://localhost:8443">
+                        </div>
+                        <div class="setting-item">
+                            <button id="settings-api-base-save" class="btn-primary">Save Backend URL</button>
+                        </div>
+                        <div id="settings-api-base-status" class="assets-list"></div>
+                    </div>
+                    <div class="settings-section">
                         <h4>Networks</h4>
                         <div id="networks-list" class="networks-list"></div>
                     </div>
@@ -666,6 +956,8 @@
         </div>
     </div>
 
+    <script src="hardwareWallet.js"></script>
+    <script src="tradingFeatures.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

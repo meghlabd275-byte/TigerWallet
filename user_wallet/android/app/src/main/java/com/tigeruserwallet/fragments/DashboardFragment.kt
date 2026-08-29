@@ -10,6 +10,7 @@ import com.tigeruserwallet.R
 import com.tigeruserwallet.adapters.BalanceAdapter
 import com.tigeruserwallet.api.UserWalletApiService
 import com.tigeruserwallet.databinding.FragmentDashboardBinding
+import com.tigeruserwallet.util.LiveFeedSocket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,6 +29,9 @@ class DashboardFragment : Fragment() {
     private var _binding: FragmentDashboardBinding? = null
     private val binding get() = _binding!!
 
+    private var liveFeed: LiveFeedSocket? = null
+    private val livePrices = mutableMapOf<String, Pair<Double, Double>>()
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -42,6 +46,30 @@ class DashboardFragment : Fragment() {
         binding.balancesRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         load()
         binding.swipeRefresh.setOnRefreshListener { load() }
+        connectLiveFeed()
+    }
+
+    /** Public live price feed (WebSocket /api/v1/ws) for the dashboard ticker. */
+    private fun connectLiveFeed() {
+        val feed = LiveFeedSocket()
+        liveFeed = feed
+        feed.connect(listOf("BTC", "ETH"), onTicker = { t ->
+            val symbol = t.optString("symbol")
+            if (symbol.isNotEmpty()) {
+                livePrices[symbol] = t.optDouble("last_price") to t.optDouble("change_24h_pct")
+                val text = livePrices.entries.joinToString("   ") { (sym, p) ->
+                    "$sym $${String.format("%,.2f", p.first)} (${String.format("%+.2f", p.second)}%)"
+                }
+                activity?.runOnUiThread { _binding?.liveTicker?.text = text }
+            }
+        })
+    }
+
+    override fun onDestroyView() {
+        liveFeed?.close()
+        liveFeed = null
+        super.onDestroyView()
+        _binding = null
     }
 
     private fun load() {
@@ -79,8 +107,4 @@ class DashboardFragment : Fragment() {
         }
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
 }

@@ -1530,4 +1530,116 @@ object UserWalletApiService {
         }.toString()
         return execute(requestBuilder("/wallets/$walletId/lock").post(body.toRequestBody(jsonMediaType)).build())
     }
+
+    // ==================== Non-EVM chains (real derivation + signing) ====================
+
+    /** POST /non_evm/address { wallet_id, password, chain_type } -> { address, ... }. */
+    fun deriveNonEvmAddress(walletId: String, password: String, chainType: String): JSONObject {
+        val body = JSONObject()
+            .put("wallet_id", walletId)
+            .put("password", password)
+            .put("chain_type", chainType)
+        return execute(requestBuilder("/non_evm/address").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    /** POST /non_evm/sign { wallet_id, password, message, chain_type } -> { signature, ... }. */
+    fun nonEvmSignMessage(walletId: String, password: String, message: String, chainType: String): JSONObject {
+        val body = JSONObject()
+            .put("wallet_id", walletId)
+            .put("password", password)
+            .put("message", message)
+            .put("chain_type", chainType)
+        return execute(requestBuilder("/non_evm/sign").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    /**
+     * POST /non_evm/send — signs a non-EVM transaction and returns the raw
+     * signed payload for broadcast (bitcoin: raw_tx; cosmos: signature +
+     * sign_doc). `extras` carries chain-specific fields (bitcoin_inputs /
+     * bitcoin_outputs / cosmos_sign_doc).
+     */
+    fun nonEvmSend(walletId: String, password: String, chainType: String, extras: JSONObject): JSONObject {
+        val body = JSONObject()
+            .put("wallet_id", walletId)
+            .put("password", password)
+            .put("chain_type", chainType)
+        val keys = extras.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            body.put(k, extras.get(k))
+        }
+        return execute(requestBuilder("/non_evm/send").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    // ==================== Multisig (proxied to MasterWallet via /wallet/multisig/*) ====================
+
+    /** GET /wallet/multisig/wallets -> { multisig_wallets: [...] }. */
+    fun listMultisigWallets(): JSONObject =
+        execute(requestBuilder("/wallet/multisig/wallets").get().build())
+
+    /** POST /wallet/multisig/wallets { name, owners, threshold, chain_id }. */
+    fun createMultisigWallet(name: String, owners: List<String>, threshold: Int, chainId: Int): JSONObject {
+        val body = JSONObject()
+            .put("name", name)
+            .put("owners", JSONArray(owners))
+            .put("threshold", threshold)
+            .put("chain_id", chainId)
+        return execute(requestBuilder("/wallet/multisig/wallets").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    /** GET /wallet/multisig/wallets/:wid/transactions -> { transactions: [...] }. */
+    fun listMultisigTransactions(walletId: String): JSONObject =
+        execute(requestBuilder("/wallet/multisig/wallets/" + URLEncoder.encode(walletId, "UTF-8") + "/transactions").get().build())
+
+    /** POST /wallet/multisig/wallets/:wid/transactions { to_address, value, data }. */
+    fun createMultisigTransaction(walletId: String, toAddress: String, value: String, data: String): JSONObject {
+        val body = JSONObject()
+            .put("to_address", toAddress)
+            .put("value", value)
+            .put("data", data)
+        return execute(requestBuilder("/wallet/multisig/wallets/" + URLEncoder.encode(walletId, "UTF-8") + "/transactions").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    /** POST /wallet/multisig/transactions/:tid/sign. */
+    fun signMultisigTransaction(txId: String): JSONObject =
+        execute(requestBuilder("/wallet/multisig/transactions/" + URLEncoder.encode(txId, "UTF-8") + "/sign").post("{}".toRequestBody(jsonMediaType)).build())
+
+    /** POST /wallet/multisig/transactions/:tid/execute -> broadcasts when quorum met. */
+    fun executeMultisigTransaction(txId: String): JSONObject =
+        execute(requestBuilder("/wallet/multisig/transactions/" + URLEncoder.encode(txId, "UTF-8") + "/execute").post("{}".toRequestBody(jsonMediaType)).build())
+
+    // ==================== dApp browser / WalletConnect (proxied dapp_browser :8083) ====================
+
+    /** GET /dapp/pairings — list active dApp pairings. */
+    fun getDappPairings(): JSONObject =
+        execute(requestBuilder("/dapp/pairings").get().build())
+
+    /** POST /dapp/pairings — create a pairing from a WalletConnect URI. */
+    fun createDappPairing(uri: String): JSONObject {
+        val body = JSONObject().put("uri", uri)
+        return execute(requestBuilder("/dapp/pairings").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    /** POST /dapp/pairings/:topic/approve. */
+    fun approveDappPairing(topic: String): JSONObject =
+        execute(requestBuilder("/dapp/pairings/" + URLEncoder.encode(topic, "UTF-8") + "/approve").post("{}".toRequestBody(jsonMediaType)).build())
+
+    /** POST /dapp/pairings/:topic/reject. */
+    fun rejectDappPairing(topic: String): JSONObject =
+        execute(requestBuilder("/dapp/pairings/" + URLEncoder.encode(topic, "UTF-8") + "/reject").post("{}".toRequestBody(jsonMediaType)).build())
+
+    /** GET /dapp/sessions — list active dApp sessions. */
+    fun getDappSessions(): JSONObject =
+        execute(requestBuilder("/dapp/sessions").get().build())
+
+    /** GET /dapp/sessions/:topic/request — pending dApp requests for a session. */
+    fun getDappRequests(topic: String): JSONObject =
+        execute(requestBuilder("/dapp/sessions/" + URLEncoder.encode(topic, "UTF-8") + "/request").get().build())
+
+    /** POST /dapp/sessions/:topic/request/:id/respond — approve/reject a dApp request. */
+    fun respondToDappRequest(topic: String, requestId: String, approve: Boolean, result: String?): JSONObject {
+        val body = JSONObject().put("approved", approve)
+        if (result != null) body.put("result", result)
+        return execute(requestBuilder("/dapp/sessions/" + URLEncoder.encode(topic, "UTF-8") + "/request/" + URLEncoder.encode(requestId, "UTF-8") + "/respond").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
 }

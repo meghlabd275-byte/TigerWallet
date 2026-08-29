@@ -241,3 +241,35 @@ WalletConnect pairing (backend proxy route exists).
   tooling + auditor.
 - Billion-address sharding design doc exists (`docs/USER_WALLET_SHARDING.md`) but
   is not yet deployed.
+
+## 11. Resolved 2026-08-29 (session 22 — UserWallet residual parity: multisig, non-EVM, dApps, live feed)
+
+- **Public live price feed (backend)**: new `go/wallet_api/live_feed.go` —
+  `GET /api/v1/ws` WebSocket hub (public, read-only). Clients subscribe
+  `{action:"subscribe",symbols:[...]}` and receive real `{type:"ticker"}`
+  frames; the hub batches the union of subscribed symbols into ONE upstream
+  CoinGecko markets call per tick (LIVE_FEED_INTERVAL_MS, default 5s) and
+  fans out — N clients cost 1 upstream request. Fail-closed: upstream outage
+  sends an error frame; no price is ever fabricated. go build+vet PASS.
+- **Live feed wired into every UserWallet client**: web (Dashboard ticker via
+  `api.liveFeedWs`), desktop (connectLiveFeed in init), extension (popup
+  header ticker), Android (LiveFeedSocket + DashboardFragment ticker), iOS
+  (LiveFeedSocket.swift URLSessionWebSocketTask + DashboardView ticker).
+- **Multisig UI on every client** (via wallet_api `/wallet/multisig/*` proxy
+  to MasterWallet :8450 with service-token auth): web Multisig.tsx, desktop
+  multisig page, extension Multisig tab, Android MultisigFragment, iOS
+  MultisigView — create wallet / list / create tx / sign / execute.
+- **Non-EVM chains UI on every client** (real `/non_evm/{address,sign,send}`
+  derivation+signing, mainnet only): web NonEvm.tsx, desktop non-evm page,
+  Android NonEvmFragment, iOS NonEvmView. Fixed the web api.ts non-EVM
+  methods which sent a `seed`/`message_hash` shape the backend never binds
+  (would have always 400'd) — now wallet_id/password/chain_type.
+- **dApps & WalletConnect pairing UI** on Android (DAppsFragment) and iOS
+  (DAppsView): pair by URI, approve/reject pairings, list sessions via the
+  proxied dapp_browser (:8083) routes.
+- **Extension**: Cards tab (balance/rates/transactions), Settings tab with
+  user-configurable backend URL (chrome.storage.local `tw_api_base`; was
+  hardcoded localhost) — matches Android/iOS/desktop configurability.
+- Verified: web tsc --noEmit = 0; extension node --check OK; desktop node
+  --check OK; go build+vet wallet_api OK; Kotlin brace-balance + XML parse
+  OK (no Android SDK / Xcode in sandbox for full compile).
