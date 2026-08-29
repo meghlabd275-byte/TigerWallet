@@ -661,3 +661,33 @@
   (no Xcode), Dart (no Flutter). Signatures cross-checked against services.
 - Verified builds: extension JS (node --check), desktop GUI (tsc+vite),
   desktop C++ (cmake + smoke test).
+
+## Session 21 (2026-08-29) — MasterWallet residual client gaps CLOSED (commit eb829dc8, pushed to main)
+- WS live feed wired into UI on EVERY client (was services-only): extension
+  popup (direct /ws socket, correct mw_auth_token + MASTER_WALLET_API_URL
+  storage keys), desktop GUI (useLiveFeed -> dashboard), Android
+  (WebSocketService SharedFlow -> dashboard banner + loadData refresh), iOS
+  (LiveFeedModel wrapping WebSocketService.onMessage -> DashboardView overlay),
+  Flutter (messageStream -> dashboard banner via PreferredSize).
+- Passkey REGISTRATION on all clients (was list/delete only): Android real
+  CredentialManager ceremony API 34+ + AndroidKeyStore P-256 fallback (existing
+  PasskeyService wired into PasskeysScreen), iOS ASAuthorization via
+  PasskeyService.register wired into PasskeysView, desktop GUI real
+  navigator.credentials.create (SPKI getPublicKey -> /passkey/register).
+- New UI on ALL clients: sub-wallet transfer (sub-wallets/:sid/transfer),
+  chain/token UPDATE via PUT edit-in-place, revenue-payout (SuperAdmin
+  co-sign), auto-sign ops (check-auto-sign-policy, auto-sign-transaction,
+  user-wallet-auto-sign), wallet-level send (POST /:id/sign -> real broadcast,
+  "Transaction submitted to the blockchain network").
+- Desktop GUI auth gate: real login/register form (POST /api/v1/auth/*) shown
+  when no master_wallet_jwt; JWT stored via setAuthToken.
+- All surfaces keep per-surface theme systems (no hardcoded light/dark).
+- Verified: extension node --check=OK, desktop tsc --noEmit=0 + vite build OK,
+  Kotlin/Swift/Dart brace-balance=0 and signature cross-check vs services.
+  NOT compile-verified (no SDKs): Kotlin/Swift/Dart (same as Session 20).
+- Git identity note: this sandbox had no git user configured; used local
+  openhands/openhands@all-hands.dev + refreshed GITHUB_TOKEN in remote URL.
+- Remaining (backend/deployment, not client): non-EVM broadcast only
+  BTC/Solana/Cosmos of 66 seeded; tx-history explorer keys per chain; FCM
+  google-services.json is deployment config.
+
