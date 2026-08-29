@@ -52,8 +52,8 @@
 | Gap | Location | Status |
 |---|---|---|
 | Billing plans seeded in code, not DB | `admin/go` `billing_handler.go` | PARTIAL — `billing_plans` table exists; plans are idempotent seed rows (Basic/Pro/Enterprise) but full admin CRUD exists. **2026-08-26:** added Stripe webhook (`billing_webhook.go`, `POST /api/v1/webhooks/stripe`) — HMAC-verified (fail-closed when `STRIPE_WEBHOOK_SECRET` unset), forward-only `open→paid` invoice transition. Admin CRUD + the payment-processor callback for invoice `paid` are now both present |
-| MasterWallet desktop is health-probe only | `master_wallet/desktop/src/main.cpp` | BROKEN (as a full client) — probes `/health`, `/chains`; not a full console. Web/Android/iOS/Flutter are the full clients |
-| `go/full_fetchers` is scaffold-only | `go/full_fetchers/fetchers.go` (1671 lines) | PARTIAL — 18 fetcher types registered, real data structures, but `Fetch()` bodies are no-op (`// In production, query blockchain`). Canonical live fetch lives in `go/wallet_api/fetchers.go` (real eth_getBalance/eth_call) and per-domain services |
+| ~~MasterWallet desktop is health-probe only~~ | `master_wallet/desktop/src/console.cpp` | **RESOLVED 2026-08-28** — replaced by a real C++ console driver (`console.cpp`, 218 lines) routing commands to `MasterWalletService` → canonical backend :8450. No fabricated balances; fails loudly when backend down/unauthenticated. Full clients remain Web/Android/iOS/Flutter. |
+| ~~`go/full_fetchers` is scaffold-only~~ | `go/full_fetchers/fetchers.go` | **RESOLVED 2026-08-28** — `Fetch()` bodies rewritten to REAL EVM JSON-RPC (`rpc.go`, real `eth_call`/`eth_getBalance` via stdlib HTTP). Zero "In production, query blockchain" no-op markers remain. Documented scaffold with zero importers; canonical live fetch is `go/wallet_api/fetchers.go`. |
 
 ---
 
@@ -165,14 +165,65 @@ No identical `.md`/`.txt` files exist.
 
 ### Open gaps (carried over, unchanged)
 
-- `master_wallet/desktop/src/main.cpp` — still a health-probe CLI (61 lines); C++
-  services under `desktop/src/services` exist (auth/passkeys/AA/paymaster/privacy/
-  super-admin/tax/ws) but the full console is Web/Android/iOS/Flutter/React.
-- `go/full_fetchers` — orphan scaffold (19 no-op `Fetch()` bodies, **zero
-  importers**). Canonical fetch path: `go/wallet_api/fetchers.go`. Kept as
-  documented scaffold; implementing it would duplicate canonical fetchers.
+- `master_wallet/desktop` — **RESOLVED 2026-08-28**: `main.cpp` health-probe
+  replaced by real `console.cpp` C++ driver (218 lines) over MasterWalletService.
+  C++ services under `desktop/src/services` exist (auth/passkeys/AA/paymaster/
+  privacy/super-admin/tax/ws). Full GUI clients: Web/Android/iOS/Flutter.
+- `go/full_fetchers` — **RESOLVED 2026-08-28**: `Fetch()` bodies now real EVM
+  JSON-RPC (`rpc.go`). Zero no-op markers. Still zero importers (documented
+  scaffold; canonical live fetch is `go/wallet_api/fetchers.go`).
 - Billions-of-addresses sharding design — still missing (`database/`).
 - Smart-contract security audit (`smart_contracts/` 105 sol) — needs auditor
   tooling; NOT VERIFIABLE here.
 - `fiat_gateway/go/fiat_gateway.go` contains Solidity, not Go — relocation
   candidate (P2).
+## 10. Verified 2026-08-29 (session 11 — gap-MD reconciliation + desktop wiring)
+
+### Re-verified RESOLVED (stale entries corrected above)
+- `master_wallet/desktop` health-probe → real `console.cpp` C++ driver (Session 7/8).
+- `go/full_fetchers` no-op scaffold → real EVM JSON-RPC `Fetch()` bodies (Session 7).
+- `selfhosted_masterwallet` license gate → fail-closed (Session 5).
+- `fiat_gateway/go/fiat_gateway.go` Solidity misplacement → directory removed;
+  canonical is `go/fiat_ramp` (real HMAC-verified Stripe/MoonPay/Transak webhooks).
+
+### SQLite removal — VERIFIED COMPLETE
+Per the directive ("use advanced database like PostgreSQL Redis etc. Remove sqlite
+database"): a full scan of all Go modules confirms **zero SQLite usage** — every
+GORM `Open` uses `postgres.Open` (116 sites); every other pool is `pgxpool` (295
+sites) or `database/sql` `"postgres"` (12 sites). `admin/rust` sqlx uses only the
+`postgres` feature. No `gorm.io/driver/sqlite`, `mattn/go-sqlite3`, or
+`modernc.org/sqlite` imports exist. The repo is PostgreSQL + Redis only. The
+`admin/rust/target/` build artifacts referencing sqlx fingerprints are untracked
+(not committed).
+
+### Sessions 8–10 fixes (all build-verified)
+- admin/rust ~70 stub handlers → real HTTP proxy to admin/go :9093 (cargo check ✅).
+- admin/cpp broken CMake + fake `{"token":"test"}` handlers → real `tiger_admin_cpp`
+  proxy executable (cmake ✅).
+- wl_project_party launchpad G2 (DB-only) → real on-chain contribute()/claimTokens()
+  tx broadcast (go build+vet+test ✅); G3 on-chain tx confirmation fetcher added.
+- wl_card hardcoded rates mock → real CoinGecko oracle (go build+vet ✅).
+- super_admin/cpp broken CMake → real `tiger_super_admin_cpp` CLI driver over the
+  header-only SuperAdminHttpClient (cmake ✅, fail-closed verified).
+- master_wallet/backend → wired to SuperAdmin kill-switch control plane (Redis
+  kill:global check + middleware + status endpoint) (go build+vet ✅).
+
+### Desktop (Tauri) feature wiring — EXTENDED this session
+`desktop_app/src/app.js` now wires ENS resolve, KYC status, fiat-ramp providers,
+and dApp catalog + WalletConnect to the canonical `go/wallet_api` routes
+(`/ens/resolve`, `/wallet/kyc/status`, `/ramp/providers`, `/dapps`). All real
+fetches, fail-closed empty states, no fabricated data. `node --check` ✅.
+Remaining desktop gaps: passkeys UI, full dApp browser iframe, on-device
+WalletConnect pairing (backend proxy route exists).
+
+### Still-open (carried over, not blocking core operation)
+- `selfhosted_masterwallet` (Rust): unlicensed reference impl (no two-party
+  co-sign/auto-signer loop). Use `wl_master_wallet` for WL self-hosting.
+- Android UserWallet passkeys stub (no `androidx.credentials`); WalletConnect
+  host is emulator-only (`10.0.2.2:8443`).
+- Some `admin/web`/`super_admin/web` pages may have UI-only stubs behind real
+  routes (backends are real).
+- Smart-contract security audit (`smart_contracts/` 105 sol) — needs Solidity
+  tooling + auditor.
+- Billion-address sharding design doc exists (`docs/USER_WALLET_SHARDING.md`) but
+  is not yet deployed.

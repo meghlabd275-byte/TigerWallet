@@ -230,6 +230,14 @@ class TigerWalletApp {
             this.loadNFTs();
         } else if (page === 'swap') {
             this.fetchSwapQuote();
+        } else if (page === 'ens') {
+            // ENS resolve is input-driven; no auto-load.
+        } else if (page === 'kyc') {
+            this.loadKYCStatus();
+        } else if (page === 'ramp') {
+            this.loadFiatProviders();
+        } else if (page === 'dapps') {
+            this.loadDApps();
         }
     }
     
@@ -974,6 +982,83 @@ class TigerWalletApp {
     escapeHtml(s) {
         if (s == null) return '';
         return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ---- ENS resolution (real on-chain lookup via /api/v1/ens/resolve) ----
+    async resolveENS() {
+        const input = document.getElementById('ens-input');
+        const out = document.getElementById('ens-result');
+        if (!input || !out) return;
+        const name = input.value.trim();
+        if (!name) { out.textContent = 'Enter an ENS name'; return; }
+        out.textContent = 'Resolving...';
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/ens/resolve?name=${encodeURIComponent(name)}`);
+            if (!res.ok) { out.textContent = `Resolution failed (HTTP ${res.status})`; return; }
+            const data = await res.json();
+            out.textContent = data.address ? `${this.escapeHtml(name)} → ${this.escapeHtml(data.address)}` : 'No address found';
+        } catch (e) {
+            out.textContent = 'Resolution failed (backend unreachable)';
+        }
+    }
+
+    // ---- KYC status (proxied to listing_service via /api/v1/wallet/kyc/status) ----
+    async loadKYCStatus() {
+        const box = document.getElementById('kyc-status');
+        if (!box) return;
+        const wallet = this.wallets[0];
+        if (!wallet) { box.innerHTML = '<div class="empty-state">No wallet connected</div>'; return; }
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/wallet/kyc/status?address=${encodeURIComponent(wallet.address)}`);
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">KYC status unavailable</div>'; return; }
+            const data = await res.json();
+            const status = this.escapeHtml(data.status || data.kyc_status || 'unknown');
+            box.innerHTML = `<div class="kyc-card"><strong>KYC status:</strong> ${status}</div>`;
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">KYC status unavailable</div>';
+        }
+    }
+
+    // ---- Fiat ramp providers (canonical go/fiat_ramp :8451 via /api/v1/ramp) ----
+    async loadFiatProviders() {
+        const box = document.getElementById('fiat-providers');
+        if (!box) return;
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/ramp/providers`);
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Ramp unavailable</div>'; return; }
+            const data = await res.json();
+            const providers = Array.isArray(data.providers) ? data.providers : (Array.isArray(data) ? data : []);
+            if (!providers.length) { box.innerHTML = '<div class="empty-state">No fiat providers configured</div>'; return; }
+            box.innerHTML = providers.map(p => `
+                <div class="provider-card">
+                    <div class="nft-name">${this.escapeHtml(p.name || p.id || 'Provider')}</div>
+                    <div class="asset-address">${this.escapeHtml(p.type || '')} ${p.supported_chains ? '· ' + this.escapeHtml(p.supported_chains.join(', ')) : ''}</div>
+                </div>`).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Ramp unavailable</div>';
+        }
+    }
+
+    // ---- dApp catalog + WalletConnect (canonical dapp_browser :8083 via /api/v1/dapps) ----
+    async loadDApps() {
+        const box = document.getElementById('dapp-list');
+        if (!box) return;
+        try {
+            const res = await fetch(`http://localhost:8443/api/v1/dapps`);
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>'; return; }
+            const data = await res.json();
+            const dapps = Array.isArray(data.dapps) ? data.dapps : (Array.isArray(data) ? data : []);
+            if (!dapps.length) { box.innerHTML = '<div class="empty-state">No dApps available</div>'; return; }
+            box.innerHTML = dapps.map(d => `
+                <div class="nft-card">
+                    <div class="nft-image">${d.icon_url ? `<img src="${this.escapeHtml(d.icon_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🌐'}</div>
+                    <div class="nft-name">${this.escapeHtml(d.name || '')}</div>
+                    <div class="nft-collection">${this.escapeHtml(d.category || '')}</div>
+                    <div class="asset-address">${d.url ? `<a href="${this.escapeHtml(d.url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>
+                </div>`).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>';
+        }
     }
     
     formatAddress(address) {

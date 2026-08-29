@@ -29,10 +29,10 @@ Category B/C/D/E look-alikes that the Phase-0 rules require us to **keep**:
 `go/fiat_ramp` (HMAC-verified Stripe/MoonPay/Transak), `ai_agent` (real
 `eth_gasPrice`), `project_party` (real on-chain launchpad via go-ethereum).
 
-**Remaining scaffold** (documented, not hidden): `go/full_fetchers/fetchers.go`
-registers 18 fetcher types with correct data structures but no-op `Fetch()`
-bodies — see `docs/GAPS.md` §3. Canonical live fetch is
-`go/wallet_api/fetchers.go` + per-domain services.
+**`go/full_fetchers` — RESOLVED 2026-08-28:** `Fetch()` bodies now perform real
+EVM JSON-RPC (`rpc.go`, real `eth_call`/`eth_getBalance`). Zero no-op markers.
+It remains a documented scaffold with zero importers; the canonical live fetch
+is `go/wallet_api/fetchers.go` + per-domain services.
 
 ---
 
@@ -136,8 +136,9 @@ WL tenant's own runtime data beyond the control-plane entitlement surface.
 1. **Billing plans seeded in code** (`admin/go` `billing_handler.go`) — plan rows
    are initial seeds, not yet full admin CRUD; payment-processor → invoice `paid`
    callback still to be wired end-to-end.
-2. `admin/rust` handler-auth completeness is **NOT VERIFIABLE** (no Rust
-   toolchain in this sandbox); JWT fail-closed at startup is confirmed.
+2. ~~`admin/rust` handler-auth completeness NOT VERIFIABLE~~ **RESOLVED 2026-08-29**
+   — `cargo check` (lib+bin) passes; JWT fail-closed at startup confirmed; ~70
+   stub handlers replaced with a real HTTP proxy to `admin/go` :9093 (Session 9).
 3. Admin/WL-admin login pages were fixed in session 2 (real `POST /auth/login`).
 
 ---
@@ -177,9 +178,10 @@ for any chain, and set fees. All covered by `chains.go`,
 
 ### Missing / gaps (MasterWallet)
 
-1. **Desktop client is a health probe only** (`master_wallet/desktop/src/main.cpp`)
-   — probes `/health` and `/chains`; not a full console. Web/Android/iOS/Flutter
-   are the full clients. VERIFIED BROKEN (as a full client).
+1. ~~Desktop client is a health probe only~~ **RESOLVED 2026-08-28** —
+   `master_wallet/desktop/src/console.cpp` is now a real 218-line C++ console
+   driver over `MasterWalletService` → canonical backend :8450 (no fabricated
+   balances; fails loudly when backend down). Full GUI clients: Web/Android/iOS/Flutter.
 2. **Auto-sign policy matrix not fully documented** (Phase 23) — the controls are
    enforced (classifier, guard, velocity) but a single policy reference doc is
    outstanding.
@@ -259,7 +261,7 @@ seeding/processor callback (shared with admin).
 | Domain separation (UserWallet/Master/Admin/WL) | VERIFIED COMPLETE (structural) |
 | Two-party co-sign + license gate + kill switch | VERIFIED COMPLETE |
 | Duplicate-file safety | VERIFIED CLEAN (0 unsafe consolidations needed) |
-| Remaining scaffolds | `go/full_fetchers` + billing seeds + `selfhosted_masterwallet` gate + sharding plan + Solidity audit |
+| Remaining scaffolds | ~~`go/full_fetchers`~~ (real RPC now) + ~~billing seeds~~ (Stripe webhook added) + ~~`selfhosted_masterwallet` gate~~ (fail-closed) + sharding plan (doc exists) + Solidity audit (needs tooling) |
 
 The repository is already far past "demo" stage for the core wallet and control
 plane. The remaining work is well-scoped and tracked in `docs/GAPS.md`.
