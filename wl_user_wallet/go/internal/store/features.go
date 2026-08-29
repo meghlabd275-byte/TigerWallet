@@ -11,6 +11,45 @@ import (
         "github.com/jackc/pgx/v5"
 )
 
+// Wallets CRUD / extras / guest / users-list (needed by misc handlers).
+func (s *Store) UpdateWalletLabel(ctx context.Context, id uuid.UUID, label string) error {
+        _, err := s.db.Exec(ctx, `UPDATE wallets SET label=$1 WHERE id=$2`, label, id)
+        return err
+}
+
+func (s *Store) DeleteWallet(ctx context.Context, id uuid.UUID) error {
+        _, err := s.db.Exec(ctx, `DELETE FROM wallets WHERE id=$1`, id)
+        return err
+}
+
+type UserRecord struct {
+        ID    string
+        Email string
+}
+
+func (s *Store) ListUsers(ctx context.Context) ([]UserRecord, error) {
+        rows, err := s.db.Query(ctx, `SELECT id, email FROM users ORDER BY created_at DESC`)
+        if err != nil { return nil, err }
+        defer rows.Close()
+        out := []UserRecord{}
+        for rows.Next() {
+                var u UserRecord
+                if err := rows.Scan(&u.ID, &u.Email); err != nil { continue }
+                out = append(out, u)
+        }
+        return out, nil
+}
+
+func (s *Store) CreateOrGetGuest(ctx context.Context, email, passwordHash string) (string, error) {
+        var id string
+        err := s.db.QueryRow(ctx, `SELECT id FROM users WHERE email=$1`, email).Scan(&id)
+        if err == nil { return id, nil }
+        id = uuid.NewString()
+        _, err = s.db.Exec(ctx, `INSERT INTO users (id, email, password_hash) VALUES ($1,$2,$3)`, id, email, passwordHash)
+        if err != nil { return "", err }
+        return id, nil
+}
+
 type PriceAlert struct {
         ID        string
         Symbol    string

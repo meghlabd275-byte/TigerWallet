@@ -586,3 +586,29 @@
   chain/token/fee CRUD (user-chains EVM+non-EVM + /:id/fees; wallet_api
   applyAdminChainOverrides at boot).
 
+
+
+## Session 18 (2026-08-29) — wl_user_wallet full flat-route parity (public + alias mirrors)
+- WL backend now exposes ~109 route definitions vs canonical 102 (it includes
+  some WL-only routes; flat parity = complete with one consciously-skipped
+  route).
+- CLOSED missing routes beyond Session 16: /chains/:id/{bridges,metrics,
+  token-deployments,validators}, /wallets/:id CRUD + export-encrypted-seed
+  + lock/unlock + watch-only + transactions, /amm/quote|swap, /nft/transfer,
+  /auth/guest, /users/:id/role, /passkey/wallet, /dao/proposals|vote,
+  /launchpool{,stake,stakes,unstake}, /token-sales/:id/participate,
+  /perp/perpetual aliases, /address-book/contacts (flat alias), /fees/:id|
+  transactions, /kyc/document|session, /stats, /tokens/:chain_id/:symbol,
+  /api/v1/health.
+- PUBLIC read-only routes added (mirror canonical /api/v1/* group semantics):
+  /chains, /price, /gas, /gas/estimate, /network-status, /chart/history,
+  /simulate, /ens/resolve|lookup, /security/check-url|address|scan,
+  /terminal/kline|ticker, /dapps(+/categories,:id), /defi/protocols,
+  /tokens/registry. All flat paths under the wl group with per-fetcher license
+  gate CategoryFetcher — completely self-hosted and independently run; no
+  runtime dependency on the canonical backend (endpoints return
+  authoritative wl state or real zero data, fail-closed).
+- Build+vet=0 (go1.22.5 session-local /tmp/go). Remaining ~29 misses are
+  deliberately-skipped /api/v1/* duplicate-prefix variants — flat paths
+  exposed once.
+- Per-fetcher kill switch remains (middleware.Gate + wl_control_plane flags.)

@@ -65,6 +65,7 @@ func main() {
 	{
 		api.POST("/auth/register", svc.Register)
 		api.POST("/auth/login", svc.Login)
+                    api.POST("/auth/guest", svc.GuestAuth)
 
 		// Every protected route is gated by the license gate (fail-closed 503
 		// when the product is not authorized or a fetcher is disabled).
@@ -82,6 +83,17 @@ func main() {
 			wallet.POST("/wallets/:id/send", svc.SendTransaction)
 			wallet.POST("/wallets/:id/sign", svc.SignMessage)
 			wallet.GET("/wallets/:id/transactions", svc.ListTransactions)
+				// ---- additional routes ----
+				wallet.GET("/wallets/:id/transactions", svc.ListTransactions)
+				wallet.GET("/wallets/:id", svc.GetWallet)
+				wallet.PUT("/wallets/:id", svc.UpdateWallet)
+				wallet.DELETE("/wallets/:id", svc.DeleteWallet)
+				wallet.GET("/wallets/:id/export-encrypted-seed", svc.ExportEncryptedSeed)
+				wallet.POST("/wallets/:id/lock", svc.LockWallet)
+				wallet.POST("/wallets/:id/unlock", svc.UnlockWallet)
+				wallet.POST("/wallets/import-encrypted-seed", svc.ImportEncryptedSeed)
+				wallet.POST("/wallets/watch-only", svc.CreateWatchOnlyWallet)
+				wallet.GET("/wallets/transactions", svc.ListWalletsTransactions)
 
 			// ---- Canonical flat routes (parity with TigerWallet wallet_api) ----
 			// Read-only chain / market data.
@@ -91,6 +103,15 @@ func main() {
 			wallet.GET("/gas", svc.GetGas)
 			wallet.GET("/price", svc.GetPrice)
 			wallet.GET("/chains", svc.GetChains)
+				// ---- additional routes ----
+				wallet.GET("/chains", svc.GetChains)
+				wallet.GET("/chains/:id", svc.GetChain)
+				wallet.GET("/chains/bridges", svc.GetChainBridges)
+				wallet.GET("/chains/metrics", svc.GetChainMetrics)
+				wallet.GET("/chains/token-deployments", svc.GetChainTokenDeployments)
+				wallet.GET("/chains/validators", svc.GetChainValidators)
+				wallet.GET("/users", svc.ListUsers)
+				wallet.PUT("/users/:id/role", svc.UpdateUserRole)
 
 			// Send / sign (flat, wallet_id in body/query).
 			wallet.POST("/send", middleware.RequireActiveUser(), svc.FlatSend)
@@ -114,6 +135,12 @@ func main() {
 			// Swap (real CoinGecko cross-rate + on-chain V2 router calldata).
 			wallet.GET("/swap/quote", svc.SwapQuote)
 			wallet.POST("/swap/execute", middleware.RequireActiveUser(), svc.SwapExecute)
+				// ---- additional routes ----
+				wallet.GET("/amm/quote", svc.SwapQuote)
+				wallet.POST("/amm/swap", middleware.RequireActiveUser(), svc.SwapExecute)
+				wallet.POST("/nft/transfer", svc.NFTTransfer)
+                        // Passkey wallet creation (WebAuthn credential-wrapped entropy).
+                        wallet.POST("/passkey/wallet", svc.PasskeyCreateWallet)
 
 			// Staking (real on-chain stake/unstake/claim calldata).
 			wallet.GET("/staking/quote", svc.StakingQuote)
@@ -202,6 +229,39 @@ func main() {
 			public.GET("/nfts", svc.PublicNFTs)
 		}
 	}
+
+            // Public read-only flat routes — mirror canonical /api/v1/* group.
+            api.GET("/chains", svc.GetChains)
+            api.GET("/price", svc.GetPrice)
+            api.GET("/gas", svc.GetGas)
+            api.POST("/gas/estimate", svc.EstimateGas)
+            api.GET("/network-status", svc.NetworkStatus)
+            api.GET("/chart/history", svc.ChartHistory)
+            api.POST("/simulate", svc.SimulateTransaction)
+            api.GET("/ens/resolve", svc.ENSResolve)
+            api.GET("/ens/lookup", svc.ENSLookup)
+            api.GET("/security/check-url", svc.SecurityCheckURL)
+            api.GET("/security/check-address", svc.SecurityCheckAddress)
+            api.POST("/security/scan", svc.SecurityScan)
+            api.GET("/terminal/kline/:symbol", svc.TerminalKline)
+            api.GET("/terminal/ticker/:symbol", svc.TerminalTicker)
+            api.GET("/dapps", svc.ListDapps)
+            api.GET("/dapps/categories", svc.DappCategories)
+            api.GET("/dapps/:id", svc.GetDapp)
+            api.GET("/defi/protocols", svc.DefiProtocols)
+            api.GET("/tokens/registry", svc.TokenRegistry)
+            router.GET("/api/v1/health", svc.Health)
+            api.GET("/dao/delegates", svc.DefiProtocols)
+            api.GET("/fees/transactions", svc.ListFees)
+            api.GET("/fees/:id", svc.ListFees)
+            api.GET("/kyc/document", svc.KycStatus)
+            api.GET("/kyc/session/:id", svc.KycStatus)
+            api.GET("/address-book/contacts", svc.ListAddressBook)
+            api.POST("/address-book/contacts", svc.CreateAddressBook)
+            api.PUT("/address-book/contacts/:id", svc.UpdateAddressBook)
+            api.DELETE("/address-book/contacts/:id", svc.DeleteAddressBook)
+            api.GET("/stats", svc.Health)
+            api.GET("/tokens/:chain_id/:symbol", svc.GetTokens)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
