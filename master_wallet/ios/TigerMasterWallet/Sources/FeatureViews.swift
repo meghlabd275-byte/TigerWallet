@@ -496,7 +496,6 @@ struct AutoSignView: View {
     @StateObject private var logs = FeatureLoadState<[[String: Any]]>([])
     @State private var name = ""
     @State private var maxAmount = ""
-    @State private var chain = ""
     @State private var actionMessage: String?
 
     var body: some View {
@@ -504,14 +503,13 @@ struct AutoSignView: View {
             Section("Add Rule") {
                 TextField("Rule name", text: $name)
                 TextField("Max amount", text: $maxAmount).keyboardType(.decimalPad)
-                TextField("Chain", text: $chain).textInputAutocapitalization(.never)
                 Button("Add") {
                     guard let wid = walletId(of: appState) else { return }
                     Task {
                         do {
-                            _ = try await appState.apiService.createAutoSignRule(walletId: wid, rule: AutoSignRule(
-                                id: "", name: name, maxAmount: Double(maxAmount) ?? 0,
-                                chain: chain, enabled: true, createdAt: Date()))
+                            try await appState.apiService.createAutoSignRule(
+                                walletId: wid, name: name, ruleType: "max_amount",
+                                maxAmount: maxAmount, isActive: true)
                             actionMessage = "Rule added."
                             await load()
                         } catch { actionMessage = error.localizedDescription }
@@ -523,15 +521,15 @@ struct AutoSignView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(r.name).font(.subheadline)
-                            Text("\(r.chain) · max \(r.maxAmount) · \(r.enabled ? "active" : "off")")
+                            Text("\(r.ruleType ?? "—") · max \(r.maxAmount ?? "—") · \((r.isActive ?? false) ? "active" : "off")")
                                 .font(.caption).foregroundColor(.secondary)
                         }
                         Spacer()
-                        Button(r.enabled ? "Disable" : "Enable") {
+                        Button((r.isActive ?? false) ? "Disable" : "Enable") {
                             guard let wid = walletId(of: appState) else { return }
                             Task {
                                 do {
-                                    try await appState.apiService.updateAutoSignRule(walletId: wid, ruleId: r.id, updates: ["is_active": !r.enabled])
+                                    try await appState.apiService.updateAutoSignRule(walletId: wid, ruleId: r.id, updates: ["is_active": !(r.isActive ?? false)])
                                     await load()
                                 } catch { actionMessage = error.localizedDescription }
                             }
@@ -708,7 +706,8 @@ struct MasterUsersView: View {
     @StateObject private var users = FeatureLoadState<[MasterUser]>([])
     @State private var email = ""
     @State private var name = ""
-    @State private var canAutoSign = true
+    @State private var password = ""
+    @State private var role = "operator"
     @State private var actionMessage: String?
 
     var body: some View {
@@ -716,20 +715,23 @@ struct MasterUsersView: View {
             Section("Add User") {
                 TextField("Email", text: $email).textInputAutocapitalization(.never).keyboardType(.emailAddress)
                 TextField("Name", text: $name)
-                Toggle("Can auto-sign", isOn: $canAutoSign)
+                SecureField("Password (min 8 chars)", text: $password)
+                Picker("Role", selection: $role) {
+                    Text("Operator").tag("operator")
+                    Text("Viewer").tag("viewer")
+                    Text("Admin").tag("admin")
+                }
                 Button("Add") {
                     guard let wid = walletId(of: appState) else { return }
                     Task {
                         do {
-                            let perms = MasterPermissions(
-                                canAutoSign: canAutoSign, canAirdrop: false, canClaim: true,
-                                canAdjustFees: false, maxTransactionLimit: 0)
-                            _ = try await appState.apiService.createUser(walletId: wid, user: CreateUserRequest(email: email, name: name, permissions: perms))
+                            _ = try await appState.apiService.createUser(walletId: wid, user: CreateUserRequest(email: email, password: password, name: name, role: role))
                             actionMessage = "User added."
+                            email = ""; name = ""; password = ""
                             await load()
                         } catch { actionMessage = error.localizedDescription }
                     }
-                }.disabled(email.isEmpty)
+                }.disabled(email.isEmpty || password.count < 8)
             }
             Section("Users") {
                 ForEach(users.items) { u in
@@ -737,8 +739,12 @@ struct MasterUsersView: View {
                         VStack(alignment: .leading) {
                             Text(u.name).font(.subheadline)
                             Text(u.email).font(.caption).foregroundColor(.secondary)
+                            Text("Role: \(u.role)").font(.caption2).foregroundColor(.secondary)
                         }
                         Spacer()
+                        Text(u.isActive ? "Active" : "Disabled")
+                            .font(.caption)
+                            .foregroundColor(u.isActive ? .green : .red)
                         Button("Delete", role: .destructive) {
                             guard let wid = walletId(of: appState) else { return }
                             Task {

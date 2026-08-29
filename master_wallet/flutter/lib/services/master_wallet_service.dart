@@ -732,6 +732,44 @@ class MasterWalletService {
     return true;
   }
 
+  /// GET /master-wallet/:id/auto-sign-policy → {policy: {...}}
+  Future<Map<String, dynamic>> getAutoSignPolicy(String walletId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$walletId/auto-sign-policy'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final policy = body['policy'];
+    return policy is Map<String, dynamic> ? policy : body;
+  }
+
+  /// PUT /master-wallet/:id/auto-sign-policy — owner/admin only.
+  Future<Map<String, dynamic>> updateAutoSignPolicy(
+    String walletId,
+    Map<String, dynamic> updates,
+  ) async {
+    final r = await http.put(
+      Uri.parse('$_apiV1/master-wallet/$walletId/auto-sign-policy'),
+      headers: _headers,
+      body: jsonEncode(updates),
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final policy = body['policy'];
+    return policy is Map<String, dynamic> ? policy : body;
+  }
+
+  /// GET /api/v1/kill-switch/status — read-only SuperAdmin halt state.
+  Future<Map<String, dynamic>> getKillSwitchStatus() async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/kill-switch/status'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   // ==================== Sub Wallets ====================
 
   /// GET /master-wallet/:id/sub-wallets → {sub_wallets: [...]}

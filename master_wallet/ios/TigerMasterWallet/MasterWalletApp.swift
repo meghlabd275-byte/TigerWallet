@@ -568,6 +568,8 @@ struct SettingsView: View {
                     NavigationLink("API Keys") { APIKeysView() }
                 }
 
+                KillSwitchSettingsSection()
+
                 Section("Network") {
                     Picker("Default Chain", selection: $appState.selectedChain) {
                         ForEach(Chain.allCases, id: \.self) { chain in
@@ -596,51 +598,171 @@ struct SettingsView: View {
 
 struct AutoSignSettingsView: View {
     @EnvironmentObject var appState: MasterAppState
+    @State private var rules: [AutoSignRule] = []
+    @State private var policy: AutoSignPolicy?
+    @State private var errorText: String?
+    @State private var loaded = false
 
     var body: some View {
-        Group {
-            if let perms = appState.permissions {
-                List {
-                    Section("Auto-Sign") {
-                        HStack { Text("Auto-Sign Enabled"); Spacer(); Text(perms.canAutoSign ? "Yes" : "No").foregroundColor(perms.canAutoSign ? .green : .secondary) }
-                        HStack { Text("Max Tx Value (USD)"); Spacer(); Text(String(format: "%.2f", perms.maxTransactionLimit)).foregroundColor(.secondary) }
-                    }
-                    Section("Other Capabilities") {
-                        HStack { Text("Airdrop"); Spacer(); Text(perms.canAirdrop ? "Yes" : "No").foregroundColor(.secondary) }
-                        HStack { Text("Claim"); Spacer(); Text(perms.canClaim ? "Yes" : "No").foregroundColor(.secondary) }
-                        HStack { Text("Adjust Fees"); Spacer(); Text(perms.canAdjustFees ? "Yes" : "No").foregroundColor(.secondary) }
+        List {
+            if let policy = policy {
+                Section("Daemon Policy") {
+                    Toggle("Auto-Sign Enabled", isOn: policyBinding(\.enabled))
+                    Toggle("Allow Transfers", isOn: policyBinding(\.allowTransfer))
+                    Toggle("Allow Swaps", isOn: policyBinding(\.allowSwap))
+                    Toggle("Allow Staking", isOn: policyBinding(\.allowStake))
+                    Toggle("Allow NFT Transfers", isOn: policyBinding(\.allowNftTransfer))
+                    Toggle("Allow Personal Sign", isOn: policyBinding(\.allowPersonalSign))
+                    Toggle("Allow Typed-Data Sign", isOn: policyBinding(\.allowTypedDataSign))
+                    HStack {
+                        Text("Max Auto Value (wei)")
+                        Spacer()
+                        Text(policy.maxAutoValueWei == "0" ? "Unlimited" : policy.maxAutoValueWei)
+                            .foregroundColor(.secondary).font(.caption)
                     }
                 }
-            } else {
-                ContentUnavailableView("No Permissions Loaded", systemImage: "key", description: Text("Permissions are not available until the backend provides them."))
             }
+            Section("Rules") {
+                ForEach(rules) { rule in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(rule.name).font(.subheadline)
+                            Text(rule.ruleType).font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        if let maxAmount = rule.maxAmount, !maxAmount.isEmpty {
+                            Text(maxAmount).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
+                if loaded && rules.isEmpty { Text("No auto-sign rules.").foregroundColor(.secondary) }
+            }
+            if let errorText = errorText { Section { Text(errorText).font(.caption).foregroundColor(.red) } }
         }
         .navigationTitle("Auto-Sign Rules")
+        .task { await load() }
+    }
+
+    private func policyBinding(_ keyPath: WritableKeyPath<AutoSignPolicy, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { policy?[keyPath: keyPath] ?? false },
+            set: { newValue in
+                guard var p = policy, let wid = appState.masterWallet?.id else { return }
+                p[keyPath: keyPath] = newValue
+                policy = p
+                Task {
+                    do { policy = try await appState.apiService.updateAutoSignPolicy(walletId: wid, policy: p) }
+                    catch { errorText = error.localizedDescription }
+                }
+            }
+        )
+    }
+
+    private func load() async {
+        guard let wid = appState.masterWallet?.id else { errorText = "No master wallet selected"; loaded = true; return }
+        do {
+            rules = try await appState.apiService.getAutoSignRules(walletId: wid)
+            policy = try await appState.apiService.getAutoSignPolicy(walletId: wid)
+            errorText = nil
+        } catch { errorText = error.localizedDescription }
+        loaded = true
     }
 }
 
 struct PermissionsView: View {
     @EnvironmentObject var appState: MasterAppState
+    @State private var users: [MasterUser] = []
+    @State private var errorText: String?
+    @State private var loaded = false
 
     var body: some View {
-        Group {
-            if let perms = appState.permissions {
-                List {
-                    Section("Capabilities") {
-                        HStack { Text("Auto-Sign"); Spacer(); Text(perms.canAutoSign ? "Yes" : "No").foregroundColor(.secondary) }
-                        HStack { Text("Airdrop"); Spacer(); Text(perms.canAirdrop ? "Yes" : "No").foregroundColor(.secondary) }
-                        HStack { Text("Claim"); Spacer(); Text(perms.canClaim ? "Yes" : "No").foregroundColor(.secondary) }
-                        HStack { Text("Adjust Fees"); Spacer(); Text(perms.canAdjustFees ? "Yes" : "No").foregroundColor(.secondary) }
-                    }
-                    Section("Limits") {
-                        HStack { Text("Max Tx Value (USD)"); Spacer(); Text(String(format: "%.2f", perms.maxTransactionLimit)).foregroundColor(.secondary) }
+        List {
+            Section("User Roles & Access") {
+                ForEach(users) { u in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(u.name).font(.subheadline)
+                            Text(u.email).font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(u.role).font(.caption).foregroundColor(.secondary)
+                        Toggle("", isOn: activeBinding(u)).labelsHidden()
                     }
                 }
-            } else {
-                ContentUnavailableView("No Permissions Loaded", systemImage: "person.crop.circle.badge", description: Text("Permissions are not available until the backend provides them."))
+                if loaded && users.isEmpty { Text("No users.").foregroundColor(.secondary) }
             }
+            if let errorText = errorText { Section { Text(errorText).font(.caption).foregroundColor(.red) } }
         }
         .navigationTitle("Permissions")
+        .task { await load() }
+    }
+
+    private func activeBinding(_ user: MasterUser) -> Binding<Bool> {
+        Binding(
+            get: { users.first(where: { $0.id == user.id })?.isActive ?? false },
+            set: { newValue in
+                guard let wid = appState.masterWallet?.id else { return }
+                Task {
+                    do {
+                        try await appState.apiService.updateUser(walletId: wid, userId: user.id, updates: ["is_active": newValue])
+                        await load()
+                    } catch { errorText = error.localizedDescription }
+                }
+            }
+        )
+    }
+
+    private func load() async {
+        guard let wid = appState.masterWallet?.id else { errorText = "No master wallet selected"; loaded = true; return }
+        do {
+            users = try await appState.apiService.getUsers(walletId: wid)
+            errorText = nil
+        } catch { errorText = error.localizedDescription }
+        loaded = true
+    }
+}
+
+struct KillSwitchSettingsSection: View {
+    @EnvironmentObject var appState: MasterAppState
+    @State private var status: KillSwitchStatus?
+    @State private var errorText: String?
+
+    var body: some View {
+        Section {
+            HStack {
+                Text("Global Halt State")
+                Spacer()
+                if let status = status {
+                    Text(status.halted ? "HALTED" : "Operational")
+                        .foregroundColor(status.halted ? .red : .green)
+                        .fontWeight(.bold)
+                } else {
+                    Text(errorText == nil ? "Loading…" : "Unavailable").foregroundColor(.secondary)
+                }
+            }
+            if let status = status, !status.reason.isEmpty {
+                HStack { Text("Reason"); Spacer(); Text(status.reason).foregroundColor(.secondary) }
+            }
+            if let status = status {
+                HStack { Text("Source"); Spacer(); Text(status.source).foregroundColor(.secondary).font(.caption) }
+            }
+            if let note = status?.note, !note.isEmpty {
+                Text(note).font(.caption2).foregroundColor(.secondary)
+            }
+            Button("Refresh") { Task { await load() } }
+        } header: {
+            Text("Kill Switch (SuperAdmin)")
+        } footer: {
+            if let errorText = errorText { Text(errorText).font(.caption2) }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        do {
+            status = try await appState.apiService.getKillSwitchStatus()
+            errorText = nil
+        } catch { errorText = error.localizedDescription }
     }
 }
 

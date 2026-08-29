@@ -563,6 +563,12 @@ class MasterWalletService {
     return authedFetch('/api/v1/health', { method: 'GET', auth: false });
   }
 
+  // Read-only SuperAdmin kill-switch state: GET /api/v1/kill-switch/status
+  // (protected route — requires the operator JWT).
+  async getKillSwitchStatus() {
+    return authedFetch('/kill-switch/status', { method: 'GET' });
+  }
+
   // ---------- Local chain metadata ----------
 
   getSupportedChains() {

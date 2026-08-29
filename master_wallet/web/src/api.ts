@@ -117,6 +117,28 @@ export interface AutoSignRule {
   created_at?: string;
 }
 
+// Mirrors the backend autoSignPolicy struct (auto_signer.go).
+export interface AutoSignPolicy {
+  master_wallet_id: string;
+  enabled: boolean;
+  allow_transfer: boolean;
+  allow_swap: boolean;
+  allow_stake: boolean;
+  allow_nft_transfer: boolean;
+  allow_personal_sign: boolean;
+  allow_typed_data_sign: boolean;
+  max_auto_value_wei: string; // "0" = unlimited
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface KillSwitchStatus {
+  halted: boolean;
+  reason: string;
+  source: string;
+  note?: string;
+}
+
 export interface MasterUser {
   id: string;
   email: string;
@@ -1106,6 +1128,28 @@ class MasterWalletAPI {
       `/api/v1/master-wallet/${masterId}/check-auto-sign-policy`,
       { method: 'POST', body: JSON.stringify(body) }
     );
+  }
+
+  // GET /api/v1/master-wallet/:id/auto-sign-policy — daemon policy snapshot.
+  async getAutoSignPolicy(masterId: string): Promise<AutoSignPolicy | null> {
+    const data = await this.request<{ policy?: AutoSignPolicy }>(
+      `/api/v1/master-wallet/${masterId}/auto-sign-policy`
+    );
+    return data.policy ?? null;
+  }
+
+  // PUT /api/v1/master-wallet/:id/auto-sign-policy — owner/admin only.
+  async updateAutoSignPolicy(masterId: string, policy: Partial<AutoSignPolicy>): Promise<AutoSignPolicy | null> {
+    const data = await this.request<{ policy?: AutoSignPolicy }>(
+      `/api/v1/master-wallet/${masterId}/auto-sign-policy`,
+      { method: 'PUT', body: JSON.stringify(policy) }
+    );
+    return data.policy ?? null;
+  }
+
+  // GET /api/v1/kill-switch/status — read-only SuperAdmin halt state.
+  async getKillSwitchStatus(): Promise<KillSwitchStatus> {
+    return this.request<KillSwitchStatus>(`/api/v1/kill-switch/status`);
   }
 
   // ---------------- Feature flags ----------------

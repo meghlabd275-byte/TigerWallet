@@ -161,12 +161,16 @@ class MasterAPIService {
     }
 
     func getAutoSignRules(walletId: String) async throws -> [AutoSignRule] {
-        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign")
+        let envelope: AutoSignRulesEnvelope = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign")
+        return envelope.autoSignRules
     }
 
-    func createAutoSignRule(walletId: String, rule: AutoSignRule) async throws -> AutoSignRule {
-        let body = try JSONEncoder().encode(rule)
-        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign", method: "POST", body: body)
+    /// Backend returns only {id, name, rule_type} on create (201).
+    func createAutoSignRule(walletId: String, name: String, ruleType: String, maxAmount: String, isActive: Bool = true) async throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "name": name, "rule_type": ruleType, "max_amount": maxAmount, "is_active": isActive,
+        ])
+        let _: [String: String] = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign", method: "POST", body: body)
     }
 
     func updateAutoSignRule(walletId: String, ruleId: String, updates: [String: Any]) async throws {
@@ -178,8 +182,30 @@ class MasterAPIService {
         let _: EmptyResponse = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign/\(ruleId)", method: "DELETE")
     }
 
+    // MARK: - Auto-sign daemon policy
+
+    private struct AutoSignPolicyEnvelope: Codable { let policy: AutoSignPolicy }
+
+    func getAutoSignPolicy(walletId: String) async throws -> AutoSignPolicy {
+        let envelope: AutoSignPolicyEnvelope = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign-policy")
+        return envelope.policy
+    }
+
+    func updateAutoSignPolicy(walletId: String, policy: AutoSignPolicy) async throws -> AutoSignPolicy {
+        let body = try JSONEncoder().encode(policy)
+        let envelope: AutoSignPolicyEnvelope = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/auto-sign-policy", method: "PUT", body: body)
+        return envelope.policy
+    }
+
+    // MARK: - Kill switch (read-only SuperAdmin halt state)
+
+    func getKillSwitchStatus() async throws -> KillSwitchStatus {
+        return try await request(endpoint: "/api/v1/kill-switch/status")
+    }
+
     func getUsers(walletId: String) async throws -> [MasterUser] {
-        return try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users")
+        let envelope: UsersEnvelope = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users")
+        return envelope.users
     }
 
     func createUser(walletId: String, user: CreateUserRequest) async throws -> MasterUser {
@@ -1060,38 +1086,86 @@ struct TreasuryOverview: Codable {
 struct AutoSignRule: Codable, Identifiable {
     let id: String
     let name: String
-    let maxAmount: Double
-    let chain: String
-    let enabled: Bool
-    let createdAt: Date
+    let ruleType: String?
+    let maxAmount: String?
+    let isActive: Bool?
+    let createdAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id, name
+        case ruleType = "rule_type"
         case maxAmount = "max_amount"
-        case chain, enabled
+        case isActive = "is_active"
         case createdAt = "created_at"
     }
+}
+
+/// Backend wraps the list: {"auto_sign_rules": [...]} (management.go GetAutoSignRules).
+struct AutoSignRulesEnvelope: Codable {
+    let autoSignRules: [AutoSignRule]
+
+    enum CodingKeys: String, CodingKey { case autoSignRules = "auto_sign_rules" }
 }
 
 struct MasterUser: Codable, Identifiable {
     let id: String
     let email: String
     let name: String
-    let permissions: MasterPermissions
+    let role: String
+    let isActive: Bool
     let createdAt: Date
     var lastLoginAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, email, name, permissions
+        case id, email, name, role
+        case isActive = "is_active"
         case createdAt = "created_at"
         case lastLoginAt = "last_login_at"
     }
 }
 
+/// Backend wraps the list: {"users": [...]} (management.go GetUsers).
+struct UsersEnvelope: Codable {
+    let users: [MasterUser]
+}
+
+/// Mirrors the backend autoSignPolicy struct (auto_signer.go) —
+/// GET/PUT /api/v1/master-wallet/:id/auto-sign-policy.
+struct AutoSignPolicy: Codable {
+    var enabled: Bool
+    var allowTransfer: Bool
+    var allowSwap: Bool
+    var allowStake: Bool
+    var allowNftTransfer: Bool
+    var allowPersonalSign: Bool
+    var allowTypedDataSign: Bool
+    var maxAutoValueWei: String
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case allowTransfer = "allow_transfer"
+        case allowSwap = "allow_swap"
+        case allowStake = "allow_stake"
+        case allowNftTransfer = "allow_nft_transfer"
+        case allowPersonalSign = "allow_personal_sign"
+        case allowTypedDataSign = "allow_typed_data_sign"
+        case maxAutoValueWei = "max_auto_value_wei"
+    }
+}
+
+/// Read-only SuperAdmin kill-switch state — GET /api/v1/kill-switch/status.
+struct KillSwitchStatus: Codable {
+    let halted: Bool
+    let reason: String
+    let source: String
+    let note: String?
+}
+
 struct CreateUserRequest: Codable {
     let email: String
+    let password: String
     let name: String
-    let permissions: MasterPermissions
+    let role: String
 }
 
 struct MasterPermissions: Codable {

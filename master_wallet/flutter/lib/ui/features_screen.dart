@@ -774,6 +774,45 @@ class _AutoSignScreenState extends State<AutoSignScreen> {
                 ),
               ),
               const Divider(),
+              const Text('Daemon policy',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              AsyncSection<Map<String, dynamic>>(
+                future: mws.getAutoSignPolicy(wid),
+                builder: (policy) => Column(
+                  children: [
+                    for (final entry in const [
+                      ['enabled', 'Auto-Sign Daemon Enabled'],
+                      ['allow_transfer', 'Allow Transfers'],
+                      ['allow_swap', 'Allow Swaps'],
+                      ['allow_stake', 'Allow Staking'],
+                      ['allow_nft_transfer', 'Allow NFT Transfers'],
+                      ['allow_personal_sign', 'Allow Personal Sign'],
+                      ['allow_typed_data_sign', 'Allow Typed-Data Sign'],
+                    ])
+                      SwitchListTile(
+                        dense: true,
+                        title: Text(entry[1]),
+                        value: policy[entry[0]] == true,
+                        onChanged: (v) async {
+                          try {
+                            await mws.updateAutoSignPolicy(wid, {entry[0]: v});
+                            if (mounted) _snack(context, 'Policy saved');
+                            setState(() => _reload++);
+                          } catch (e) {
+                            if (mounted) _snack(context, '$e');
+                          }
+                        },
+                      ),
+                    ListTile(
+                      dense: true,
+                      title: const Text('Max Auto Value (wei)'),
+                      subtitle: Text(
+                          '${policy['max_auto_value_wei'] ?? '0'} (0 = unlimited)'),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
               const Text('Auto-sign logs',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               AsyncSection<List<Map<String, dynamic>>>(

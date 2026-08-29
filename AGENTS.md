@@ -691,3 +691,59 @@
   BTC/Solana/Cosmos of 66 seeded; tx-history explorer keys per chain; FCM
   google-services.json is deployment config.
 
+## Session 22 (2026-08-29) — MasterWallet app-family audit (verified by route-coverage script)
+- Backend (:8450) exposes 94 routes (auth, wallet CRUD+sign, revenue-payout,
+  withdrawal-request, sub-wallets+transfer, tx CRUD+approve/reject, passkeys,
+  policies, fees, auto-sign rules+policy, users, audit, analytics,
+  notifications, webhooks, treasury+transfer+sweep, multisig full lifecycle,
+  user-chain/token governance (EVM+non-EVM), derive-user-address, auto-sign
+  bridge ops+logs, feature-flags, kill-switch/status, WS feed).
+- Client coverage vs backend: extension 94/94, android 94/94, ios 92/94,
+  flutter 92/94, web 91/94, desktop-gui 80/94.
+- VERIFIED GAPS: (1) kill-switch/status has NO UI on ANY client;
+  (2) GET/PUT /auto-sign-policy daemon-policy UI exists only on android +
+  extension (web/ios/flutter/desktop have check-auto-sign-policy only);
+  (3) desktop GUI lacks tx approve/reject, passkey verify-assertion,
+  derive-user-address, user-wallet-addresses, auto-sign-logs, gas/price,
+  tx-history pages (C++ console.cpp CLI covers ~21 commands instead);
+  (4) iOS appState.permissions is NEVER populated (only set nil at logout) so
+  AutoSignSettingsView + PermissionsView always render the empty state — dead UI;
+  (5) backend non-EVM broadcast only BTC(blockstream)/Solana/Cosmos of 66
+  seeded non-EVM chains; tx history = Etherscan-compatible explorers only.
+- Aux services (AccountAbstraction/Paymaster/Tax/Privacy/SuperAdmin) are
+  deliberately fail-closed typing surfaces (no fake data) — NOT gaps unless
+  ERC-4337/tax/privacy backends are added. Separation rule verified: MW apps
+  only call :8450; SuperAdminService in MW web returns descriptive errors.
+
+## Session 22 closure (2026-08-29) — all MasterWallet client gaps CLOSED; 94/94 on all 6 surfaces
+- KILL SWITCH UI added on every client (read-only GET /api/v1/kill-switch/status;
+  halt/resolve stays SuperAdmin-only via kill_switch :8469): web SettingsPage
+  kill-switch card; desktop MasterSettings kill-switch card + polling; extension
+  red killSwitchBanner in popup (refreshKillSwitchBanner); Android kill-switch
+  StateFlow + Dashboard halt banner + Settings card; iOS KillSwitchSettingsSection
+  in Settings + getKillSwitchStatus(); Flutter dashboard errorContainer banner +
+  getKillSwitchStatus().
+- AUTO-SIGN DAEMON POLICY UI (GET/PUT /:id/auto-sign-policy) added where missing:
+  web AutoSignPage policy load; desktop MasterAutoSign policy toggles; iOS
+  AutoSignSettingsView policy toggles + getAutoSignPolicy/updateAutoSignPolicy;
+  Flutter AutoSignScreen daemon-policy SwitchListTiles.
+- DESKTOP GUI closed its 14-route deficit: tx approve/reject, passkey
+  verify-assertion (real WebAuthn ceremony), derive-user-address,
+  user-wallet-addresses, auto-sign-logs, gas/price network card, and a Backend
+  Health card (/health + /api/v1/health, badge.danger style added).
+- IOS DECODE BUGS FIXED (these views were permanently broken against the real
+  backend): MasterUser/CreateUserRequest/AutoSignRule realigned to backend
+  shapes (users envelope, role+is_active, password required min 8, max_amount
+  string, is_active, rule_type; create returns only {id,name,rule_type});
+  dead appState.permissions views (AutoSignSettingsView/PermissionsView)
+  rewritten to fetch real rules+policy / users with active toggles.
+- Route-coverage audit (/tmp/mw_audit.py): web 94/94, desktop-gui 94/94,
+  extension 94/94, android 94/94, ios 94/94, flutter 94/94.
+- Verified: web tsc --noEmit=0; desktop tsc --noEmit=0 + vite build OK (215.5 kB);
+  extension node --check OK; Kotlin braces balanced (no Android SDK in sandbox,
+  not compile-verified); Swift/Dart brace balance 0, signature cross-check vs
+  services (no Xcode/Flutter SDK in sandbox).
+- Remaining (backend/deployment, not client): non-EVM broadcast only
+  BTC/Solana/Cosmos of 66 seeded; tx-history explorer keys per chain; FCM
+  google-services.json deployment config.
+

@@ -26,7 +26,7 @@ interface DashboardStats {
   totalUsers: number | null;
   pendingTx: number | null;
 }
-interface TxRecord { hash: string; from?: string; to?: string; amount?: string; status?: string; timestamp?: string; }
+interface TxRecord { id?: string; hash: string; from?: string; to?: string; amount?: string; status?: string; timestamp?: string; }
 interface WalletRecord { id: string; name?: string; address?: string; balance?: string; status?: string; }
 
 // Wallet-scope helper: every wallet-scoped resource lives under
@@ -263,6 +263,19 @@ const MasterDashboard = () => {
     pendingTx: null,        // pending tx count comes from the wallet's tx list
   };
 
+  // Live network state: gas (live RPC) + price (CoinGecko) for the selected
+  // chain. Both routes are public on the backend; failures render "—".
+  const [netChain, setNetChain] = useState('1');
+  const [gas, setGas] = useState<{ gas_price?: string; max_fee?: string; priority_fee?: string } | null>(null);
+  const [price, setPrice] = useState<{ usd?: number; symbol?: string } | null>(null);
+  const loadNetwork = useCallback(async () => {
+    const g = await apiFetch<any>(`/api/v1/gas?chain_id=${encodeURIComponent(netChain)}`);
+    setGas(g && !g.error ? g : null);
+    const p = await apiFetch<any>(`/api/v1/price?chain_id=${encodeURIComponent(netChain)}`);
+    setPrice(p && !p.error ? { usd: p.usd ?? p.price_usd, symbol: p.symbol ?? p.coin_id } : null);
+  }, [netChain]);
+  useEffect(() => { loadNetwork(); }, [loadNetwork]);
+
   return (
     <div className="page">
       <h1 className="page-title">Dashboard</h1>
@@ -274,6 +287,19 @@ const MasterDashboard = () => {
         <div className="card stat-card"><div className="stat-label">⏳ Pending Tx</div><div className="stat-value big">{loading ? '…' : (stats.pendingTx ?? '—')}</div></div>
       </div>
       {liveEvent && <div className="banner">Live: {liveEvent}</div>}
+      <div className="card">
+        <div className="row-between">
+          <h2 className="card-title">Network</h2>
+          <div>
+            <input style={{ width: 90, marginRight: 8 }} value={netChain} onChange={(e) => setNetChain(e.target.value)} placeholder="Chain ID" />
+            <button className="link-btn" onClick={loadNetwork}>Refresh</button>
+          </div>
+        </div>
+        <div className="row-between"><span>Gas Price (wei)</span><span className="mono">{gas?.gas_price ?? '—'}</span></div>
+        <div className="row-between"><span>Max Fee (wei)</span><span className="mono">{gas?.max_fee ?? '—'}</span></div>
+        <div className="row-between"><span>Priority Fee (wei)</span><span className="mono">{gas?.priority_fee ?? '—'}</span></div>
+        <div className="row-between"><span>Native Price (USD)</span><span className="mono">{price?.usd != null ? `$${price.usd}` : '—'}{price?.symbol ? ` · ${price.symbol}` : ''}</span></div>
+      </div>
       <div className="grid grid-cols-2 gap-6">
         <div className="card">
           <h2 className="card-title">Quick Actions</h2>
@@ -396,68 +422,181 @@ const MasterTransactions = () => {
   const [txs, setTxs] = useState<TxRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    (async () => {
-      setLoading(true); setErr(null);
-      const wid = await firstWalletId();
-      const r = wid ? await apiFetch<{ transactions?: TxRecord[] }>(`/api/v1/master-wallet/${wid}/transactions`) : null;
-      setTxs(r?.transactions ?? []);
-      if (!authToken) setErr('Not authenticated — sign in to load transactions.');
-      setLoading(false);
-    })();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [wid, setWid] = useState<string | null>(null);
+  const [hist, setHist] = useState<{ address: string; chainId: string; rows: any[]; searched: boolean }>({ address: '', chainId: '1', rows: [], searched: false });
+
+  const reload = useCallback(async () => {
+    setLoading(true); setErr(null);
+    const id = await firstWalletId();
+    setWid(id);
+    const r = id ? await apiFetch<{ transactions?: TxRecord[] }>(`/api/v1/master-wallet/${id}/transactions`) : null;
+    setTxs(r?.transactions ?? []);
+    if (!authToken) setErr('Not authenticated — sign in to load transactions.');
+    setLoading(false);
   }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  const decide = async (t: TxRecord, action: 'approve' | 'reject') => {
+    setMsg(null);
+    if (!wid || !t.id) { setMsg('Transaction id unavailable.'); return; }
+    const r = await apiSend(`/api/v1/master-wallet/${wid}/transactions/${encodeURIComponent(t.id)}/${action}`, 'POST', {});
+    if (r) { setMsg(`Transaction ${action}d.`); reload(); }
+  };
+
+  const searchHistory = async () => {
+    setMsg(null);
+    const r = await apiFetch<{ transactions?: any[]; history?: any[] }>(
+      `/api/v1/transactions/history?address=${encodeURIComponent(hist.address)}&chain_id=${encodeURIComponent(hist.chainId)}`);
+    setHist({ ...hist, rows: (r?.transactions ?? r?.history ?? []) as any[], searched: true });
+    if (!r) setMsg('History unavailable — the chain may not have an explorer configured (backend responds 503).');
+  };
+
   return (
     <div className="page">
       <h1 className="page-title">Transactions</h1>
       {err && <div className="banner error">{err}</div>}
+      {msg && <div className="banner">{msg}</div>}
       <div className="card table-card">
         <table className="data-table">
-          <thead><tr><th>Hash</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead>
+          <thead><tr><th>Hash</th><th>From</th><th>To</th><th>Amount</th><th>Status</th><th>Time</th><th></th></tr></thead>
           <tbody>
-            {loading && <tr><td colSpan={6} className="empty-hint">Loading…</td></tr>}
-            {!loading && txs.length === 0 && <tr><td colSpan={6} className="empty-hint">No transactions.</td></tr>}
+            {loading && <tr><td colSpan={7} className="empty-hint">Loading…</td></tr>}
+            {!loading && txs.length === 0 && <tr><td colSpan={7} className="empty-hint">No transactions.</td></tr>}
             {!loading && txs.map(t => (
-              <tr key={t.hash}>
+              <tr key={t.id ?? t.hash}>
                 <td className="mono">{t.hash}</td>
                 <td className="mono">{t.from ?? '—'}</td>
                 <td className="mono">{t.to ?? '—'}</td>
                 <td>{t.amount ?? '—'}</td>
                 <td><span className={`badge ${t.status === 'confirmed' ? 'ok' : 'muted'}`}>{t.status ?? '—'}</span></td>
                 <td>{t.timestamp ?? '—'}</td>
+                <td>
+                  {t.status === 'pending' && t.id && (
+                    <>
+                      <button className="link-btn ok" onClick={() => decide(t, 'approve')}>Approve</button>
+                      <button className="link-btn danger" onClick={() => decide(t, 'reject')}>Reject</button>
+                    </>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <div className="card">
+        <h2 className="card-title">On-Chain History Explorer</h2>
+        <div className="form-grid">
+          <input placeholder="Address (0x…)" value={hist.address} onChange={(e) => setHist({ ...hist, address: e.target.value })} />
+          <input placeholder="Chain ID" value={hist.chainId} onChange={(e) => setHist({ ...hist, chainId: e.target.value })} />
+          <button className="action-btn blue" onClick={searchHistory} disabled={!hist.address.trim()}>Search</button>
+        </div>
+        {hist.searched && (
+          <table className="data-table">
+            <thead><tr><th>Hash</th><th>From</th><th>To</th><th>Value</th><th>Time</th></tr></thead>
+            <tbody>
+              {hist.rows.length === 0 && <tr><td colSpan={5} className="empty-hint">No on-chain transactions found for this address.</td></tr>}
+              {hist.rows.map((h: any, i: number) => (
+                <tr key={h.hash ?? i}>
+                  <td className="mono">{h.hash ?? '—'}</td>
+                  <td className="mono">{h.from ?? '—'}</td>
+                  <td className="mono">{h.to ?? '—'}</td>
+                  <td>{h.value ?? '—'}</td>
+                  <td>{h.timestamp ?? h.timeStamp ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 };
 
-// Auto Sign page — the auto-approver policy snapshot from the control plane.
+// Auto Sign page — rules + daemon policy (GET/PUT auto-sign-policy) + logs.
 const MasterAutoSign = () => {
   interface RuleRecord { name?: string; tx_type?: string; token?: string; action?: string; }
+  interface PolicyRecord {
+    enabled: boolean; allow_transfer: boolean; allow_swap: boolean; allow_stake: boolean;
+    allow_nft_transfer: boolean; allow_personal_sign: boolean; allow_typed_data_sign: boolean;
+    max_auto_value_wei: string;
+  }
   const [rules, setRules] = useState<RuleRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    (async () => {
-      setLoading(true); setErr(null);
-      const wid = await firstWalletId();
-      // Canonical auto-sign resource per wallet: GET /master-wallet/:id/auto-sign.
-      const r = wid ? await apiFetch<{ rules?: RuleRecord[]; auto_sign?: RuleRecord[]; rules_item_auto_sign?: RuleRecord[] }>(`/api/v1/master-wallet/${wid}/auto-sign`) : null;
-      setRules(r?.rules ?? r?.auto_sign ?? r?.rules_item_auto_sign ?? []);
-      if (!authToken) setErr('Not authenticated — sign in to load policy.');
-      setLoading(false);
-    })();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [wid, setWid] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<PolicyRecord | null>(null);
+  const [logs, setLogs] = useState<any[]>([]);
+
+  const reload = useCallback(async () => {
+    setLoading(true); setErr(null);
+    const id = await firstWalletId();
+    setWid(id);
+    if (!id) { setLoading(false); return; }
+    const r = await apiFetch<{ rules?: RuleRecord[]; auto_sign?: RuleRecord[]; rules_item_auto_sign?: RuleRecord[] }>(`/api/v1/master-wallet/${id}/auto-sign`);
+    setRules(r?.rules ?? r?.auto_sign ?? r?.rules_item_auto_sign ?? []);
+    const p = await apiFetch<{ policy?: PolicyRecord }>(`/api/v1/master-wallet/${id}/auto-sign-policy`);
+    setPolicy(p?.policy ?? null);
+    const l = await apiFetch<{ logs?: any[]; auto_sign_logs?: any[] }>(`/api/v1/master-wallet/${id}/auto-sign-logs`);
+    setLogs(l?.logs ?? l?.auto_sign_logs ?? (Array.isArray(l) ? (l as any[]) : []));
+    if (!authToken) setErr('Not authenticated — sign in to load policy.');
+    setLoading(false);
   }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  const savePolicy = async (patch: Partial<PolicyRecord>) => {
+    setMsg(null);
+    if (!wid || !policy) return;
+    const r = await apiSend<{ policy?: PolicyRecord }>(`/api/v1/master-wallet/${wid}/auto-sign-policy`, 'PUT', { ...policy, ...patch });
+    if (r) { setPolicy(r.policy ?? { ...policy, ...patch }); setMsg('Policy saved.'); }
+  };
+
+  const POLICY_FLAGS: [keyof PolicyRecord, string][] = [
+    ['enabled', 'Auto-Sign Daemon Enabled'],
+    ['allow_transfer', 'Allow Transfers'],
+    ['allow_swap', 'Allow Swaps'],
+    ['allow_stake', 'Allow Staking'],
+    ['allow_nft_transfer', 'Allow NFT Transfers'],
+    ['allow_personal_sign', 'Allow Personal Sign'],
+    ['allow_typed_data_sign', 'Allow Typed-Data Sign'],
+  ];
+
   return (
     <div className="page">
       <div className="page-head">
-        <h1 className="page-title">Auto-Sign Policy</h1>
-        <button className="action-btn orange">⚙️ Configure</button>
+        <h1 className="page-title">Auto-Sign</h1>
+        <button className="action-btn orange" onClick={reload}>🔄 Refresh</button>
       </div>
       {err && <div className="banner error">{err}</div>}
+      {msg && <div className="banner">{msg}</div>}
+
+      <div className="card">
+        <h2 className="card-title">Daemon Policy</h2>
+        {!policy ? (
+          <div className="empty-hint">{loading ? 'Loading…' : 'Policy unavailable.'}</div>
+        ) : (
+          <>
+            {POLICY_FLAGS.map(([key, label]) => (
+              <div key={key} className="row-between" style={{ padding: '8px 0' }}>
+                <span>{label}</span>
+                <button onClick={() => savePolicy({ [key]: !policy[key] } as Partial<PolicyRecord>)} className={`switch ${policy[key] ? 'on' : 'off'}`}><span className="knob" /></button>
+              </div>
+            ))}
+            <div className="row-between" style={{ padding: '8px 0' }}>
+              <span>Max Auto Value (wei, 0 = unlimited)</span>
+              <input
+                defaultValue={policy.max_auto_value_wei}
+                style={{ width: 200 }}
+                onBlur={(e) => { if (e.target.value !== policy.max_auto_value_wei) savePolicy({ max_auto_value_wei: e.target.value }); }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="card table-card">
+        <h2 className="card-title">Rules</h2>
         <table className="data-table">
           <thead><tr><th>Transaction Type</th><th>Asset</th><th>Policy</th></tr></thead>
           <tbody>
@@ -468,6 +607,24 @@ const MasterAutoSign = () => {
                 <td>{r.name ?? r.tx_type ?? '—'}</td>
                 <td>{r.token ?? '—'}</td>
                 <td><span className={`badge ${r.action === 'auto' ? 'ok' : 'muted'}`}>{r.action ?? '—'}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card table-card">
+        <h2 className="card-title">Auto-Sign Logs</h2>
+        <table className="data-table">
+          <thead><tr><th>Time</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody>
+            {loading && <tr><td colSpan={3} className="empty-hint">Loading…</td></tr>}
+            {!loading && logs.length === 0 && <tr><td colSpan={3} className="empty-hint">No auto-sign activity logged yet.</td></tr>}
+            {!loading && logs.map((l: any, i: number) => (
+              <tr key={l.id ?? i}>
+                <td>{l.created_at ?? l.timestamp ?? '—'}</td>
+                <td><span className="badge ok">{l.action ?? l.status ?? '—'}</span></td>
+                <td className="mono">{l.tx_hash ?? l.detail ?? l.reason ?? '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -652,6 +809,8 @@ const MasterOps = () => {
   const [check, setCheck] = useState({ txType: '', value: '', result: '' });
   const [as, setAs] = useState({ mnemonic: '', chainId: '1', chainType: 'evm', txType: 'send', to: '', value: '', tokenAddress: '' });
   const [rp, setRp] = useState({ to: '', amount: '', password: '', withdrawalId: '' });
+  const [derive, setDerive] = useState({ userId: '', chainId: '1', result: '' });
+  const [uwAddrs, setUwAddrs] = useState<any[] | null>(null);
   const wid_ = async () => { const w = await firstWalletId(); if (!w) throw new Error('No master wallet found.'); return w; };
   const act = async (fn: (wid: string) => Promise<any>) => {
     setMsg(null);
@@ -714,6 +873,44 @@ const MasterOps = () => {
             if (r) { setMsg('Payout submitted to the blockchain network: ' + ((r.transaction_hash || r.tx_hash || r.hash) || '')); setRp({ ...rp, password: '' }); }
           }}>Execute payout</button>
         </div>
+      </div>
+      <div className="card">
+        <h2 className="card-title">Derive UserWallet Address</h2>
+        <div className="form-grid">
+          <input placeholder="User ID / index" value={derive.userId} onChange={(e) => setDerive({ ...derive, userId: e.target.value })} />
+          <input placeholder="Chain ID" value={derive.chainId} onChange={(e) => setDerive({ ...derive, chainId: e.target.value })} />
+          <button className="action-btn blue" onClick={async () => {
+            const r = await act((wid) => apiSend<any>(`/api/v1/master-wallet/${wid}/derive-user-address`, 'POST', {
+              user_id: derive.userId, chain_id: parseInt(derive.chainId, 10) || 1,
+            }));
+            if (r) setDerive({ ...derive, result: (r.address || r.derived_address || '') + (r.path ? ' · ' + r.path : '') });
+          }}>Derive</button>
+        </div>
+        {derive.result && <div className="banner mono">{derive.result}</div>}
+      </div>
+      <div className="card table-card">
+        <div className="row-between">
+          <h2 className="card-title">UserWallet Addresses (derived under this MasterWallet)</h2>
+          <button className="action-btn orange" onClick={async () => {
+            const r = await act((wid) => apiFetch<any>(`/api/v1/master-wallet/${wid}/user-wallet-addresses`));
+            setUwAddrs((r && (r.addresses || r.user_wallet_addresses)) || (Array.isArray(r) ? r : []));
+          }}>Load</button>
+        </div>
+        {uwAddrs && (
+          <table className="data-table">
+            <thead><tr><th>User</th><th>Chain</th><th>Address</th></tr></thead>
+            <tbody>
+              {uwAddrs.length === 0 && <tr><td colSpan={3} className="empty-hint">No derived addresses recorded yet.</td></tr>}
+              {uwAddrs.map((a: any, i: number) => (
+                <tr key={a.id ?? i}>
+                  <td>{a.user_id ?? a.user ?? '—'}</td>
+                  <td>{a.chain_id ?? '—'}</td>
+                  <td className="mono">{a.address ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -1257,6 +1454,17 @@ function bufToB64url(buf: ArrayBuffer): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+// b64urlToBuf decodes a base64url credential id back to an ArrayBuffer for
+// WebAuthn allowCredentials.
+function b64urlToBuf(b64url: string): ArrayBuffer {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+  const bin = atob(b64 + pad);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
 // Passkeys page — real platform WebAuthn ceremony (navigator.credentials)
 // registered against the backend relying-party route; credentials listed from
 // the backend (source of truth).
@@ -1314,6 +1522,35 @@ const MasterPasskeys = () => {
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
+  const authenticate = async (credId: string) => {
+    setMsg(null); setBusy(true);
+    try {
+      if (!res.wid) throw new Error('No master wallet found.');
+      if (!navigator.credentials || !navigator.credentials.get) {
+        throw new Error('WebAuthn is not available in this runtime.');
+      }
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          allowCredentials: [{ type: 'public-key', id: b64urlToBuf(credId) }],
+          userVerification: 'preferred',
+          timeout: 60000,
+        },
+      }) as PublicKeyCredential | null;
+      if (!assertion) throw new Error('Passkey assertion was cancelled.');
+      const resp = assertion.response as AuthenticatorAssertionResponse;
+      const r = await apiSend<any>(`/api/v1/master-wallet/${res.wid}/passkey/verify-assertion`, 'POST', {
+        credential_id: assertion.id,
+        authenticator_data: bufToB64url(resp.authenticatorData),
+        client_data_json: bufToB64url(resp.clientDataJSON),
+        signature: bufToB64url(resp.signature),
+      });
+      setMsg(r && (r.verified === true || r.verified === 'true') ? 'Passkey assertion verified.' : 'Passkey assertion rejected by backend.');
+    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
   return (
     <div className="page">
       <h1 className="page-title">Passkeys</h1>
@@ -1336,7 +1573,10 @@ const MasterPasskeys = () => {
                 <td>{p.label ?? '—'}</td>
                 <td className="mono">{String(p.credential_id ?? p.id ?? '—').slice(0, 24)}</td>
                 <td>{p.created_at ?? '—'}</td>
-                <td><RowBtn label="Delete" kind="danger" onClick={() => del(p.credential_id ?? p.id)} /></td>
+                <td>
+                  <RowBtn label="Verify" kind="ok" onClick={() => authenticate(p.credential_id ?? p.id)} />
+                  <RowBtn label="Delete" kind="danger" onClick={() => del(p.credential_id ?? p.id)} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1384,9 +1624,58 @@ const MasterWithdraw = () => {
 // Settings Component — appearance toggle controls the theme applied everywhere.
 const MasterSettings = () => {
   const { isDark, toggle } = useTheme();
+  const [ks, setKs] = useState<{ halted: boolean; reason: string; source: string; note?: string } | null>(null);
+  const [health, setHealth] = useState<{ core: string; api: string }>({ core: 'unknown', api: 'unknown' });
+  const loadKs = useCallback(async () => {
+    const r = await apiFetch<{ halted: boolean; reason: string; source: string; note?: string }>('/api/v1/kill-switch/status');
+    if (r) setKs(r);
+  }, []);
+  const loadHealth = useCallback(async () => {
+    const core = await apiFetch<any>('/health');
+    const api = await apiFetch<any>('/api/v1/health');
+    setHealth({
+      core: core ? (core.status ?? 'ok') : 'unreachable',
+      api: api ? (api.status ?? 'ok') : 'unreachable',
+    });
+  }, []);
+  useEffect(() => {
+    loadKs();
+    loadHealth();
+    const t = setInterval(() => { loadKs(); loadHealth(); }, 15000);
+    return () => clearInterval(t);
+  }, [loadKs, loadHealth]);
   return (
     <div className="page">
       <h1 className="page-title">Settings</h1>
+      {ks?.halted && (
+        <div className="banner error">
+          Global kill-switch HALTED by SuperAdmin{ks.reason ? `: ${ks.reason}` : ''}. All API operations are blocked until the halt is lifted.
+        </div>
+      )}
+      <div className="card">
+        <div className="row-between">
+          <h2 className="card-title">Kill Switch (SuperAdmin)</h2>
+          <button className="link-btn" onClick={loadKs}>Refresh</button>
+        </div>
+        {!ks ? (
+          <div className="empty-hint">Status unavailable — sign in to load the kill-switch state.</div>
+        ) : (
+          <>
+            <div className="row-between"><span>Global Halt State</span><span className={`badge ${ks.halted ? 'danger' : 'ok'}`}>{ks.halted ? 'HALTED' : 'Operational'}</span></div>
+            {ks.reason && <div className="row-between"><span>Reason</span><span className="muted">{ks.reason}</span></div>}
+            <div className="row-between"><span>Source</span><span className="muted mono">{ks.source}</span></div>
+            {ks.note && <div className="muted" style={{ fontSize: 12 }}>{ks.note}</div>}
+          </>
+        )}
+      </div>
+      <div className="card">
+        <div className="row-between">
+          <h2 className="card-title">Backend Health</h2>
+          <button className="link-btn" onClick={loadHealth}>Refresh</button>
+        </div>
+        <div className="row-between"><span>Core (/health)</span><span className={`badge ${health.core === 'unreachable' ? 'danger' : 'ok'}`}>{health.core}</span></div>
+        <div className="row-between"><span>API (/api/v1/health)</span><span className={`badge ${health.api === 'unreachable' ? 'danger' : 'ok'}`}>{health.api}</span></div>
+      </div>
       <div className="card">
         <h2 className="card-title">Appearance</h2>
         <div className="row-between">
@@ -1489,6 +1778,7 @@ const ThemeStyle = () => (
     .badge { padding: .25rem .5rem; border-radius: .25rem; font-size: .75rem; color: #fff; }
     .badge.ok { background: var(--success-color); }
     .badge.muted { background: var(--text-secondary-color); }
+    .badge.danger { background: var(--danger-color, #b00020); }
     .link-btn { background: none; border: none; color: var(--primary-color); cursor: pointer; }
     .link-btn.danger { color: var(--error-color); }
     .link-btn.ok { color: var(--success-color); }

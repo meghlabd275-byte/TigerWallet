@@ -116,6 +116,7 @@
     $('authView').classList.add('hidden');
     $('walletView').classList.remove('hidden');
     setStatus('Loading walletsâ¦');
+    refreshKillSwitchBanner();
     try {
       const res = await send('MW_RELAY', { action: 'listMasterWallets', args: [] });
       const wallets = (res && (res.wallets || res)) || [];
@@ -125,6 +126,24 @@
       setStatus((e && e.message) || String(e), true);
       renderWalletList([]);
       renderPasskeys();
+    }
+  }
+
+  // Kill-switch banner: polls the read-only SuperAdmin halt state so the
+  // operator sees WHY every API call is failing instead of bare 503s.
+  async function refreshKillSwitchBanner() {
+    const banner = $('killSwitchBanner');
+    if (!banner) return;
+    try {
+      const res = await send('MW_RELAY', { action: 'getKillSwitchStatus', args: [] });
+      if (res && res.halted) {
+        banner.textContent = 'KILL SWITCH HALTED by SuperAdmin' + (res.reason ? ': ' + res.reason : '') + ' — all API operations are blocked.';
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    } catch (_) {
+      // Status unknown (e.g. backend down) — leave the banner as-is.
     }
   }
 

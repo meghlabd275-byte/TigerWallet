@@ -35,11 +35,24 @@ class _DashboardScreenState extends State<DashboardScreen>
   WebSocketService? _liveWs;
   StreamSubscription<String>? _liveSub;
   String? _liveEvent;
+  Map<String, dynamic>? _killSwitch;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 6, vsync: this);
+    _loadKillSwitch();
+  }
+
+  /// Read-only SuperAdmin kill-switch state (GET /api/v1/kill-switch/status).
+  Future<void> _loadKillSwitch() async {
+    try {
+      final status =
+          await context.read<MasterWalletService>().getKillSwitchStatus();
+      if (mounted) setState(() => _killSwitch = status);
+    } catch (_) {
+      // Status unknown (e.g. backend down) — leave the banner hidden.
+    }
   }
 
   @override
@@ -94,9 +107,29 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(_liveEvent == null ? 48 : 74),
+          preferredSize: Size.fromHeight(
+              48 +
+                  (_liveEvent == null ? 0 : 26) +
+                  (_killSwitch?['halted'] == true ? 26 : 0)),
           child: Column(
             children: [
+              if (_killSwitch?['halted'] == true)
+                Container(
+                  width: double.infinity,
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                  child: Text(
+                    'KILL SWITCH HALTED by SuperAdmin'
+                    '${(_killSwitch?['reason'] as String? ?? '').isNotEmpty ? ': ${_killSwitch?['reason']}' : ''}'
+                    ' — all API operations are blocked.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.onErrorContainer),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               if (_liveEvent != null)
                 Container(
                   width: double.infinity,

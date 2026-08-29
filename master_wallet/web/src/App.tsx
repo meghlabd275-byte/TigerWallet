@@ -13,6 +13,8 @@ import {
   SubWallet,
   Transaction,
   AutoSignRule,
+  AutoSignPolicy,
+  KillSwitchStatus,
   ChainConfig,
   BalanceResponse,
   RevenuePayoutResponse,
@@ -819,6 +821,31 @@ const AutoSignPage = ({ isDark, masterId, rules, loading, error, onRefresh }: Au
   const [maxAmount, setMaxAmount] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<AutoSignPolicy | null>(null);
+  const [policyMsg, setPolicyMsg] = useState<string | null>(null);
+
+  const loadPolicy = useCallback(async () => {
+    if (!masterId) return;
+    try {
+      setPolicy(await masterWalletAPI.getAutoSignPolicy(masterId));
+    } catch (err) {
+      setPolicyMsg(err instanceof ApiError ? err.message : String(err));
+    }
+  }, [masterId]);
+
+  useEffect(() => { loadPolicy(); }, [loadPolicy]);
+
+  const savePolicy = async (patch: Partial<AutoSignPolicy>) => {
+    if (!masterId || !policy) return;
+    setPolicyMsg(null);
+    try {
+      const updated = await masterWalletAPI.updateAutoSignPolicy(masterId, { ...policy, ...patch });
+      if (updated) setPolicy(updated);
+      setPolicyMsg('Policy saved.');
+    } catch (err) {
+      setPolicyMsg(err instanceof ApiError ? err.message : String(err));
+    }
+  };
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -904,6 +931,49 @@ const AutoSignPage = ({ isDark, masterId, rules, loading, error, onRefresh }: Au
           ))
         )}
       </div>
+
+      {masterId && (
+        <div className={`${card} rounded-xl p-6 space-y-4`}>
+          <div className="flex justify-between items-center">
+            <h2 className={`text-lg font-semibold ${heading}`}>Daemon Auto-Sign Policy</h2>
+            <button onClick={loadPolicy} className={`px-3 py-1 rounded-lg text-sm ${isDark ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Refresh</button>
+          </div>
+          {policyMsg && <div className="text-sm text-gray-500">{policyMsg}</div>}
+          {!policy ? (
+            <div className={subtext}>Policy unavailable.</div>
+          ) : (
+            <>
+              {([
+                ['enabled', 'Auto-Sign Daemon Enabled'],
+                ['allow_transfer', 'Allow Transfers'],
+                ['allow_swap', 'Allow Swaps'],
+                ['allow_stake', 'Allow Staking'],
+                ['allow_nft_transfer', 'Allow NFT Transfers'],
+                ['allow_personal_sign', 'Allow Personal Sign'],
+                ['allow_typed_data_sign', 'Allow Typed-Data Sign'],
+              ] as [keyof AutoSignPolicy, string][]).map(([key, label]) => (
+                <div key={key} className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                  <span className={heading}>{label}</span>
+                  <button
+                    onClick={() => savePolicy({ [key]: !policy[key] } as Partial<AutoSignPolicy>)}
+                    className={`w-12 h-6 rounded-full transition-colors ${policy[key] ? 'bg-blue-500' : 'bg-gray-400'}`}
+                  >
+                    <div className={`w-4 h-4 bg-white rounded-full transform transition-transform ${policy[key] ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              ))}
+              <div className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                <span className={heading}>Max Auto Value (wei, 0 = unlimited)</span>
+                <input
+                  defaultValue={policy.max_auto_value_wei}
+                  onBlur={(e) => { if (e.target.value !== policy.max_auto_value_wei) savePolicy({ max_auto_value_wei: e.target.value }); }}
+                  className={`w-48 px-3 py-2 border rounded-lg font-mono text-sm ${input}`}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -1106,12 +1176,29 @@ const SettingsPage = ({ isDark }: { isDark: boolean }) => {
   const { toggleTheme } = useTheme();
   const [apiUrl] = useState(masterWalletAPI.baseUrl);
   const [wsState, setWsState] = useState(webSocketService.connectionState);
+  const [killSwitch, setKillSwitch] = useState<KillSwitchStatus | null>(null);
+  const [killSwitchErr, setKillSwitchErr] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (s: typeof wsState) => setWsState(s);
     webSocketService.onStateChange(handler);
     return () => { webSocketService.offStateChange(handler); };
   }, []);
+
+  const loadKillSwitch = useCallback(async () => {
+    try {
+      setKillSwitch(await masterWalletAPI.getKillSwitchStatus());
+      setKillSwitchErr(null);
+    } catch (err) {
+      setKillSwitchErr(err instanceof ApiError ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    loadKillSwitch();
+    const t = setInterval(loadKillSwitch, 15000);
+    return () => clearInterval(t);
+  }, [loadKillSwitch]);
 
   const card = isDark ? 'bg-gray-800' : 'bg-white border border-gray-200';
   const row = isDark ? 'bg-gray-700' : 'bg-gray-50';
@@ -1122,6 +1209,43 @@ const SettingsPage = ({ isDark }: { isDark: boolean }) => {
   return (
     <div className="space-y-6">
       <h1 className={`text-2xl font-bold ${heading}`}>Settings</h1>
+
+      {killSwitch?.halted && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/40 text-red-500 text-sm">
+          Global kill-switch HALTED by SuperAdmin{killSwitch.reason ? `: ${killSwitch.reason}` : ''}. All API operations are blocked until the halt is lifted.
+        </div>
+      )}
+
+      <div className={`${card} rounded-xl p-6 space-y-4`}>
+        <div className="flex justify-between items-center">
+          <h2 className={`text-lg font-semibold ${heading}`}>Kill Switch (SuperAdmin)</h2>
+          <button onClick={loadKillSwitch} className={`px-3 py-1 rounded-lg text-sm ${isDark ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Refresh</button>
+        </div>
+        {killSwitchErr && <div className="text-sm text-red-500">{killSwitchErr}</div>}
+        {!killSwitch ? (
+          <div className={subtext}>Status unavailable.</div>
+        ) : (
+          <>
+            <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+              <span className={heading}>Global Halt State</span>
+              <span className={`px-3 py-1 rounded text-white ${killSwitch.halted ? 'bg-red-500' : 'bg-green-500'}`}>
+                {killSwitch.halted ? 'HALTED' : 'Operational'}
+              </span>
+            </div>
+            {killSwitch.reason && (
+              <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+                <span className={heading}>Reason</span>
+                <span className={subtext}>{killSwitch.reason}</span>
+              </div>
+            )}
+            <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+              <span className={heading}>Source</span>
+              <span className={`font-mono text-sm ${subtext}`}>{killSwitch.source}</span>
+            </div>
+            {killSwitch.note && <div className={`text-xs ${subtext}`}>{killSwitch.note}</div>}
+          </>
+        )}
+      </div>
 
       <div className={`${card} rounded-xl p-6 space-y-4`}>
         <h2 className={`text-lg font-semibold ${heading}`}>Appearance</h2>

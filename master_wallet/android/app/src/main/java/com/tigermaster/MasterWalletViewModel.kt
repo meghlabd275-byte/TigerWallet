@@ -93,11 +93,21 @@ class MasterWalletViewModel : ViewModel() {
                 loadTokens()
                 loadVolumeStats()
                 loadWhitelist()
+                loadKillSwitchStatus()
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    /** Read-only SuperAdmin kill-switch state (GET /api/v1/kill-switch/status). */
+    fun loadKillSwitchStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                apiGet("/kill-switch/status")?.let { _killSwitch.value = JSONObject(it) }
+            } catch (_: Exception) { /* status unknown — leave previous state */ }
         }
     }
     
@@ -574,6 +584,8 @@ class MasterWalletViewModel : ViewModel() {
     val subWalletList: StateFlow<List<JSONObject>> = _subWalletList.asStateFlow()
     private val _liveEvent = MutableStateFlow<String?>(null)
     val liveEvent: StateFlow<String?> = _liveEvent.asStateFlow()
+    private val _killSwitch = MutableStateFlow<JSONObject?>(null)
+    val killSwitch: StateFlow<JSONObject?> = _killSwitch.asStateFlow()
 
     /** Parse either a raw JSON array or a {"<key>":[...]} envelope. */
     private fun parseList(raw: String?, key: String): List<JSONObject> {
@@ -637,6 +649,7 @@ class MasterWalletViewModel : ViewModel() {
                     }
                     "tokens" -> _userTokens.value = parseList(apiGet("/master-wallet/$id/user-tokens"), "tokens")
                     "passkeys" -> _passkeys.value = parseList(apiGet("/master-wallet/$id/passkey/credentials"), "passkeys")
+                    "killswitch" -> loadKillSwitchStatus()
                     "analytics" -> {
                         val out = mutableMapOf<String, String>()
                         apiGet("/master-wallet/$id/analytics/volume")?.let { r ->

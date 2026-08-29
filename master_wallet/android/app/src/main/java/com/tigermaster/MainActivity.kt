@@ -117,10 +117,12 @@ fun DashboardScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modif
     val subWallets by viewModel.subWallets.collectAsState()
     val volume by viewModel.volumeStats.collectAsState()
     val liveEvent by viewModel.liveEvent.collectAsState()
+    val killSwitch by viewModel.killSwitch.collectAsState()
 
     // Live backend /ws feed: starts once a wallet is selected, stops on dispose.
     LaunchedEffect(wallet?.id) {
         if (wallet != null) viewModel.startLiveFeed()
+        viewModel.loadKillSwitchStatus()
     }
     DisposableEffect(Unit) {
         onDispose { viewModel.stopLiveFeed() }
@@ -128,6 +130,17 @@ fun DashboardScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modif
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Dashboard", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+
+        if (killSwitch?.optBoolean("halted") == true) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0x33B00020))) {
+                Text(
+                    "KILL SWITCH HALTED by SuperAdmin" +
+                        (killSwitch?.optString("reason", "")?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: "") +
+                        " — all API operations are blocked.",
+                    modifier = Modifier.padding(12.dp), fontSize = 12.sp, color = Color(0xFFB00020), fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
         liveEvent?.let {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -307,9 +320,41 @@ fun SettingsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifi
     val networks by viewModel.networks.collectAsState()
     val autoSignRules by viewModel.autoSignRules.collectAsState()
     val users by viewModel.users.collectAsState()
+    val killSwitch by viewModel.killSwitch.collectAsState()
+
+    LaunchedEffect(Unit) { viewModel.loadKillSwitchStatus() }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Kill Switch (SuperAdmin)", fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { viewModel.loadKillSwitchStatus() }) { Text("Refresh") }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                val halted = killSwitch?.optBoolean("halted") == true
+                if (killSwitch == null) {
+                    Text("Status unavailable — sign in to load the kill-switch state.", fontSize = 12.sp, color = Color.Gray)
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Global Halt State")
+                        Text(
+                            if (halted) "HALTED" else "Operational",
+                            color = if (halted) Color.Red else Color(0xFF2E7D32),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    val reason = killSwitch?.optString("reason", "") ?: ""
+                    if (reason.isNotBlank()) Text("Reason: $reason", fontSize = 12.sp, color = Color.Gray)
+                    val source = killSwitch?.optString("source", "") ?: ""
+                    if (source.isNotBlank()) Text("Source: $source", fontSize = 12.sp, color = Color.Gray)
+                    val note = killSwitch?.optString("note", "") ?: ""
+                    if (note.isNotBlank()) Text(note, fontSize = 11.sp, color = Color.Gray)
+                }
+            }
+        }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {

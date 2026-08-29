@@ -367,6 +367,9 @@ async function handleRelay(payload) {
       return svc.getAutoSignPolicy(walletId);
     case 'updateAutoSignPolicy':
       return svc.updateAutoSignPolicy(walletId, args[1]);
+    // ---------- Kill switch (read-only SuperAdmin halt state) ----------
+    case 'getKillSwitchStatus':
+      return svc.getKillSwitchStatus();
     default:
       throw new Error('Unknown relay action: ' + action);
   }
