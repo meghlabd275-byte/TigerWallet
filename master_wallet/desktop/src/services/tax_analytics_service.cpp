@@ -419,9 +419,116 @@ std::string TaxAnalyticsService::exportToJSON(const std::string& reportId) {
     return json.str();
 }
 
+namespace {
+// Escape the three bytes that are structurally significant inside a PDF
+// literal string.
+std::string pdfEscape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '(' || c == ')' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    return out;
+}
+
+// Minimal, valid PDF 1.4 writer (Helvetica text pages, correct xref offsets).
+// No external PDF library required.
+std::string buildPdf(const std::vector<std::string>& lines) {
+    const size_t linesPerPage = 46;
+    size_t pageCount = (lines.size() + linesPerPage - 1) / linesPerPage;
+    if (pageCount == 0) pageCount = 1;
+    const int fontObj = 3 + static_cast<int>(pageCount) * 2;
+    std::vector<std::string> objs(fontObj + 1);
+    objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+    std::stringstream kids;
+    for (size_t i = 0; i < pageCount; ++i) {
+        if (i) kids << ' ';
+        kids << (3 + i * 2) << " 0 R";
+    }
+    objs[2] = "<< /Type /Pages /Kids [" + kids.str() + "] /Count " +
+              std::to_string(pageCount) + " >>";
+    for (size_t pg = 0; pg < pageCount; ++pg) {
+        int pageObj = 3 + static_cast<int>(pg) * 2;
+        int contentObj = pageObj + 1;
+        objs[pageObj] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                        "/Resources << /Font << /F1 " + std::to_string(fontObj) +
+                        " 0 R >> >> /Contents " + std::to_string(contentObj) + " 0 R >>";
+        std::stringstream content;
+        content << "BT /F1 11 Tf 14 TL 50 750 Td\n";
+        size_t first = pg * linesPerPage;
+        size_t last = std::min(lines.size(), first + linesPerPage);
+        for (size_t i = first; i < last; ++i) {
+            if (i > first) content << "T* ";
+            content << "(" << pdfEscape(lines[i]) << ") Tj\n";
+        }
+        content << "ET";
+        objs[contentObj] = "<< /Length " + std::to_string(content.str().size()) +
+                           " >>\nstream\n" + content.str() + "\nendstream";
+    }
+    objs[fontObj] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+    std::stringstream pdf;
+    pdf << "%PDF-1.4\n";
+    std::vector<long> offsets(fontObj + 1, 0);
+    for (int i = 1; i <= fontObj; ++i) {
+        offsets[i] = static_cast<long>(pdf.tellp());
+        pdf << i << " 0 obj\n" << objs[i] << "\nendobj\n";
+    }
+    long xref = static_cast<long>(pdf.tellp());
+    pdf << "xref\n0 " << (fontObj + 1) << "\n0000000000 65535 f \n";
+    for (int i = 1; i <= fontObj; ++i) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%010ld 00000 n \n", offsets[i]);
+        pdf << buf;
+    }
+    pdf << "trailer\n<< /Size " << (fontObj + 1)
+        << " /Root 1 0 R >>\nstartxref\n" << xref << "\n%%EOF";
+    return pdf.str();
+}
+
+std::string pdfMoney(double v) {
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2) << v;
+    return ss.str();
+}
+} // namespace
+
 std::string TaxAnalyticsService::exportToPDF(const std::string& reportId) {
-    // In production, use a PDF library
-    return "PDF export not implemented";
+    std::lock_guard<std::mutex> lock(dataMutex_);
+    auto it = reports_.find(reportId);
+    if (it == reports_.end()) {
+        throw std::runtime_error("tax report not found: " + reportId);
+    }
+    const auto& report = it->second;
+
+    std::vector<std::string> lines;
+    lines.push_back("TigerWallet Tax Report " + report.reportId);
+    lines.push_back("Wallet: " + report.walletAddress);
+    lines.push_back("Tax Year: " + std::to_string(report.taxYear));
+    lines.push_back("");
+    lines.push_back("Total Proceeds:        " + pdfMoney(report.totalProceeds));
+    lines.push_back("Total Cost Basis:      " + pdfMoney(report.totalCostBasis));
+    lines.push_back("Total Gain/Loss:       " + pdfMoney(report.totalGainLoss));
+    lines.push_back("Short-Term Gain/Loss:  " + pdfMoney(report.shortTermGainLoss));
+    lines.push_back("Long-Term Gain/Loss:   " + pdfMoney(report.longTermGainLoss));
+    lines.push_back("Income:                " + pdfMoney(report.income));
+    lines.push_back("Staking Rewards:       " + pdfMoney(report.stakingRewards));
+    lines.push_back("Interest Income:       " + pdfMoney(report.interestIncome));
+    lines.push_back("Total Taxable Income:  " + pdfMoney(report.totalTaxableIncome));
+    if (!report.gainsByAsset.empty()) {
+        lines.push_back("");
+        lines.push_back("Gains by Asset:");
+        for (const auto& kv : report.gainsByAsset)
+            lines.push_back("  " + kv.first + ": " + pdfMoney(kv.second));
+    }
+    if (!report.incomeByType.empty()) {
+        lines.push_back("");
+        lines.push_back("Income by Type:");
+        for (const auto& kv : report.incomeByType)
+            lines.push_back("  " + kv.first + ": " + pdfMoney(kv.second));
+    }
+    return buildPdf(lines);
 }
 
 TaxAnalyticsService::TaxStats TaxAnalyticsService::getStats() const {

@@ -127,6 +127,7 @@ type Allocation struct {
 	Tier          string     `json:"tier"`
 	Status        string     `json:"status"`
 	ClaimedAt     *time.Time `json:"claimed_at"`
+	TxHash        string     `json:"tx_hash"`
 	ChainID       int64      `json:"chain_id"`
 	CreatedAt     time.Time  `json:"created_at"`
 }
@@ -139,6 +140,7 @@ type Stake struct {
 	StakeAmount    float64   `json:"stake_amount"`
 	PendingReward  float64   `json:"pending_reward"`
 	ClaimedReward  float64   `json:"claimed_reward"`
+	TxHash         string    `json:"tx_hash"`
 	Status         string    `json:"status"`
 	ChainID        int64     `json:"chain_id"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -150,9 +152,10 @@ type Stake struct {
 // ============================================================================
 
 type LaunchpadService struct {
-	db     *gorm.DB
-	redis  *redis.Client
-	config Config
+	db      *gorm.DB
+	redis   *redis.Client
+	config  Config
+	onchain *OnChainClient // nil when on-chain execution is not configured
 }
 
 func NewLaunchpadService(config Config) (*LaunchpadService, error) {
@@ -180,10 +183,16 @@ func NewLaunchpadService(config Config) (*LaunchpadService, error) {
 		Addr: fmt.Sprintf("%s:%s", config.RedisHost, config.RedisPort),
 	})
 
+	onchain, err := NewOnChainClientFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("on-chain launchpad config: %w", err)
+	}
+
 	service := &LaunchpadService{
-		db:     db,
-		redis:  rdb,
-		config: config,
+		db:      db,
+		redis:   rdb,
+		config:  config,
+		onchain: onchain,
 	}
 
 	return service, nil
@@ -398,13 +407,26 @@ func (s *LaunchpadService) ClaimTokens(ctx *gin.Context) {
 		return
 	}
 
-	// Fail-closed: no on-chain transaction is broadcast here, so we cannot
-	// honestly report a claim. Return an error instead of fabricating success.
-	ctx.JSON(501, gin.H{
-		"success": false,
-		"error":   "claim requires an on-chain transaction that is not implemented; no tokens were claimed",
-		"status":  "not_implemented",
-	})
+	// Real on-chain claim: broadcast the claim transaction from the launchpad
+	// distribution wallet. Fail-closed 503 when on-chain execution is not
+	// configured; the allocation is only marked CLAIMED after a confirmed tx.
+	if s.onchain == nil {
+		ctx.JSON(503, gin.H{"success": false, "error": "on-chain claim not configured (LAUNCHPAD_RPC_URL/LAUNCHPAD_PRIVATE_KEY/LAUNCHPAD_CONTRACT_ADDRESS)"})
+		return
+	}
+	txHash, err := s.onchain.ClaimTokens(ctx.Request.Context(), allocation.ProjectID)
+	if err != nil {
+		ctx.JSON(502, gin.H{"success": false, "error": err.Error(), "tx_hash": txHash})
+		return
+	}
+
+	now := time.Now()
+	allocation.Status = "CLAIMED"
+	allocation.ClaimedAt = &now
+	allocation.TxHash = txHash
+	s.db.Save(&allocation)
+
+	ctx.JSON(200, gin.H{"success": true, "tx_hash": txHash, "message": "Claim transaction submitted to the blockchain network"})
 }
 
 // ============================================================================
@@ -531,14 +553,24 @@ func (s *LaunchpadService) ClaimRewards(ctx *gin.Context) {
 		return
 	}
 
-	// Fail-closed: reward payout requires an on-chain transaction that is not
-	// implemented here. Do not fabricate a payout with an empty hash.
-	ctx.JSON(501, gin.H{
-		"success":        false,
-		"error":          "reward payout requires an on-chain transaction that is not implemented; no rewards were claimed",
-		"status":         "not_implemented",
-		"pending_reward": stake.PendingReward,
-	})
+	// Real on-chain payout: broadcast the reward claim from the distribution
+	// wallet; only move pending->claimed after a confirmed tx.
+	if s.onchain == nil {
+		ctx.JSON(503, gin.H{"success": false, "error": "on-chain reward payout not configured (LAUNCHPAD_RPC_URL/LAUNCHPAD_PRIVATE_KEY/LAUNCHPAD_CONTRACT_ADDRESS)"})
+		return
+	}
+	txHash, err := s.onchain.ClaimRewards(ctx.Request.Context(), req.ProjectID)
+	if err != nil {
+		ctx.JSON(502, gin.H{"success": false, "error": err.Error(), "tx_hash": txHash})
+		return
+	}
+
+	stake.ClaimedReward += stake.PendingReward
+	stake.PendingReward = 0
+	stake.TxHash = txHash
+	s.db.Save(&stake)
+
+	ctx.JSON(200, gin.H{"success": true, "tx_hash": txHash, "claimed": stake.ClaimedReward, "message": "Reward claim transaction submitted to the blockchain network"})
 }
 
 // ============================================================================

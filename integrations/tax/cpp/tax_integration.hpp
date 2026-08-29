@@ -15,6 +15,7 @@
 #define TIGERWALLET_TAX_INTEGRATION_HPP
 
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <map>
@@ -111,7 +112,7 @@ struct TaxReport {
     double shortTermGain;
     double longTermGain;
     double shortTermLoss;
-    double double longTermLoss;
+    double longTermLoss;
     double totalFees;
     std::vector<CapitalGain> gains;
     std::map<TokenSymbol, double> holdingsByToken;
@@ -172,6 +173,16 @@ public:
         const Transaction& sellTransaction,
         double quantitySold
     ) {
+        return calculateGainWithLots(sellTransaction, quantitySold, {});
+    }
+
+    // Calculate cost basis with user-designated lots (required for
+    // SPECIFIC_IDENTIFICATION: lots are consumed in exactly the order given).
+    std::optional<CapitalGain> calculateGainWithLots(
+        const Transaction& sellTransaction,
+        double quantitySold,
+        const std::vector<std::string>& specifiedLotIds
+    ) {
         std::lock_guard<std::mutex> lock(mutex_);
         
         auto it = tokenLots_.find(sellTransaction.token);
@@ -204,9 +215,26 @@ public:
                         return a->costPerUnit > b->costPerUnit;
                     });
                 break;
-            case CostBasisMethod::SPECIFIC_IDENTIFICATION:
-                // Use user-specified lots (not implemented)
+            case CostBasisMethod::SPECIFIC_IDENTIFICATION: {
+                // Specific identification requires the user to designate which
+                // lots to sell. Without designated lots we cannot compute an
+                // honest basis — fail closed rather than silently computing a
+                // FIFO gain under the wrong method.
+                if (specifiedLotIds.empty()) {
+                    return std::nullopt;
+                }
+                std::vector<CostBasisLot*> designated;
+                for (const auto& wantedId : specifiedLotIds) {
+                    for (auto* lot : sortedLots) {
+                        if (lot->lotId == wantedId) {
+                            designated.push_back(lot);
+                            break;
+                        }
+                    }
+                }
+                sortedLots = designated;
                 break;
+            }
         }
         
         // Calculate cost basis
@@ -451,7 +479,7 @@ public:
             csv += std::to_string(gain.proceeds) + ",";
             csv += std::to_string(gain.costBasis) + ",";
             csv += std::to_string(gain.gain) + ",";
-            csv += (gain.isLongTerm ? "Long-term" : "Short-term") + ",";
+            csv += (gain.isLongTerm ? "Long-term," : "Short-term,");
             csv += gain.fiscalYear + ",";
             csv += gain.lotId + ",";
             csv += gain.calculationMethod + "\n";

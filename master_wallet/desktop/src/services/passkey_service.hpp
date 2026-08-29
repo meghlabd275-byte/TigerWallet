@@ -327,14 +327,95 @@ inline PasskeyCredential::PasskeyCredential()
     , lastUsedAt(0)
     , isResident(false) {}
 
+// Versioned binary format v1 ("TPC1"):
+//   magic[4] | for each string field: u32be len + bytes | transports: u32be
+//   count + items | createdAt i64be | lastUsedAt i64be | isResident u8.
+// Field order is fixed: id, publicKey, privateKey, counter, aaguid, label.
+namespace detail {
+inline void putU32(std::vector<uint8_t>& out, uint32_t v) {
+    out.push_back(static_cast<uint8_t>((v >> 24) & 0xff));
+    out.push_back(static_cast<uint8_t>((v >> 16) & 0xff));
+    out.push_back(static_cast<uint8_t>((v >> 8) & 0xff));
+    out.push_back(static_cast<uint8_t>(v & 0xff));
+}
+inline void putI64(std::vector<uint8_t>& out, int64_t v) {
+    for (int i = 7; i >= 0; --i)
+        out.push_back(static_cast<uint8_t>((static_cast<uint64_t>(v) >> (i * 8)) & 0xff));
+}
+inline void putStr(std::vector<uint8_t>& out, const std::string& s) {
+    putU32(out, static_cast<uint32_t>(s.size()));
+    out.insert(out.end(), s.begin(), s.end());
+}
+struct Reader {
+    const std::vector<uint8_t>& d;
+    size_t pos = 0;
+    explicit Reader(const std::vector<uint8_t>& v) : d(v) {}
+    uint32_t u32() {
+        if (pos + 4 > d.size()) throw std::runtime_error("passkey blob truncated");
+        uint32_t v = (static_cast<uint32_t>(d[pos]) << 24) |
+                     (static_cast<uint32_t>(d[pos + 1]) << 16) |
+                     (static_cast<uint32_t>(d[pos + 2]) << 8) |
+                     static_cast<uint32_t>(d[pos + 3]);
+        pos += 4;
+        return v;
+    }
+    int64_t i64() {
+        if (pos + 8 > d.size()) throw std::runtime_error("passkey blob truncated");
+        uint64_t v = 0;
+        for (int i = 0; i < 8; ++i) v = (v << 8) | d[pos + i];
+        pos += 8;
+        return static_cast<int64_t>(v);
+    }
+    uint8_t u8() {
+        if (pos + 1 > d.size()) throw std::runtime_error("passkey blob truncated");
+        return d[pos++];
+    }
+    std::string str() {
+        uint32_t n = u32();
+        if (pos + n > d.size()) throw std::runtime_error("passkey blob truncated");
+        std::string s(reinterpret_cast<const char*>(d.data() + pos), n);
+        pos += n;
+        return s;
+    }
+};
+} // namespace detail
+
 inline std::vector<uint8_t> PasskeyCredential::encode() const {
-    // Credential serialization must be implemented with an explicit, versioned
-    // format. Returning empty silently would lose data; fail closed.
-    throw std::runtime_error("PasskeyCredential serialization is not implemented");
+    std::vector<uint8_t> out{'T', 'P', 'C', '1'};
+    detail::putStr(out, id);
+    detail::putStr(out, publicKey);
+    detail::putStr(out, privateKey);
+    detail::putStr(out, counter);
+    detail::putStr(out, aaguid);
+    detail::putStr(out, label);
+    detail::putU32(out, static_cast<uint32_t>(transports.size()));
+    for (const auto& t : transports) detail::putStr(out, t);
+    detail::putI64(out, createdAt);
+    detail::putI64(out, lastUsedAt);
+    out.push_back(isResident ? 1 : 0);
+    return out;
 }
 
-inline PasskeyCredential PasskeyCredential::decode(const std::vector<uint8_t>& /*data*/) {
-    throw std::runtime_error("PasskeyCredential deserialization is not implemented");
+inline PasskeyCredential PasskeyCredential::decode(const std::vector<uint8_t>& data) {
+    if (data.size() < 4 || data[0] != 'T' || data[1] != 'P' || data[2] != 'C' ||
+        data[3] != '1')
+        throw std::runtime_error("unsupported passkey blob version");
+    detail::Reader r(data);
+    r.pos = 4;
+    PasskeyCredential c;
+    c.id = r.str();
+    c.publicKey = r.str();
+    c.privateKey = r.str();
+    c.counter = r.str();
+    c.aaguid = r.str();
+    c.label = r.str();
+    uint32_t n = r.u32();
+    c.transports.reserve(n);
+    for (uint32_t i = 0; i < n; ++i) c.transports.push_back(r.str());
+    c.createdAt = r.i64();
+    c.lastUsedAt = r.i64();
+    c.isResident = r.u8() != 0;
+    return c;
 }
 
 inline std::vector<PublicKeyCredentialParameters> 

@@ -1,0 +1,14 @@
+[package]
+name = "dex-connectors-top20"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "dex-connectors"
+path = "connectors.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

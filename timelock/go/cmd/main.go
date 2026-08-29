@@ -21,12 +21,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -100,7 +104,7 @@ type TimelockTransaction struct {
 	Status            string         `json:"status"` // pending, queued, executed, cancelled, expired
 	ExecutedAt        *time.Time     `json:"executed_at"`
 	ExecutedBy        string         `json:"executed_by"`
-	ExecutionTxHash   string         `gorm:"uniqueIndex;size:66" json:"execution_tx_hash"`
+	ExecutionTxHash   string         `gorm:"size:66" json:"execution_tx_hash"`
 	CancelledAt       *time.Time     `json:"cancelled_at"`
 	CancelledBy       string         `json:"cancelled_by"`
 	CancelReason      string         `json:"cancel_reason"`
@@ -154,9 +158,10 @@ type TimelockHistory struct {
 // ============================================================================
 
 type TimelockService struct {
-	config *Config
-	db     *gorm.DB
-	redis  *redis.Client
+	config   *Config
+	db       *gorm.DB
+	redis    *redis.Client
+	executor *OnChainExecutor // nil when on-chain execution is not configured
 }
 
 func NewTimelockService(cfg *Config) (*TimelockService, error) {
@@ -176,10 +181,16 @@ func NewTimelockService(cfg *Config) (*TimelockService, error) {
 		DB: 0,
 	})
 	
+	executor, err := NewOnChainExecutorFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("on-chain executor config: %w", err)
+	}
+
 	service := &TimelockService{
 		config: cfg,
 		db:     db,
 		redis:  rdb,
+		executor: executor,
 	}
 	
 	// Initialize default queue if not exists
@@ -270,7 +281,7 @@ func (s *TimelockService) queueTransaction(tx *TimelockTransaction) {
 	
 	// Add to sorted set for scheduled execution
 	score := float64(tx.ExecuteAfter.Unix())
-	s.redis.ZAdd(ctx, "timelock:schedule", &redis.Z{Score: score, Member: tx.TxID})
+	s.redis.ZAdd(ctx, "timelock:schedule", redis.Z{Score: score, Member: tx.TxID})
 }
 
 func (s *TimelockService) ExecuteTransaction(txID string, executor string) (*TimelockTransaction, error) {
@@ -292,12 +303,32 @@ func (s *TimelockService) ExecuteTransaction(txID string, executor string) (*Tim
 		return nil, fmt.Errorf("transaction expired")
 	}
 	
-	// Execute transaction. Real on-chain broadcast is not implemented here;
-	// a transaction hash can only be obtained by broadcasting the signed
-	// transaction via an RPC node. We mark the transaction as pending rather
-	// than fabricating a hash.
+	// Execute transaction. When an on-chain executor is configured, broadcast
+	// the real transaction and record its hash; otherwise keep the honest
+	// pending_broadcast status — never fabricate a hash.
 	execTxHash := ""
 	tx.Status = "pending_broadcast"
+	if s.executor != nil {
+		valueWei, ok := new(big.Int).SetString(strings.TrimSpace(tx.Value), 10)
+		if !ok {
+			valueWei = big.NewInt(0)
+		}
+		calldata, decErr := hex.DecodeString(strings.TrimPrefix(tx.Data, "0x"))
+		if decErr != nil {
+			return nil, fmt.Errorf("invalid calldata hex: %w", decErr)
+		}
+		hash, execErr := s.executor.Execute(context.Background(), common.HexToAddress(tx.Target), valueWei, calldata)
+		if execErr != nil {
+			tx.FailureReason = execErr.Error()
+			if hash != "" {
+				tx.ExecutionTxHash = hash
+			}
+			s.db.Save(&tx)
+			return nil, fmt.Errorf("execution failed: %w", execErr)
+		}
+		execTxHash = hash
+		tx.Status = "executed"
+	}
 	now := time.Now()
 	tx.ExecutedAt = &now
 	tx.ExecutedBy = executor
