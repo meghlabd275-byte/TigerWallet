@@ -1,5 +1,11 @@
 # TigerWallet Repository Knowledge
 
+## PERMANENT DELETION (2026-08-30, owner order, commit e2910f83)
+- `selfhosted_masterwallet/` (Rust reference impl) was DELETED from main by explicit
+  owner order and must NEVER be restored. All earlier notes below referencing it
+  (license gate, auto_signer.rs, Cargo.lock pinning) are historical only.
+  Canonical self-hosted MasterWallet remains `wl_master_wallet` (Go, license-gated).
+
 ## Architecture (verified 2026-08-24)
 - Canonical backends: `master_wallet/backend` (Go, :8450), `go/wallet_api` (UserWallet, :8443),
   `admin/go` (:9093), `super_admin/go` (:8082), `license_service/go` (:8460), `kill_switch` (:8469),
