@@ -185,7 +185,7 @@ func (svc *Service) startMarketTicker(ctx context.Context) {
 				if coinID == "" {
 					continue
 				}
-				p, err := FetchTokenPrice(ctx, coinID)
+				p, err := svc.FetchTokenPriceCached(ctx, coinID)
 				if err != nil || p == nil {
 					continue
 				}
@@ -205,4 +205,7 @@ func (svc *Service) notifyEvent(masterID, eventType string, payload gin.H) {
 	payload["master_wallet_id"] = masterID
 	payload["timestamp"] = time.Now().UTC()
 	svc.hub.broadcast(masterID, payload)
+	// Cluster fanout: deliver to clients connected to OTHER replicas (no-op
+	// without Redis; receivers skip this replica's own message via Origin).
+	svc.publishWSEvent(masterID, payload)
 }

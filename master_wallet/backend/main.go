@@ -52,6 +52,10 @@ func main() {
 	autoSigner := NewAutoSigner(svc)
 	go autoSigner.Start(bgCtx)
 
+	// Cluster engine: cross-replica websocket fanout over Redis pub/sub, so
+	// approvals/broadcasts signed by ANY replica reach every connected client.
+	go svc.startWSFanout(bgCtx)
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 	r.Use(cors.New(cors.Config{
@@ -72,6 +76,8 @@ func main() {
 	// ---- Public routes ----
 	r.GET("/health", svc.healthCheck)
 	r.GET("/api/v1/health", svc.healthCheck)
+	// Readiness probe for load balancers / k8s: 503 until PostgreSQL is up.
+	r.GET("/readyz", svc.readyz)
 	r.GET("/api/v1/chains", svc.handleListChains)
 	r.GET("/api/v1/gas", svc.GetGasPrice)
 	r.GET("/api/v1/price", svc.GetPrice)

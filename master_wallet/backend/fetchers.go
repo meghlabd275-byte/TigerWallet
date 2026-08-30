@@ -277,6 +277,10 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 		return nil, fmt.Errorf("no explorer API configured for chain %d", chainID)
 	}
 	u := fmt.Sprintf("%s?module=account&action=txlist&address=%s&sort=desc&page=1&offset=50", explorerAPI, address)
+	if strings.Contains(explorerAPI, "/v2/") {
+		// Etherscan V2 multichain API selects the chain via query param.
+		u += fmt.Sprintf("&chainid=%d", chainID)
+	}
 	if apiKey != "" {
 		u += "&apikey=" + apiKey
 	}
@@ -288,29 +292,43 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
+	// result is an array on success but a STRING error detail on failure
+	// (e.g. Etherscan-family "Invalid API Key" when called keyless) —
+	// decode as RawMessage so the real upstream message is returned
+	// instead of an opaque unmarshal error.
 	var raw struct {
-		Status  string `json:"status"`
-		Message string `json:"message"`
-		Result  []struct {
-			Hash        string `json:"hash"`
-			From        string `json:"from"`
-			To          string `json:"to"`
-			Value       string `json:"value"`
-			TimeStamp   string `json:"timeStamp"`
-			IsError     string `json:"isError"`
-			GasUsed     string `json:"gasUsed"`
-			Status      string `json:"status"` // tx status
-			Confirmations string `json:"confirmations"`
-		} `json:"result"`
+		Status  string          `json:"status"`
+		Message string          `json:"message"`
+		Result  json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, err
 	}
 	if raw.Status == "0" && raw.Message != "No transactions found" {
+		var resultStr string
+		if json.Unmarshal(raw.Result, &resultStr) == nil && resultStr != "" && resultStr != "[]" {
+			return nil, fmt.Errorf("explorer API error: %s (%s)", raw.Message, resultStr)
+		}
 		return nil, fmt.Errorf("explorer API error: %s", raw.Message)
 	}
+	var rows []struct {
+		Hash        string `json:"hash"`
+		From        string `json:"from"`
+		To          string `json:"to"`
+		Value       string `json:"value"`
+		TimeStamp   string `json:"timeStamp"`
+		IsError     string `json:"isError"`
+		GasUsed     string `json:"gasUsed"`
+		Status      string `json:"status"`
+		Confirmations string `json:"confirmations"`
+	}
+	if len(raw.Result) > 0 && string(raw.Result) != "null" {
+		if err := json.Unmarshal(raw.Result, &rows); err != nil {
+			return nil, fmt.Errorf("explorer returned an unexpected result shape: %w", err)
+		}
+	}
 	out := []TransactionHistory{}
-	for _, t := range raw.Result {
+	for _, t := range rows {
 		ts := int64(0)
 		fmt.Sscanf(t.TimeStamp, "%d", &ts)
 		isErr := 0

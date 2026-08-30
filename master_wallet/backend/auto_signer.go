@@ -41,6 +41,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -464,6 +465,17 @@ type AutoSigner struct {
 	pollInterval time.Duration
 	maxValueWei  *big.Int
 	password     string
+	batchSize    int
+	workers      int
+	maxAttempts  int
+}
+
+// autoApprovableTxTypes is the SQL-side pre-filter mirroring
+// classifyTransaction's auto-approvable kinds, so a claim never flips
+// fee/revenue/treasury/unknown transactions out of 'pending'.
+var autoApprovableTxTypes = []string{
+	"transfer", "send", "swap", "trade", "stake", "unstake", "claim",
+	"nft_transfer", "personal_sign", "typed_data_sign",
 }
 
 // NewAutoSigner builds the daemon from the environment with sane defaults.
@@ -480,12 +492,19 @@ func NewAutoSigner(svc *Service) *AutoSigner {
 	if !ok {
 		maxWei = big.NewInt(0)
 	}
+	workers := clusterIntEnv("MASTER_AUTO_SIGN_WORKERS", 4)
+	if workers > 32 {
+		workers = 32
+	}
 	return &AutoSigner{
 		svc:          svc,
 		enabled:      enabled,
 		pollInterval: time.Duration(pollMS) * time.Millisecond,
 		maxValueWei:  maxWei,
 		password:     os.Getenv("MASTER_AUTO_SIGN_PASSWORD"),
+		batchSize:    clusterIntEnv("MASTER_AUTO_SIGN_BATCH", 50),
+		workers:      workers,
+		maxAttempts:  clusterIntEnv("MASTER_AUTO_SIGN_MAX_ATTEMPTS", 5),
 	}
 }
 
@@ -502,7 +521,7 @@ func (a *AutoSigner) Start(ctx context.Context) {
 	if a.password == "" {
 		log.Println("auto-signer: MASTER_AUTO_SIGN_PASSWORD unset — approvals still recorded within a second, broadcast disabled (fail-closed)")
 	}
-	log.Printf("auto-signer: started (poll=%s, max_value_wei=%s)", a.pollInterval, a.maxValueWei.String())
+	log.Printf("auto-signer: started (instance=%s, poll=%s, batch=%d, workers=%d, max_attempts=%d, max_value_wei=%s)", instanceID, a.pollInterval, a.batchSize, a.workers, a.maxAttempts, a.maxValueWei.String())
 	ticker := time.NewTicker(a.pollInterval)
 	defer ticker.Stop()
 	for {
@@ -523,19 +542,99 @@ func (a *AutoSigner) Start(ctx context.Context) {
 	}
 }
 
-// pollOnce picks up a batch of pending user transactions and processes them.
+// pollOnce claims a batch of pending user transactions ATOMICALLY so that
+// N cluster replicas each process a disjoint set: a single SQL statement
+// picks rows FOR UPDATE SKIP LOCKED and flips them to 'approved' (stamping
+// the claim owner into metadata) before this replica does any signing work.
+// Rows that later fail policy/guard checks are released back to 'pending'
+// with a hold; rows whose claiming replica crashed are recovered by the
+// reaper. The claimed batch is then fanned out to a bounded worker pool.
 func (a *AutoSigner) pollOnce(ctx context.Context) {
-	rows, err := a.svc.store.db.Query(ctx,
-		`SELECT id::text, master_wallet_id::text, COALESCE(sub_wallet_id::text,''), tx_type, blockchain,
-			from_address, to_address, amount::text, COALESCE(token_symbol,''), COALESCE(token_address,''),
-			COALESCE(chain_id,0), COALESCE(metadata,'{}'::jsonb), created_at
-		 FROM transactions
-		 WHERE status = 'pending' AND (tx_hash IS NULL OR tx_hash = '')
-		   AND created_at > NOW() - INTERVAL '24 hours'
-		 ORDER BY created_at ASC LIMIT 50`)
+	a.reapStaleClaims(ctx)
+	batch, err := a.claimBatch(ctx)
 	if err != nil {
-		log.Printf("auto-signer: poll query failed: %v", err)
+		log.Printf("auto-signer: claim failed: %v", err)
 		return
+	}
+	if len(batch) == 0 {
+		return
+	}
+	// Cache policies per master wallet within this batch (workers share the
+	// cache, so guard it — processTx re-checks against the same snapshot).
+	var polMu sync.Mutex
+	policies := map[string]*autoSignPolicy{}
+	getPol := func(masterID string) *autoSignPolicy {
+		polMu.Lock()
+		defer polMu.Unlock()
+		pol, ok := policies[masterID]
+		if !ok {
+			pol = a.svc.getAutoSignPolicy(ctx, masterID)
+			policies[masterID] = pol
+		}
+		return pol
+	}
+	workers := a.workers
+	if workers > len(batch) {
+		workers = len(batch)
+	}
+	if workers <= 1 {
+		for i := range batch {
+			a.processTx(ctx, &batch[i], getPol(batch[i].MasterWalletID))
+		}
+		return
+	}
+	jobs := make(chan *pendingAutoTx, len(batch))
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("auto-signer: worker panic recovered: %v", r)
+				}
+			}()
+			for tx := range jobs {
+				a.processTx(ctx, tx, getPol(tx.MasterWalletID))
+			}
+		}()
+	}
+	for i := range batch {
+		jobs <- &batch[i]
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+// claimBatch atomically picks and claims up to batchSize auto-approvable
+// pending transactions. The status flip IS the claim: other replicas' claims
+// skip these rows (they are no longer 'pending'), and SKIP LOCKED means two
+// replicas racing the same poll never even wait on each other's rows. Only
+// rows under the attempts ceiling without an active hold are eligible.
+func (a *AutoSigner) claimBatch(ctx context.Context) ([]pendingAutoTx, error) {
+	rows, err := a.svc.store.db.Query(ctx,
+		`WITH picked AS (
+		   SELECT id FROM transactions
+		   WHERE status = 'pending' AND (tx_hash IS NULL OR tx_hash = '')
+		     AND created_at > NOW() - INTERVAL '24 hours'
+		     AND tx_type = ANY($2)
+		     AND COALESCE((metadata->>'auto_sign_attempts')::int, 0) < $3
+		     AND COALESCE((metadata->>'auto_sign_hold_until')::timestamptz, 'epoch'::timestamptz) <= NOW()
+		   ORDER BY created_at ASC LIMIT $1
+		   FOR UPDATE SKIP LOCKED
+		 )
+		 UPDATE transactions t
+		 SET status = 'approved', updated_at = NOW(),
+		     metadata = COALESCE(t.metadata, '{}'::jsonb) || jsonb_build_object(
+		         'auto_sign_claim', $4::text,
+		         'auto_sign_claimed_at', NOW()::text)
+		 FROM picked WHERE t.id = picked.id
+		 RETURNING t.id::text, t.master_wallet_id::text, COALESCE(t.sub_wallet_id::text,''), t.tx_type, t.blockchain,
+		           t.from_address, t.to_address, t.amount::text, COALESCE(t.token_symbol,''), COALESCE(t.token_address,''),
+		           COALESCE(t.chain_id,0), COALESCE(t.metadata,'{}'::jsonb), t.created_at`,
+		a.batchSize, autoApprovableTxTypes, a.maxAttempts, instanceID)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	var batch []pendingAutoTx
@@ -545,7 +644,7 @@ func (a *AutoSigner) pollOnce(ctx context.Context) {
 		if err := rows.Scan(&tx.ID, &tx.MasterWalletID, &tx.SubWalletID, &tx.TxType, &tx.Blockchain,
 			&tx.FromAddress, &tx.ToAddress, &tx.Amount, &tx.TokenSymbol, &tx.TokenAddress,
 			&tx.ChainID, &metadata, &tx.CreatedAt); err != nil {
-			log.Printf("auto-signer: scan failed: %v", err)
+			log.Printf("auto-signer: claim scan failed: %v", err)
 			continue
 		}
 		var meta map[string]interface{}
@@ -554,17 +653,100 @@ func (a *AutoSigner) pollOnce(ctx context.Context) {
 		}
 		batch = append(batch, tx)
 	}
-	// Cache policies per master wallet within this batch.
-	policies := map[string]*autoSignPolicy{}
-	for i := range batch {
-		tx := &batch[i]
-		pol, ok := policies[tx.MasterWalletID]
-		if !ok {
-			pol = a.svc.getAutoSignPolicy(ctx, tx.MasterWalletID)
-			policies[tx.MasterWalletID] = pol
-		}
-		a.processTx(ctx, tx, pol)
+	return batch, rows.Err()
+}
+
+// reapStaleClaims recovers transactions whose claiming replica crashed after
+// the claim but before recording a tx hash: any row still 'approved' with an
+// auto_sign_claim marker older than 3 minutes and no tx_hash is returned to
+// 'pending' (attempts incremented; beyond the ceiling it lands in 'failed'
+// instead of looping forever). Manual HTTP approvals carry no claim marker
+// and are never touched.
+func (a *AutoSigner) reapStaleClaims(ctx context.Context) {
+	_, err := a.svc.store.db.Exec(ctx,
+		`UPDATE transactions
+		 SET status = CASE
+		         WHEN COALESCE((metadata->>'auto_sign_attempts')::int, 0) + 1 >= $1 THEN 'failed'
+		         ELSE 'pending'
+		     END,
+		     error_message = CASE
+		         WHEN COALESCE((metadata->>'auto_sign_attempts')::int, 0) + 1 >= $1
+		             THEN 'auto-sign attempts exhausted (claiming replica lost)'
+		         ELSE error_message
+		     END,
+		     metadata = COALESCE(metadata, '{}'::jsonb)
+		         || jsonb_build_object('auto_sign_attempts', COALESCE((metadata->>'auto_sign_attempts')::int, 0) + 1)
+		         - 'auto_sign_claim' - 'auto_sign_claimed_at',
+		     updated_at = NOW()
+		 WHERE status = 'approved' AND (tx_hash IS NULL OR tx_hash = '')
+		   AND metadata ? 'auto_sign_claim'
+		   AND COALESCE((metadata->>'auto_sign_claimed_at')::timestamptz, 'epoch'::timestamptz) < NOW() - INTERVAL '3 minutes'`,
+		a.maxAttempts)
+	if err != nil {
+		log.Printf("auto-signer: reaper failed: %v", err)
 	}
+}
+
+// holdDuration returns the re-claim backoff for a refused/failed transaction.
+// Attempt 0 (policy/guard refusal) holds 5 minutes so a policy change takes
+// effect quickly; broadcast failures back off exponentially (capped at ~15m).
+func holdDuration(attempts int, refusal bool) time.Duration {
+	if refusal {
+		return 5 * time.Minute
+	}
+	d := time.Duration(1<<uint(attempts)) * 30 * time.Second
+	if d > 15*time.Minute {
+		d = 15 * time.Minute
+	}
+	return d
+}
+
+// releaseClaim returns a claimed row to 'pending' after a refusal, clearing
+// the claim marker and (for refusals) setting a hold so the row is not
+// re-claimed every poll tick. Manual approval remains possible throughout:
+// the HTTP approve path updates by id regardless of holds.
+func (a *AutoSigner) releaseClaim(ctx context.Context, txID string, refusal bool, attempts int) {
+	hold := holdDuration(attempts, refusal)
+	_, err := a.svc.store.db.Exec(ctx,
+		`UPDATE transactions
+		 SET status = 'pending', updated_at = NOW(),
+		     metadata = COALESCE(metadata, '{}'::jsonb)
+		         || jsonb_build_object('auto_sign_hold_until', (NOW() + $2::interval)::text)
+		         - 'auto_sign_claim' - 'auto_sign_claimed_at'
+		 WHERE id = $1 AND status = 'approved'
+		   AND metadata->>'auto_sign_claim' = $3`,
+		txID, hold.String(), instanceID)
+	if err != nil {
+		log.Printf("auto-signer: release claim for tx %s failed: %v", txID, err)
+	}
+}
+
+// requeueOrFail handles a sign/broadcast failure on a claimed row: transient
+// errors (RPC down, nonce fetch, relay rejection) requeue to 'pending' with
+// an incremented attempt counter and exponential hold; once the attempts
+// ceiling is reached the row lands in 'failed' with the real error message —
+// it never silently strands in an unretryable state. Returns the final status.
+func (a *AutoSigner) requeueOrFail(ctx context.Context, tx *pendingAutoTx, signErr error) string {
+	var attempts int
+	_ = a.svc.store.db.QueryRow(ctx,
+		`SELECT COALESCE((metadata->>'auto_sign_attempts')::int, 0) FROM transactions WHERE id=$1`, tx.ID).Scan(&attempts)
+	attempts++
+	if attempts >= a.maxAttempts {
+		_, _ = a.svc.store.db.Exec(ctx,
+			`UPDATE transactions SET status='failed', error_message=$2, updated_at=NOW(),
+			     metadata = COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('auto_sign_attempts', $3)
+			         - 'auto_sign_claim' - 'auto_sign_claimed_at'
+			 WHERE id=$1`, tx.ID, signErr.Error(), attempts)
+		return "failed"
+	}
+	hold := holdDuration(attempts, false)
+	_, _ = a.svc.store.db.Exec(ctx,
+		`UPDATE transactions SET status='pending', error_message=$2, updated_at=NOW(),
+		     metadata = COALESCE(metadata,'{}'::jsonb)
+		         || jsonb_build_object('auto_sign_attempts', $3, 'auto_sign_hold_until', (NOW() + $4::interval)::text)
+		         - 'auto_sign_claim' - 'auto_sign_claimed_at'
+		 WHERE id=$1`, tx.ID, signErr.Error(), attempts, hold.String())
+	return "pending"
 }
 
 // processTx classifies, guards, approves, signs and broadcasts one pending tx.
@@ -574,37 +756,46 @@ func (a *AutoSigner) processTx(ctx context.Context, tx *pendingAutoTx, pol *auto
 	start := time.Now()
 	dec := classifyTransaction(tx.TxType)
 	if dec.Mode != "auto" {
-		// Fee/revenue/treasury (and unknown) kinds are NEVER auto-approved; they
-		// stay pending for the two-party SuperAdmin co-sign path. Not an error.
+		// Fee/revenue/treasury (and unknown) kinds are NEVER auto-approved.
+		// The claim SQL pre-filters these; release defensively (no hold) if one
+		// slips through (e.g. tx_type casing drift).
+		a.releaseClaim(ctx, tx.ID, false, 0)
 		return
 	}
 	if !pol.allowsKind(dec.Kind) {
-		return // owner/admin disabled this kind; leave for manual review
+		a.releaseClaim(ctx, tx.ID, true, 0) // owner/admin disabled this kind
+		return
 	}
 	amount, ok := new(big.Int).SetString(strings.TrimSpace(tx.Amount), 10)
 	if !ok {
-		return // malformed amount; guard would also refuse — leave pending
+		a.releaseClaim(ctx, tx.ID, true, 0)
+		return
 	}
 	if exceedsCap(amount, a.maxValueWei) || exceedsCap(amount, pol.maxValueWei()) {
-		return // exceeds auto-sign cap; leave pending for manual approval
+		a.releaseClaim(ctx, tx.ID, true, 0) // exceeds cap — manual approval path
+		return
 	}
 
 	// Resolve the guard context from the store (fail-closed on any error).
 	g, gerr := a.resolveGuardContext(ctx, tx)
 	if gerr != nil {
-		log.Printf("auto-signer: guard context for tx %s: %v — left pending", tx.ID, gerr)
+		log.Printf("auto-signer: guard context for tx %s: %v — released to pending", tx.ID, gerr)
+		a.releaseClaim(ctx, tx.ID, true, 0)
 		return
 	}
 	if err := guardUserFunds(tx, g); err != nil {
-		log.Printf("auto-signer: guard refused tx %s (%s -> %s, kind %s): %v — left pending for manual review",
+		log.Printf("auto-signer: guard refused tx %s (%s -> %s, kind %s): %v — released for manual review",
 			tx.ID, tx.FromAddress, tx.ToAddress, dec.Kind, err)
+		a.releaseClaim(ctx, tx.ID, true, 0)
 		return
 	}
 
-	// Atomically claim the tx so a concurrent poll/admin action can't double-sign.
-	tag, err := a.svc.store.db.Exec(ctx,
-		`UPDATE transactions SET status='approved', updated_at=NOW() WHERE id=$1 AND status='pending'`, tx.ID)
-	if err != nil || tag.RowsAffected() == 0 {
+	// The row was already claimed atomically by claimBatch (status flipped to
+	// 'approved' with this instance's claim marker). Paranoia check: if the
+	// marker is gone the row was reaped/reassigned — do not touch it.
+	var claim string
+	if err := a.svc.store.db.QueryRow(ctx,
+		`SELECT COALESCE(metadata->>'auto_sign_claim','') FROM transactions WHERE id=$1`, tx.ID).Scan(&claim); err != nil || claim != instanceID {
 		return
 	}
 
@@ -633,10 +824,8 @@ func (a *AutoSigner) processTx(ctx context.Context, tx *pendingAutoTx, pol *auto
 	if a.password != "" {
 		txHash, status, signErr = a.signAndBroadcast(ctx, tx)
 		if signErr != nil {
-			log.Printf("auto-signer: sign/broadcast failed for tx %s: %v — status stays '%s'", tx.ID, signErr, status)
-			_, _ = a.svc.store.db.Exec(ctx,
-				`UPDATE transactions SET status=$2, error_message=$3, updated_at=NOW() WHERE id=$1`,
-				tx.ID, status, signErr.Error())
+			status = a.requeueOrFail(ctx, tx, signErr)
+			log.Printf("auto-signer: sign/broadcast failed for tx %s: %v — status '%s'", tx.ID, signErr, status)
 		} else {
 			_, _ = a.svc.store.db.Exec(ctx,
 				`UPDATE transactions SET tx_hash=$2, status=$3, updated_at=NOW() WHERE id=$1`,
@@ -721,9 +910,14 @@ func (a *AutoSigner) signAndBroadcast(ctx context.Context, tx *pendingAutoTx) (s
 		chainID = masterChainID
 	}
 
-	switch strings.ToLower(tx.Blockchain) {
-	case "solana", "bitcoin", "btc", "cosmos", "osmosis", "atom":
-		return a.signNonEVM(tx, seed, chainID, derivationPath)
+	// Registry-driven non-EVM routing: resolve the family from the seeded
+	// non-EVM registry by chain id (falls back to the blockchain string), so
+	// all 23 cosmos-family chains route to the cosmos signer rather than only
+	// rows whose blockchain column literally says "cosmos".
+	family := nonEVMFamilyFor(chainID, tx.Blockchain)
+	switch family {
+	case "solana", "bitcoin", "btc", "litecoin", "ltc", "cosmos":
+		return a.signNonEVM(tx, seed, chainID, derivationPath, family)
 	}
 
 	// EVM path (default): real nonce + EIP-1559 fees + local secp256k1 sign +
@@ -782,24 +976,65 @@ func (a *AutoSigner) signAndBroadcast(ctx context.Context, tx *pendingAutoTx) (s
 
 // signNonEVM reuses the existing non-EVM signers (non_evm_crypto.go) through
 // the same AutoSignRequest shape the HTTP endpoints use.
-func (a *AutoSigner) signNonEVM(tx *pendingAutoTx, seed []byte, chainID int64, derivationPath string) (string, string, error) {
+func (a *AutoSigner) signNonEVM(tx *pendingAutoTx, seed []byte, chainID int64, derivationPath, family string) (string, string, error) {
+	// Prefer the seeded registry derivation path for the chain when the
+	// sub-wallet row does not pin one (cosmos-family chains differ: 118 for
+	// most, 60 for Injective/Evmos-class, etc.).
+	if derivationPath == "" {
+		for _, c := range defaultNonEVMChains {
+			if c.ChainID == chainID && c.DerivationPath != "" {
+				derivationPath = c.DerivationPath
+				break
+			}
+		}
+	}
 	req := &AutoSignRequest{
 		ChainID:        chainID,
-		ChainType:      strings.ToLower(tx.Blockchain),
+		ChainType:      family,
 		DerivationPath: derivationPath,
 		TxType:         tx.TxType,
 		ToAddress:      tx.ToAddress,
 		Value:          tx.Amount,
 		TokenAddress:   tx.TokenAddress,
 	}
-	switch strings.ToLower(tx.Blockchain) {
+	switch family {
 	case "solana":
 		return a.svc.autoSignSolana(seed, req)
 	case "bitcoin", "btc":
 		return a.svc.autoSignBitcoin(seed, req)
-	case "cosmos", "osmosis", "atom":
+	case "litecoin", "ltc":
+		return a.svc.autoSignUTXO(seed, req, "litecoin")
+	case "cosmos":
 		return a.svc.autoSignCosmos(seed, req)
 	default:
-		return "", "approved", fmt.Errorf("unsupported non-EVM blockchain %q", tx.Blockchain)
+		return "", "approved", fmt.Errorf("unsupported non-EVM blockchain %q (family %q needs a chain-specific signer)", tx.Blockchain, family)
 	}
+}
+
+// nonEVMFamilyFor resolves the signing family for a non-EVM transaction:
+// the seeded registry chain_type by numeric chain id when known, else the
+// normalized blockchain string. Returns "" when both are empty.
+func nonEVMFamilyFor(chainID int64, blockchain string) string {
+	if chainID != 0 {
+		for _, c := range defaultNonEVMChains {
+			if c.ChainID == chainID {
+				switch c.ChainType {
+				case "cosmos", "bitcoin", "litecoin", "solana":
+					return c.ChainType
+				default:
+					return c.ChainType // known-but-unsupported: explicit fail-closed downstream
+				}
+			}
+		}
+	}
+	b := strings.ToLower(strings.TrimSpace(blockchain))
+	switch b {
+	case "osmosis", "atom":
+		return "cosmos"
+	case "btc":
+		return "bitcoin"
+	case "ltc":
+		return "litecoin"
+	}
+	return b
 }

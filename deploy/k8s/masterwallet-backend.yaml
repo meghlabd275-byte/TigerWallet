@@ -1,0 +1,128 @@
+# MasterWallet backend — horizontally scalable signing/approval cluster.
+# See docs/CLUSTER.md for the architecture and guarantees.
+# Secrets (MASTER_WALLET_DATABASE_URL, MASTER_WALLET_JWT_SECRET,
+# MASTER_AUTO_SIGN_PASSWORD, MASTER_WALLET_TREASURY_KEY_HEX) must come from a
+# Kubernetes Secret named masterwallet-backend-secrets — never hardcode them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: masterwallet-backend
+  labels:
+    app: masterwallet-backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0   # never drop below capacity: claims are replica-owned
+  selector:
+    matchLabels:
+      app: masterwallet-backend
+  template:
+    metadata:
+      labels:
+        app: masterwallet-backend
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: backend
+          image: ghcr.io/tigerwallet/masterwallet-backend:latest
+          ports:
+            - containerPort: 8450
+          env:
+            - name: MASTER_WALLET_PORT
+              value: "8450"
+            # Claim markers + fanout dedup key off the pod name.
+            - name: MASTER_INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MASTER_WALLET_REDIS_ADDR
+              value: "redis-master:6379"
+            - name: MASTER_AUTO_SIGN_POLL_MS
+              value: "100"
+            - name: MASTER_AUTO_SIGN_BATCH
+              value: "50"
+            - name: MASTER_AUTO_SIGN_WORKERS
+              value: "4"
+            - name: MASTER_AUTO_SIGN_MAX_ATTEMPTS
+              value: "5"
+            - name: MASTER_WALLET_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: masterwallet-backend-secrets
+                  key: database-url
+            - name: MASTER_WALLET_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: masterwallet-backend-secrets
+                  key: jwt-secret
+            - name: MASTER_AUTO_SIGN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: masterwallet-backend-secrets
+                  key: auto-sign-password
+                  optional: true   # unset = approvals only, broadcast disabled (fail-closed)
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8450
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8450
+            periodSeconds: 15
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: masterwallet-backend
+spec:
+  selector:
+    app: masterwallet-backend
+  ports:
+    - port: 8450
+      targetPort: 8450
+  # WebSocket clients stay on one pod for the connection lifetime; events
+  # still arrive from every pod via the Redis fanout (docs/CLUSTER.md §2).
+  sessionAffinity: ClientIP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: masterwallet-backend
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: masterwallet-backend
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: masterwallet-backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: masterwallet-backend
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

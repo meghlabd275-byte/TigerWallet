@@ -96,22 +96,25 @@ func chainRPCEndpoint(chainID int64) string {
 // chainExplorerAPI returns the Etherscan-compatible explorer base URL + API key
 // env var name for a chain id. Used for real transaction history / NFT fetches.
 func chainExplorerAPI(chainID int64) (baseURL, apiKeyEnv string) {
+	// Etherscan deprecated the per-chain V1 endpoints; the V2 multichain
+	// API serves every Etherscan-family chain from ONE base URL with ONE
+	// key (ETHERSCAN_API_KEY), selecting the chain via the chainid query
+	// parameter (added by the fetcher for /v2/ bases).
 	switch chainID {
-	case 1:
-		return "https://api.etherscan.io/api", "ETHERSCAN_API_KEY"
-	case 56:
-		return "https://api.bscscan.com/api", "BSCSCAN_API_KEY"
-	case 137:
-		return "https://api.polygonscan.com/api", "POLYGONSCAN_API_KEY"
-	case 42161:
-		return "https://api.arbiscan.io/api", "ARBISCAN_API_KEY"
-	case 10:
-		return "https://api-optimistic.etherscan.io/api", "OPTIMISM_API_KEY"
-	case 43114:
-		return "https://api.snowtrace.io/api", "SNOWTRACE_API_KEY"
-	case 8453:
-		return "https://api.basescan.org/api", "BASESCAN_API_KEY"
+	case 1, 56, 137, 42161, 10, 43114, 8453:
+		return "https://api.etherscan.io/v2/api", "ETHERSCAN_API_KEY"
 	default:
+		// Keyless fallback: every seeded EVM chain carries a public
+		// ExplorerURL in the registry. Blockscout-family explorers
+		// expose the Etherscan-compatible API at <base>/api WITHOUT an
+		// API key, so history works out of the box for the long tail
+		// of chains. If the explorer is not API-compatible the fetch
+		// fails with the real upstream error (fail-closed, no fakes).
+		for _, c := range defaultEVMChains {
+			if c.ChainID == chainID && c.ExplorerURL != "" {
+				return strings.TrimRight(c.ExplorerURL, "/") + "/api", ""
+			}
+		}
 		return "", ""
 	}
 }

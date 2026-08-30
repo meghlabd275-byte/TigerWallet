@@ -335,7 +335,7 @@ func (svc *Service) GetMasterWalletBalance(c *gin.Context) {
 
 	// Native price for USD value.
 	var usdValue float64
-	if p, err := FetchTokenPrice(ctx, chainCoinGeckoID(chainID)); err == nil && p != nil {
+	if p, err := svc.FetchTokenPriceCached(ctx, chainCoinGeckoID(chainID)); err == nil && p != nil {
 		f, _ := new(big.Float).Quo(
 			new(big.Float).SetInt(nativeBal),
 			big.NewFloat(pow10f(chain.Decimals)),
@@ -983,7 +983,7 @@ func (svc *Service) GetPrice(c *gin.Context) {
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
-	p, err := FetchTokenPrice(ctx, coinID)
+	p, err := svc.FetchTokenPriceCached(ctx, coinID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return

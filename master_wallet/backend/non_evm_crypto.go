@@ -133,6 +133,12 @@ func mwSolanaSign(seed []byte, derivationPath, message string) (sig, pub []byte,
 // mwBTCAddressFromSeed derives a Bitcoin mainnet P2PKH address from a seed.
 // P2PKH = base58check(0x00 || RIPEMD160(SHA256(compressed_pubkey)))
 func mwBTCAddressFromSeed(seed []byte, derivationPath string) (string, error) {
+	return mwUTXOAddressFromSeed(seed, derivationPath, 0x00)
+}
+
+// mwUTXOAddressFromSeed derives a legacy P2PKH address for any UTXO-family
+// chain (the version byte is the only per-chain difference).
+func mwUTXOAddressFromSeed(seed []byte, derivationPath string, version byte) (string, error) {
 	privKey, err := DerivePrivateKeyFromPath(seed, derivationPath)
 	if err != nil {
 		return "", err
@@ -143,8 +149,7 @@ func mwBTCAddressFromSeed(seed []byte, derivationPath string) (string, error) {
 	hasher := ripemd160.New()
 	hasher.Write(sha[:])
 	hash160 := hasher.Sum(nil)
-	// P2PKH mainnet: version byte 0x00
-	return base58CheckEncode(0x00, hash160), nil
+	return base58CheckEncode(version, hash160), nil
 }
 
 // ----------------------------------------------------------------------------
@@ -192,17 +197,24 @@ func mwCosmosSign(seed []byte, derivationPath, signDoc string) ([]byte, []byte, 
 // derived secp256k1 key, and returns the raw signed transaction hex ready for
 // broadcast. If insufficient UTXOs, returns an error (no fake tx).
 func mwBTCSignTx(seed []byte, derivationPath, toAddress, valueStr string) (string, string, error) {
+	p, _ := utxoParamsFor("bitcoin", 0)
+	return mwUTXOSignTx(seed, derivationPath, toAddress, valueStr, p)
+}
+
+// mwUTXOSignTx is the chain-parameterized form of mwBTCSignTx: identical
+// legacy P2PKH signing, per-chain esplora endpoint + address version + fee.
+func mwUTXOSignTx(seed []byte, derivationPath, toAddress, valueStr string, p utxoChainParams) (string, string, error) {
 	privKey, err := DerivePrivateKeyFromPath(seed, derivationPath)
 	if err != nil {
-		return "", "", fmt.Errorf("BTC key derivation: %w", err)
+		return "", "", fmt.Errorf("%s key derivation: %w", p.name, err)
 	}
-	fromAddr, err := mwBTCAddressFromSeed(seed, derivationPath)
+	fromAddr, err := mwUTXOAddressFromSeed(seed, derivationPath, p.p2pkhVersion)
 	if err != nil {
-		return "", "", fmt.Errorf("BTC from-address: %w", err)
+		return "", "", fmt.Errorf("%s from-address: %w", p.name, err)
 	}
-	utxos, err := fetchBTCUTXOs(fromAddr)
+	utxos, err := fetchEsploraUTXOs(p.esploraBase, fromAddr)
 	if err != nil {
-		return "", "", fmt.Errorf("BTC UTXO fetch: %w", err)
+		return "", "", fmt.Errorf("%s UTXO fetch: %w", p.name, err)
 	}
 	if len(utxos) == 0 {
 		return "", "", fmt.Errorf("no UTXOs for %s", fromAddr)
@@ -211,7 +223,7 @@ func mwBTCSignTx(seed []byte, derivationPath, toAddress, valueStr string) (strin
 	if !ok {
 		return "", "", fmt.Errorf("invalid BTC value: %s", valueStr)
 	}
-	fee := big.NewInt(1500)
+	fee := big.NewInt(p.feeSat)
 	totalNeeded := new(big.Int).Add(valueSat, fee)
 	var selectedUTXOs []btcUTXO
 	selectedValue := big.NewInt(0)
@@ -228,7 +240,7 @@ func mwBTCSignTx(seed []byte, derivationPath, toAddress, valueStr string) (strin
 	change := new(big.Int).Sub(selectedValue, totalNeeded)
 	rawTx, err := buildSignBTCP2PKH(privKey, selectedUTXOs, toAddress, valueSat, change, fromAddr)
 	if err != nil {
-		return "", "", fmt.Errorf("BTC tx build+sign: %w", err)
+		return "", "", fmt.Errorf("%s tx build+sign: %w", p.name, err)
 	}
 	txHash, err := btcTxHash(rawTx)
 	if err != nil {
@@ -246,7 +258,14 @@ type btcUTXO struct {
 
 // fetchBTCUTXOs fetches UTXOs for a Bitcoin address from blockstream.info API.
 func fetchBTCUTXOs(address string) ([]btcUTXO, error) {
-	url := "https://blockstream.info/api/address/" + address + "/utxo"
+	return fetchEsploraUTXOs("https://blockstream.info/api", address)
+}
+
+// fetchEsploraUTXOs fetches confirmed UTXOs for an address from any
+// esplora-compatible API (blockstream.info, litecoinspace.org, or an
+// operator-hosted esplora instance via *_ESPLORA_URL env overrides).
+func fetchEsploraUTXOs(esploraBase, address string) ([]btcUTXO, error) {
+	url := strings.TrimRight(esploraBase, "/") + "/address/" + address + "/utxo"
 	resp, err := httpGet(url)
 	if err != nil {
 		return nil, err

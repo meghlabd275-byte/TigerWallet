@@ -44,7 +44,7 @@ func (svc *Service) TreasuryOverview(c *gin.Context) {
 	}
 	chain, _ := chainByID(chainID)
 	var usd float64
-	if p, err := FetchTokenPrice(ctx, chainCoinGeckoID(chainID)); err == nil && p != nil {
+	if p, err := svc.FetchTokenPriceCached(ctx, chainCoinGeckoID(chainID)); err == nil && p != nil {
 		f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), big.NewFloat(pow10f(chain.Decimals))).Float64()
 		usd = f * p.USD
 	}

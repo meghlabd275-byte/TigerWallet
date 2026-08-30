@@ -747,3 +747,68 @@
   BTC/Solana/Cosmos of 66 seeded; tx-history explorer keys per chain; FCM
   google-services.json deployment config.
 
+
+## Session 23 (2026-08-30) — MasterWallet CLUSTER ENGINE + remaining backend gaps CLOSED
+- CLUSTER ENGINE (the "high-performance cluster for billions" ask):
+  master_wallet/backend is now safe+correct to run as N replicas behind a LB.
+  - cluster.go (NEW): instanceID (MASTER_INSTANCE_ID|hostname-pid),
+    wsFanoutMessage envelope, publishWSEvent + startWSFanout (Redis pub/sub
+    channel mw:events, origin dedup — a user on replica B sees events signed
+    by replica A; Redis down = local-only degradation), /readyz readiness
+    probe (503 until PostgreSQL answers; Redis reported non-fatal).
+  - auto_signer.go: pollOnce now claims a batch ATOMICALLY via one statement
+    (SELECT ... FOR UPDATE SKIP LOCKED + status flip + claim marker in
+    metadata) — N replicas process DISJOINT batches, no double-sign. Bounded
+    worker pool (MASTER_AUTO_SIGN_WORKERS, default 4, max 32; batch via
+    MASTER_AUTO_SIGN_BATCH, default 50). Reaper recovers rows whose claiming
+    replica crashed (>3min stale claim -> pending, attempts+1; manual HTTP
+    approvals carry no marker and are never reaped). Broadcast failures
+    requeue with exponential hold (30s*2^n cap 15m); attempts >=
+    MASTER_AUTO_SIGN_MAX_ATTEMPTS (default 5) -> 'failed' with real error
+    (previously stranded at 'approved' forever). Policy/guard refusals
+    release with 5m hold (no 100ms re-claim churn). claimBatch SQL pre-filters
+    autoApprovableTxTypes so fee/revenue/treasury rows are never flipped.
+  - websocket.go notifyEvent now also publishes to Redis fanout.
+- FIAT VALUATION (cluster-safe): price_fetcher.go (NEW) —
+  FetchTokenPriceCached: L1 in-process 60s TTL + L2 shared Redis
+  (mw:price:<coin>) + per-coin singleflight => N replicas share ONE
+  CoinGecko rate-limit budget (previously EVERY balance request hit upstream).
+  All 4 call sites (handlers GetBalance/GetPrice, treasury, ws ticker)
+  switched. Fail-closed (USD omitted on upstream error).
+- NON-EVM BROADCAST EXPANSION: utxo_chains.go (NEW) — utxoChainParams
+  (esplora base + version byte + derivation + fee) for bitcoin + LITECOIN
+  (new, 0x30, litecoinspace.org, BTC_ESPLORA_URL/LTC_ESPLORA_URL env
+  overrides); mwBTCSignTx generalized to mwUTXOSignTx; broadcastBitcoinTx ->
+  broadcastEsploraTx; autoSignBitcoin -> autoSignUTXO. Registry-driven
+  routing (nonEVMFamilyFor): all 23 seeded COSMOS chains route to the cosmos
+  signer by chain_id (previously only literal "cosmos"/"osmosis"/"atom"
+  strings); derivation path falls back to the seeded registry path per chain
+  (Injective=60, most=118). Remaining 40 non-EVM chains (tron, near, cardano,
+  xrp, stellar, tezos, ton, sui, aptos, polkadot, algorand, hedera, filecoin,
+  flow, icp, kaspa, nano, nervos, vechain, waves, zilliqa, aleo, multiversx,
+  pi + fork-id/different-hash BTC derivatives bch/bsv/ecash/zcash/groestl/
+  doge/dash) FAIL CLOSED with an explicit error — never faked.
+- TX HISTORY KEYLESS + V2 MIGRATION: chainExplorerAPI migrated from the
+  DEPRECATED per-chain Etherscan V1 endpoints to the unified V2 multichain
+  API (api.etherscan.io/v2/api, one ETHERSCAN_API_KEY for chains
+  1/56/137/42161/10/43114/8453, chainid query param added by the fetcher);
+  NEW registry fallback — seeded ExplorerURL + /api (Blockscout-compatible,
+  KEYLESS) for all 187 registry chains. FetchTransactionHistory now decodes
+  result as RawMessage (string error details returned verbatim, e.g.
+  "Missing/Invalid API Key", instead of an opaque unmarshal error).
+  SMOKE-VERIFIED LIVE: chain 246 (EWT, Blockscout) returns real 200 keyless;
+  chain 1 returns the real V2 "Missing/Invalid API Key" without a key.
+- DEPLOY: deploy/k8s/masterwallet-backend.yaml (NEW — Deployment 3 replicas
+  + readiness/liveness probes + MASTER_INSTANCE_ID from pod name + PDB +
+  HPA 3-12 CPU 70% + ClientIP-affine Service). docs/CLUSTER.md (NEW) — full
+  topology, claiming/reaper/backoff guarantees, fanout, price cache, probes,
+  sharding pointer, honest non-EVM coverage matrix.
+- VERIFIED: go build + go vet + go test all PASS (incl. NEW cluster_test.go:
+  holdDuration backoff/cap, utxoParamsFor alias+env+registry+fail-closed,
+  nonEVMFamilyFor, instanceID). Live smoke: /health 200, /readyz 503 in
+  degraded mode, keyless Blockscout history 200. Toolchain: go1.22.12 at
+  /tmp/go (session-local).
+- REMAINING (documented, not code gaps): the 40 exotic non-EVM chains above
+  each need a chain-specific SDK signer; extension dApp injection and desktop
+  native GUI are by-design absences; FCM google-services.json is deployment
+  config; Kotlin/Swift/Dart clients not compile-verified (no SDKs in sandbox).

@@ -9,6 +9,7 @@ import (
         "fmt"
         "io"
         "net/http"
+        "strings"
         "time"
 )
 
@@ -20,7 +21,13 @@ var broadcastHTTPClient = &http.Client{Timeout: 20 * time.Second}
 // public esplora-compatible endpoint (no auth); the signed tx is the caller's
 // own and carries no secrets beyond the public network.
 func broadcastBitcoinTx(rawTxHex string) (string, error) {
-        url := "https://blockstream.info/api/tx"
+        return broadcastEsploraTx("https://blockstream.info/api", rawTxHex)
+}
+
+// broadcastEsploraTx submits a signed raw transaction (hex) to any
+// esplora-compatible relay and returns the on-chain transaction id.
+func broadcastEsploraTx(esploraBase, rawTxHex string) (string, error) {
+        url := strings.TrimRight(esploraBase, "/") + "/tx"
         req, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(rawTxHex))
         if err != nil {
                 return "", fmt.Errorf("build broadcast request: %w", err)

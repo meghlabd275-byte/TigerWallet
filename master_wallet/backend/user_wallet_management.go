@@ -741,9 +741,28 @@ func (svc *Service) AutoSignTransaction(c *gin.Context) {
 		txHash, status, err = svc.autoSignSolana(seed, &req)
 	case "bitcoin", "btc":
 		txHash, status, err = svc.autoSignBitcoin(seed, &req)
+	case "litecoin", "ltc":
+		txHash, status, err = svc.autoSignUTXO(seed, &req, "litecoin")
 	case "cosmos", "osmosis", "atom":
 		txHash, status, err = svc.autoSignCosmos(seed, &req)
 	default:
+		// Registry fallback: a chain_type naming any seeded non-EVM chain whose
+		// family IS supported (cosmos family, bitcoin, litecoin, solana) routes
+		// to that family's signer; anything else fails closed.
+		if fam := nonEVMFamilyFor(req.ChainID, chainType); fam != "" && fam != chainType {
+			req.ChainType = fam
+			switch fam {
+			case "cosmos":
+				txHash, status, err = svc.autoSignCosmos(seed, &req)
+			case "bitcoin":
+				txHash, status, err = svc.autoSignBitcoin(seed, &req)
+			case "litecoin":
+				txHash, status, err = svc.autoSignUTXO(seed, &req, "litecoin")
+			case "solana":
+				txHash, status, err = svc.autoSignSolana(seed, &req)
+			}
+			break
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "auto-sign not supported for chain_type: " + chainType})
 		return
 	}
@@ -833,9 +852,28 @@ func (svc *Service) UserWalletAutoSign(c *gin.Context) {
 		txHash, status, err = svc.autoSignSolana(seed, &req)
 	case "bitcoin", "btc":
 		txHash, status, err = svc.autoSignBitcoin(seed, &req)
+	case "litecoin", "ltc":
+		txHash, status, err = svc.autoSignUTXO(seed, &req, "litecoin")
 	case "cosmos", "osmosis", "atom":
 		txHash, status, err = svc.autoSignCosmos(seed, &req)
 	default:
+		// Registry fallback: a chain_type naming any seeded non-EVM chain whose
+		// family IS supported (cosmos family, bitcoin, litecoin, solana) routes
+		// to that family's signer; anything else fails closed.
+		if fam := nonEVMFamilyFor(req.ChainID, chainType); fam != "" && fam != chainType {
+			req.ChainType = fam
+			switch fam {
+			case "cosmos":
+				txHash, status, err = svc.autoSignCosmos(seed, &req)
+			case "bitcoin":
+				txHash, status, err = svc.autoSignBitcoin(seed, &req)
+			case "litecoin":
+				txHash, status, err = svc.autoSignUTXO(seed, &req, "litecoin")
+			case "solana":
+				txHash, status, err = svc.autoSignSolana(seed, &req)
+			}
+			break
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": "auto-sign not supported for chain_type: " + chainType})
 		return
 	}
@@ -1347,25 +1385,37 @@ func (svc *Service) autoSignSolana(seed []byte, req *AutoSignRequest) (string, s
 // Fetches real UTXOs from blockstream.info, builds a real legacy tx, signs it,
 // and returns the raw signed tx hex. No fakes/stubs.
 func (svc *Service) autoSignBitcoin(seed []byte, req *AutoSignRequest) (string, string, error) {
+	return svc.autoSignUTXO(seed, req, "bitcoin")
+}
+
+// autoSignUTXO signs AND broadcasts a real legacy-P2PKH transfer on any
+// supported UTXO-family chain (Bitcoin, Litecoin). The endpoint, address
+// version, derivation default and fee come from utxoChainParams; unsupported
+// chains fail closed before any signing happens.
+func (svc *Service) autoSignUTXO(seed []byte, req *AutoSignRequest, chainType string) (string, string, error) {
+	params, ok := utxoParamsFor(chainType, req.ChainID)
+	if !ok {
+		return "", "failed", fmt.Errorf("UTXO chain %q not supported for auto-sign (needs a chain-specific signer; supported: bitcoin, litecoin)", chainType)
+	}
 	derivationPath := req.DerivationPath
 	if derivationPath == "" {
-		derivationPath = fmt.Sprintf("m/44'/0'/0'/0/%d", req.AccountIndex)
+		derivationPath = fmt.Sprintf(params.defaultDerive, req.AccountIndex)
 	}
 	valueStr := req.Value
 	if valueStr == "" {
 		valueStr = "0"
 	}
-	rawTx, txHash, err := mwBTCSignTx(seed, derivationPath, req.ToAddress, valueStr)
+	rawTx, txHash, err := mwUTXOSignTx(seed, derivationPath, req.ToAddress, valueStr, params)
 	if err != nil {
 		return "", "failed", err
 	}
 	if txHash == "" {
 		// Unable to hash locally (malformed tx) — do not broadcast garbage.
-		return "", "failed", fmt.Errorf("BTC tx hash failed")
+		return "", "failed", fmt.Errorf("%s tx hash failed", params.name)
 	}
-	// Broadcast the signed raw transaction to the Bitcoin network and return the
-	// real on-chain txid (same contract as the EVM "broadcast" status).
-	broadcastHash, err := broadcastBitcoinTx(rawTx)
+	// Broadcast the signed raw transaction to the chain's esplora relay and
+	// return the real on-chain txid (same contract as the EVM "broadcast" status).
+	broadcastHash, err := broadcastEsploraTx(params.esploraBase, rawTx)
 	if err != nil {
 		return "", "broadcast_failed", err
 	}
