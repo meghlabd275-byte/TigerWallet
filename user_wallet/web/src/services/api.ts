@@ -1175,6 +1175,17 @@ class ApiService {
     return data;
   }
 
+  // Public fee transparency (no auth required).
+  async getPublicFees(): Promise<{ fees: Array<{ tier_name: string; fee_type: string; rate_basis_points: string; min_amount: string; max_amount: string; chain_id: number | null }>; count: number }> {
+    const { data } = await this.client.get('/public/fees');
+    return data;
+  }
+
+  async getPublicFeeTransactions(): Promise<{ transactions: Array<{ fee_type: string; currency: string; amount: string; chain_id: number | null; created_at: string }>; count: number }> {
+    const { data } = await this.client.get('/public/fees/transactions');
+    return data;
+  }
+
   async getDappCategories(): Promise<{ categories: unknown[] }> {
     const { data } = await this.client.get('/dapps/categories');
     return data;

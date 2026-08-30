@@ -110,9 +110,31 @@ class TigerWalletApp {
             if (e.key === 'Enter') this.unlockWallet();
         });
         
-        // Create wallet
-        document.getElementById('create-wallet-btn')?.addEventListener('click', () => this.showCreateWallet());
-        document.getElementById('import-wallet-btn')?.addEventListener('click', () => this.showImportWallet());
+        // Create wallet (from unlock screen)
+        document.getElementById('create-wallet-btn')?.addEventListener('click', () => this.showOnboardingScreen());
+        document.getElementById('import-wallet-btn')?.addEventListener('click', () => this.showOnboardingScreen());
+
+        // Onboarding navigation
+        document.getElementById('onboard-create-btn')?.addEventListener('click', () => this.showCreateWalletScreen());
+        document.getElementById('onboard-import-btn')?.addEventListener('click', () => this.showImportWalletScreen());
+        document.getElementById('onboard-back-btn')?.addEventListener('click', () => this.showLoginScreen());
+
+        // Create wallet form
+        document.getElementById('create-wallet-submit-btn')?.addEventListener('click', () => this.submitCreateWallet());
+        document.getElementById('create-wallet-back-btn')?.addEventListener('click', () => this.showOnboardingScreen());
+
+        // Import wallet form
+        document.getElementById('import-wallet-submit-btn')?.addEventListener('click', () => this.submitImportWallet());
+        document.getElementById('import-wallet-back-btn')?.addEventListener('click', () => this.showOnboardingScreen());
+
+        // Backup screen
+        document.getElementById('backup-copy-btn')?.addEventListener('click', () => this.copyBackupMnemonic());
+        document.getElementById('backup-drive-btn')?.addEventListener('click', () => this.saveBackupToDrive());
+        document.getElementById('backup-download-btn')?.addEventListener('click', () => this.downloadEncryptedBackup());
+        document.getElementById('backup-confirm')?.addEventListener('change', (e) => {
+            document.getElementById('backup-continue-btn').disabled = !e.target.checked;
+        });
+        document.getElementById('backup-continue-btn')?.addEventListener('click', () => this.confirmBackupAndContinue());
 
         // Cloud backup (export encrypted seed blob for Google Drive)
         document.getElementById('backup-btn')?.addEventListener('click', () => this.exportEncryptedBackup());
@@ -213,22 +235,69 @@ class TigerWalletApp {
 
         // Copy trading (trading page)
         document.getElementById('copy-follow-btn')?.addEventListener('click', () => this.followTrader());
+
+        // Watch-only wallet
+        document.getElementById('watch-only-add-btn')?.addEventListener('click', () => this.addWatchOnlyWallet());
+
+        // Health badge: poll backend health every 30s
+        this.updateHealthBadge();
+        setInterval(() => this.updateHealthBadge(), 30000);
     }
     
     async checkWalletStatus() {
-        // Check if there's an existing wallet in localStorage
+        // No mandatory registration: if a wallet exists locally, show the
+        // password unlock screen; otherwise show onboarding (create/import).
         const walletData = localStorage.getItem('tigerwallet-master');
-        
-        if (walletData) {
+        if (walletData && this.wallets.length > 0) {
             this.showLoginScreen();
         } else {
-            this.showLoginScreen();
+            this.showOnboardingScreen();
         }
     }
-    
+
     showLoginScreen() {
         document.getElementById('login-screen').classList.remove('hidden');
+        document.getElementById('onboarding-screen').classList.add('hidden');
         document.getElementById('dashboard-screen').classList.add('hidden');
+        document.getElementById('create-wallet-screen').classList.add('hidden');
+        document.getElementById('import-wallet-screen').classList.add('hidden');
+        document.getElementById('backup-screen').classList.add('hidden');
+    }
+
+    showOnboardingScreen() {
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('onboarding-screen').classList.remove('hidden');
+        document.getElementById('dashboard-screen').classList.add('hidden');
+        document.getElementById('create-wallet-screen').classList.add('hidden');
+        document.getElementById('import-wallet-screen').classList.add('hidden');
+        document.getElementById('backup-screen').classList.add('hidden');
+    }
+
+    showCreateWalletScreen() {
+        document.getElementById('onboarding-screen').classList.add('hidden');
+        document.getElementById('create-wallet-screen').classList.remove('hidden');
+    }
+
+    showImportWalletScreen() {
+        document.getElementById('onboarding-screen').classList.add('hidden');
+        document.getElementById('import-wallet-screen').classList.remove('hidden');
+    }
+
+    showBackupScreen(mnemonic, wallet) {
+        document.getElementById('create-wallet-screen').classList.add('hidden');
+        document.getElementById('backup-screen').classList.remove('hidden');
+        const grid = document.getElementById('backup-mnemonic-display');
+        grid.innerHTML = '';
+        const words = mnemonic.split(' ');
+        words.forEach((word, i) => {
+            const div = document.createElement('div');
+            div.className = 'mnemonic-word';
+            div.textContent = (i + 1) + '. ' + word;
+            grid.appendChild(div);
+        });
+        this._pendingBackup = { mnemonic: mnemonic, wallet: wallet };
+        document.getElementById('backup-confirm').checked = false;
+        document.getElementById('backup-continue-btn').disabled = true;
     }
     
     showDashboard() {
@@ -382,15 +451,22 @@ class TigerWalletApp {
         this.showLoginScreen();
     }
     
-    async showCreateWallet() {
-        const name = prompt('Enter wallet name:');
-        const password = prompt('Set master password:');
+    // Show the create-wallet form (replaces prompt-based flow).
+    showCreateWallet() {
+        this.showCreateWalletScreen();
+    }
 
-        if (!name || !password) {
+    async submitCreateWallet() {
+        const name = document.getElementById('create-wallet-name').value.trim() || 'Main Wallet';
+        const password = document.getElementById('create-wallet-password').value;
+        const password2 = document.getElementById('create-wallet-password2').value;
+
+        if (!password || password.length < 8) {
+            alert('Password must be at least 8 characters');
             return;
         }
-        if (password.length < 8) {
-            alert('Password must be at least 8 characters');
+        if (password !== password2) {
+            alert('Passwords do not match');
             return;
         }
 
@@ -398,7 +474,7 @@ class TigerWalletApp {
             // Create a real wallet on the canonical wallet_api backend
             // (POST /api/v1/wallets) — the backend derives the address from a
             // real BIP-39 seed (secp256k1 / BIP-44). Never fabricate one here.
-            const res = await fetch(`${twApiBase()}/wallets`, {
+            const res = await twFetch(`${twApiBase()}/wallets`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ label: name, password })
@@ -422,34 +498,36 @@ class TigerWalletApp {
             localStorage.setItem('tigerwallet-wallets', JSON.stringify(this.wallets));
             localStorage.setItem('tigerwallet-master', await this.hashPassword(password));
 
-            alert('Wallet created successfully!');
-            this.showDashboard();
+            // Show backup screen with the mnemonic so the user can copy /
+            // save to Google Drive before continuing.
+            this.showBackupScreen(wallet.mnemonic, wallet);
         } catch (e) {
             alert('Wallet creation error: ' + e.message);
         }
     }
     
-    // Import an existing wallet from a 24-word BIP-39 mnemonic. Submits the
-    // user's mnemonic to the canonical wallet_api (POST /api/v1/wallets with
-    // a mnemonic) which re-derives the address server-side. The mnemonic is
-    // never persisted client-side beyond this request.
-    async showImportWallet() {
-        const mnemonic = prompt('Enter your 24-word recovery phrase:');
-        if (!mnemonic || mnemonic.trim().split(/\s+/).length < 12) {
+    // Show the import-wallet form (replaces prompt-based flow).
+    showImportWallet() {
+        this.showImportWalletScreen();
+    }
+
+    async submitImportWallet() {
+        const mnemonic = document.getElementById('import-wallet-mnemonic').value.trim();
+        if (!mnemonic || mnemonic.split(/\s+/).length < 12) {
             alert('A valid 12/24-word recovery phrase is required');
             return;
         }
-        const password = prompt('Set a master password for this imported wallet (min 8 chars):');
+        const password = document.getElementById('import-wallet-password').value;
         if (!password || password.length < 8) {
             alert('Password must be at least 8 characters');
             return;
         }
-        const name = prompt('Wallet name (optional):') || 'Imported Wallet';
+        const name = document.getElementById('import-wallet-name').value.trim() || 'Imported Wallet';
         try {
-            const res = await fetch(`${twApiBase()}/wallets`, {
+            const res = await twFetch(`${twApiBase()}/wallets`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ label: name, password, mnemonic: mnemonic.trim() })
+                body: JSON.stringify({ label: name, password, mnemonic })
             });
             if (!res.ok) {
                 const err = await res.text();
@@ -487,7 +565,7 @@ class TigerWalletApp {
         const password = prompt('Enter wallet password to verify backup export:');
         if (!password) { alert('Password is required'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/wallets/${encodeURIComponent(wallet.wallet_id ?? wallet.id)}/export-encrypted-seed`, {
+            const res = await twFetch(`${twApiBase()}/wallets/${encodeURIComponent(wallet.wallet_id ?? wallet.id)}/export-encrypted-seed`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ password })
@@ -518,7 +596,7 @@ class TigerWalletApp {
         // (/api/v1/chains). Falls back to a minimal list only when the
         // backend is unreachable, so the UI remains usable offline.
         try {
-            const res = await fetch(`${twApiBase()}/chains`);
+            const res = await twFetch(`${twApiBase()}/chains`);
             if (res.ok) {
                 const data = await res.json();
                 const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
@@ -586,8 +664,7 @@ class TigerWalletApp {
         const wallet = this.wallets[0];
         try {
             const chainId = this.currentNetwork || 1;
-            const res = await fetch(
-                `${twApiBase()}/public/balance?address=${wallet.address}&chain_id=${chainId}`
+            const res = await twFetch(`${twApiBase()}/public/balance?address=${wallet.address}&chain_id=${chainId}`
             );
             if (res.ok) {
                 const data = await res.json();
@@ -663,7 +740,7 @@ class TigerWalletApp {
         try {
             // Real dry-run against the canonical backend (eth_estimateGas +
             // eth_call). The client never fabricates a simulation verdict.
-            const res = await fetch(`${twApiBase()}/simulate`, {
+            const res = await twFetch(`${twApiBase()}/simulate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -732,7 +809,7 @@ class TigerWalletApp {
             // MasterWallet auto-signs + auto-approves (no manual approval).
             const autoSend = document.getElementById('auto-send-toggle')?.checked;
             const endpoint = autoSend ? 'auto-send' : 'send';
-            const res = await fetch(`${twApiBase()}/${endpoint}`, {
+            const res = await twFetch(`${twApiBase()}/${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -791,7 +868,7 @@ class TigerWalletApp {
         }
         try {
             const url = `${twApiBase()}/swap/quote?from_token=${encodeURIComponent(fromTok)}&to_token=${encodeURIComponent(toTok)}&from_amount=${encodeURIComponent(fromAmt)}&chain_id=${this.currentNetwork}`;
-            const res = await fetch(url);
+            const res = await twFetch(url);
             if (!res.ok) {
                 if (rateEl) rateEl.textContent = 'Rate: unavailable';
                 if (toAmtEl) toAmtEl.value = '';
@@ -821,7 +898,7 @@ class TigerWalletApp {
         if (!password) { alert('Password is required'); return; }
         try {
             // Step 1: get the on-chain swap action (calldata) from the backend.
-            const exRes = await fetch(`${twApiBase()}/swap/execute`, {
+            const exRes = await twFetch(`${twApiBase()}/swap/execute`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -836,7 +913,7 @@ class TigerWalletApp {
             }
             const action = await exRes.json();
             // Step 2: submit the returned calldata via the real /send endpoint.
-            const sendRes = await fetch(`${twApiBase()}/send`, {
+            const sendRes = await twFetch(`${twApiBase()}/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -904,8 +981,7 @@ class TigerWalletApp {
         }
         try {
             const chainId = this.currentNetwork || 1;
-            const res = await fetch(
-                `${twApiBase()}/public/transactions?address=${wallet.address}&chain_id=${chainId}`
+            const res = await twFetch(`${twApiBase()}/public/transactions?address=${wallet.address}&chain_id=${chainId}`
             );
             if (!res.ok) {
                 list.innerHTML = '<div class="empty-state">Failed to load transactions</div>';
@@ -953,7 +1029,7 @@ class TigerWalletApp {
         const container = document.getElementById('staking-pools');
         if (!container) return;
         try {
-            const res = await fetch(`${twApiBase()}/staking/quote?chain_id=${this.currentNetwork}`);
+            const res = await twFetch(`${twApiBase()}/staking/quote?chain_id=${this.currentNetwork}`);
             if (!res.ok) {
                 container.innerHTML = '<div class="empty-state">Staking quote unavailable</div>';
                 return;
@@ -988,7 +1064,7 @@ class TigerWalletApp {
         try {
             const body = { wallet_id: wallet.wallet_id ?? wallet.id, password, token: asset, chain_id: chainId };
             if (amount) body.amount = amount;
-            const res = await fetch(`${twApiBase()}/staking/${action}`, {
+            const res = await twFetch(`${twApiBase()}/staking/${action}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -1025,7 +1101,7 @@ class TigerWalletApp {
         if (!fromId || !toId || !amount) return;
         try {
             const url = `${twApiBase()}/bridge/quote?from_chain=${fromId}&to_chain=${toId}&amount=${encodeURIComponent(amount)}`;
-            const res = await fetch(url);
+            const res = await twFetch(url);
             if (!res.ok) return;
             const q = await res.json();
             if (info) info.innerHTML =
@@ -1043,7 +1119,7 @@ class TigerWalletApp {
         const password = prompt('Enter wallet password to sign:');
         if (!password) { alert('Password is required'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/bridge/transfer`, {
+            const res = await twFetch(`${twApiBase()}/bridge/transfer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1070,7 +1146,7 @@ class TigerWalletApp {
             return;
         }
         try {
-            const res = await fetch(`${twApiBase()}/public/nfts?address=${wallet.address}&chain_id=${this.currentNetwork}`);
+            const res = await twFetch(`${twApiBase()}/public/nfts?address=${wallet.address}&chain_id=${this.currentNetwork}`);
             if (!res.ok) { grid.innerHTML = '<div class="empty-state">Failed to load NFTs</div>'; return; }
             const data = await res.json();
             const nfts = Array.isArray(data.nfts) ? data.nfts : [];
@@ -1101,7 +1177,7 @@ class TigerWalletApp {
         if (!name) { out.textContent = 'Enter an ENS name'; return; }
         out.textContent = 'Resolving...';
         try {
-            const res = await fetch(`${twApiBase()}/ens/resolve?name=${encodeURIComponent(name)}`);
+            const res = await twFetch(`${twApiBase()}/ens/resolve?name=${encodeURIComponent(name)}`);
             if (!res.ok) { out.textContent = `Resolution failed (HTTP ${res.status})`; return; }
             const data = await res.json();
             out.textContent = data.address ? `${this.escapeHtml(name)} → ${this.escapeHtml(data.address)}` : 'No address found';
@@ -1117,7 +1193,7 @@ class TigerWalletApp {
         const wallet = this.wallets[0];
         if (!wallet) { box.innerHTML = '<div class="empty-state">No wallet connected</div>'; return; }
         try {
-            const res = await fetch(`${twApiBase()}/wallet/kyc/status?address=${encodeURIComponent(wallet.address)}`);
+            const res = await twFetch(`${twApiBase()}/wallet/kyc/status?address=${encodeURIComponent(wallet.address)}`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">KYC status unavailable</div>'; return; }
             const data = await res.json();
             const status = this.escapeHtml(data.status || data.kyc_status || 'unknown');
@@ -1132,7 +1208,7 @@ class TigerWalletApp {
         const box = document.getElementById('fiat-providers');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/ramp/providers`);
+            const res = await twFetch(`${twApiBase()}/ramp/providers`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Ramp unavailable</div>'; return; }
             const data = await res.json();
             const providers = Array.isArray(data.providers) ? data.providers : (Array.isArray(data) ? data : []);
@@ -1152,7 +1228,7 @@ class TigerWalletApp {
         const box = document.getElementById('dapp-list');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/dapps`);
+            const res = await twFetch(`${twApiBase()}/dapps`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>'; return; }
             const data = await res.json();
             const dapps = Array.isArray(data.dapps) ? data.dapps : (Array.isArray(data) ? data : []);
@@ -1174,7 +1250,7 @@ class TigerWalletApp {
         const box = document.getElementById('defi-protocols');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/defi/protocols`);
+            const res = await twFetch(`${twApiBase()}/defi/protocols`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">DeFi protocols unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.protocols) ? data.protocols : (Array.isArray(data) ? data : []);
@@ -1199,7 +1275,7 @@ class TigerWalletApp {
         if (!box) return;
         const market = this.tradingMarket();
         try {
-            const res = await fetch(`${twApiBase()}/${market}/positions`);
+            const res = await twFetch(`${twApiBase()}/${market}/positions`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Positions unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.positions) ? data.positions : (Array.isArray(data) ? data : []);
@@ -1227,7 +1303,7 @@ class TigerWalletApp {
         const leverage = parseInt(document.getElementById('trading-leverage')?.value || '1', 10);
         if (!pair || !size) { alert('Enter a pair and size'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/${market}/positions`, {
+            const res = await twFetch(`${twApiBase()}/${market}/positions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pair, side, size, leverage, chain_id: this.currentNetwork })
@@ -1244,7 +1320,7 @@ class TigerWalletApp {
     async closeTradingPosition(id) {
         const market = this.tradingMarket();
         try {
-            const res = await fetch(`${twApiBase()}/${market}/positions/${encodeURIComponent(id)}/close`, {
+            const res = await twFetch(`${twApiBase()}/${market}/positions/${encodeURIComponent(id)}/close`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: '{}'
@@ -1262,7 +1338,7 @@ class TigerWalletApp {
         const poolsBox = document.getElementById('launchpool-pools');
         const stakesBox = document.getElementById('launchpool-stakes');
         try {
-            const res = await fetch(`${twApiBase()}/launchpool`);
+            const res = await twFetch(`${twApiBase()}/launchpool`);
             if (poolsBox) {
                 if (!res.ok) { poolsBox.innerHTML = '<div class="empty-state">Launchpool unavailable</div>'; }
                 else {
@@ -1277,7 +1353,7 @@ class TigerWalletApp {
             if (poolsBox) poolsBox.innerHTML = '<div class="empty-state">Launchpool unavailable</div>';
         }
         try {
-            const res = await fetch(`${twApiBase()}/launchpool/stakes`);
+            const res = await twFetch(`${twApiBase()}/launchpool/stakes`);
             if (stakesBox) {
                 if (!res.ok) { stakesBox.innerHTML = '<div class="empty-state">Stakes unavailable</div>'; return; }
                 const data = await res.json();
@@ -1299,7 +1375,7 @@ class TigerWalletApp {
         const password = prompt('Enter wallet password to sign:');
         if (!password) { alert('Password is required'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/launchpool/${action}`, {
+            const res = await twFetch(`${twApiBase()}/launchpool/${action}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ wallet_id: wallet.wallet_id ?? wallet.id, password, amount })
@@ -1318,7 +1394,7 @@ class TigerWalletApp {
         const box = document.getElementById('token-sales-list');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/token-sales`);
+            const res = await twFetch(`${twApiBase()}/token-sales`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Token sales unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.sales) ? data.sales : (Array.isArray(data) ? data : []);
@@ -1344,7 +1420,7 @@ class TigerWalletApp {
         const amount = document.getElementById(`sale-amount-${saleId}`)?.value;
         if (!amount) { alert('Enter an amount'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/token-sales/${encodeURIComponent(saleId)}/participate`, {
+            const res = await twFetch(`${twApiBase()}/token-sales/${encodeURIComponent(saleId)}/participate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount })
@@ -1363,7 +1439,7 @@ class TigerWalletApp {
         const box = document.getElementById('p2p-adverts');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/p2p/adverts`);
+            const res = await twFetch(`${twApiBase()}/p2p/adverts`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">P2P adverts unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.adverts) ? data.adverts : (Array.isArray(data) ? data : []);
@@ -1383,7 +1459,7 @@ class TigerWalletApp {
         const amount = document.getElementById('p2p-amount')?.value;
         if (!advertId || !amount) { alert('Enter an advert id and amount'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/p2p/orders`, {
+            const res = await twFetch(`${twApiBase()}/p2p/orders`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ advert_id: advertId, amount })
@@ -1402,7 +1478,7 @@ class TigerWalletApp {
         const ratesBox = document.getElementById('card-rates');
         const txBox = document.getElementById('card-transactions');
         try {
-            const res = await fetch(`${twApiBase()}/cards/default/balance`);
+            const res = await twFetch(`${twApiBase()}/cards/default/balance`);
             if (balBox) {
                 if (!res.ok) { balBox.innerHTML = '<div class="empty-state">Card balance unavailable</div>'; }
                 else {
@@ -1414,7 +1490,7 @@ class TigerWalletApp {
             if (balBox) balBox.innerHTML = '<div class="empty-state">Card balance unavailable</div>';
         }
         try {
-            const res = await fetch(`${twApiBase()}/cards/rates`);
+            const res = await twFetch(`${twApiBase()}/cards/rates`);
             if (ratesBox) {
                 if (!res.ok) { ratesBox.innerHTML = '<div class="empty-state">Rates unavailable</div>'; return; }
                 const data = await res.json();
@@ -1427,7 +1503,7 @@ class TigerWalletApp {
             if (ratesBox) ratesBox.innerHTML = '<div class="empty-state">Rates unavailable</div>';
         }
         try {
-            const res = await fetch(`${twApiBase()}/cards/default/transactions`);
+            const res = await twFetch(`${twApiBase()}/cards/default/transactions`);
             if (txBox) {
                 if (!res.ok) { txBox.innerHTML = '<div class="no-transactions">Card transactions unavailable</div>'; return; }
                 const data = await res.json();
@@ -1446,7 +1522,7 @@ class TigerWalletApp {
         const box = document.getElementById('price-alerts-list');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/price-alerts`);
+            const res = await twFetch(`${twApiBase()}/price-alerts`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Price alerts unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.alerts) ? data.alerts : (Array.isArray(data) ? data : []);
@@ -1470,7 +1546,7 @@ class TigerWalletApp {
         const direction = document.getElementById('alert-direction')?.value;
         if (!symbol || !target) { alert('Enter a symbol and target price'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/price-alerts`, {
+            const res = await twFetch(`${twApiBase()}/price-alerts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ symbol: symbol.toUpperCase(), target_price: target, direction })
@@ -1485,7 +1561,7 @@ class TigerWalletApp {
 
     async deletePriceAlert(id) {
         try {
-            const res = await fetch(`${twApiBase()}/price-alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const res = await twFetch(`${twApiBase()}/price-alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
             if (!res.ok) { alert('Delete alert failed: ' + await res.text()); return; }
             this.loadPriceAlerts();
         } catch (e) {
@@ -1498,7 +1574,7 @@ class TigerWalletApp {
         const propBox = document.getElementById('dao-proposals');
         const delBox = document.getElementById('dao-delegates');
         try {
-            const res = await fetch(`${twApiBase()}/dao/proposals`);
+            const res = await twFetch(`${twApiBase()}/dao/proposals`);
             if (propBox) {
                 if (!res.ok) { propBox.innerHTML = '<div class="empty-state">Proposals unavailable</div>'; }
                 else {
@@ -1520,7 +1596,7 @@ class TigerWalletApp {
             if (propBox) propBox.innerHTML = '<div class="empty-state">Proposals unavailable</div>';
         }
         try {
-            const res = await fetch(`${twApiBase()}/dao/delegates`);
+            const res = await twFetch(`${twApiBase()}/dao/delegates`);
             if (delBox) {
                 if (!res.ok) { delBox.innerHTML = '<div class="empty-state">Delegates unavailable</div>'; return; }
                 const data = await res.json();
@@ -1536,7 +1612,7 @@ class TigerWalletApp {
 
     async daoVote(proposalId, support) {
         try {
-            const res = await fetch(`${twApiBase()}/dao/proposals/${encodeURIComponent(proposalId)}/vote`, {
+            const res = await twFetch(`${twApiBase()}/dao/proposals/${encodeURIComponent(proposalId)}/vote`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ support })
@@ -1554,7 +1630,7 @@ class TigerWalletApp {
         const box = document.getElementById('approvals-list');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/approvals`);
+            const res = await twFetch(`${twApiBase()}/approvals`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Approvals unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.approvals) ? data.approvals : (Array.isArray(data) ? data : []);
@@ -1575,7 +1651,7 @@ class TigerWalletApp {
 
     async revokeApproval(id) {
         try {
-            const res = await fetch(`${twApiBase()}/approvals/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const res = await twFetch(`${twApiBase()}/approvals/${encodeURIComponent(id)}`, { method: 'DELETE' });
             if (!res.ok) { alert('Revoke failed: ' + await res.text()); return; }
             alert('Revocation submitted to the blockchain network');
             this.loadApprovals();
@@ -1589,7 +1665,7 @@ class TigerWalletApp {
         const box = document.getElementById('contacts-list');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/address-book/contacts`);
+            const res = await twFetch(`${twApiBase()}/address-book/contacts`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Contacts unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.contacts) ? data.contacts : (Array.isArray(data) ? data : []);
@@ -1613,7 +1689,7 @@ class TigerWalletApp {
         const address = document.getElementById('contact-address')?.value;
         if (!label || !address) { alert('Enter a label and address'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/address-book/contacts`, {
+            const res = await twFetch(`${twApiBase()}/address-book/contacts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ label, address })
@@ -1627,7 +1703,7 @@ class TigerWalletApp {
 
     async deleteContact(id) {
         try {
-            const res = await fetch(`${twApiBase()}/address-book/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const res = await twFetch(`${twApiBase()}/address-book/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
             if (!res.ok) { alert('Delete contact failed: ' + await res.text()); return; }
             this.loadContacts();
         } catch (e) {
@@ -1640,7 +1716,7 @@ class TigerWalletApp {
         const box = document.getElementById('devices-list');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/devices`);
+            const res = await twFetch(`${twApiBase()}/devices`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Devices unavailable</div>'; return; }
             const data = await res.json();
             const list = Array.isArray(data.devices) ? data.devices : (Array.isArray(data) ? data : []);
@@ -1668,7 +1744,7 @@ class TigerWalletApp {
             ? `${twApiBase()}/security/check-url?url=${encodeURIComponent(target)}`
             : `${twApiBase()}/security/check-address?address=${encodeURIComponent(target)}`;
         try {
-            const res = await fetch(path);
+            const res = await twFetch(path);
             if (!res.ok) { out.textContent = `Check failed (HTTP ${res.status})`; return; }
             const data = await res.json();
             out.textContent = data.safe ? `✓ Safe: ${this.escapeHtml(data.reason || 'no threats')}` : `⚠ Flagged: ${this.escapeHtml(data.reason || 'threat detected')}`;
@@ -1685,7 +1761,7 @@ class TigerWalletApp {
         if (!target) { out.textContent = 'Enter a URL or address'; return; }
         out.textContent = 'Scanning...';
         try {
-            const res = await fetch(`${twApiBase()}/security/scan`, {
+            const res = await twFetch(`${twApiBase()}/security/scan`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ target })
@@ -1711,13 +1787,13 @@ class TigerWalletApp {
         const symbol = (symbolInput.value.trim() || 'ETH').toUpperCase();
         const days = parseInt(daysInput.value, 10) || 1;
         try {
-            const res = await fetch(`${twApiBase()}/terminal/ticker/${encodeURIComponent(symbol)}`);
+            const res = await twFetch(`${twApiBase()}/terminal/ticker/${encodeURIComponent(symbol)}`);
             if (tickerOut) tickerOut.textContent = res.ok ? JSON.stringify(await res.json()) : 'Ticker unavailable';
         } catch (e) {
             if (tickerOut) tickerOut.textContent = 'Ticker unavailable';
         }
         try {
-            const res = await fetch(`${twApiBase()}/terminal/kline/${encodeURIComponent(symbol)}?days=${days}`);
+            const res = await twFetch(`${twApiBase()}/terminal/kline/${encodeURIComponent(symbol)}?days=${days}`);
             const raw = res.ok ? await res.json() : null;
             const list = Array.isArray(raw) ? raw : (raw?.candles ?? raw?.kline ?? []);
             const candles = list.map((c) => Array.isArray(c)
@@ -1778,7 +1854,7 @@ class TigerWalletApp {
         const password = prompt('Enter wallet password to sign:');
         if (!password) { alert('Password is required'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/nft/transfer`, {
+            const res = await twFetch(`${twApiBase()}/nft/transfer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1912,7 +1988,7 @@ class TigerWalletApp {
         if (!name || !country) { alert('Enter name and country'); return; }
         const out = document.getElementById('kyc-result');
         try {
-            const res = await fetch(`${twApiBase()}/kyc/register`, {
+            const res = await twFetch(`${twApiBase()}/kyc/register`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ full_name: name, country })
             });
@@ -1927,7 +2003,7 @@ class TigerWalletApp {
         const dob = document.getElementById('kyc-dob')?.value;
         if (!dob) { alert('Enter date of birth'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/kyc/submit`, {
+            const res = await twFetch(`${twApiBase()}/kyc/submit`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ date_of_birth: dob })
             });
@@ -1945,7 +2021,7 @@ class TigerWalletApp {
         form.append('document_type', docType);
         form.append('document', file);
         try {
-            const res = await fetch(`${twApiBase()}/kyc/document`, { method: 'POST', body: form });
+            const res = await twFetch(`${twApiBase()}/kyc/document`, { method: 'POST', body: form });
             if (!res.ok) { alert('KYC upload failed: ' + await res.text()); return; }
             alert('KYC document uploaded');
             this.loadKYCStatus();
@@ -1958,7 +2034,7 @@ class TigerWalletApp {
         if (!box) return;
         box.innerHTML = '<div class="no-transactions">Loading multisig wallets…</div>';
         try {
-            const res = await fetch(`${twApiBase()}/wallet/multisig/wallets`);
+            const res = await twFetch(`${twApiBase()}/wallet/multisig/wallets`);
             if (!res.ok) { box.innerHTML = '<div class="no-transactions">Multisig unavailable: ' + this.escapeHtml(await res.text()) + '</div>'; return; }
             const data = await res.json();
             const list = data.multisig_wallets || data.wallets || [];
@@ -1977,7 +2053,7 @@ class TigerWalletApp {
         const threshold = parseInt(document.getElementById('ms-threshold')?.value || '0', 10);
         if (!name || !owners.length || !threshold) { alert('Enter name, owners and threshold'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/wallet/multisig/wallets`, {
+            const res = await twFetch(`${twApiBase()}/wallet/multisig/wallets`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, owners, threshold, chain_id: this.currentNetwork })
             });
@@ -1994,7 +2070,7 @@ class TigerWalletApp {
         const data = document.getElementById('ms-tx-data')?.value || '';
         if (!wid || !to || !value) { alert('Enter wallet id, to address and value'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/wallet/multisig/wallets/${encodeURIComponent(wid)}/transactions`, {
+            const res = await twFetch(`${twApiBase()}/wallet/multisig/wallets/${encodeURIComponent(wid)}/transactions`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ to_address: to, value, data })
             });
@@ -2010,7 +2086,7 @@ class TigerWalletApp {
         if (!wid || !box) { alert('Enter a multisig wallet id'); return; }
         box.innerHTML = '<div class="no-transactions">Loading transactions…</div>';
         try {
-            const res = await fetch(`${twApiBase()}/wallet/multisig/wallets/${encodeURIComponent(wid)}/transactions`);
+            const res = await twFetch(`${twApiBase()}/wallet/multisig/wallets/${encodeURIComponent(wid)}/transactions`);
             if (!res.ok) { box.innerHTML = '<div class="no-transactions">Failed: ' + this.escapeHtml(await res.text()) + '</div>'; return; }
             const data = await res.json();
             const list = data.transactions || data.multisig_transactions || [];
@@ -2027,7 +2103,7 @@ class TigerWalletApp {
 
     async multisigSign(tid) {
         try {
-            const res = await fetch(`${twApiBase()}/wallet/multisig/transactions/${encodeURIComponent(tid)}/sign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            const res = await twFetch(`${twApiBase()}/wallet/multisig/transactions/${encodeURIComponent(tid)}/sign`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
             if (!res.ok) { alert('Sign failed: ' + await res.text()); return; }
             alert('Multisig transaction signed');
             this.loadMultisigTxs();
@@ -2036,7 +2112,7 @@ class TigerWalletApp {
 
     async multisigExecute(tid) {
         try {
-            const res = await fetch(`${twApiBase()}/wallet/multisig/transactions/${encodeURIComponent(tid)}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            const res = await twFetch(`${twApiBase()}/wallet/multisig/transactions/${encodeURIComponent(tid)}/execute`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
             if (!res.ok) { alert('Execute failed: ' + await res.text()); return; }
             const data = await res.json();
             alert('Transaction submitted to the blockchain network: ' + (data.tx_hash || data.status || 'broadcast'));
@@ -2054,7 +2130,7 @@ class TigerWalletApp {
         if (!password) { alert('Password is required'); return; }
         const out = document.getElementById('nevm-address-result');
         try {
-            const res = await fetch(`${twApiBase()}/non_evm/address`, {
+            const res = await twFetch(`${twApiBase()}/non_evm/address`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ wallet_id: wallet.wallet_id ?? wallet.id, password, chain_type: chain })
             });
@@ -2084,7 +2160,7 @@ class TigerWalletApp {
             body.cosmos_sign_doc = { chain_id: 'cosmoshub-4', account_number: '0', body_bytes: '', auth_info_bytes: '' };
         }
         try {
-            const res = await fetch(`${twApiBase()}/non_evm/send`, {
+            const res = await twFetch(`${twApiBase()}/non_evm/send`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
             });
             if (!res.ok) { alert('Non-EVM send failed: ' + await res.text()); return; }
@@ -2100,7 +2176,7 @@ class TigerWalletApp {
         const posBox = document.getElementById('lending-positions');
         if (marketsBox) {
             try {
-                const res = await fetch(`${twApiBase()}/lending/markets`);
+                const res = await twFetch(`${twApiBase()}/lending/markets`);
                 const data = res.ok ? await res.json() : {};
                 const list = data.markets || data.data || (Array.isArray(data) ? data : []);
                 marketsBox.innerHTML = list.length ? list.map((m) =>
@@ -2113,7 +2189,7 @@ class TigerWalletApp {
         }
         if (posBox) {
             try {
-                const res = await fetch(`${twApiBase()}/lending/positions`);
+                const res = await twFetch(`${twApiBase()}/lending/positions`);
                 const data = res.ok ? await res.json() : {};
                 const list = data.positions || data.data || (Array.isArray(data) ? data : []);
                 posBox.innerHTML = list.length ? list.map((p) =>
@@ -2135,7 +2211,7 @@ class TigerWalletApp {
         if (!asset || !amount || !password) { alert('Enter asset, amount and password'); return; }
         const wallet = this.wallets[0];
         try {
-            const res = await fetch(`${twApiBase()}/lending/${action}`, {
+            const res = await twFetch(`${twApiBase()}/lending/${action}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ wallet_id: wallet.wallet_id ?? wallet.id, password, asset, amount, chain_id: this.currentNetwork })
             });
@@ -2151,7 +2227,7 @@ class TigerWalletApp {
         const box = document.getElementById('prediction-markets');
         if (!box) return;
         try {
-            const res = await fetch(`${twApiBase()}/prediction/markets`);
+            const res = await twFetch(`${twApiBase()}/prediction/markets`);
             const data = res.ok ? await res.json() : {};
             const list = data.markets || data.data || (Array.isArray(data) ? data : []);
             box.innerHTML = list.length ? list.map((m) =>
@@ -2169,7 +2245,7 @@ class TigerWalletApp {
         const amount = document.getElementById('prediction-amount')?.value;
         if (!marketId || !outcome || !amount) { alert('Enter market id, outcome and amount'); return; }
         try {
-            const res = await fetch(`${twApiBase()}/prediction/markets/${encodeURIComponent(marketId)}/bet`, {
+            const res = await twFetch(`${twApiBase()}/prediction/markets/${encodeURIComponent(marketId)}/bet`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ outcome, amount })
             });
@@ -2194,7 +2270,7 @@ class TigerWalletApp {
         if (!walletId || !password || !exportPassword) { alert('Choose a wallet and enter both passwords'); return; }
         const out = document.getElementById('keystore-export-result');
         try {
-            const res = await fetch(`${twApiBase()}/keystore/export`, {
+            const res = await twFetch(`${twApiBase()}/keystore/export`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ wallet_id: walletId, password, export_password: exportPassword })
             });
@@ -2218,7 +2294,7 @@ class TigerWalletApp {
         if (!json || !password) { alert('Paste the keystore JSON and enter its password'); return; }
         const out = document.getElementById('keystore-import-result');
         try {
-            const res = await fetch(`${twApiBase()}/keystore/import`, {
+            const res = await twFetch(`${twApiBase()}/keystore/import`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ keystore_json: json, password, label })
             });
@@ -2292,7 +2368,7 @@ class TigerWalletApp {
         if (!traderId) { alert('Enter a trader id'); return; }
         const wallet = this.wallets[0];
         try {
-            const res = await fetch(`${twApiBase()}/copytrading/follow`, {
+            const res = await twFetch(`${twApiBase()}/copytrading/follow`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ trader_id: traderId, wallet_id: wallet ? (wallet.wallet_id ?? wallet.id) : undefined, allocation: document.getElementById('copy-allocation')?.value })
             });
@@ -2300,9 +2376,159 @@ class TigerWalletApp {
             alert('Following trader — copy trades will execute automatically');
         } catch (e) { alert('Follow error: ' + e.message); }
     }
+    // ==================== Backup Actions ====================
+
+    copyBackupMnemonic() {
+        if (!this._pendingBackup) return;
+        navigator.clipboard.writeText(this._pendingBackup.mnemonic).then(() => {
+            alert('Recovery phrase copied to clipboard. Store it safely!');
+        }).catch(() => {
+            alert('Copy failed. Please write down the phrase manually.');
+        });
+    }
+
+    async saveBackupToDrive() {
+        if (!this._pendingBackup) return;
+        // Google Drive backup requires a real OAuth client_id configured
+        // via the VITE_GOOGLE_DRIVE_CLIENT_ID env var. Fail-closed if unset.
+        try {
+            const { uploadBackupToDrive } = await import('./services/googleDriveBackup.js');
+            await uploadBackupToDrive(this._pendingBackup.wallet, this._pendingBackup.mnemonic);
+            alert('Encrypted backup saved to Google Drive (appDataFolder).');
+        } catch (e) {
+            alert('Google Drive backup not available: ' + e.message);
+        }
+    }
+
+    async downloadEncryptedBackup() {
+        if (!this._pendingBackup) return;
+        const wallet = this._pendingBackup.wallet;
+        const password = prompt('Enter wallet password to verify backup export:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const res = await twFetch(`${twApiBase()}/wallets/${encodeURIComponent(wallet.id)}/export-encrypted-seed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                alert('Backup export failed: ' + err);
+                return;
+            }
+            const blob = await res.json();
+            const json = JSON.stringify(blob, null, 2);
+            const a = document.createElement('a');
+            const file = new Blob([json], { type: 'application/json' });
+            a.href = URL.createObjectURL(file);
+            a.download = `tigerwallet-backup-${wallet.address.slice(0, 8)}.json`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) {
+            alert('Backup export error: ' + e.message);
+        }
+    }
+
+    confirmBackupAndContinue() {
+        if (!this._pendingBackup) return;
+        this._pendingBackup = null;
+        this.showDashboard();
+    }
+
+    async addWatchOnlyWallet() {
+        const input = document.getElementById('watch-only-address');
+        const address = input && input.value ? input.value.trim() : '';
+        if (!address || !address.startsWith('0x') || address.length !== 42) {
+            alert('Enter a valid EVM address (0x...)');
+            return;
+        }
+        try {
+            const res = await twFetch(twApiBase() + '/wallets/watch-only', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: address, chain_id: this.currentNetwork, label: 'Watch: ' + address.slice(0, 8) })
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                alert('Watch-only wallet failed: ' + err);
+                return;
+            }
+            const w = await res.json();
+            this.wallets.push({
+                id: this.generateId(),
+                wallet_id: w.id,
+                name: w.label || 'Watch-only',
+                address: w.address,
+                balance: '0',
+                tokens: [],
+                unlocked: false,
+                watchOnly: true
+            });
+            localStorage.setItem('tigerwallet-wallets', JSON.stringify(this.wallets));
+            input.value = '';
+            alert('Watch-only wallet added. You can track balances but cannot send.');
+            this.loadWalletData();
+        } catch (e) {
+            alert('Watch-only error: ' + e.message);
+        }
+    }
+
+    async updateHealthBadge() {
+        const badge = document.getElementById('health-badge');
+        if (!badge) return;
+        try {
+            const res = await fetch(twApiOrigin() + '/health');
+            if (res.ok) {
+                badge.className = 'health-badge health-ok';
+                badge.title = 'Backend: healthy';
+            } else {
+                badge.className = 'health-badge health-degraded';
+                badge.title = 'Backend: degraded (HTTP ' + res.status + ')';
+            }
+        } catch (e) {
+            badge.className = 'health-badge health-down';
+            badge.title = 'Backend: unreachable';
+        }
+    }
+
+    async openMarginPosition() {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const pair = prompt('Trading pair (e.g. ETH/USDT):');
+        if (!pair) return;
+        const side = prompt('Side (long/short):', 'long');
+        if (!side || ['long', 'short'].indexOf(side) === -1) { alert('Side must be long or short'); return; }
+        const collateral = prompt('Collateral amount:');
+        if (!collateral || isNaN(parseFloat(collateral))) { alert('Invalid collateral'); return; }
+        const leverage = prompt('Leverage (e.g. 2):', '2');
+        if (!leverage || isNaN(parseFloat(leverage))) { alert('Invalid leverage'); return; }
+        try {
+            const res = await twFetch(twApiBase() + '/margin/positions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pair_symbol: pair,
+                    side: side,
+                    collateral: collateral,
+                    leverage: leverage,
+                    chain_id: this.currentNetwork,
+                    wallet_id: wallet.wallet_id !== undefined ? wallet.wallet_id : wallet.id
+                })
+            });
+            if (!res.ok) { alert('Margin open failed: ' + await res.text()); return; }
+            const pos = await res.json();
+            alert('Margin position opened: ' + (pos.id || pos.position_id || 'confirmed') + ' — submitted to the blockchain network');
+            this.loadTradingPositions();
+        } catch (e) {
+            alert('Margin open error: ' + e.message);
+        }
+    }
+
 }
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new TigerWalletApp();
+
+
 });

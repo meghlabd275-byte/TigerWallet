@@ -276,6 +276,27 @@ async function loadWallets() {
   list.innerHTML = '<div class="spinner">Loading...</div>';
   try {
     const { wallets } = await api('/wallets');
+    // Watch-only enroll form handler
+    const watchOnlyBtn = document.getElementById('watchOnlyAddBtn');
+    if (watchOnlyBtn && !watchOnlyBtn._bound) {
+      watchOnlyBtn._bound = true;
+      watchOnlyBtn.addEventListener('click', async () => {
+        const input = document.getElementById('watchOnlyAddress');
+        const address = input?.value?.trim();
+        if (!address || !address.startsWith('0x') || address.length !== 42) {
+          alert('Enter a valid EVM address (0x...)');
+          return;
+        }
+        try {
+          await WalletAPI.createWatchOnlyWallet({ address, chain_id: 1, label: 'Watch: ' + address.slice(0, 8) });
+          input.value = '';
+          alert('Watch-only wallet added. You can track balances but cannot send.');
+          renderWallets();
+        } catch (e) {
+          alert('Watch-only error: ' + e.message);
+        }
+      });
+    }
     if (!wallets || wallets.length === 0) {
       list.innerHTML = '<div class="wallet-label">No wallets yet.</div>';
       document.getElementById('totalUsd').textContent = '$0.00';
@@ -616,6 +637,9 @@ const WalletAPI = {
   createPriceAlert: ({ symbol, target_price, direction }) =>
     api('/price-alerts', { method: 'POST', body: { symbol, target_price, direction } }),
   deletePriceAlert: (id) => api(`/price-alerts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  updatePriceAlert: (id, body) => api(`/price-alerts/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  createWatchOnlyWallet: ({ address, chain_id, label }) =>
+    api('/wallets/watch-only', { method: 'POST', body: { address, chain_id, label } }),
 
   // ---- Token registry + trading terminal (public) ----
   getTokenRegistry: (chainId) =>

@@ -585,3 +585,62 @@ func handleAdminFeeRevenue(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"revenue": out, "count": len(out)})
 }
+
+// handlePublicListFees is the public read-only mirror of handleAdminListFees:
+// returns only active fee tiers so users can see the fee schedule before
+// transacting. No admin auth required — fee transparency is a public good.
+func handlePublicListFees(c *gin.Context) {
+        rows, err := store.PG.Query(c.Request.Context(),
+                `SELECT tier_name, fee_type, rate_basis_points::text, COALESCE(min_amount,'0'), COALESCE(max_amount,''), chain_id FROM fee_tier WHERE status='active' ORDER BY fee_type, tier_name`)
+        if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+                return
+        }
+        defer rows.Close()
+        type publicFee struct {
+                TierName        string `json:"tier_name"`
+                FeeType         string `json:"fee_type"`
+                RateBasisPoints string `json:"rate_basis_points"`
+                MinAmount       string `json:"min_amount"`
+                MaxAmount       string `json:"max_amount"`
+                ChainID         *int64 `json:"chain_id"`
+        }
+        out := []publicFee{}
+        for rows.Next() {
+                var r publicFee
+                if err := rows.Scan(&r.TierName, &r.FeeType, &r.RateBasisPoints, &r.MinAmount, &r.MaxAmount, &r.ChainID); err != nil {
+                        continue
+                }
+                out = append(out, r)
+        }
+        c.JSON(http.StatusOK, gin.H{"fees": out, "count": len(out)})
+}
+
+// handlePublicFeeTransactions is the public read-only mirror of
+// handleAdminFeeTransactions: returns settled fee transactions for
+// transparency. No admin auth required.
+func handlePublicFeeTransactions(c *gin.Context) {
+        rows, err := store.PG.Query(c.Request.Context(),
+                `SELECT fee_type, currency, amount::text, chain_id, created_at FROM fee_transaction WHERE status='settled' ORDER BY created_at DESC LIMIT 100`)
+        if err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+                return
+        }
+        defer rows.Close()
+        type publicFeeTx struct {
+                FeeType   string `json:"fee_type"`
+                Currency  string `json:"currency"`
+                Amount    string `json:"amount"`
+                ChainID   *int64 `json:"chain_id"`
+                CreatedAt string `json:"created_at"`
+        }
+        out := []publicFeeTx{}
+        for rows.Next() {
+                var r publicFeeTx
+                if err := rows.Scan(&r.FeeType, &r.Currency, &r.Amount, &r.ChainID, &r.CreatedAt); err != nil {
+                        continue
+                }
+                out = append(out, r)
+        }
+        c.JSON(http.StatusOK, gin.H{"transactions": out, "count": len(out)})
+}

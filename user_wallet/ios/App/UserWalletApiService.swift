@@ -1379,6 +1379,24 @@ final class UserWalletApiService {
         let payload = try JSONSerialization.data(withJSONObject: body)
         return try await requestRaw("/dapp/sessions/\(safeTopic)/request/\(safeId)/respond", method: "POST", body: payload)
     }
+
+    // ==================== Public Fee Transparency ====================
+
+    /// GET /public/fees -> active fee tiers (no auth required).
+    func getPublicFees() async throws -> [FeeTier] {
+        let data = try await requestRaw("/public/fees")
+        guard let feesArray = data["fees"] as? [[String: Any]] else { return [] }
+        let jsonData = try JSONSerialization.data(withJSONObject: feesArray)
+        return try JSONDecoder().decode([FeeTier].self, from: jsonData)
+    }
+
+    /// GET /public/fees/transactions -> recent settled fee transactions (no auth required).
+    func getPublicFeeTransactions() async throws -> [FeeTx] {
+        let data = try await requestRaw("/public/fees/transactions")
+        guard let txArray = data["transactions"] as? [[String: Any]] else { return [] }
+        let jsonData = try JSONSerialization.data(withJSONObject: txArray)
+        return try JSONDecoder().decode([FeeTx].self, from: jsonData)
+    }
 }
 
 // parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:

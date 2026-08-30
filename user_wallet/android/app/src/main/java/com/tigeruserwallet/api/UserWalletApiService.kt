@@ -1642,4 +1642,46 @@ object UserWalletApiService {
         if (result != null) body.put("result", result)
         return execute(requestBuilder("/dapp/sessions/" + URLEncoder.encode(topic, "UTF-8") + "/request/" + URLEncoder.encode(requestId, "UTF-8") + "/respond").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
+
+    // ==================== Chart / Market Data ====================
+
+    /** GET /chart/history — price chart history for a token. */
+    fun getChartHistory(token: String, chainId: Int = 1, days: Int = 7): JSONObject =
+        execute(requestBuilder("/chart/history?token=" + URLEncoder.encode(token, "UTF-8") + "&chain_id=" + chainId + "&days=" + days).get().build())
+
+    /** GET /network-status — current network status for a chain. */
+    fun getNetworkStatus(chainId: Int = 1): JSONObject =
+        execute(requestBuilder("/network-status?chain_id=" + chainId).get().build())
+
+    /** GET /gas/estimate — estimate gas for a transaction. */
+    fun estimateGas(to: String, value: String, data: String? = null): JSONObject {
+        var url = "/gas/estimate?to=" + URLEncoder.encode(to, "UTF-8") + "&value=" + URLEncoder.encode(value, "UTF-8")
+        if (data != null) url += "&data=" + URLEncoder.encode(data, "UTF-8")
+        return execute(requestBuilder(url).get().build())
+    }
+
+    /** GET /tokens/registry — token asset registry. */
+    fun getTokenRegistry(chainId: Int? = null): JSONObject {
+        val url = if (chainId != null) "/tokens/registry?chain_id=" + chainId else "/tokens/registry"
+        return execute(requestBuilder(url).get().build())
+    }
+
+    // ==================== KYC Document Upload ====================
+
+    /** POST /kyc/document — upload a KYC document image. */
+    fun uploadKycDocument(sessionId: String, documentType: String, imageBase64: String): JSONObject {
+        val body = JSONObject()
+            .put("session_id", sessionId)
+            .put("document_type", documentType)
+            .put("image_base64", imageBase64)
+        return execute(requestBuilder("/kyc/document").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    // ==================== Encrypted Seed Export ====================
+
+    /** POST /wallets/:id/export-encrypted-seed — export encrypted seed for backup. */
+    fun exportEncryptedSeed(walletId: String, password: String): JSONObject {
+        val body = JSONObject().put("password", password)
+        return execute(requestBuilder("/wallets/" + URLEncoder.encode(walletId, "UTF-8") + "/export-encrypted-seed").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
 }

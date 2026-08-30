@@ -26,6 +26,7 @@ struct FeaturesView: View {
                     NavigationLink("ENS") { ENSView() }
                     NavigationLink("Security") { SecurityView() }
                     NavigationLink("Terminal") { TerminalView() }
+                    NavigationLink("Fees") { FeesView() }
                 }
                 Section("Security & Account") {
                     NavigationLink("Approvals") { ApprovalsView() }

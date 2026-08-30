@@ -31,6 +31,98 @@
             </div>
         </div>
 
+
+        <!-- Onboarding: Choose Create or Import -->
+        <div id="onboarding-screen" class="screen hidden">
+            <div class="login-container">
+                <div class="logo">
+                    <h1 data-app-name>🐯 TigerWallet</h1>
+                </div>
+                <div class="login-form">
+                    <h2>Welcome to TigerWallet</h2>
+                    <p class="muted">No registration required. Create a new wallet or import an existing one.</p>
+                    <button id="onboard-create-btn" class="btn-primary">Create New Wallet</button>
+                    <button id="onboard-import-btn" class="btn-secondary">Import Existing Wallet</button>
+                    <button id="onboard-back-btn" class="btn-link">← Back to Unlock</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Wallet Form -->
+        <div id="create-wallet-screen" class="screen hidden">
+            <div class="login-container">
+                <div class="logo">
+                    <h1 data-app-name>🐯 TigerWallet</h1>
+                </div>
+                <div class="login-form">
+                    <h2>Create New Wallet</h2>
+                    <div class="input-group">
+                        <label>Wallet Name</label>
+                        <input type="text" id="create-wallet-name" placeholder="My Wallet" value="Main Wallet">
+                    </div>
+                    <div class="input-group">
+                        <label>Master Password</label>
+                        <input type="password" id="create-wallet-password" placeholder="Min 8 characters">
+                    </div>
+                    <div class="input-group">
+                        <label>Confirm Password</label>
+                        <input type="password" id="create-wallet-password2" placeholder="Confirm password">
+                    </div>
+                    <button id="create-wallet-submit-btn" class="btn-primary">Create Wallet</button>
+                    <button id="create-wallet-back-btn" class="btn-link">← Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Wallet Form -->
+        <div id="import-wallet-screen" class="screen hidden">
+            <div class="login-container">
+                <div class="logo">
+                    <h1 data-app-name>🐯 TigerWallet</h1>
+                </div>
+                <div class="login-form">
+                    <h2>Import Wallet</h2>
+                    <div class="input-group">
+                        <label>24-Word Recovery Phrase</label>
+                        <textarea id="import-wallet-mnemonic" rows="4" placeholder="word1 word2 word3 ... word24"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>Wallet Name</label>
+                        <input type="text" id="import-wallet-name" placeholder="Imported Wallet" value="Imported Wallet">
+                    </div>
+                    <div class="input-group">
+                        <label>Master Password</label>
+                        <input type="password" id="import-wallet-password" placeholder="Min 8 characters">
+                    </div>
+                    <button id="import-wallet-submit-btn" class="btn-primary">Import Wallet</button>
+                    <button id="import-wallet-back-btn" class="btn-link">← Back</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup Screen (after create) -->
+        <div id="backup-screen" class="screen hidden">
+            <div class="login-container" style="max-width:600px">
+                <div class="logo">
+                    <h1 data-app-name>🐯 TigerWallet</h1>
+                </div>
+                <div class="login-form">
+                    <h2>🔐 Backup Your Recovery Phrase</h2>
+                    <p class="muted">Write down these 24 words in order and store them safely. This is the ONLY way to recover your wallet if you lose access.</p>
+                    <div id="backup-mnemonic-display" class="mnemonic-grid"></div>
+                    <div class="backup-actions">
+                        <button id="backup-copy-btn" class="btn-secondary">📋 Copy to Clipboard</button>
+                        <button id="backup-drive-btn" class="btn-secondary">☁️ Save to Google Drive</button>
+                        <button id="backup-download-btn" class="btn-secondary">💾 Download Encrypted Backup</button>
+                    </div>
+                    <div class="input-group" style="margin-top:16px">
+                        <label><input type="checkbox" id="backup-confirm"> I have safely stored my recovery phrase</label>
+                    </div>
+                    <button id="backup-continue-btn" class="btn-primary" disabled>Continue to Wallet</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Dashboard -->
         <div id="dashboard-screen" class="screen hidden">
             <!-- Sidebar -->
@@ -149,6 +241,7 @@
                         <h3 id="page-title">My Wallet</h3>
                     </div>
                     <div class="header-right">
+                        <span id="health-badge" class="health-badge health-unknown" title="Backend status">●</span>
                         <button id="theme-toggle" class="theme-btn">
                             <span id="theme-icon">🌙</span>
                         </button>
@@ -175,6 +268,15 @@
                     </div>
                     <div id="live-ticker" class="assets-list"></div>
                     
+                    <div class="watch-only-section" style="margin: 16px 0; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                        <h4>Watch-Only Wallet</h4>
+                        <p class="muted" style="font-size: 12px;">Track any address without importing keys.</p>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <input type="text" id="watch-only-address" placeholder="0x..." style="flex: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary);">
+                            <button id="watch-only-add-btn" class="btn-secondary">Add</button>
+                        </div>
+                    </div>
+
                     <div class="assets-section">
                         <h4>Assets</h4>
                         <div id="assets-list" class="assets-list">

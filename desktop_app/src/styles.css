@@ -983,3 +983,102 @@ body {
     color: var(--accent);
     font-weight: 600;
 }
+
+/* ==================== Onboarding / Backup Screens ==================== */
+
+.mnemonic-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 16px 0;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    font-family: monospace;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.mnemonic-word {
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+.backup-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.backup-actions .btn-secondary {
+    width: 100%;
+    text-align: left;
+    padding: 12px 16px;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 14px;
+    margin-top: 12px;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    opacity: 0.8;
+}
+
+.muted {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+/* Theme-aware variables for onboarding */
+[data-theme="dark"] .mnemonic-grid {
+    background: var(--bg-secondary);
+}
+
+[data-theme="dark"] .mnemonic-word {
+    background: var(--bg-primary);
+    border-color: var(--border);
+}
+
+/* ==================== Health Badge ==================== */
+
+.health-badge {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    font-size: 0;
+    line-height: 12px;
+    text-align: center;
+}
+
+.health-badge.health-ok {
+    background: #22c55e;
+    box-shadow: 0 0 4px #22c55e;
+}
+
+.health-badge.health-degraded {
+    background: #f59e0b;
+    box-shadow: 0 0 4px #f59e0b;
+}
+
+.health-badge.health-down {
+    background: #ef4444;
+    box-shadow: 0 0 4px #ef4444;
+}
+
+.health-badge.health-unknown {
+    background: #6b7280;
+    box-shadow: 0 0 4px #6b7280;
+}

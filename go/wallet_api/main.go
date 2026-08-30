@@ -338,6 +338,11 @@ func main() {
 	r.GET("/api/v1/public/transactions", handleTransactions)
 	r.GET("/api/v1/public/nfts", handleNFTs)
 
+	// Public fee transparency: any user can read the active fee tiers
+	// (read-only; write/CRUD stays admin-gated).
+	r.GET("/api/v1/public/fees", handlePublicListFees)
+	r.GET("/api/v1/public/fees/transactions", handlePublicFeeTransactions)
+
 	srv := &http.Server{
 		Addr:         ":" + appConfig.Port,
 		Handler:      r,
