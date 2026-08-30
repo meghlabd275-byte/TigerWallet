@@ -838,23 +838,36 @@
 - Build+vet+test PASS (Go 1.22.12 reinstalled at /tmp/go122 — sandbox reset
   had wiped the toolchain).
 
-## Session 24 (2026-08-30) — UserWallet app-family route-coverage audit (analysis only)
-- Audited all 6 UserWallet surfaces vs go/wallet_api (124 literal routes + Any-proxied
+## Session 24 (2026-08-30) — UserWallet app-family route-coverage audit + gap closure
+- AUDIT: all 6 UserWallet surfaces vs go/wallet_api (124 literal routes + Any-proxied
   lending/copytrading/governance/prediction/bridge/dapp/walletconnect/cards/ramp/multisig).
-- Rough literal-route coverage: web ~88, ios ~87, extension ~83, android ~65 (API layer
-  actually ~70+ methods; Kotlin $id templates undercount), desktop ~60.
-- **NEW P0 FOUND: desktop_app (Tauri) has NO backend auth** — never calls
-  /auth/register|login|guest, never sends Authorization; its "login screen" is only a
-  local PBKDF2 master-password lock. All protected routes (wallets/send/swap-execute/
-  staking/keystore/backup) 401 against the real backend. Web/android/ios/extension all
-  do real JWT auth (register/login/guest + Bearer).
+  Rough literal-route coverage: web ~88, ios ~87, extension ~83, android ~65, desktop ~60.
+- P0 RESOLVED: desktop_app (Tauri) had NO backend auth — never called /auth/register|login|guest,
+  never sent Authorization; its "login screen" was only a local PBKDF2 master-password lock.
+  FIXED: twFetch() wrapper in config.js auto-injects Bearer token from localStorage,
+  guest-auth bootstrap (POST /auth/guest) on 401 with retry, read-only fallback. All 82
+  raw fetch() calls replaced with twFetch across app.js + tradingFeatures.js.
+  checkWalletStatus() routes new users to onboarding (create/import), existing users to
+  unlock screen. Backup mnemonic flow (copyBackupMnemonic, confirmBackupAndContinue)
+  moved inside TigerWalletApp class (was broken outside class boundary). Health badge
+  (30s interval polling /health). Watch-only wallet enroll form + addWatchOnlyWallet().
+  Margin open form handler wired to /margin/positions. Theme verified on all 26 pages.
+- WEB: Fees.tsx — new public fee transparency page (active fee tiers table + recent
+  settled fee transactions, no auth required). api.ts getPublicFees() +
+  getPublicFeeTransactions(). App.tsx /fees route + Layout.tsx Fees nav link.
+- EXTENSION: Watch-only wallet enroll form in wallet tab. WalletAPI.createWatchOnlyWallet()
+  POST /wallets/watch-only. WalletAPI.updatePriceAlert() PUT /price-alerts/:id.
+- ANDROID: UserWalletApiService gained getChartHistory, getNetworkStatus, estimateGas,
+  getTokenRegistry, uploadKycDocument, exportEncryptedSeed.
+- iOS: FeesView.swift — new fee transparency view. UserWalletApiService getPublicFees() +
+  getPublicFeeTransactions(). FeaturesView Fees NavigationLink added.
+- BACKEND (go/wallet_api): NEW GET /api/v1/public/fees — public read-only fee tier list
+  (active only). NEW GET /api/v1/public/fees/transactions — public read-only settled fee
+  txs. Write/CRUD stays admin-gated; fee transparency is public.
 - Admin-gated routes (/api/v1/admin/*: stats, cluster/status, users, chains CRUD, fees
   CRUD, wallets admin) are correctly absent from ALL user clients (RequireAdmin) — NOT gaps.
-- User-facing GET /fees + /fees/transactions exist in backend but have NO UI on any client.
-- Extension gaps: no watch-only enroll, no price-alert update/delete, Google OAuth
-  client_id still deployment config (chrome.storage key, TODO placeholder).
-- Android gaps: no chart/history, tokens/registry, network-status, gas/estimate,
-  kyc/document upload, encrypted-seed export in API service.
-- iOS gaps: no export-encrypted-seed call (EncryptedBackup.swift is local-only).
+- Extension Google OAuth client_id still deployment config (chrome.storage key, TODO).
 - Rust SDK (user_wallet/rust, 126 fns) is the broadest client incl. dapp pairing/respond.
 - Separation rule holds: only seam is wallet_api -> :8450 multisig via service-token proxy.
+- VERIFIED: desktop node --check OK, extension node --check OK, web tsc --noEmit 0 errors,
+  iOS Swift brace balance 0, Android Kotlin methods added (no SDK to compile-verify).
