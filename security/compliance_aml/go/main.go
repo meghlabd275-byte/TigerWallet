@@ -1,7 +1,7 @@
 /**
  * TigerWallet Compliance & AML Service
  * Production-Ready Anti-Money Laundering System
- * 
+ *
  * Features:
  * - KYC/AML verification
  * - Sanctions screening
@@ -15,21 +15,14 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
-	"regexp"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -44,22 +37,22 @@ import (
 type Config struct {
 	ServerPort          string
 	DatabaseURL         string
-	BlockchainNodeURL  string
-	SanctionsAPIURL    string
-	TravelRuleAPIURL   string
-	ReportAPIURL       string
-	MaxBatchSize       int
+	BlockchainNodeURL   string
+	SanctionsAPIURL     string
+	TravelRuleAPIURL    string
+	ReportAPIURL        string
+	MaxBatchSize        int
 	ScanIntervalSeconds int
 }
 
 var cfg = Config{
 	ServerPort:          "8087",
 	DatabaseURL:         "postgresql://localhost:5432/tigerwallet",
-	BlockchainNodeURL:  "https://eth-mainnet.alchemyapi.io",
-	SanctionsAPIURL:    "https://api.sanctionscreen.com/v1",
-	TravelRuleAPIURL:   "https://travelrule.ey.com/v2",
-	ReportAPIURL:       "https://fincen.gov/api/reports",
-	MaxBatchSize:       1000,
+	BlockchainNodeURL:   "https://eth-mainnet.alchemyapi.io",
+	SanctionsAPIURL:     "https://api.sanctionscreen.com/v1",
+	TravelRuleAPIURL:    "https://travelrule.ey.com/v2",
+	ReportAPIURL:        "https://fincen.gov/api/reports",
+	MaxBatchSize:        1000,
 	ScanIntervalSeconds: 60,
 }
 
@@ -125,51 +118,51 @@ const (
 // ============================================================================
 
 type User struct {
-	UserID              string     `json:"user_id"`
-	Email               string     `json:"email"`
-	WalletAddress       string     `json:"wallet_address"`
-	KYCLevel            KYCLevel   `json:"kyc_level"`
-	VerificationStatus  VerificationStatus `json:"verification_status"`
-	RiskScore           int        `json:"risk_score"`
-	RiskLevel           RiskLevel   `json:"risk_level"`
-	Country             string     `json:"country"`
-	Nationality         string     `json:"nationality"`
-	DateOfBirth         *time.Time `json:"date_of_birth"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	LastVerifiedAt      *time.Time `json:"last_verified_at"`
-	Suspicious          bool       `json:"suspicious"`
-	BlockReason         string     `json:"block_reason"`
+	UserID             string             `json:"user_id"`
+	Email              string             `json:"email"`
+	WalletAddress      string             `json:"wallet_address"`
+	KYCLevel           KYCLevel           `json:"kyc_level"`
+	VerificationStatus VerificationStatus `json:"verification_status"`
+	RiskScore          int                `json:"risk_score"`
+	RiskLevel          RiskLevel          `json:"risk_level"`
+	Country            string             `json:"country"`
+	Nationality        string             `json:"nationality"`
+	DateOfBirth        *time.Time         `json:"date_of_birth"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
+	LastVerifiedAt     *time.Time         `json:"last_verified_at"`
+	Suspicious         bool               `json:"suspicious"`
+	BlockReason        string             `json:"block_reason"`
 }
 
 type KYCDocument struct {
-	DocumentID     string     `json:"document_id"`
-	UserID         string     `json:"user_id"`
-	DocumentType   string     `json:"document_type"` // passport, id_card, drivers_license
-	DocumentNumber string     `json:"document_number"`
-	Issuer         string     `json:"issuer"`
-	ExpiryDate     *time.Time `json:"expiry_date"`
+	DocumentID     string             `json:"document_id"`
+	UserID         string             `json:"user_id"`
+	DocumentType   string             `json:"document_type"` // passport, id_card, drivers_license
+	DocumentNumber string             `json:"document_number"`
+	Issuer         string             `json:"issuer"`
+	ExpiryDate     *time.Time         `json:"expiry_date"`
 	Status         VerificationStatus `json:"status"`
-	FrontImage     string     `json:"front_image"` // Base64
-	BackImage      string     `json:"back_image"`  // Base64
-	SelfieImage    string     `json:"selfie_image"` // Base64
-	CreatedAt      time.Time  `json:"created_at"`
-	VerifiedAt     *time.Time `json:"verified_at"`
+	FrontImage     string             `json:"front_image"`  // Base64
+	BackImage      string             `json:"back_image"`   // Base64
+	SelfieImage    string             `json:"selfie_image"` // Base64
+	CreatedAt      time.Time          `json:"created_at"`
+	VerifiedAt     *time.Time         `json:"verified_at"`
 }
 
 type KYCBusiness struct {
-	BusinessID      string     `json:"business_id"`
-	UserID          string     `json:"user_id"`
-	CompanyName     string     `json:"company_name"`
-	CompanyNumber   string     `json:"company_number"`
-	RegistrationCountry string `json:"registration_country"`
-	BusinessType    string     `json:"business_type"`
-	IndustryCode   string     `json:"industry_code"`
-	RegisteredAddress string  `json:"registered_address"`
-	BeneficialOwners []string  `json:"beneficial_owners"`
-	Documents       []string   `json:"documents"`
-	Status          VerificationStatus `json:"status"`
-	CreatedAt       time.Time  `json:"created_at"`
+	BusinessID          string             `json:"business_id"`
+	UserID              string             `json:"user_id"`
+	CompanyName         string             `json:"company_name"`
+	CompanyNumber       string             `json:"company_number"`
+	RegistrationCountry string             `json:"registration_country"`
+	BusinessType        string             `json:"business_type"`
+	IndustryCode        string             `json:"industry_code"`
+	RegisteredAddress   string             `json:"registered_address"`
+	BeneficialOwners    []string           `json:"beneficial_owners"`
+	Documents           []string           `json:"documents"`
+	Status              VerificationStatus `json:"status"`
+	CreatedAt           time.Time          `json:"created_at"`
 }
 
 // ============================================================================
@@ -177,23 +170,23 @@ type KYCBusiness struct {
 // ============================================================================
 
 type Transaction struct {
-	TxHash           string         `json:"tx_hash"`
-	UserID           string         `json:"user_id"`
-	Type             TransactionType `json:"type"`
-	ChainID          int64          `json:"chain_id"`
-	FromAddress      string         `json:"from_address"`
-	ToAddress        string         `json:"to_address"`
-	Token            string         `json:"token"`
-	Amount           string         `json:"amount"`
-	USDValue         float64        `json:"usd_value"`
-	Fee              string         `json:"fee"`
-	Status           string         `json:"status"`
-	BlockNumber      int64          `json:"block_number"`
-	Timestamp        time.Time      `json:"timestamp"`
-	RiskScore        int            `json:"risk_score"`
-	RiskFlags        []string       `json:"risk_flags"`
-	Screened         bool           `json:"screened"`
-	TravelRuleApplied bool          `json:"travel_rule_applied"`
+	TxHash            string          `json:"tx_hash"`
+	UserID            string          `json:"user_id"`
+	Type              TransactionType `json:"type"`
+	ChainID           int64           `json:"chain_id"`
+	FromAddress       string          `json:"from_address"`
+	ToAddress         string          `json:"to_address"`
+	Token             string          `json:"token"`
+	Amount            string          `json:"amount"`
+	USDValue          float64         `json:"usd_value"`
+	Fee               string          `json:"fee"`
+	Status            string          `json:"status"`
+	BlockNumber       int64           `json:"block_number"`
+	Timestamp         time.Time       `json:"timestamp"`
+	RiskScore         int             `json:"risk_score"`
+	RiskFlags         []string        `json:"risk_flags"`
+	Screened          bool            `json:"screened"`
+	TravelRuleApplied bool            `json:"travel_rule_applied"`
 }
 
 // ============================================================================
@@ -209,29 +202,29 @@ type SanctionsList struct {
 }
 
 type SanctionEntity struct {
-	EntityID     string   `json:"entity_id"`
-	FullName     string   `json:"full_name"`
-	Aliases      []string `json:"aliases"`
-	Address      string   `json:"address"`
-	Country      string   `json:"country"`
-	Nationality  string   `json:"nationality"`
-	ListIDs      []string `json:"list_ids"`
-	Type         string   `json:"type"` // individual, organization, vessel
-	Program      string   `json:"program"`
-	Score        float64  `json:"score"`
+	EntityID    string   `json:"entity_id"`
+	FullName    string   `json:"full_name"`
+	Aliases     []string `json:"aliases"`
+	Address     string   `json:"address"`
+	Country     string   `json:"country"`
+	Nationality string   `json:"nationality"`
+	ListIDs     []string `json:"list_ids"`
+	Type        string   `json:"type"` // individual, organization, vessel
+	Program     string   `json:"program"`
+	Score       float64  `json:"score"`
 }
 
 type ScreeningResult struct {
-	MatchID       string     `json:"match_id"`
-	UserID        string     `json:"user_id"`
+	MatchID       string         `json:"match_id"`
+	UserID        string         `json:"user_id"`
 	Entity        SanctionEntity `json:"entity"`
-	MatchType     string     `json:"match_type"` // exact, fuzzy
-	Confidence    float64    `json:"confidence"`
-	Status        string     `json:"status"`
-	ReviewedBy    string     `json:"reviewed_by"`
-	ReviewedAt    *time.Time `json:"reviewed_at"`
-	FalsePositive bool       `json:"false_positive"`
-	CreatedAt     time.Time  `json:"created_at"`
+	MatchType     string         `json:"match_type"` // exact, fuzzy
+	Confidence    float64        `json:"confidence"`
+	Status        string         `json:"status"`
+	ReviewedBy    string         `json:"reviewed_by"`
+	ReviewedAt    *time.Time     `json:"reviewed_at"`
+	FalsePositive bool           `json:"false_positive"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 // ============================================================================
@@ -239,21 +232,22 @@ type ScreeningResult struct {
 // ============================================================================
 
 type AMLAlert struct {
-	AlertID         string       `json:"alert_id"`
-	UserID          string       `json:"user_id"`
-	TransactionHash string       `json:"transaction_hash"`
+	AlertID         string        `json:"alert_id"`
+	UserID          string        `json:"user_id"`
+	TransactionHash string        `json:"transaction_hash"`
 	Severity        AlertSeverity `json:"severity"`
-	RuleID          string       `json:"rule_id"`
-	RuleName        string       `json:"rule_name"`
-	Description     string       `json:"description"`
-	Amount          float64      `json:"amount"`
-	RiskScore       int          `json:"risk_score"`
-	Status          string       `json:"status"` // open, investigating, resolved, false_positive
-	AssignedTo      string       `json:"assigned_to"`
-	ResolvedBy      string       `json:"resolved_by"`
-	Resolution      string       `json:"resolution"`
-	CreatedAt       time.Time    `json:"created_at"`
-	ResolvedAt      *time.Time   `json:"resolved_at"`
+	RuleID          string        `json:"rule_id"`
+	RuleName        string        `json:"rule_name"`
+	Description     string        `json:"description"`
+	Amount          float64       `json:"amount"`
+	RiskScore       int           `json:"risk_score"`
+	Status          string        `json:"status"` // open, investigating, resolved, false_positive
+	AssignedTo      string        `json:"assigned_to"`
+	ResolvedBy      string        `json:"resolved_by"`
+	Resolution      string        `json:"resolution"`
+	CreatedAt       time.Time     `json:"created_at"`
+	ResolvedAt      *time.Time    `json:"resolved_at"`
+	FalsePositive   bool          `json:"false_positive"`
 }
 
 // ============================================================================
@@ -261,26 +255,26 @@ type AMLAlert struct {
 // ============================================================================
 
 type TravelRuleData struct {
-	TravelRuleID    string         `json:"travel_rule_id"`
-	TransactionHash string         `json:"transaction_hash"`
+	TravelRuleID    string          `json:"travel_rule_id"`
+	TransactionHash string          `json:"transaction_hash"`
 	Originator      TravelRuleParty `json:"originator"`
 	Beneficiary     TravelRuleParty `json:"beneficiary"`
-	Amount          string         `json:"amount"`
-	Currency        string         `json:"currency"`
-	Date            time.Time      `json:"date"`
-	Status          string         `json:"status"`
+	Amount          string          `json:"amount"`
+	Currency        string          `json:"currency"`
+	Date            time.Time       `json:"date"`
+	Status          string          `json:"status"`
 }
 
 type TravelRuleParty struct {
-	AccountNumber   string `json:"account_number"`
-	Name            string `json:"name"`
-	LegalName       string `json:"legal_name"`
-	Country         string `json:"country"`
-	Address         string `json:"address"`
-	LegalType       string `json:"legal_type"` // individual, organization
-	DateOfBirth     string `json:"date_of_birth"`
-	PlaceOfBirth    string `json:"place_of_birth"`
-	Nationality     string `json:"nationality"`
+	AccountNumber string `json:"account_number"`
+	Name          string `json:"name"`
+	LegalName     string `json:"legal_name"`
+	Country       string `json:"country"`
+	Address       string `json:"address"`
+	LegalType     string `json:"legal_type"` // individual, organization
+	DateOfBirth   string `json:"date_of_birth"`
+	PlaceOfBirth  string `json:"place_of_birth"`
+	Nationality   string `json:"nationality"`
 }
 
 // ============================================================================
@@ -288,28 +282,30 @@ type TravelRuleParty struct {
 // ============================================================================
 
 type SARReport struct {
-	ReportID        string    `json:"report_id"`
-	UserID          string    `json:"user_id"`
-	AlertID         string    `json:"alert_id"`
-	Narrative       string    `json:"narrative"`
-	SuspiciousActivity string `json:"suspicious_activity"`
-	Transactions     []string `json:"transactions"`
-	TotalAmount     float64   `json:"total_amount"`
-	Status          string    `json:"status"` // draft, filed, accepted, rejected
-	FiledAt         *time.Time `json:"filed_at"`
-	CreatedAt       time.Time `json:"created_at"`
+	ReportID           string     `json:"report_id"`
+	UserID             string     `json:"user_id"`
+	AlertID            string     `json:"alert_id"`
+	AlertIDs           []string   `json:"alert_ids"`
+	Narrative          string     `json:"narrative"`
+	SuspiciousActivity string     `json:"suspicious_activity"`
+	Transactions       []string   `json:"transactions"`
+	TotalAmount        float64    `json:"total_amount"`
+	Status             string     `json:"status"` // draft, filed, accepted, rejected
+	FiledAt            *time.Time `json:"filed_at"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 type CTRReport struct {
-	ReportID        string    `json:"report_id"`
-	UserID          string    `json:"user_id"`
-	Transactions    []string  `json:"transactions"`
-	TotalAmount     float64   `json:"total_amount"`
-	Currency        string    `json:"currency"`
-	DateRangeStart  time.Time `json:"date_range_start"`
-	DateRangeEnd    time.Time `json:"date_range_end"`
-	Status          string    `json:"status"`
-	FiledAt         *time.Time `json:"filed_at"`
+	ReportID       string     `json:"report_id"`
+	UserID         string     `json:"user_id"`
+	Transactions   []string   `json:"transactions"`
+	TotalAmount    float64    `json:"total_amount"`
+	Currency       string     `json:"currency"`
+	DateRangeStart time.Time  `json:"date_range_start"`
+	DateRangeEnd   time.Time  `json:"date_range_end"`
+	Status         string     `json:"status"`
+	FiledAt        *time.Time `json:"filed_at"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // ============================================================================
@@ -317,78 +313,78 @@ type CTRReport struct {
 // ============================================================================
 
 type AMLRule struct {
-	RuleID          string    `json:"rule_id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	RiskWeight      int       `json:"risk_weight"`
-	Severity        AlertSeverity `json:"severity"`
-	Enabled         bool      `json:"enabled"`
-	Parameters      map[string]interface{} `json:"parameters"`
+	RuleID      string                 `json:"rule_id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	RiskWeight  int                    `json:"risk_weight"`
+	Severity    AlertSeverity          `json:"severity"`
+	Enabled     bool                   `json:"enabled"`
+	Parameters  map[string]interface{} `json:"parameters"`
 }
 
 var amlRules = []AMLRule{
 	{
-		RuleID:       "LARGE_TRANSACTION",
-		Name:         "Large Transaction",
-		Description:  "Transaction exceeds threshold",
-		RiskWeight:   20,
-		Severity:     SeverityWarning,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{"threshold": 10000.0},
+		RuleID:      "LARGE_TRANSACTION",
+		Name:        "Large Transaction",
+		Description: "Transaction exceeds threshold",
+		RiskWeight:  20,
+		Severity:    SeverityWarning,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{"threshold": 10000.0},
 	},
 	{
-		RuleID:       "STRUCTURING",
-		Name:         "Structuring Detection",
-		Description:  "Multiple transactions just below threshold",
-		RiskWeight:   50,
-		Severity:     SeverityHigh,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{"threshold": 9900.0, "count": 3},
+		RuleID:      "STRUCTURING",
+		Name:        "Structuring Detection",
+		Description: "Multiple transactions just below threshold",
+		RiskWeight:  50,
+		Severity:    SeverityHigh,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{"threshold": 9900.0, "count": 3},
 	},
 	{
-		RuleID:       "HIGH_RISK_COUNTRY",
-		Name:         "High Risk Country",
-		Description:  "Transaction involving high risk country",
-		RiskWeight:   30,
-		Severity:     SeverityWarning,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{},
+		RuleID:      "HIGH_RISK_COUNTRY",
+		Name:        "High Risk Country",
+		Description: "Transaction involving high risk country",
+		RiskWeight:  30,
+		Severity:    SeverityWarning,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{},
 	},
 	{
-		RuleID:       "RAPID_MOVEMENT",
-		Name:         "Rapid Fund Movement",
-		Description:  "Funds deposited and quickly transferred",
-		RiskWeight:   40,
-		Severity:     SeverityHigh,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{"time_window_hours": 24},
+		RuleID:      "RAPID_MOVEMENT",
+		Name:        "Rapid Fund Movement",
+		Description: "Funds deposited and quickly transferred",
+		RiskWeight:  40,
+		Severity:    SeverityHigh,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{"time_window_hours": 24},
 	},
 	{
-		RuleID:       "NEW_ACCOUNT_ACTIVITY",
-		Name:         "New Account High Activity",
-		Description:  "High activity from new account",
-		RiskWeight:   25,
-		Severity:     SeverityWarning,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{"age_days": 7, "tx_count": 10},
+		RuleID:      "NEW_ACCOUNT_ACTIVITY",
+		Name:        "New Account High Activity",
+		Description: "High activity from new account",
+		RiskWeight:  25,
+		Severity:    SeverityWarning,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{"age_days": 7, "tx_count": 10},
 	},
 	{
-		RuleID:       "UNUSUAL_PATTERN",
-		Name:         "Unusual Transaction Pattern",
-		Description:  "Transaction pattern deviation",
-		RiskWeight:   35,
-		Severity:     SeverityWarning,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{},
+		RuleID:      "UNUSUAL_PATTERN",
+		Name:        "Unusual Transaction Pattern",
+		Description: "Transaction pattern deviation",
+		RiskWeight:  35,
+		Severity:    SeverityWarning,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{},
 	},
 	{
-		RuleID:       "SANCTION_MATCH",
-		Name:         "Sanctions Match",
-		Description:  "Address matches sanctions list",
-		RiskWeight:   100,
-		Severity:     SeverityCritical,
-		Enabled:      true,
-		Parameters:   map[string]interface{}{},
+		RuleID:      "SANCTION_MATCH",
+		Name:        "Sanctions Match",
+		Description: "Address matches sanctions list",
+		RiskWeight:  100,
+		Severity:    SeverityCritical,
+		Enabled:     true,
+		Parameters:  map[string]interface{}{},
 	},
 }
 
@@ -397,15 +393,15 @@ var amlRules = []AMLRule{
 // ============================================================================
 
 type AMLService struct {
-	db                *sql.DB
-	users             map[string]*User
-	transactions      map[string]*Transaction
-	alerts            map[string]*AMLAlert
-	sanctionsLists    map[string]*SanctionsList
-	sanctionEntities  map[string]*SanctionEntity
-	screeningResults  map[string]*ScreeningResult
-	travelRules       map[string]*TravelRuleData
-	mu                sync.RWMutex
+	db               *sql.DB
+	users            map[string]*User
+	transactions     map[string]*Transaction
+	alerts           map[string]*AMLAlert
+	sanctionsLists   map[string]*SanctionsList
+	sanctionEntities map[string]*SanctionEntity
+	screeningResults map[string]*ScreeningResult
+	travelRules      map[string]*TravelRuleData
+	mu               sync.RWMutex
 }
 
 func NewAMLService() *AMLService {
@@ -426,14 +422,14 @@ func NewAMLService() *AMLService {
 
 func (s *AMLService) SubmitKYC(c *gin.Context) {
 	var req struct {
-		UserID     string `json:"user_id" binding:"required"`
-		DocumentType string `json:"document_type" binding:"required"`
+		UserID         string `json:"user_id" binding:"required"`
+		DocumentType   string `json:"document_type" binding:"required"`
 		DocumentNumber string `json:"document_number" binding:"required"`
-		Issuer     string `json:"issuer" binding:"required"`
-		FirstName  string `json:"first_name" binding:"required"`
-		LastName   string `json:"last_name" binding:"required"`
-		Country    string `json:"country" binding:"required"`
-		DateOfBirth string `json:"date_of_birth" binding:"required"`
+		Issuer         string `json:"issuer" binding:"required"`
+		FirstName      string `json:"first_name" binding:"required"`
+		LastName       string `json:"last_name" binding:"required"`
+		Country        string `json:"country" binding:"required"`
+		DateOfBirth    string `json:"date_of_birth" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -462,13 +458,13 @@ func (s *AMLService) SubmitKYC(c *gin.Context) {
 
 	// Create KYC document
 	doc := KYCDocument{
-		DocumentID:   generateID(),
-		UserID:       req.UserID,
-		DocumentType: req.DocumentType,
+		DocumentID:     generateID(),
+		UserID:         req.UserID,
+		DocumentType:   req.DocumentType,
 		DocumentNumber: req.DocumentNumber,
-		Issuer:       req.Issuer,
-		Status:       StatusPending,
-		CreatedAt:    time.Now(),
+		Issuer:         req.Issuer,
+		Status:         StatusPending,
+		CreatedAt:      time.Now(),
 	}
 
 	// Simulate document verification
@@ -482,18 +478,18 @@ func (s *AMLService) SubmitKYC(c *gin.Context) {
 	user.UpdatedAt = time.Now()
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "KYC submitted for review",
-		"document_id":   doc.DocumentID,
-		"user":          user,
+		"message":     "KYC submitted for review",
+		"document_id": doc.DocumentID,
+		"user":        user,
 	})
 }
 
 func (s *AMLService) ReviewKYC(c *gin.Context) {
 	var req struct {
-		UserID    string `json:"user_id" binding:"required"`
-		Approved  bool   `json:"approved"`
-		Notes     string `json:"notes"`
-		Reviewer  string `json:"reviewer" binding:"required"`
+		UserID   string `json:"user_id" binding:"required"`
+		Approved bool   `json:"approved"`
+		Notes    string `json:"notes"`
+		Reviewer string `json:"reviewer" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -522,8 +518,8 @@ func (s *AMLService) ReviewKYC(c *gin.Context) {
 	user.UpdatedAt = time.Now()
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":         "KYC review completed",
-		"user":            user,
+		"message":             "KYC review completed",
+		"user":                user,
 		"verification_status": user.VerificationStatus,
 	})
 }
@@ -534,8 +530,8 @@ func (s *AMLService) ReviewKYC(c *gin.Context) {
 
 func (s *AMLService) ScreenAddress(c *gin.Context) {
 	var req struct {
-		Address   string `json:"address" binding:"required"`
-		UserID    string `json:"user_id"`
+		Address string `json:"address" binding:"required"`
+		UserID  string `json:"user_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -559,28 +555,29 @@ func (s *AMLService) screenAddressInternal(address, userID string) *ScreeningRes
 	// In production, this would call external APIs
 
 	result := &ScreeningResult{
-		MatchID:   generateID(),
-		UserID:    userID,
-		Entity:    SanctionEntity{},
-		MatchType: "none",
+		MatchID:    generateID(),
+		UserID:     userID,
+		Entity:     SanctionEntity{},
+		MatchType:  "none",
 		Confidence: 0.0,
-		Status:    "clean",
-		CreatedAt: time.Now(),
+		Status:     "clean",
+		CreatedAt:  time.Now(),
 	}
 
-	// Simulate a small chance of match for demo
-	if rand.Float64() < 0.01 { // 1% chance of match
-		result.MatchType = "fuzzy"
-		result.Confidence = 75.0
-		result.Entity = SanctionEntity{
-			EntityID:  generateID(),
-			FullName:  "Similar Name LLC",
-			Country:   "XX",
-			Type:      "organization",
-			Program:   "Special Measures",
+	// Real screening: check the loaded sanctions entities for an address match.
+	// Fail-closed to "clean" only when there is genuinely no match (no random
+	// or fabricated matches).
+	s.mu.RLock()
+	for _, e := range s.sanctionEntities {
+		if e.Address != "" && e.Address == address {
+			result.Entity = *e
+			result.MatchType = "exact"
+			result.Confidence = e.Score
+			result.Status = "match"
+			break
 		}
-		result.Status = "match"
 	}
+	s.mu.RUnlock()
 
 	s.screeningResults[result.MatchID] = result
 	return result
@@ -661,8 +658,8 @@ func (s *AMLService) MonitorTransaction(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"transaction": tx,
-		"risk_score": riskScore,
-		"risk_flags": riskFlags,
+		"risk_score":  riskScore,
+		"risk_flags":  riskFlags,
 	})
 }
 
@@ -795,10 +792,10 @@ func (s *AMLService) GetAlerts(c *gin.Context) {
 
 func (s *AMLService) ResolveAlert(c *gin.Context) {
 	var req struct {
-		AlertID    string `json:"alert_id" binding:"required"`
-		Resolution string `json:"resolution" binding:"required"`
-		ResolvedBy string `json:"resolved_by" binding:"required"`
-		FalsePositive bool `json:"false_positive"`
+		AlertID       string `json:"alert_id" binding:"required"`
+		Resolution    string `json:"resolution" binding:"required"`
+		ResolvedBy    string `json:"resolved_by" binding:"required"`
+		FalsePositive bool   `json:"false_positive"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -892,10 +889,10 @@ func (s *AMLService) GetTravelRules(c *gin.Context) {
 
 func (s *AMLService) GenerateSAR(c *gin.Context) {
 	var req struct {
-		UserID          string   `json:"user_id" binding:"required"`
-		AlertIDs        []string `json:"alert_ids" binding:"required"`
-		Narrative       string   `json:"narrative" binding:"required"`
-		SuspiciousActivity string `json:"suspicious_activity" binding:"required"`
+		UserID             string   `json:"user_id" binding:"required"`
+		AlertIDs           []string `json:"alert_ids" binding:"required"`
+		Narrative          string   `json:"narrative" binding:"required"`
+		SuspiciousActivity string   `json:"suspicious_activity" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -921,15 +918,15 @@ func (s *AMLService) GenerateSAR(c *gin.Context) {
 	}
 
 	report := &SARReport{
-		ReportID:          generateID(),
-		UserID:            req.UserID,
-		AlertIDs:          req.AlertIDs,
-		Narrative:         req.Narrative,
+		ReportID:           generateID(),
+		UserID:             req.UserID,
+		AlertIDs:           req.AlertIDs,
+		Narrative:          req.Narrative,
 		SuspiciousActivity: req.SuspiciousActivity,
-		Transactions:      txHashes,
-		TotalAmount:       totalAmount,
-		Status:            "draft",
-		CreatedAt:         time.Now(),
+		Transactions:       txHashes,
+		TotalAmount:        totalAmount,
+		Status:             "draft",
+		CreatedAt:          time.Now(),
 	}
 
 	// In production, would file with FinCEN
@@ -942,7 +939,7 @@ func (s *AMLService) GenerateSAR(c *gin.Context) {
 
 func (s *AMLService) GenerateCTR(c *gin.Context) {
 	var req struct {
-		UserID       string  `json:"user_id" binding:"required"`
+		UserID         string `json:"user_id" binding:"required"`
 		DateRangeStart string `json:"date_range_start" binding:"required"`
 		DateRangeEnd   string `json:"date_range_end" binding:"required"`
 	}
@@ -967,15 +964,15 @@ func (s *AMLService) GenerateCTR(c *gin.Context) {
 	}
 
 	report := &CTRReport{
-		ReportID:        generateID(),
-		UserID:          req.UserID,
-		Transactions:    txHashes,
-		TotalAmount:     totalAmount,
-		Currency:        "USD",
+		ReportID:       generateID(),
+		UserID:         req.UserID,
+		Transactions:   txHashes,
+		TotalAmount:    totalAmount,
+		Currency:       "USD",
 		DateRangeStart: start,
 		DateRangeEnd:   end,
-		Status:          "draft",
-		CreatedAt:       time.Now(),
+		Status:         "draft",
+		CreatedAt:      time.Now(),
 	}
 
 	// In production, would file with FinCEN
@@ -1012,9 +1009,9 @@ func (s *AMLService) GetUserRiskScore(c *gin.Context) {
 
 func (s *AMLService) BlockUser(c *gin.Context) {
 	var req struct {
-		UserID     string `json:"user_id" binding:"required"`
-		Reason    string `json:"reason" binding:"required"`
-		AdminID   string `json:"admin_id" binding:"required"`
+		UserID  string `json:"user_id" binding:"required"`
+		Reason  string `json:"reason" binding:"required"`
+		AdminID string `json:"admin_id" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1043,9 +1040,9 @@ func (s *AMLService) BlockUser(c *gin.Context) {
 		RuleID:      "USER_BLOCKED",
 		RuleName:    "User Blocked",
 		Description: fmt.Sprintf("User blocked: %s", req.Reason),
-		RiskScore:  100,
+		RiskScore:   100,
 		Status:      "open",
-		CreatedAt:  time.Now(),
+		CreatedAt:   time.Now(),
 	}
 	s.alerts[alert.AlertID] = alert
 
@@ -1054,9 +1051,9 @@ func (s *AMLService) BlockUser(c *gin.Context) {
 
 func (s *AMLService) UnblockUser(c *gin.Context) {
 	var req struct {
-		UserID   string `json:"user_id" binding:"required"`
-		Reason   string `json:"reason"`
-		AdminID  string `json:"admin_id" binding:"required"`
+		UserID  string `json:"user_id" binding:"required"`
+		Reason  string `json:"reason"`
+		AdminID string `json:"admin_id" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

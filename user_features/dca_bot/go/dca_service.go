@@ -5,11 +5,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,14 +26,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // ============================================================================
@@ -42,40 +42,40 @@ type Config struct {
 
 // DCAStrategy represents a DCA strategy
 type DCAStrategy struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	UserAddress     string    `gorm:"index" json:"user_address"`
-	Symbol          string    `json:"symbol"`
-	Exchange        string    `json:"exchange"`
-	InvestmentTotal float64   `json:"investment_total"` // Total investment planned
-	InvestmentPerBuy float64  `json:"investment_per_buy"`
-	TotalBought     float64   `json:"total_bought"`
-	TotalSpent      float64   `json:"total_spent"`
-	BuyInterval     int       `json:"buy_interval"` // seconds
-	TotalBuys       int       `json:"total_buys"`
-	CompletedBuys   int       `json:"completed_buys"`
-	Status          string    `json:"status"` // ACTIVE, PAUSED, COMPLETED, CANCELLED
-	TakeProfitPct   float64   `json:"take_profit_pct"`
-	StopLossPct     float64   `json:"stop_loss_pct"`
-	StartTime       int64     `json:"start_time"`
-	NextBuyTime     int64     `json:"next_buy_time"`
-	ChainID         int64     `json:"chain_id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	UserAddress      string    `gorm:"index" json:"user_address"`
+	Symbol           string    `json:"symbol"`
+	Exchange         string    `json:"exchange"`
+	InvestmentTotal  float64   `json:"investment_total"` // Total investment planned
+	InvestmentPerBuy float64   `json:"investment_per_buy"`
+	TotalBought      float64   `json:"total_bought"`
+	TotalSpent       float64   `json:"total_spent"`
+	BuyInterval      int       `json:"buy_interval"` // seconds
+	TotalBuys        int       `json:"total_buys"`
+	CompletedBuys    int       `json:"completed_buys"`
+	Status           string    `json:"status"` // ACTIVE, PAUSED, COMPLETED, CANCELLED
+	TakeProfitPct    float64   `json:"take_profit_pct"`
+	StopLossPct      float64   `json:"stop_loss_pct"`
+	StartTime        int64     `json:"start_time"`
+	NextBuyTime      int64     `json:"next_buy_time"`
+	ChainID          int64     `json:"chain_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // DCABuy represents individual buy orders
 type DCABuy struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	StrategyID    uint      `gorm:"index" json:"strategy_id"`
-	OrderNumber   int       `json:"order_number"`
-	Amount        float64   `json:"amount"`
-	Price         float64   `json:"price"`
-	TotalSpent    float64   `json:"total_spent"`
-	Status        string    `json:"status"` // PENDING, EXECUTED, SKIPPED, FAILED
-	ExecutedAt    *time.Time `json:"executed_at"`
-	TxHash        string    `json:"tx_hash"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	StrategyID  uint       `gorm:"index" json:"strategy_id"`
+	OrderNumber int        `json:"order_number"`
+	Amount      float64    `json:"amount"`
+	Price       float64    `json:"price"`
+	TotalSpent  float64    `json:"total_spent"`
+	Status      string     `json:"status"` // PENDING, EXECUTED, SKIPPED, FAILED
+	ExecutedAt  *time.Time `json:"executed_at"`
+	TxHash      string     `json:"tx_hash"`
+	ChainID     int64      `json:"chain_id"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // ============================================================================
@@ -83,10 +83,10 @@ type DCABuy struct {
 // ============================================================================
 
 type DCAService struct {
-	db     *gorm.DB
-	redis  *redis.Client
-	config Config
-	mu     sync.RWMutex
+	db               *gorm.DB
+	redis            *redis.Client
+	config           Config
+	mu               sync.RWMutex
 	activeStrategies map[uint]*DCAStrategy
 }
 
@@ -114,9 +114,9 @@ func NewDCAService(config Config) (*DCAService, error) {
 	})
 
 	service := &DCAService{
-		db:     db,
-		redis:  rdb,
-		config: config,
+		db:               db,
+		redis:            rdb,
+		config:           config,
 		activeStrategies: make(map[uint]*DCAStrategy),
 	}
 
@@ -139,15 +139,15 @@ func (s *DCAService) loadActiveStrategies() {
 // ============================================================================
 
 type CreateStrategyRequest struct {
-	UserAddress     string  `json:"user_address" binding:"required"`
-	Symbol         string  `json:"symbol" binding:"required"`
-	Exchange       string  `json:"exchange"`
-	InvestmentTotal float64 `json:"investment_total" binding:"required"`
+	UserAddress      string  `json:"user_address" binding:"required"`
+	Symbol           string  `json:"symbol" binding:"required"`
+	Exchange         string  `json:"exchange"`
+	InvestmentTotal  float64 `json:"investment_total" binding:"required"`
 	InvestmentPerBuy float64 `json:"investment_per_buy" binding:"required"`
-	BuyInterval     int     `json:"buy_interval" binding:"required"` // in seconds
-	TakeProfitPct  float64 `json:"take_profit_pct"`
-	StopLossPct    float64 `json:"stop_loss_pct"`
-	ChainID        int64   `json:"chain_id"`
+	BuyInterval      int     `json:"buy_interval" binding:"required"` // in seconds
+	TakeProfitPct    float64 `json:"take_profit_pct"`
+	StopLossPct      float64 `json:"stop_loss_pct"`
+	ChainID          int64   `json:"chain_id"`
 }
 
 func (s *DCAService) CreateStrategy(ctx *gin.Context) {
@@ -184,11 +184,11 @@ func (s *DCAService) CreateStrategy(ctx *gin.Context) {
 		TotalBuys:        totalBuys,
 		CompletedBuys:    0,
 		Status:           "ACTIVE",
-		TakeProfitPct:   req.TakeProfitPct,
-		StopLossPct:     req.StopLossPct,
-		StartTime:       startTime,
-		NextBuyTime:     nextBuyTime,
-		ChainID:         req.ChainID,
+		TakeProfitPct:    req.TakeProfitPct,
+		StopLossPct:      req.StopLossPct,
+		StartTime:        startTime,
+		NextBuyTime:      nextBuyTime,
+		ChainID:          req.ChainID,
 	}
 
 	if err := s.db.Create(&strategy).Error; err != nil {
@@ -199,12 +199,12 @@ func (s *DCAService) CreateStrategy(ctx *gin.Context) {
 	s.activeStrategies[strategy.ID] = &strategy
 
 	ctx.JSON(200, gin.H{
-		"success":       true,
-		"strategy_id":   strategy.ID,
-		"total_buys":    strategy.TotalBuys,
+		"success":            true,
+		"strategy_id":        strategy.ID,
+		"total_buys":         strategy.TotalBuys,
 		"investment_per_buy": strategy.InvestmentPerBuy,
-		"buy_interval":  strategy.BuyInterval,
-		"next_buy_time": strategy.NextBuyTime,
+		"buy_interval":       strategy.BuyInterval,
+		"next_buy_time":      strategy.NextBuyTime,
 	})
 }
 
@@ -294,8 +294,8 @@ func (s *DCAService) StopStrategy(ctx *gin.Context) {
 	delete(s.activeStrategies, strategy.ID)
 
 	ctx.JSON(200, gin.H{
-		"success":    true,
-		"status":     "CANCELLED",
+		"success":      true,
+		"status":       "CANCELLED",
 		"total_bought": strategy.TotalBought,
 		"total_spent":  strategy.TotalSpent,
 	})
@@ -332,9 +332,12 @@ func (s *DCAService) startBuyScheduler() {
 }
 
 func (s *DCAService) executeBuy(strategy *DCAStrategy) {
-	// Get current price (simulated)
+	// Get real current price. Fail-closed: skip buy if no live price (no divide-by-zero).
 	currentPrice := s.getCurrentPrice(strategy.Symbol)
-	
+	if currentPrice <= 0 {
+		return
+	}
+
 	amount := strategy.InvestmentPerBuy / currentPrice
 	buy := DCABuy{
 		StrategyID:  strategy.ID,
@@ -379,22 +382,16 @@ func (s *DCAService) executeBuy(strategy *DCAStrategy) {
 	}
 }
 
+// getCurrentPrice returns the real USD price for a symbol from the CoinGecko
+// oracle. Fail-closed: returns 0 when no live price is available (callers
+// must treat 0 as "no price", never a fabricated number).
 func (s *DCAService) getCurrentPrice(symbol string) float64 {
-	// Simulated price feeds
-	prices := map[string]float64{
-		"ETH-USDT": 3500,
-		"BTC-USDT": 65000,
-		"SOL-USDT": 150,
-		"ARB-USDT": 1.85,
+	base := strings.SplitN(symbol, "-", 2)[0]
+	live, err := fetchLivePricesUSD([]string{base})
+	if err != nil {
+		return 0
 	}
-	
-	if price, ok := prices[symbol]; ok {
-		// Add small random variation
-		variation := (math.Random() - 0.5) * price * 0.01
-		return price + variation
-	}
-	
-	return 100.0 // Default fallback
+	return live[base]
 }
 
 // ============================================================================
@@ -435,8 +432,8 @@ func (s *DCAService) GetStrategyDetails(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"strategy":    strategy,
-		"buys":        buys,
+		"strategy":      strategy,
+		"buys":          buys,
 		"average_price": avgPrice,
 		"current_price": s.getCurrentPrice(strategy.Symbol),
 	})

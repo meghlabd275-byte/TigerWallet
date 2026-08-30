@@ -5,27 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 )
 
 // Position represents a trading position
 type Position struct {
-	ID                string `json:"id"`
+	ID               string `json:"id"`
 	UserID           string `json:"userId"`
 	Symbol           string `json:"symbol"`
 	Side             string `json:"side"`
 	Quantity         string `json:"quantity"`
-	EntryPrice      string `json:"entryPrice"`
-	MarkPrice       string `json:"markPrice"`
-	Leverage        string `json:"leverage"`
-	Margin          string `json:"margin"`
-	UnrealizedPNL  string `json:"unrealizedPnl"`
-	RealizedPNL    string `json:"realizedPnl"`
+	EntryPrice       string `json:"entryPrice"`
+	MarkPrice        string `json:"markPrice"`
+	Leverage         string `json:"leverage"`
+	Margin           string `json:"margin"`
+	UnrealizedPNL    string `json:"unrealizedPnl"`
+	RealizedPNL      string `json:"realizedPnl"`
 	LiquidationPrice string `json:"liquidationPrice"`
-	MarginType      string `json:"marginType"`
-	ROE            string `json:"roe"`
-	MarginRatio     string `json:"marginRatio"`
-	UpdatedAt       int64  `json:"updatedAt"`
+	MarginType       string `json:"marginType"`
+	ROE              string `json:"roe"`
+	MarginRatio      string `json:"marginRatio"`
+	UpdatedAt        int64  `json:"updatedAt"`
 }
 
 // PositionService handles position operations
@@ -109,9 +108,9 @@ func (s *PositionService) GetMarginInfo(ctx context.Context, userID string) (*Ma
 	}
 
 	return &MarginInfo{
-		UserID:            userID,
-		TotalMargin:      totalMargin,
-		AvailableMargin:  totalMargin,
+		UserID:          userID,
+		TotalMargin:     totalMargin,
+		AvailableMargin: totalMargin,
 		UsedMargin:      "0",
 		TotalUnrealized: totalUnrealized,
 		PositionsCount:  count,
@@ -123,14 +122,14 @@ type ClosePositionResult struct {
 	Symbol         string `json:"symbol"`
 	ClosedQuantity string `json:"closedQuantity"`
 	RealizedPNL    string `json:"realizedPnl"`
-	AvgExitPrice  string `json:"avgExitPrice"`
+	AvgExitPrice   string `json:"avgExitPrice"`
 }
 
 // MarginInfo represents margin information
 type MarginInfo struct {
-	UserID            string `json:"userId"`
-	TotalMargin       string `json:"totalMargin"`
-	AvailableMargin  string `json:"availableMargin"`
+	UserID          string `json:"userId"`
+	TotalMargin     string `json:"totalMargin"`
+	AvailableMargin string `json:"availableMargin"`
 	UsedMargin      string `json:"usedMargin"`
 	TotalUnrealized string `json:"totalUnrealized"`
 	PositionsCount  int    `json:"positionsCount"`

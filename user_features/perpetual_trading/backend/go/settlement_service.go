@@ -10,58 +10,58 @@ import (
 
 // SettlementService handles settlement operations
 type SettlementService struct {
-	mu               sync.RWMutex
+	mu                 sync.RWMutex
 	pendingSettlements map[string]*Settlement
-	liquidations     map[string]*Liquidation
-	fundingPayments map[string][]*FundingPayment
+	liquidations       map[string]*Liquidation
+	fundingPayments    map[string][]*FundingPayment
 }
 
 // NewSettlementService creates a new settlement service
 func NewSettlementService() *SettlementService {
 	return &SettlementService{
 		pendingSettlements: make(map[string]*Settlement),
-		liquidations:     make(map[string]*Liquidation),
-		fundingPayments: make(map[string][]*FundingPayment),
+		liquidations:       make(map[string]*Liquidation),
+		fundingPayments:    make(map[string][]*FundingPayment),
 	}
 }
 
 // Settlement represents a settlement
 type Settlement struct {
-	ID          string    `json:"id"`
-	UserID     string    `json:"userId"`
-	Symbol     string    `json:"symbol"`
-	Side       string    `json:"side"`
-	Quantity   string    `json:"quantity"`
-	Price      string    `json:"price"`
-	SettleType string    `json:"settleType"`
-	Amount     string    `json:"amount"`
-	Status     string    `json:"status"`
-	Timestamp  int64     `json:"timestamp"`
-}
-
-// Liquidation represents a liquidation event
-type Liquidation struct {
-	ID            string `json:"id"`
-	UserID       string `json:"userId"`
-	Symbol       string `json:"symbol"`
-	Side         string `json:"side"`
-	Quantity     string `json:"quantity"`
-	Price        string `json:"price"`
-	LiqType      string `json:"liqType"`
-	Status       string `json:"status"`
-	Timestamp    int64  `json:"timestamp"`
-}
-
-// FundingPayment represents a funding payment
-type FundingPayment struct {
-	ID          string `json:"id"`
+	ID         string `json:"id"`
 	UserID     string `json:"userId"`
 	Symbol     string `json:"symbol"`
 	Side       string `json:"side"`
 	Quantity   string `json:"quantity"`
-	Rate       string `json:"rate"`
+	Price      string `json:"price"`
+	SettleType string `json:"settleType"`
 	Amount     string `json:"amount"`
+	Status     string `json:"status"`
 	Timestamp  int64  `json:"timestamp"`
+}
+
+// Liquidation represents a liquidation event
+type Liquidation struct {
+	ID        string `json:"id"`
+	UserID    string `json:"userId"`
+	Symbol    string `json:"symbol"`
+	Side      string `json:"side"`
+	Quantity  string `json:"quantity"`
+	Price     string `json:"price"`
+	LiqType   string `json:"liqType"`
+	Status    string `json:"status"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// FundingPayment represents a funding payment
+type FundingPayment struct {
+	ID        string `json:"id"`
+	UserID    string `json:"userId"`
+	Symbol    string `json:"symbol"`
+	Side      string `json:"side"`
+	Quantity  string `json:"quantity"`
+	Rate      string `json:"rate"`
+	Amount    string `json:"amount"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // StartFundingProcessor starts the funding processor
@@ -128,23 +128,23 @@ func NewNotificationService() *NotificationService {
 // Notification represents a notification
 type Notification struct {
 	ID        string `json:"id"`
-	UserID   string `json:"userId"`
-	Type     string `json:"type"`
-	Title    string `json:"title"`
-	Message  string `json:"message"`
-	Read     bool   `json:"read"`
-	Timestamp int64 `json:"timestamp"`
+	UserID    string `json:"userId"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Message   string `json:"message"`
+	Read      bool   `json:"read"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // SendNotification sends a notification to a user
 func (n *NotificationService) SendNotification(ctx context.Context, userID, notifType, title, message string) {
 	notif := &Notification{
 		ID:        generateID(),
-		UserID:   userID,
-		Type:     notifType,
-		Title:    title,
-		Message:  message,
-		Read:     false,
+		UserID:    userID,
+		Type:      notifType,
+		Title:     title,
+		Message:   message,
+		Read:      false,
 		Timestamp: time.Now().Unix(),
 	}
 

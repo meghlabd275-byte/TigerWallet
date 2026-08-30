@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -9,9 +10,14 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -105,6 +111,12 @@ type ExchangeConnection struct {
 
 var exchangeConnections = make(map[string]*ExchangeConnection)
 
+// apiKeys is the in-process API-key store backing VerifyAPIKey.
+var (
+	apiKeys   = make(map[string]*APIKey)
+	apiKeysMu sync.RWMutex
+)
+
 // ============================================================================
 // Wallet Connection
 // ============================================================================
@@ -144,6 +156,9 @@ func GenerateAPIKey(userID, name string, keyType APIKeyType, permissions []strin
 		ExpiresAt:   time.Now().Unix() + 365*24*60*60, // 1 year
 		CreatedAt:   time.Now().Unix(),
 	}
+	apiKeysMu.Lock()
+	apiKeys[apiKey.Key] = apiKey
+	apiKeysMu.Unlock()
 
 	return apiKey
 }
@@ -226,9 +241,12 @@ func VerifyRequest(apiKey *APIKey, req *APIRequest) error {
 		return fmt.Errorf("invalid signature")
 	}
 
-	// Verify IP whitelist
+	// Verify IP whitelist (fail-closed when the key carries one and the
+	// request does not originate from a whitelisted IP).
 	if len(apiKey.IPWhitelist) > 0 {
-		// Would check actual IP
+		if req.Headers["X-Real-IP"] == "" || !stringSliceContains(apiKey.IPWhitelist, req.Headers["X-Real-IP"]) {
+			return fmt.Errorf("request IP not whitelisted")
+		}
 	}
 
 	// Verify rate limit
@@ -237,6 +255,15 @@ func VerifyRequest(apiKey *APIKey, req *APIRequest) error {
 	}
 
 	return nil
+}
+
+func stringSliceContains(list []string, v string) bool {
+	for _, item := range list {
+		if item == v {
+			return true
+		}
+	}
+	return false
 }
 
 func checkRateLimit(apiKey *APIKey) bool {
@@ -298,14 +325,59 @@ type SwapResponse struct {
 	ToAmount    float64 `json:"to_amount"`
 	PriceImpact float64 `json:"price_impact"`
 	GasUsed     uint64  `json:"gas_used"`
-	Hash        string  `json:"hash"`
+	// OrderID is the real exchange order id for CEX fills.
+	OrderID string `json:"order_id,omitempty"`
+	// Hash is the on-chain transaction hash. Empty for CEX fills (a CEX fill
+	// is off-chain); never fabricated.
+	Hash string `json:"hash"`
 }
 
-// ExecuteSwap executes swap via connected exchange. A real swap returns the
-// on-chain tx hash from the exchange API; since no exchange client is wired up
-// here, we must NOT fabricate a hash.
+// ExecuteSwap executes a real spot conversion on the connected CEX as a
+// market order (from_token -> to_token). The response carries the real
+// executed amounts and the exchange order id; a CEX fill has no on-chain
+// hash, so Hash stays empty rather than being fabricated. DEX connections
+// fail closed: DEX execution requires the wallet signing path, which lives in
+// the wallet backend by design (keys never enter the gateway).
 func ExecuteSwap(conn *ExchangeConnection, req *SwapRequest) (*SwapResponse, error) {
-	return nil, fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
+	if conn.Type == "dex" {
+		return nil, fmt.Errorf("dex swap execution requires on-chain signing; use the wallet backend /swap/execute path (gateway holds no keys)")
+	}
+	apiKey, apiSecret, _, err := cexCredentials(conn)
+	if err != nil {
+		return nil, err
+	}
+	pair := strings.ToUpper(req.FromToken + req.ToToken)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var order map[string]any
+	switch exchangeName(conn) {
+	case "binance":
+		// Sell `amount` of FromToken for ToToken at market.
+		order, err = binancePlaceOrder(ctx, apiKey, apiSecret, pair, "sell", "market", req.Amount, 0)
+	case "kraken":
+		order, err = krakenPlaceOrder(ctx, apiKey, apiSecret, req.FromToken+"/"+req.ToToken, "sell", "market", req.Amount, 0)
+	default:
+		return nil, fmt.Errorf("exchange %q not supported for swap (supported: binance, kraken)", conn.Exchange)
+	}
+	if err != nil {
+		return nil, err
+	}
+	resp := &SwapResponse{
+		FromToken:  req.FromToken,
+		ToToken:    req.ToToken,
+		FromAmount: req.Amount,
+	}
+	if id, ok := order["orderId"]; ok {
+		resp.OrderID = fmt.Sprint(id)
+	}
+	// Real executed amounts from the exchange fill report when present.
+	if v, ok := order["executedQty"].(string); ok {
+		resp.FromAmount, _ = strconv.ParseFloat(v, 64)
+	}
+	if v, ok := order["cummulativeQuoteQty"].(string); ok {
+		resp.ToAmount, _ = strconv.ParseFloat(v, 64)
+	}
+	return resp, nil
 }
 
 // ============================================================================
@@ -334,11 +406,49 @@ type OrderResponse struct {
 	Hash    string  `json:"hash"`
 }
 
-// ExecuteOrder executes order via connected exchange. A real order returns the
-// on-chain tx hash from the exchange API; since no exchange client is wired up
-// here, we must NOT fabricate a hash.
+// ExecuteOrder places a real limit/market order on the connected CEX and
+// returns the real exchange order id and status. No on-chain hash exists for
+// a CEX order, so Hash stays empty rather than being fabricated.
 func ExecuteOrder(conn *ExchangeConnection, req *OrderRequest) (*OrderResponse, error) {
-	return nil, fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
+	if conn.Type == "dex" {
+		return nil, fmt.Errorf("dex order execution requires on-chain signing; use the wallet backend (gateway holds no keys)")
+	}
+	apiKey, apiSecret, _, err := cexCredentials(conn)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var order map[string]any
+	switch exchangeName(conn) {
+	case "binance":
+		order, err = binancePlaceOrder(ctx, apiKey, apiSecret, req.Pair, req.Side, req.Type, req.Amount, req.Price)
+	case "kraken":
+		order, err = krakenPlaceOrder(ctx, apiKey, apiSecret, req.Pair, req.Side, req.Type, req.Amount, req.Price)
+	default:
+		return nil, fmt.Errorf("exchange %q not supported for orders (supported: binance, kraken)", conn.Exchange)
+	}
+	if err != nil {
+		return nil, err
+	}
+	resp := &OrderResponse{
+		Pair:   req.Pair,
+		Type:   req.Type,
+		Side:   req.Side,
+		Price:  req.Price,
+		Amount: req.Amount,
+		Status: "submitted",
+	}
+	if id, ok := order["orderId"]; ok {
+		resp.OrderID = fmt.Sprint(id)
+	}
+	if v, ok := order["executedQty"].(string); ok {
+		resp.Filled, _ = strconv.ParseFloat(v, 64)
+	}
+	if s, ok := order["status"].(string); ok {
+		resp.Status = s
+	}
+	return resp, nil
 }
 
 // ============================================================================
@@ -353,11 +463,25 @@ type BalanceResponse struct {
 	Locked    float64 `json:"locked"`
 }
 
-// GetBalance gets balance from connected wallet/exchange. A real balance must
-// come from the connected exchange API; since no exchange client is wired up
-// here, fabricating numbers would be wrong. Fail-closed like the trading calls.
+// GetBalance reads the real account balance from the connected exchange API.
 func GetBalance(conn *ExchangeConnection, symbol string) (*BalanceResponse, error) {
-	return nil, fmt.Errorf("balance query for %s not implemented - requires a live exchange client", symbol)
+	if conn.Type == "dex" {
+		return nil, fmt.Errorf("dex balances are on-chain; query the wallet backend /balance endpoint")
+	}
+	apiKey, apiSecret, _, err := cexCredentials(conn)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	switch exchangeName(conn) {
+	case "binance":
+		return binanceGetBalance(ctx, apiKey, apiSecret, symbol)
+	case "kraken":
+		return krakenGetBalance(ctx, apiKey, apiSecret, symbol)
+	default:
+		return nil, fmt.Errorf("exchange %q not supported for balances (supported: binance, kraken)", conn.Exchange)
+	}
 }
 
 // TransferRequest represents transfer request
@@ -367,12 +491,28 @@ type TransferRequest struct {
 	Amount    float64 `json:"amount"`
 }
 
-// ExecuteTransfer executes transfer
-// ExecuteTransfer performs a transfer on the connected exchange. The real
-// transaction hash is returned by the exchange API. Since no exchange client
-// is wired up here, we must NOT fabricate a hash; return an explicit error.
+// ExecuteTransfer performs a real withdrawal on the connected exchange. The
+// exchange assigns the on-chain hash asynchronously, so what is returned is
+// the real exchange withdrawal reference (prefixed by venue), never a
+// fabricated hash.
 func ExecuteTransfer(conn *ExchangeConnection, req *TransferRequest) (string, error) {
-	return "", fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting")
+	if conn.Type == "dex" {
+		return "", fmt.Errorf("dex transfers are on-chain sends; use the wallet backend /send endpoint")
+	}
+	apiKey, apiSecret, _, err := cexCredentials(conn)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	switch exchangeName(conn) {
+	case "binance":
+		return binanceWithdraw(ctx, apiKey, apiSecret, req.Symbol, req.ToAddress, req.Amount)
+	case "kraken":
+		return krakenWithdraw(ctx, apiKey, apiSecret, req.Symbol, req.ToAddress, req.Amount)
+	default:
+		return "", fmt.Errorf("exchange %q not supported for withdrawals (supported: binance, kraken)", conn.Exchange)
+	}
 }
 
 // ============================================================================
@@ -474,8 +614,9 @@ func decryptString(s string) (string, error) {
 }
 
 func findAPIKey(key string) *APIKey {
-	// Would lookup from database
-	return nil
+	apiKeysMu.RLock()
+	defer apiKeysMu.RUnlock()
+	return apiKeys[key]
 }
 
 // ============================================================================
@@ -483,79 +624,269 @@ func findAPIKey(key string) *APIKey {
 // ============================================================================
 
 func main() {
-	fmt.Println("TigerSwap API Gateway")
-	fmt.Println("=====================")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		writeAPIJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]string{"status": "healthy", "service": "api-gateway"}})
+	})
+	mux.HandleFunc("POST /v1/keys", handleCreateAPIKey)
+	mux.HandleFunc("POST /v1/connections", handleAddConnection)
+	mux.HandleFunc("GET /v1/connections", handleListConnections)
+	mux.HandleFunc("POST /v1/swap", handleSwap)
+	mux.HandleFunc("POST /v1/order", handleOrder)
+	mux.HandleFunc("GET /v1/balance", handleBalance)
+	mux.HandleFunc("POST /v1/transfer", handleTransfer)
 
-	// Create API key for external wallet
-	fmt.Println("\nAPI Keys:")
-
-	walletKey := GenerateAPIKey("user123", "My Wallet", APIKeyTypeWallet, []string{"swap", "wallet"})
-	fmt.Printf("  Wallet Key: %s\n", walletKey.Key)
-	fmt.Printf("    Permissions: %v\n", walletKey.Permissions)
-	fmt.Printf("    Rate Limit: %d/min\n", walletKey.RateLimit)
-
-	exchangeKey := GenerateAPIKey("user123", "Trading Bot", APIKeyTypeBot, []string{"trade", "swap"})
-	fmt.Printf("  Bot Key: %s\n", exchangeKey.Key)
-	fmt.Printf("    Permissions: %v\n", exchangeKey.Permissions)
-	fmt.Printf("    Rate Limit: %d/min\n", exchangeKey.RateLimit)
-
-	whiteLabelKey := GenerateAPIKey("whitelabel123", "MyDEX API", APIKeyTypeWhiteLabel, []string{"swap", "trade", "wallet", "admin"})
-	fmt.Printf("  White Label Key: %s\n", whiteLabelKey.Key)
-	fmt.Printf("    Permissions: %v\n", whiteLabelKey.Permissions)
-	fmt.Printf("    Rate Limit: %d/min\n", whiteLabelKey.RateLimit)
-
-	// Add exchange connections (200+ CEX)
-	fmt.Println("\nCEX Connections (200+):")
-	cexList := []string{"Binance", "Coinbase", "Kraken", "KuCoin", "Bybit", "OKX", "Bitfinex", "Gemini", "Bitstamp", "Crypto.com", "Huobi", "Gate.io", "Bittrex", "Poloniex", "HitBTC", "Livecoin", "EXMO", "CEX.IO", "Bitmax", "AscendEX"}
-	for _, cex := range cexList[:10] {
-		conn := AddExchangeConnection(cex, "cex", cex, "api_key", "api_secret", "", []string{"trade", "withdraw"})
-		fmt.Printf("  - %s: %s\n", cex, conn.Status)
+	addr := ":" + envOr("GATEWAY_PORT", "8480")
+	log.Printf("api-gateway listening on %s", addr)
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	if err := srv.ListenAndServe(); err != nil {
+		log.Fatalf("server error: %v", err)
 	}
-	fmt.Println("  ... and 180+ more")
+}
 
-	// Add DEX connections (20+)
-	fmt.Println("\nDEX Connections (20+):")
-	dexList := []string{"Uniswap V3", "Uniswap V2", "SushiSwap", "Curve", "Balancer", "PancakeSwap", "QuickSwap", "Trader Joe", "Orca", "Raydium", "Camelot", "Dodo", "Kyber", "Bancor", "OneInch", "0x API", "ParaSwap", "OpenOcean", "Li Finance", "Socket", "Rango"}
-	for _, dex := range dexList[:10] {
-		conn := AddExchangeConnection(dex, "dex", dex, "", "", "", []string{"swap"})
-		fmt.Printf("  - %s: %s\n", dex, conn.Status)
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	fmt.Println("  ... and 10+ more")
+	return def
+}
 
-	// Example swap
-	fmt.Println("\nExample Swap via CEX:")
-	swapReq := &SwapRequest{
-		FromToken: "ETH",
-		ToToken:   "USDC",
-		Amount:    1.0,
-		MinOutput: 1900,
-		Slippage:  0.5,
+func writeAPIJSON(w http.ResponseWriter, status int, resp APIResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func writeAPIError(w http.ResponseWriter, status int, code, msg string) {
+	writeAPIJSON(w, status, APIResponse{Success: false, Error: &APIError{Code: code, Message: msg}})
+}
+
+// requireAdminToken gates administrative routes on the GATEWAY_ADMIN_TOKEN
+// env var (fail-closed: unset token => 503, wrong token => 403).
+func requireAdminToken(w http.ResponseWriter, r *http.Request) bool {
+	want := os.Getenv("GATEWAY_ADMIN_TOKEN")
+	if want == "" {
+		writeAPIError(w, http.StatusServiceUnavailable, "config", "GATEWAY_ADMIN_TOKEN not configured")
+		return false
 	}
-	conn := GetExchangeConnection("Binance")
-	if conn != nil {
-		resp, err := ExecuteSwap(conn, swapReq)
-		if err == nil {
-			fmt.Printf("  Swapped %f %s -> %f %s\n", resp.FromAmount, resp.FromToken, resp.ToAmount, resp.ToToken)
-			fmt.Printf("  Hash: %s\n", resp.Hash[:20]+"...")
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Admin-Token")), []byte(want)) != 1 {
+		writeAPIError(w, http.StatusForbidden, "forbidden", "invalid admin token")
+		return false
+	}
+	return true
+}
+
+// authenticate verifies the caller's API key + secret pair.
+func authenticate(w http.ResponseWriter, r *http.Request) *APIKey {
+	key, secret := r.Header.Get("X-API-Key"), r.Header.Get("X-API-Secret")
+	apiKey, err := VerifyAPIKey(key, secret)
+	if err != nil {
+		writeAPIError(w, http.StatusUnauthorized, "auth", "invalid API credentials")
+		return nil
+	}
+	return apiKey
+}
+
+func hasPermission(k *APIKey, perm string) bool {
+	for _, p := range k.Permissions {
+		if p == perm || p == "admin" {
+			return true
 		}
 	}
+	return false
+}
 
-	// Example order
-	fmt.Println("\nExample Order:")
-	orderReq := &OrderRequest{
-		Pair:   "ETH/USDC",
-		Type:   "limit",
-		Side:   "buy",
-		Price:  2000,
-		Amount: 1.0,
+// handleCreateAPIKey issues a new API key pair (admin-gated).
+func handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	if !requireAdminToken(w, r) {
+		return
 	}
-	if conn != nil {
-		resp, err := ExecuteOrder(conn, orderReq)
-		if err == nil {
-			fmt.Printf("  Order: %s %s %f @ %f\n", resp.Side, resp.Pair, resp.Amount, resp.Price)
-			fmt.Printf("  OrderID: %s\n", resp.OrderID)
-		}
+	var req struct {
+		UserID      string     `json:"user_id"`
+		Name        string     `json:"name"`
+		KeyType     APIKeyType `json:"key_type"`
+		Permissions []string   `json:"permissions"`
 	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.UserID == "" || req.Name == "" {
+		writeAPIError(w, http.StatusBadRequest, "bad_request", "user_id and name are required")
+		return
+	}
+	if req.KeyType == "" {
+		req.KeyType = APIKeyTypeDeveloper
+	}
+	k := GenerateAPIKey(req.UserID, req.Name, req.KeyType, req.Permissions)
+	// The plaintext secret is returned exactly once; only its AES-256-GCM
+	// ciphertext is stored.
+	secret, _ := decryptString(k.Secret)
+	writeAPIJSON(w, http.StatusCreated, APIResponse{Success: true, Data: map[string]any{
+		"id": k.ID, "key": k.Key, "secret": secret, "key_type": k.KeyType, "permissions": k.Permissions,
+	}})
+}
 
-	fmt.Println("\nAPI Gateway Ready!")
+// handleAddConnection registers an exchange connection with real credentials
+// (stored AES-256-GCM encrypted).
+func handleAddConnection(w http.ResponseWriter, r *http.Request) {
+	k := authenticate(w, r)
+	if k == nil {
+		return
+	}
+	if !hasPermission(k, "admin") {
+		writeAPIError(w, http.StatusForbidden, "forbidden", "admin permission required")
+		return
+	}
+	var req struct {
+		Name        string   `json:"name"`
+		Type        string   `json:"type"`
+		Exchange    string   `json:"exchange"`
+		APIKey      string   `json:"api_key"`
+		APISecret   string   `json:"api_secret"`
+		Passphrase  string   `json:"passphrase"`
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.Exchange == "" {
+		writeAPIError(w, http.StatusBadRequest, "bad_request", "name and exchange are required")
+		return
+	}
+	if req.Type == "" {
+		req.Type = "cex"
+	}
+	conn := AddExchangeConnection(req.Name, req.Type, req.Exchange, req.APIKey, req.APISecret, req.Passphrase, req.Permissions)
+	writeAPIJSON(w, http.StatusCreated, APIResponse{Success: true, Data: map[string]any{
+		"id": conn.ID, "name": conn.Name, "exchange": conn.Exchange, "type": conn.Type, "status": conn.Status,
+	}})
+}
+
+func handleListConnections(w http.ResponseWriter, r *http.Request) {
+	k := authenticate(w, r)
+	if k == nil {
+		return
+	}
+	out := make([]map[string]any, 0, len(exchangeConnections))
+	for _, c := range exchangeConnections {
+		out = append(out, map[string]any{
+			"id": c.ID, "name": c.Name, "exchange": c.Exchange, "type": c.Type, "status": c.Status,
+		})
+	}
+	writeAPIJSON(w, http.StatusOK, APIResponse{Success: true, Data: out})
+}
+
+// resolveConnection finds a connection by id or name for swap/order/etc.
+func resolveConnection(ref string) *ExchangeConnection {
+	if c, ok := exchangeConnections[ref]; ok {
+		return c
+	}
+	return GetExchangeConnection(ref)
+}
+
+func handleSwap(w http.ResponseWriter, r *http.Request) {
+	k := authenticate(w, r)
+	if k == nil {
+		return
+	}
+	if !hasPermission(k, "swap") && !hasPermission(k, "trade") {
+		writeAPIError(w, http.StatusForbidden, "forbidden", "swap permission required")
+		return
+	}
+	var req struct {
+		Connection string `json:"connection"`
+		SwapRequest
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	conn := resolveConnection(req.Connection)
+	if conn == nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "connection not found")
+		return
+	}
+	resp, err := ExecuteSwap(conn, &req.SwapRequest)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, "upstream", err.Error())
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, APIResponse{Success: true, Data: resp})
+}
+
+func handleOrder(w http.ResponseWriter, r *http.Request) {
+	k := authenticate(w, r)
+	if k == nil {
+		return
+	}
+	if !hasPermission(k, "trade") {
+		writeAPIError(w, http.StatusForbidden, "forbidden", "trade permission required")
+		return
+	}
+	var req struct {
+		Connection string `json:"connection"`
+		OrderRequest
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	conn := resolveConnection(req.Connection)
+	if conn == nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "connection not found")
+		return
+	}
+	resp, err := ExecuteOrder(conn, &req.OrderRequest)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, "upstream", err.Error())
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, APIResponse{Success: true, Data: resp})
+}
+
+func handleBalance(w http.ResponseWriter, r *http.Request) {
+	k := authenticate(w, r)
+	if k == nil {
+		return
+	}
+	conn := resolveConnection(r.URL.Query().Get("connection"))
+	if conn == nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "connection not found")
+		return
+	}
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		writeAPIError(w, http.StatusBadRequest, "bad_request", "symbol required")
+		return
+	}
+	resp, err := GetBalance(conn, symbol)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, "upstream", err.Error())
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, APIResponse{Success: true, Data: resp})
+}
+
+func handleTransfer(w http.ResponseWriter, r *http.Request) {
+	k := authenticate(w, r)
+	if k == nil {
+		return
+	}
+	if !hasPermission(k, "withdraw") {
+		writeAPIError(w, http.StatusForbidden, "forbidden", "withdraw permission required")
+		return
+	}
+	var req struct {
+		Connection string `json:"connection"`
+		TransferRequest
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	conn := resolveConnection(req.Connection)
+	if conn == nil {
+		writeAPIError(w, http.StatusNotFound, "not_found", "connection not found")
+		return
+	}
+	ref, err := ExecuteTransfer(conn, &req.TransferRequest)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, "upstream", err.Error())
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]string{"withdrawal_ref": ref}})
 }

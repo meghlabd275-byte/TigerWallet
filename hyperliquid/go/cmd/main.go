@@ -1,7 +1,7 @@
 /**
  * TigerWallet Hyperliquid Trading Integration
  * Production-ready integration with Hyperliquid perps exchange
- * 
+ *
  * Features:
  * - Spot and perpetual trading
  * - High leverage (up to 50x)
@@ -15,26 +15,20 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/hmac"
-	"crypto/sha256"
 	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
-	"os/signal"
+	"strconv"
 	"strings"
-	"syscall"
+	"tigerwallet/hyperliquid/hlapi"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/pbkdf2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -60,7 +54,7 @@ func LoadConfig() *Config {
 		DBHost:         getEnv("DB_HOST", "localhost"),
 		DBPort:         getEnv("DB_PORT", "5432"),
 		DBUser:         getEnv("DB_USER", "tigerwallet"),
-		DBPassword:     getEnv("DB_PASSWORD", "password"),
+		DBPassword:     getEnv("DB_PASSWORD", ""),
 		DBName:         getEnv("DB_NAME", "tigerwallet"),
 		HyperliquidURL: getEnv("HYPERLIQUID_URL", "https://api.hyperliquid.xyz"),
 		HyperliquidWS:  getEnv("HYPERLIQUID_WS", "wss://api.hyperliquid.xyz/ws"),
@@ -80,14 +74,14 @@ func getEnv(key, defaultValue string) string {
 
 // User account
 type HyperliquidAccount struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	UserAddress   string    `gorm:"uniqueIndex" json:"user_address"`
-	HyperliquidAddr string  `gorm:"uniqueIndex" json:"hyperliquid_addr"`
-	PublicKey     string    `json:"public_key"`
-	VaultAddress  string    `json:"vault_address"`
-	IsVault       bool      `json:"is_vault"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID              uint      `gorm:"primarykey" json:"id"`
+	UserAddress     string    `gorm:"uniqueIndex" json:"user_address"`
+	HyperliquidAddr string    `gorm:"uniqueIndex" json:"hyperliquid_addr"`
+	PublicKey       string    `json:"public_key"`
+	VaultAddress    string    `json:"vault_address"`
+	IsVault         bool      `json:"is_vault"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Order
@@ -96,7 +90,7 @@ type HyperliquidOrder struct {
 	OrderID       string    `gorm:"uniqueIndex" json:"order_id"`
 	UserAddress   string    `gorm:"index" json:"user_address"`
 	Asset         string    `json:"asset"`
-	Side          string    `json:"side"` // buy, sell
+	Side          string    `json:"side"`       // buy, sell
 	OrderType     string    `json:"order_type"` // market, limit
 	Price         float64   `json:"price"`
 	Amount        float64   `json:"amount"`
@@ -109,43 +103,43 @@ type HyperliquidOrder struct {
 
 // Position
 type HyperliquidPosition struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	Asset         string    `json:"asset"`
-	Size          float64   `json:"size"`
-	EntryPrice    float64   `json:"entry_price"`
-	MarkPrice     float64   `json:"mark_price"`
-	LiquidationPrice float64 `json:"liquidation_price"`
-	 Leverage      int      `json:"leverage"`
-	PnL           float64   `json:"pnl"`
-	PnLPercent    float64   `json:"pnl_percent"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID               uint      `gorm:"primarykey" json:"id"`
+	UserAddress      string    `gorm:"index" json:"user_address"`
+	Asset            string    `json:"asset"`
+	Size             float64   `json:"size"`
+	EntryPrice       float64   `json:"entry_price"`
+	MarkPrice        float64   `json:"mark_price"`
+	LiquidationPrice float64   `json:"liquidation_price"`
+	Leverage         int       `json:"leverage"`
+	PnL              float64   `json:"pnl"`
+	PnLPercent       float64   `json:"pnl_percent"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // Trade/Execution
 type HyperliquidTrade struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	TradeID       string    `gorm:"uniqueIndex" json:"trade_id"`
-	OrderID       string    `json:"order_id"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	Asset         string    `json:"asset"`
-	Side          string    `json:"side"`
-	Price         float64   `json:"price"`
-	Amount        float64   `json:"amount"`
-	Fee           float64   `json:"fee"`
-	Timestamp     time.Time `json:"timestamp"`
-	TxHash        string    `json:"tx_hash"`
+	ID          uint      `gorm:"primarykey" json:"id"`
+	TradeID     string    `gorm:"uniqueIndex" json:"trade_id"`
+	OrderID     string    `json:"order_id"`
+	UserAddress string    `gorm:"index" json:"user_address"`
+	Asset       string    `json:"asset"`
+	Side        string    `json:"side"`
+	Price       float64   `json:"price"`
+	Amount      float64   `json:"amount"`
+	Fee         float64   `json:"fee"`
+	Timestamp   time.Time `json:"timestamp"`
+	TxHash      string    `json:"tx_hash"`
 }
 
 // Market data
 type MarketData struct {
-	Symbol         string  `json:"symbol"`
-	Price          float64 `json:"price"`
-	Change24h      float64 `json:"change_24h"`
-	Volume24h      float64 `json:"volume_24h"`
-	OpenInterest   float64 `json:"open_interest"`
-	FundingRate   float64 `json:"funding_rate"`
-	NextFundingTime int64  `json:"next_funding_time"`
+	Symbol          string  `json:"symbol"`
+	Price           float64 `json:"price"`
+	Change24h       float64 `json:"change_24h"`
+	Volume24h       float64 `json:"volume_24h"`
+	OpenInterest    float64 `json:"open_interest"`
+	FundingRate     float64 `json:"funding_rate"`
+	NextFundingTime int64   `json:"next_funding_time"`
 }
 
 // ============================================================================
@@ -154,17 +148,17 @@ type MarketData struct {
 
 // API Request/Response types
 type APIResponse struct {
-	RespondedAt time.Time `json:"respondedAt"`
+	RespondedAt time.Time       `json:"respondedAt"`
 	Results     json.RawMessage `json:"results"`
 }
 
 type PlaceOrderRequest struct {
-	Asset     int     `json:"asset"`
-	Side      string  `json:"side"`
-	Price     float64 `json:"price"`
-	Amount    float64 `json:"amount"`
-	OrderType string  `json:"orderType"`
-	ReduceOnly bool   `json:"reduceOnly"`
+	Asset      int     `json:"asset"`
+	Side       string  `json:"side"`
+	Price      float64 `json:"price"`
+	Amount     float64 `json:"amount"`
+	OrderType  string  `json:"orderType"`
+	ReduceOnly bool    `json:"reduceOnly"`
 }
 
 type CancelOrderRequest struct {
@@ -189,7 +183,7 @@ type HyperliquidService struct {
 
 type HTTPClient struct {
 	baseURL string
-	client *http.Client
+	client  *http.Client
 }
 
 func NewHTTPClient(baseURL string) *HTTPClient {
@@ -206,48 +200,48 @@ func NewHTTPClient(baseURL string) *HTTPClient {
 
 func (c *HTTPClient) Post(endpoint string, payload interface{}) ([]byte, error) {
 	url := c.baseURL + endpoint
-	
+
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(body)))
 	if err != nil {
 		return nil, err
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("API error: %d", resp.StatusCode)
 	}
-	
+
 	return io.ReadAll(resp.Body)
 }
 
 func NewHyperliquidService(config *Config, db *gorm.DB) *HyperliquidService {
 	return &HyperliquidService{
-		config:  config,
-		db:      db,
-		client:  NewHTTPClient(config.HyperliquidURL),
+		config: config,
+		db:     db,
+		client: NewHTTPClient(config.HyperliquidURL),
 	}
 }
 
 func (s *HyperliquidService) Initialize() error {
 	log.Println("Initializing Hyperliquid Service...")
-	
+
 	err := s.db.AutoMigrate(&HyperliquidAccount{}, &HyperliquidOrder{}, &HyperliquidPosition{}, &HyperliquidTrade{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
-	
+
 	log.Println("Hyperliquid Service initialized")
 	return nil
 }
@@ -258,18 +252,18 @@ func (s *HyperliquidService) Initialize() error {
 
 func (s *HyperliquidService) CreateAccount(userAddress, hyperliquidAddr, publicKey string) (*HyperliquidAccount, error) {
 	account := HyperliquidAccount{
-		UserAddress:      userAddress,
+		UserAddress:     userAddress,
 		HyperliquidAddr: hyperliquidAddr,
 		PublicKey:       publicKey,
 		VaultAddress:    "",
 		IsVault:         false,
 	}
-	
+
 	err := s.db.Create(&account).Error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &account, nil
 }
 
@@ -292,68 +286,99 @@ func (s *HyperliquidService) UpdateVaultAddress(userAddress, vaultAddress string
 // Order Management
 // ============================================================================
 
+// PlaceOrder signs and submits a REAL order to the Hyperliquid exchange.
+// Fail-closed: without HL_PRIVATE_KEY no order is attempted, and the venue
+// response (resting/filled oid) is what gets persisted.
 func (s *HyperliquidService) PlaceOrder(userAddress, asset, side, orderType string, price, amount float64, reduceOnly bool) (*HyperliquidOrder, error) {
-	// Get account
 	account, err := s.GetAccount(userAddress)
 	if err != nil {
 		return nil, fmt.Errorf("account not found: %w", err)
 	}
-	
-	// Map asset name to ID
-	assetID := s.GetAssetID(asset)
-	
-	// Create order request
-	orderReq := PlaceOrderRequest{
-		Asset:     assetID,
-		Side:      side,
-		Price:     price,
-		Amount:    amount,
-		OrderType: orderType,
-		ReduceOnly: reduceOnly,
+	signer := hlapi.SignerKeyFromEnv()
+	if signer == "" {
+		return nil, fmt.Errorf("HL_PRIVATE_KEY not configured; order submission disabled")
 	}
-	
-	// In production, sign and send to Hyperliquid
-	// For now, create local order record
-	order := HyperliquidOrder{
-		OrderID:        "ORDER-" + uuid.New().String()[:8],
-		UserAddress:     userAddress,
-		Asset:          asset,
-		Side:           side,
-		OrderType:      orderType,
-		Price:          price,
-		Amount:         amount,
-		FilledAmount:   0,
-		RemainingSize:  amount,
-		Timestamp:      time.Now(),
-		Status:         "pending",
-		OrderJSON:      "",
-	}
-	
-	err = s.db.Create(&order).Error
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	assetID, err := hlapi.AssetIndex(ctx, asset)
 	if err != nil {
 		return nil, err
 	}
-	
-	// In production, send to Hyperliquid API:
-	// signedOrder = signOrder(orderReq, account.PrivateKey)
-	// response = s.client.Post("/placeOrder", signedOrder)
-	
+	if price == 0 {
+		md, err := hlapi.GetMarketData(ctx, []string{asset})
+		if err != nil || len(md) == 0 {
+			return nil, fmt.Errorf("live price unavailable for %s", asset)
+		}
+		mark := md[0].MarkPrice
+		if side == "buy" {
+			price = mark * 1.05
+		} else {
+			price = mark * 0.95
+		}
+	}
+	tif := "Gtc"
+	if orderType == "market" {
+		tif = "Ioc"
+	}
+	res, err := hlapi.PlacePerpOrder(ctx, signer, assetID, side == "buy", price, amount, reduceOnly, tif)
+	if err != nil {
+		return nil, err
+	}
+
+	order := HyperliquidOrder{
+		OrderID:       "ORDER-" + uuid.New().String()[:8],
+		UserAddress:   account.UserAddress,
+		Asset:         asset,
+		Side:          side,
+		OrderType:     orderType,
+		Price:         price,
+		Amount:        amount,
+		FilledAmount:  res.FilledSize,
+		RemainingSize: amount - res.FilledSize,
+		Timestamp:     time.Now(),
+		Status:        res.Status,
+		OrderJSON:     strconv.FormatInt(res.VenueOrderID, 10), // real venue oid
+	}
+	if err := s.db.Create(&order).Error; err != nil {
+		return nil, err
+	}
 	return &order, nil
 }
 
+// CancelOrder cancels a resting order on the venue with a real signed cancel.
 func (s *HyperliquidService) CancelOrder(userAddress, orderID string) error {
 	order, err := s.GetOrder(orderID)
 	if err != nil {
 		return err
 	}
-	
 	if order.UserAddress != userAddress {
 		return fmt.Errorf("unauthorized")
 	}
-	
-	// In production, send cancel to Hyperliquid
+	if order.Status != "resting" {
+		return fmt.Errorf("order is not resting on the venue (status: %s)", order.Status)
+	}
+	if order.OrderJSON == "" {
+		return fmt.Errorf("order has no venue id; cannot cancel on venue")
+	}
+	signer := hlapi.SignerKeyFromEnv()
+	if signer == "" {
+		return fmt.Errorf("HL_PRIVATE_KEY not configured; cancel disabled")
+	}
+	oid, err := strconv.ParseInt(order.OrderJSON, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid venue order id: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	assetID, err := hlapi.AssetIndex(ctx, order.Asset)
+	if err != nil {
+		return err
+	}
+	if err := hlapi.CancelVenueOrder(ctx, signer, assetID, oid); err != nil {
+		return err
+	}
 	order.Status = "cancelled"
-	
 	return s.db.Save(order).Error
 }
 
@@ -390,10 +415,10 @@ func (s *HyperliquidService) CalculatePnL(position *HyperliquidPosition) (float6
 	if position.Size == 0 {
 		return 0, 0
 	}
-	
+
 	pnl := (position.MarkPrice - position.EntryPrice) * position.Size
 	pnlPercent := (pnl / (position.EntryPrice * position.Size)) * 100
-	
+
 	return pnl, pnlPercent
 }
 
@@ -401,23 +426,27 @@ func (s *HyperliquidService) CalculatePnL(position *HyperliquidPosition) (float6
 // Market Data
 // ============================================================================
 
+// GetMarketData returns real market data from the live Hyperliquid info API.
+// Fail-closed: upstream errors propagate; no mocked fields.
 func (s *HyperliquidService) GetMarketData(assets []string) ([]MarketData, error) {
-	var markets []MarketData
-	
-	// In production, fetch from Hyperliquid API
-	// For now, return mock data with real structure
-	for _, asset := range assets {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	real, err := hlapi.GetMarketData(ctx, assets)
+	if err != nil {
+		return nil, err
+	}
+	markets := make([]MarketData, 0, len(real))
+	for _, m := range real {
 		markets = append(markets, MarketData{
-			Symbol:         asset,
-			Price:          getMockPrice(asset),
-			Change24h:      getMockChange(),
-			Volume24h:      getMockVolume(),
-			OpenInterest:   getMockOI(),
-			FundingRate:    0.0001,
-			NextFundingTime: time.Now().Add(8 * time.Hour).Unix(),
+			Symbol:          m.Symbol,
+			Price:           m.MarkPrice,
+			Change24h:       m.Change24h,
+			Volume24h:       m.Volume24h,
+			OpenInterest:    m.OpenInterest,
+			FundingRate:     m.FundingRate,
+			NextFundingTime: m.NextFundingAt,
 		})
 	}
-	
 	return markets, nil
 }
 
@@ -427,51 +456,16 @@ func (s *HyperliquidService) GetAllMarkets() ([]MarketData, error) {
 }
 
 // Helper functions
+// GetAssetID resolves the real venue asset index from live meta.
+// Fail-closed: -1 when the asset is unknown or the venue is unreachable.
 func (s *HyperliquidService) GetAssetID(asset string) int {
-	assets := map[string]int{
-		"BTC": 0,
-		"ETH": 1,
-		"SOL": 2,
-		"AVAX": 3,
-		"ARB": 4,
-		"OP": 5,
-		"MATIC": 6,
-		"LINK": 7,
-		"ATOM": 8,
-		"DOGE": 9,
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	id, err := hlapi.AssetIndex(ctx, asset)
+	if err != nil {
+		return -1
 	}
-	if id, ok := assets[asset]; ok {
-		return id
-	}
-	return -1
-}
-
-func getMockPrice(asset string) float64 {
-	prices := map[string]float64{
-		"BTC":  67000,
-		"ETH":  3500,
-		"SOL":  145,
-		"AVAX": 35,
-		"ARB":  1.1,
-		"OP":   2.5,
-		"MATIC": 0.85,
-		"LINK": 15,
-		"ATOM": 10,
-		"DOGE": 0.15,
-	}
-	return prices[asset]
-}
-
-func getMockChange() float64 {
-	return (float64(time.Now().Unix()%20) - 10)
-}
-
-func getMockVolume() float64 {
-	return float64(time.Now().Unix()%1000000) + 100000
-}
-
-func getMockOI() float64 {
-	return float64(time.Now().Unix()%50000000) + 10000000
+	return id
 }
 
 // ============================================================================
@@ -497,22 +491,22 @@ func (s *HyperliquidService) RecordTrade(trade *HyperliquidTrade) error {
 
 func (s *HyperliquidService) CreateAccountHandler(c *gin.Context) {
 	var req struct {
-		UserAddress      string `json:"user_address" binding:"required"`
-		HyperliquidAddr  string `json:"hyperliquid_addr" binding:"required"`
-		PublicKey        string `json:"public_key" binding:"required"`
+		UserAddress     string `json:"user_address" binding:"required"`
+		HyperliquidAddr string `json:"hyperliquid_addr" binding:"required"`
+		PublicKey       string `json:"public_key" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	account, err := s.CreateAccount(req.UserAddress, req.HyperliquidAddr, req.PublicKey)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, account)
 }
 
@@ -526,30 +520,30 @@ func (s *HyperliquidService) PlaceOrderHandler(c *gin.Context) {
 		Amount      float64 `json:"amount" binding:"required"`
 		ReduceOnly  bool    `json:"reduce_only"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	order, err := s.PlaceOrder(req.UserAddress, req.Asset, req.Side, req.OrderType, req.Price, req.Amount, req.ReduceOnly)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, order)
 }
 
 func (s *HyperliquidService) GetPositionsHandler(c *gin.Context) {
 	address := c.Param("address")
-	
+
 	positions, err := s.GetPositions(address)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, positions)
 }
 
@@ -559,7 +553,7 @@ func (s *HyperliquidService) GetMarketsHandler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, markets)
 }
 
@@ -568,3 +562,41 @@ func (s *HyperliquidService) GetMarketsHandler(c *gin.Context) {
 // ============================================================================
 
 // Note: imports are at the top of the file
+
+// ============================================================================
+// Main
+// ============================================================================
+
+func main() {
+	config := LoadConfig()
+	if config.DBPassword == "" {
+		log.Fatal("DB_PASSWORD is required (no default credential)")
+	}
+
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.DBName)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("database connection failed: %v", err)
+	}
+	if err := db.AutoMigrate(&HyperliquidAccount{}, &HyperliquidOrder{}, &HyperliquidPosition{}, &HyperliquidTrade{}); err != nil {
+		log.Fatalf("migration failed: %v", err)
+	}
+
+	svc := NewHyperliquidService(config, db)
+	router := gin.Default()
+	api := router.Group("/api/v1/hyperliquid")
+	{
+		api.POST("/accounts", svc.CreateAccountHandler)
+		api.POST("/orders", svc.PlaceOrderHandler)
+		api.GET("/positions", svc.GetPositionsHandler)
+		api.GET("/markets", svc.GetMarketsHandler)
+	}
+
+	addr := ":" + config.ServerPort
+	log.Printf("hyperliquid service listening on %s", addr)
+	srv := &http.Server{Addr: addr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+	if err := srv.ListenAndServe(); err != nil {
+		log.Fatalf("server error: %v", err)
+	}
+}

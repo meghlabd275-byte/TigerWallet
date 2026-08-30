@@ -5,7 +5,6 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -28,14 +27,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // ============================================================================
@@ -44,67 +43,67 @@ type Config struct {
 
 // OptionContract represents an options contract
 type OptionContract struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
 	Symbol         string    `gorm:"index" json:"symbol"` // e.g., ETH-3000-CALL-2024-03-15
 	Name           string    `json:"name"`
 	Underlying     string    `json:"underlying"` // ETH, BTC, etc.
-	StrikePrice   float64   `json:"strike_price"`
+	StrikePrice    float64   `json:"strike_price"`
 	ExpirationDate time.Time `json:"expiration_date"`
-	OptionType    string    `json:"option_type"` // CALL or PUT
-	ContractSize  float64   `json:"contract_size"`
-	CurrentPrice  float64   `json:"current_price"` // Premium
-	OpenInterest  int       `json:"open_interest"`
-	Volume24h     int       `json:"volume_24h"`
-	IV            float64   `json:"iv"` // Implied Volatility
-	Delta         float64   `json:"delta"`
-	Gamma         float64   `json:"gamma"`
-	Theta         float64   `json:"theta"`
-	Vega          float64   `json:"vega"`
-	ChainID       int64     `json:"chain_id"`
-	IsActive      bool      `json:"is_active"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	OptionType     string    `json:"option_type"` // CALL or PUT
+	ContractSize   float64   `json:"contract_size"`
+	CurrentPrice   float64   `json:"current_price"` // Premium
+	OpenInterest   int       `json:"open_interest"`
+	Volume24h      int       `json:"volume_24h"`
+	IV             float64   `json:"iv"` // Implied Volatility
+	Delta          float64   `json:"delta"`
+	Gamma          float64   `json:"gamma"`
+	Theta          float64   `json:"theta"`
+	Vega           float64   `json:"vega"`
+	ChainID        int64     `json:"chain_id"`
+	IsActive       bool      `json:"is_active"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // OptionPosition represents a user's option position
 type OptionPosition struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	UserAddress     string    `gorm:"index" json:"user_address"`
-	ContractID     uint      `gorm:"index" json:"contract_id"`
-	ContractSymbol string    `json:"contract_symbol"`
-	Side           string    `json:"side"` // LONG (bought) or SHORT (sold)
-	Quantity       int       `json:"quantity"`
-	EntryPrice    float64   `json:"entry_price"`
-	CurrentPrice  float64   `json:"current_price"`
-	UnrealizedPNL float64   `json:"unrealized_pnl"`
-	RealizedPNL   float64   `json:"realized_pnl"`
-	Status        string    `json:"status"` // OPEN, EXERCISED, EXPIRED, CLOSED
-	ChainID       int64     `json:"chain_id"`
-	OpenedAt      time.Time `json:"opened_at"`
-	ClosedAt      *time.Time `json:"closed_at"`
+	ID             uint       `gorm:"primaryKey" json:"id"`
+	UserAddress    string     `gorm:"index" json:"user_address"`
+	ContractID     uint       `gorm:"index" json:"contract_id"`
+	ContractSymbol string     `json:"contract_symbol"`
+	Side           string     `json:"side"` // LONG (bought) or SHORT (sold)
+	Quantity       int        `json:"quantity"`
+	EntryPrice     float64    `json:"entry_price"`
+	CurrentPrice   float64    `json:"current_price"`
+	UnrealizedPNL  float64    `json:"unrealized_pnl"`
+	RealizedPNL    float64    `json:"realized_pnl"`
+	Status         string     `json:"status"` // OPEN, EXERCISED, EXPIRED, CLOSED
+	ChainID        int64      `json:"chain_id"`
+	OpenedAt       time.Time  `json:"opened_at"`
+	ClosedAt       *time.Time `json:"closed_at"`
 }
 
 // OptionOrder represents an order
 type OptionOrder struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	ContractID   uint      `gorm:"index" json:"contract_id"`
-	ContractSymbol string  `json:"contract_symbol"`
-	Side         string    `json:"side"` // BUY or SELL
-	OrderType    string    `json:"order_type"` // MARKET, LIMIT
-	Price        float64   `json:"price"`
-	Quantity     int       `json:"quantity"`
-	FilledQty    int       `json:"filled_qty"`
-	AvgFillPrice float64   `json:"avg_fill_price"`
-	Status       string    `json:"status"` // PENDING, FILLED, PARTIAL, CANCELLED
-	ChainID      int64     `json:"chain_id"`
-	CreatedAt    time.Time `json:"created_at"`
-	FilledAt     *time.Time `json:"filled_at"`
+	ID             uint       `gorm:"primaryKey" json:"id"`
+	UserAddress    string     `gorm:"index" json:"user_address"`
+	ContractID     uint       `gorm:"index" json:"contract_id"`
+	ContractSymbol string     `json:"contract_symbol"`
+	Side           string     `json:"side"`       // BUY or SELL
+	OrderType      string     `json:"order_type"` // MARKET, LIMIT
+	Price          float64    `json:"price"`
+	Quantity       int        `json:"quantity"`
+	FilledQty      int        `json:"filled_qty"`
+	AvgFillPrice   float64    `json:"avg_fill_price"`
+	Status         string     `json:"status"` // PENDING, FILLED, PARTIAL, CANCELLED
+	ChainID        int64      `json:"chain_id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	FilledAt       *time.Time `json:"filled_at"`
 }
 
 // OptionTrade represents a filled trade
 type OptionTrade struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
 	OrderID        uint      `json:"order_id"`
 	UserAddress    string    `json:"user_address"`
 	ContractID     uint      `json:"contract_id"`
@@ -121,15 +120,15 @@ type OptionTrade struct {
 // ExerciseEvent represents option exercise
 type ExerciseEvent struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
-	PositionID     uint      `json:"position_id"`
-	UserAddress    string    `json:"user_address"`
-	ContractSymbol string    `json:"contract_symbol"`
-	Quantity       int       `json:"quantity"`
-	StrikePrice    float64   `json:"strike_price"`
-	SettlementPrice float64  `json:"settlement_price"`
-	Profit         float64   `json:"profit"`
-	ChainID        int64     `json:"chain_id"`
-	ExercisedAt    time.Time `json:"exercised_at"`
+	PositionID      uint      `json:"position_id"`
+	UserAddress     string    `json:"user_address"`
+	ContractSymbol  string    `json:"contract_symbol"`
+	Quantity        int       `json:"quantity"`
+	StrikePrice     float64   `json:"strike_price"`
+	SettlementPrice float64   `json:"settlement_price"`
+	Profit          float64   `json:"profit"`
+	ChainID         int64     `json:"chain_id"`
+	ExercisedAt     time.Time `json:"exercised_at"`
 }
 
 // ============================================================================
@@ -138,7 +137,7 @@ type ExerciseEvent struct {
 
 type OptionsService struct {
 	db     *gorm.DB
-	redis *redis.Client
+	redis  *redis.Client
 	config Config
 	mu     sync.RWMutex
 	prices map[string]float64
@@ -192,21 +191,30 @@ func (s *OptionsService) initializeOptions() {
 		time.Now().Add(90 * 24 * time.Hour),
 	}
 
-	strikePrices := map[string][]float64{
-		"ETH": {2500, 2750, 3000, 3250, 3500, 3750, 4000},
-		"BTC": {50000, 55000, 60000, 65000, 70000, 75000, 80000},
-		"SOL": {100, 125, 150, 175, 200, 225, 250},
+	underlyings := []string{"ETH", "BTC", "SOL"}
+
+	// Real live spot prices from the CoinGecko oracle. Fail-closed: an
+	// underlying with no real price gets no contracts (never fabricated).
+	spotPrices, err := fetchLivePricesUSD(underlyings)
+	if err != nil {
+		spotPrices = map[string]float64{}
 	}
 
-	underlyingPrices := map[string]float64{
-		"ETH": 3500,
-		"BTC": 65000,
-		"SOL": 150,
-	}
+	for _, underlying := range underlyings {
+		basePrice := spotPrices[underlying]
+		if basePrice <= 0 {
+			continue
+		}
+		// Generate a real strike ladder around the live spot price
+		// (+/-25% in ~5% steps), rounded to a sensible tick.
+		var strikes []float64
+		for i := -5; i <= 5; i++ {
+			k := basePrice * (1.0 + float64(i)*0.05)
+			if k > 0 {
+				strikes = append(strikes, roundStrike(k))
+			}
+		}
 
-	for underlying, strikes := range strikePrices {
-		basePrice := underlyingPrices[underlying]
-		
 		for _, expiry := range expirations {
 			for _, strike := range strikes {
 				// Create CALL option
@@ -222,7 +230,7 @@ func (s *OptionsService) initializeOptions() {
 						OptionType:     "CALL",
 						ContractSize:   1,
 						CurrentPrice:   s.calculateOptionPrice(basePrice, strike, 30, expiry, "CALL"),
-						IV:             30 + math.Random()*20,
+						IV:             defaultIV,
 						ChainID:        1,
 						IsActive:       true,
 					}
@@ -241,7 +249,7 @@ func (s *OptionsService) initializeOptions() {
 						OptionType:     "PUT",
 						ContractSize:   1,
 						CurrentPrice:   s.calculateOptionPrice(basePrice, strike, 30, expiry, "PUT"),
-						IV:             30 + math.Random()*20,
+						IV:             defaultIV,
 						ChainID:        1,
 						IsActive:       true,
 					}
@@ -253,6 +261,24 @@ func (s *OptionsService) initializeOptions() {
 }
 
 // Black-Scholes option pricing
+// defaultIV is the model implied-volatility assumption (%) used for
+// contract pricing until a real volatility surface feed is wired.
+const defaultIV = 50.0
+
+// roundStrike rounds a strike to a clean tick relative to magnitude.
+func roundStrike(k float64) float64 {
+	switch {
+	case k >= 1000:
+		return math.Round(k/100) * 100
+	case k >= 100:
+		return math.Round(k/10) * 10
+	case k >= 1:
+		return math.Round(k*2) / 2
+	default:
+		return math.Round(k*100) / 100
+	}
+}
+
 func (s *OptionsService) calculateOptionPrice(spotPrice, strikePrice float64, iv float64, expiration time.Time, optionType string) float64 {
 	daysToExpiry := expiration.Sub(time.Now()).Hours() / 24
 	if daysToExpiry <= 0 {
@@ -285,26 +311,26 @@ func normalCDF(x float64) float64 {
 	return 0.5 * (1 + math.Erf(x/math.Sqrt2))
 }
 
-// Start price feed simulation
+// startPriceFeed refreshes underlying prices from the real CoinGecko
+// oracle every 30s and re-marks open option contracts. No simulated walk.
 func (s *OptionsService) startPriceFeed() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	underlyingPrices := map[string]float64{
-		"ETH": 3500,
-		"BTC": 65000,
-		"SOL": 150,
-	}
-
-	for range ticker.C {
-		for underlying, basePrice := range underlyingPrices {
-			// Random walk
-			change := (math.Random() - 0.5) * basePrice * 0.02
-			newPrice := basePrice + change
-
-			// Update option prices based on new underlying
-			s.updateOptionPrices(underlying, newPrice)
+	underlyings := []string{"ETH", "BTC", "SOL"}
+	refresh := func() {
+		spotPrices, err := fetchLivePricesUSD(underlyings)
+		if err != nil || len(spotPrices) == 0 {
+			return // keep last known real prices
 		}
+		for underlying, spotPrice := range spotPrices {
+			if spotPrice > 0 {
+				s.updateOptionPrices(underlying, spotPrice)
+			}
+		}
+	}
+	refresh()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		refresh()
 	}
 }
 
@@ -353,7 +379,7 @@ func (s *OptionsService) calculateGreeks(contract *OptionContract, spotPrice flo
 	contract.Gamma = normalCDF(d1) / (spotPrice * iv * math.Sqrt(timeToExpiry))
 
 	// Theta
-	thetaBase := -spotPrice*normalCDF(d1)*iv / (2*math.Sqrt(timeToExpiry))
+	thetaBase := -spotPrice * normalCDF(d1) * iv / (2 * math.Sqrt(timeToExpiry))
 	if contract.OptionType == "CALL" {
 		contract.Theta = (thetaBase - 0.05*contract.StrikePrice*math.Exp(-0.05*timeToExpiry)*normalCDF(d2)) / 365
 	} else {
@@ -369,13 +395,13 @@ func (s *OptionsService) calculateGreeks(contract *OptionContract, spotPrice flo
 // ============================================================================
 
 type OpenPositionRequest struct {
-	UserAddress   string  `json:"user_address" binding:"required"`
-	ContractID   uint    `json:"contract_id" binding:"required"`
-	Side         string  `json:"side" binding:"required"` // LONG or SHORT
-	Quantity     int     `json:"quantity" binding:"required"`
-	OrderType    string  `json:"order_type"` // MARKET or LIMIT
-	Price        float64 `json:"price"`
-	ChainID      int64   `json:"chain_id"`
+	UserAddress string  `json:"user_address" binding:"required"`
+	ContractID  uint    `json:"contract_id" binding:"required"`
+	Side        string  `json:"side" binding:"required"` // LONG or SHORT
+	Quantity    int     `json:"quantity" binding:"required"`
+	OrderType   string  `json:"order_type"` // MARKET or LIMIT
+	Price       float64 `json:"price"`
+	ChainID     int64   `json:"chain_id"`
 }
 
 func (s *OptionsService) OpenPosition(ctx *gin.Context) {
@@ -412,15 +438,15 @@ func (s *OptionsService) OpenPosition(ctx *gin.Context) {
 
 	// Create position
 	position := OptionPosition{
-		UserAddress:     req.UserAddress,
+		UserAddress:    req.UserAddress,
 		ContractID:     contract.ID,
 		ContractSymbol: contract.Symbol,
 		Side:           req.Side,
 		Quantity:       req.Quantity,
-		EntryPrice:    execPrice,
-		CurrentPrice:  execPrice,
-		UnrealizedPNL: 0,
-		RealizedPNL:   0,
+		EntryPrice:     execPrice,
+		CurrentPrice:   execPrice,
+		UnrealizedPNL:  0,
+		RealizedPNL:    0,
 		Status:         "OPEN",
 		ChainID:        req.ChainID,
 		OpenedAt:       time.Now(),
@@ -453,21 +479,21 @@ func (s *OptionsService) OpenPosition(ctx *gin.Context) {
 	s.db.Save(&contract)
 
 	ctx.JSON(200, gin.H{
-		"success":        true,
-		"position_id":    position.ID,
-		"symbol":        contract.Symbol,
-		"quantity":      req.Quantity,
-		"entry_price":   execPrice,
-		"premium":       premium,
-		"fee":           trade.Fee,
+		"success":     true,
+		"position_id": position.ID,
+		"symbol":      contract.Symbol,
+		"quantity":    req.Quantity,
+		"entry_price": execPrice,
+		"premium":     premium,
+		"fee":         trade.Fee,
 	})
 }
 
 type ClosePositionRequest struct {
-	UserAddress string  `json:"user_address" binding:"required"`
-	PositionID uint    `json:"position_id" binding:"required"`
-	Quantity   int     `json:"quantity"`
-	ChainID    int64   `json:"chain_id"`
+	UserAddress string `json:"user_address" binding:"required"`
+	PositionID  uint   `json:"position_id" binding:"required"`
+	Quantity    int    `json:"quantity"`
+	ChainID     int64  `json:"chain_id"`
 }
 
 func (s *OptionsService) ClosePosition(ctx *gin.Context) {
@@ -534,7 +560,7 @@ func (s *OptionsService) ClosePosition(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"success":       true,
-		"realized_pnl": pnl,
+		"realized_pnl":  pnl,
 		"remaining_qty": position.Quantity,
 	})
 }
@@ -542,8 +568,8 @@ func (s *OptionsService) ClosePosition(ctx *gin.Context) {
 // Exercise option
 type ExerciseRequest struct {
 	UserAddress string `json:"user_address" binding:"required"`
-	PositionID uint   `json:"position_id" binding:"required"`
-	Quantity   int    `json:"quantity"`
+	PositionID  uint   `json:"position_id" binding:"required"`
+	Quantity    int    `json:"quantity"`
 }
 
 func (s *OptionsService) ExercisePosition(ctx *gin.Context) {
@@ -592,8 +618,8 @@ func (s *OptionsService) ExercisePosition(ctx *gin.Context) {
 
 	// Record exercise event
 	exercise := ExerciseEvent{
-		PositionID:       position.ID,
-		UserAddress:      req.UserAddress,
+		PositionID:      position.ID,
+		UserAddress:     req.UserAddress,
 		ContractSymbol:  contract.Symbol,
 		Quantity:        exerciseQty,
 		StrikePrice:     contract.StrikePrice,
@@ -621,9 +647,9 @@ func (s *OptionsService) ExercisePosition(ctx *gin.Context) {
 	s.db.Save(&contract)
 
 	ctx.JSON(200, gin.H{
-		"success":         true,
-		"exercise_id":    exercise.ID,
-		"profit":         profit,
+		"success":          true,
+		"exercise_id":      exercise.ID,
+		"profit":           profit,
 		"settlement_price": settlementPrice,
 	})
 }
@@ -694,8 +720,8 @@ func (s *OptionsService) GetPositions(ctx *gin.Context) {
 		}
 
 		response[i] = map[string]interface{}{
-			"id":               pos.ID,
-			"contract_symbol":  pos.ContractSymbol,
+			"id":              pos.ID,
+			"contract_symbol": pos.ContractSymbol,
 			"side":            pos.Side,
 			"quantity":        pos.Quantity,
 			"entry_price":     pos.EntryPrice,

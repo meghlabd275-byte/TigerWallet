@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"net/http"
 	"sort"
 	"sync"
@@ -105,18 +104,30 @@ func NewLiquidityService() *LiquidityService {
 
 func (s *LiquidityService) initData() {
 	// Initialize tokens
-	tokens := []*TokenInfo{
-		{Symbol: "ETH", Name: "Ethereum", Decimals: 18, PriceUSD: 3500, Chain: "ethereum"},
-		{Symbol: "USDT", Name: "Tether", Decimals: 6, PriceUSD: 1.0, Chain: "ethereum"},
-		{Symbol: "USDC", Name: "USD Coin", Decimals: 6, PriceUSD: 1.0, Chain: "ethereum"},
-		{Symbol: "WBTC", Name: "Wrapped Bitcoin", Decimals: 8, PriceUSD: 65000, Chain: "ethereum"},
-		{Symbol: "BNB", Name: "BNB", Decimals: 18, PriceUSD: 600, Chain: "bsc"},
-		{Symbol: "SOL", Name: "Solana", Decimals: 9, PriceUSD: 145, Chain: "solana"},
-		{Symbol: "MATIC", Name: "Polygon", Decimals: 18, PriceUSD: 0.8, Chain: "polygon"},
+	syms := []string{"ETH", "USDT", "USDC", "WBTC", "BNB", "SOL", "MATIC"}
+	live, lerr := fetchLivePricesUSD(syms)
+	if lerr != nil {
+		live = map[string]float64{}
 	}
-
-	for _, t := range tokens {
-		s.tokens[t.Symbol] = t
+	meta := []struct {
+		sym, name string
+		dec       int
+		chain     string
+	}{
+		{"ETH", "Ethereum", 18, "ethereum"},
+		{"USDT", "Tether", 6, "ethereum"},
+		{"USDC", "USD Coin", 6, "ethereum"},
+		{"WBTC", "Wrapped Bitcoin", 8, "ethereum"},
+		{"BNB", "BNB", 18, "bsc"},
+		{"SOL", "Solana", 9, "solana"},
+		{"MATIC", "Polygon", 18, "polygon"},
+	}
+	for _, m := range meta {
+		price := live[m.sym]
+		if price <= 0 {
+			continue
+		}
+		s.tokens[m.sym] = &TokenInfo{Symbol: m.sym, Name: m.name, Decimals: m.dec, PriceUSD: price, Chain: m.chain}
 	}
 
 	// Initialize pools
@@ -139,7 +150,7 @@ func (s *LiquidityService) initData() {
 
 	for _, p := range pools {
 		p.Liquidity = s.calculatePoolLiquidity(p)
-		p.Volume24h = p.Liquidity * 0.1 * (0.5 + rand.Float64())
+		p.Volume24h = 0 // no fabricated volume; filled by real on-chain indexer
 		key := p.TokenA + "_" + p.TokenB
 		s.pools[key] = append(s.pools[key], p)
 	}

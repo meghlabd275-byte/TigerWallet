@@ -1,13 +1,13 @@
 /**
  * TigerWallet White Label System - Complete Implementation
- * 
+ *
  * Features:
  * - Super Admin authorization for all white label clients
  * - 2FA authentication for white label clients
  * - 20% profit sharing with Super Admin
  * - No white label can sell as their own product
  * - Full dashboard with all fetchers
- * 
+ *
  * @author TigerWallet Team
  */
 
@@ -20,17 +20,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -75,11 +71,11 @@ type Config struct {
 }
 
 var (
-	cfg              *Config
-	ctx              context.Context
-	redisClient      *redis.Client
-	jwtSecret        []byte
-	router           *gin.Engine
+	cfg         *Config
+	ctx         context.Context
+	redisClient *redis.Client
+	jwtSecret   []byte
+	router      *gin.Engine
 )
 
 // =============================================================================
@@ -88,8 +84,8 @@ var (
 
 // User roles
 const (
-	RoleSuperAdmin    = "super_admin"
-	RoleWhiteLabel    = "white_label_admin"
+	RoleSuperAdmin     = "super_admin"
+	RoleWhiteLabel     = "white_label_admin"
 	RoleWhiteLabelUser = "white_label_user"
 )
 
@@ -110,111 +106,111 @@ const (
 
 // Super Admin
 type SuperAdmin struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"passwordHash"`
-	Name         string    `json:"name"`
-	Role         string    `json:"role"`
-	Permissions  []string  `json:"permissions"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-	LastLogin    time.Time `json:"lastLogin"`
-	TwoFactorEnabled bool  `json:"twoFactorEnabled"`
-	TwoFactorSecret string `json:"twoFactorSecret"`
-}
-
-// White Label Client
-type WhiteLabelClient struct {
-	ID                   string    `json:"id"`
-	Name                 string    `json:"name"`
-	Domain               string    `json:"domain"`
-	CustomBranding       bool      `json:"customBranding"`
-	LogoURL              string    `json:"logoUrl"`
-	PrimaryColor         string    `json:"primaryColor"`
-	SecondaryColor       string    `json:"secondaryColor"`
-	Status               string    `json:"status"` // pending, authorized, suspended, halted
-	AuthorizedBy         string    `json:"authorizedBy"`
-	AuthorizedAt         time.Time `json:"authorizedAt"`
-	CreatedAt            time.Time `json:"createdAt"`
-	UpdatedAt            time.Time `json:"updatedAt"`
-	AdminIDs             []string  `json:"adminIds"`
-	Permissions          []string  `json:"permissions"`
-	Products             []string  `json:"products"`
-	BlockchainAccess     []uint64  `json:"blockchainAccess"`
-	APIKey               string    `json:"apiKey"`
-	SecretKey            string    `json:"secretKey"`
-	ProfitSharePercent   float64   `json:"profitSharePercent"`
-	TotalRevenue         float64   `json:"totalRevenue"`
-	TotalProfitShared    float64   `json:"totalProfitShared"`
-	CanSell             bool      `json:"canSell"` // Always false - cannot sell
-	Notes                string    `json:"notes"`
-}
-
-// White Label Admin
-type WhiteLabelAdmin struct {
 	ID               string    `json:"id"`
-	ClientID         string    `json:"clientId"`
 	Email            string    `json:"email"`
 	PasswordHash     string    `json:"passwordHash"`
 	Name             string    `json:"name"`
-	Role             string    `json:"role"` // super_admin, admin, manager, support
+	Role             string    `json:"role"`
 	Permissions      []string  `json:"permissions"`
-	Status           string    `json:"status"`
 	CreatedAt        time.Time `json:"createdAt"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 	LastLogin        time.Time `json:"lastLogin"`
 	TwoFactorEnabled bool      `json:"twoFactorEnabled"`
 	TwoFactorSecret  string    `json:"twoFactorSecret"`
-	FailedLoginAttempts int    `json:"failedLoginAttempts"`
-	LockedUntil     time.Time `json:"lockedUntil"`
+}
+
+// White Label Client
+type WhiteLabelClient struct {
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	Domain             string    `json:"domain"`
+	CustomBranding     bool      `json:"customBranding"`
+	LogoURL            string    `json:"logoUrl"`
+	PrimaryColor       string    `json:"primaryColor"`
+	SecondaryColor     string    `json:"secondaryColor"`
+	Status             string    `json:"status"` // pending, authorized, suspended, halted
+	AuthorizedBy       string    `json:"authorizedBy"`
+	AuthorizedAt       time.Time `json:"authorizedAt"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+	AdminIDs           []string  `json:"adminIds"`
+	Permissions        []string  `json:"permissions"`
+	Products           []string  `json:"products"`
+	BlockchainAccess   []uint64  `json:"blockchainAccess"`
+	APIKey             string    `json:"apiKey"`
+	SecretKey          string    `json:"secretKey"`
+	ProfitSharePercent float64   `json:"profitSharePercent"`
+	TotalRevenue       float64   `json:"totalRevenue"`
+	TotalProfitShared  float64   `json:"totalProfitShared"`
+	CanSell            bool      `json:"canSell"` // Always false - cannot sell
+	Notes              string    `json:"notes"`
+}
+
+// White Label Admin
+type WhiteLabelAdmin struct {
+	ID                  string    `json:"id"`
+	ClientID            string    `json:"clientId"`
+	Email               string    `json:"email"`
+	PasswordHash        string    `json:"passwordHash"`
+	Name                string    `json:"name"`
+	Role                string    `json:"role"` // super_admin, admin, manager, support
+	Permissions         []string  `json:"permissions"`
+	Status              string    `json:"status"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+	LastLogin           time.Time `json:"lastLogin"`
+	TwoFactorEnabled    bool      `json:"twoFactorEnabled"`
+	TwoFactorSecret     string    `json:"twoFactorSecret"`
+	FailedLoginAttempts int       `json:"failedLoginAttempts"`
+	LockedUntil         time.Time `json:"lockedUntil"`
 }
 
 // Product
 type Product struct {
-	ID           string    `json:"id"`
-	ClientID     string    `json:"clientId"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"` // trading, wallet, staking, nft, perpetual, etc.
-	Status       string    `json:"status"` // enabled, disabled, maintenance
-	Fee          float64   `json:"fee"`
-	MinDeposit   float64   `json:"minDeposit"`
-	MaxDeposit   float64   `json:"maxDeposit"`
-	Features     []string  `json:"features"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID         string    `json:"id"`
+	ClientID   string    `json:"clientId"`
+	Name       string    `json:"name"`
+	Type       string    `json:"type"`   // trading, wallet, staking, nft, perpetual, etc.
+	Status     string    `json:"status"` // enabled, disabled, maintenance
+	Fee        float64   `json:"fee"`
+	MinDeposit float64   `json:"minDeposit"`
+	MaxDeposit float64   `json:"maxDeposit"`
+	Features   []string  `json:"features"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // Fetcher Access
 type FetcherAccess struct {
-	ClientID     string   `json:"clientId"`
-	FetcherNames []string `json:"fetcherNames"`
-	AccessLevel  string   `json:"accessLevel"` // read, write, admin
+	ClientID     string    `json:"clientId"`
+	FetcherNames []string  `json:"fetcherNames"`
+	AccessLevel  string    `json:"accessLevel"` // read, write, admin
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // Transaction Log
 type TransactionLog struct {
-	ID          string    `json:"id"`
-	ClientID    string    `json:"clientId"`
-	AdminID     string    `json:"adminId"`
-	Action      string    `json:"action"`
-	Details     string    `json:"details"`
-	IPAddress   string    `json:"ipAddress"`
-	UserAgent   string    `json:"userAgent"`
-	Timestamp   time.Time `json:"timestamp"`
+	ID        string    `json:"id"`
+	ClientID  string    `json:"clientId"`
+	AdminID   string    `json:"adminId"`
+	Action    string    `json:"action"`
+	Details   string    `json:"details"`
+	IPAddress string    `json:"ipAddress"`
+	UserAgent string    `json:"userAgent"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // Revenue Record
 type RevenueRecord struct {
-	ID            string    `json:"id"`
-	ClientID      string    `json:"clientId"`
-	Period        string    `json:"period"` // daily, weekly, monthly
-	GrossRevenue  float64   `json:"grossRevenue"`
-	ProfitShare   float64   `json:"profitShare"` // 20% to Super Admin
-	NetRevenue    float64   `json:"netRevenue"`
-	Status        string    `json:"status"` // pending, paid
-	CreatedAt     time.Time `json:"createdAt"`
-	PaidAt        *time.Time `json:"paidAt"`
+	ID           string     `json:"id"`
+	ClientID     string     `json:"clientId"`
+	Period       string     `json:"period"` // daily, weekly, monthly
+	GrossRevenue float64    `json:"grossRevenue"`
+	ProfitShare  float64    `json:"profitShare"` // 20% to Super Admin
+	NetRevenue   float64    `json:"netRevenue"`
+	Status       string     `json:"status"` // pending, paid
+	CreatedAt    time.Time  `json:"createdAt"`
+	PaidAt       *time.Time `json:"paidAt"`
 }
 
 // =============================================================================
@@ -223,7 +219,7 @@ type RevenueRecord struct {
 
 // In-memory storage (use Redis in production)
 var (
-	superAdmin         *SuperAdmin
+	superAdmin        *SuperAdmin
 	whiteLabelClients = sync.Map{} // map[string]*WhiteLabelClient
 	whiteLabelAdmins  = sync.Map{} // map[string]*WhiteLabelAdmin
 	products          = sync.Map{} // map[string]*Product
@@ -396,63 +392,63 @@ func initializeDefaultProducts() {
 	// These are the template products that all authorized clients get
 	defaultProducts := []*Product{
 		{
-			ID:          "spot_trading",
-			Name:        "Spot Trading",
-			Type:        "trading",
-			Status:      ProductStatusEnabled,
-			Fee:         0.1,
-			MinDeposit:  10,
-			MaxDeposit:  1000000,
-			Features:    []string{"market_order", "limit_order", "stop_loss"},
-			CreatedAt:   time.Now(),
+			ID:         "spot_trading",
+			Name:       "Spot Trading",
+			Type:       "trading",
+			Status:     ProductStatusEnabled,
+			Fee:        0.1,
+			MinDeposit: 10,
+			MaxDeposit: 1000000,
+			Features:   []string{"market_order", "limit_order", "stop_loss"},
+			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		},
 		{
-			ID:          "perpetual_trading",
-			Name:        "Perpetual Trading",
-			Type:        "perpetual",
-			Status:      ProductStatusEnabled,
-			Fee:         0.05,
-			MinDeposit:  100,
-			MaxDeposit:  500000,
-			Features:    []string{"leverage", "margin_trading", "liquidation_protection"},
-			CreatedAt:   time.Now(),
+			ID:         "perpetual_trading",
+			Name:       "Perpetual Trading",
+			Type:       "perpetual",
+			Status:     ProductStatusEnabled,
+			Fee:        0.05,
+			MinDeposit: 100,
+			MaxDeposit: 500000,
+			Features:   []string{"leverage", "margin_trading", "liquidation_protection"},
+			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		},
 		{
-			ID:          "staking",
-			Name:        "Staking",
-			Type:        "staking",
-			Status:      ProductStatusEnabled,
-			Fee:         0,
-			MinDeposit:  0,
-			MaxDeposit:  10000000,
-			Features:    []string{"auto_stake", "rewards", "validator_selection"},
-			CreatedAt:   time.Now(),
+			ID:         "staking",
+			Name:       "Staking",
+			Type:       "staking",
+			Status:     ProductStatusEnabled,
+			Fee:        0,
+			MinDeposit: 0,
+			MaxDeposit: 10000000,
+			Features:   []string{"auto_stake", "rewards", "validator_selection"},
+			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		},
 		{
-			ID:          "nft_marketplace",
-			Name:        "NFT Marketplace",
-			Type:        "nft",
-			Status:      ProductStatusEnabled,
-			Fee:         2.5,
-			MinDeposit:  0,
-			MaxDeposit:  100000,
-			Features:    []string{"buy", "sell", "auction", "mint"},
-			CreatedAt:   time.Now(),
+			ID:         "nft_marketplace",
+			Name:       "NFT Marketplace",
+			Type:       "nft",
+			Status:     ProductStatusEnabled,
+			Fee:        2.5,
+			MinDeposit: 0,
+			MaxDeposit: 100000,
+			Features:   []string{"buy", "sell", "auction", "mint"},
+			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		},
 		{
-			ID:          "wallet",
-			Name:        "Wallet",
-			Type:        "wallet",
-			Status:      ProductStatusEnabled,
-			Fee:         0,
-			MinDeposit:  0,
-			MaxDeposit:  10000000,
-			Features:    []string{"send", "receive", "swap", "bridge"},
-			CreatedAt:   time.Now(),
+			ID:         "wallet",
+			Name:       "Wallet",
+			Type:       "wallet",
+			Status:     ProductStatusEnabled,
+			Fee:        0,
+			MinDeposit: 0,
+			MaxDeposit: 10000000,
+			Features:   []string{"send", "receive", "swap", "bridge"},
+			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		},
 	}
@@ -598,9 +594,9 @@ func publicHealthCheck(c *gin.Context) {
 // =============================================================================
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	        TwoFACode string `json:"2faCode"`
+	Email     string `json:"email" binding:"required"`
+	Password  string `json:"password" binding:"required"`
+	TwoFACode string `json:"2faCode"`
 }
 
 type LoginResponse struct {
@@ -669,10 +665,10 @@ func loginSuperAdmin(c *gin.Context, req LoginRequest) {
 		Token:        token,
 		RefreshToken: refreshToken,
 		User: gin.H{
-			"id":      superAdmin.ID,
-			"email":   superAdmin.Email,
-			"name":    superAdmin.Name,
-			"role":    superAdmin.Role,
+			"id":    superAdmin.ID,
+			"email": superAdmin.Email,
+			"name":  superAdmin.Name,
+			"role":  superAdmin.Role,
 		},
 	})
 }
@@ -809,8 +805,8 @@ type Setup2FARequest struct {
 }
 
 type Setup2FAResponse struct {
-	Secret     string `json:"secret"`
-	QRCodeURL  string `json:"qrCodeUrl"`
+	Secret    string `json:"secret"`
+	QRCodeURL string `json:"qrCodeUrl"`
 }
 
 func setup2FA(c *gin.Context) {
@@ -827,7 +823,7 @@ func setup2FA(c *gin.Context) {
 	twoFactorSecrets.Store(req.UserID, secret)
 
 	// Generate QR code URL (in production, generate actual QR)
-	qrCodeURL := fmt.Sprintf("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/TigerWallet:%s?secret=%s", req.Email, secret)
+	qrCodeURL := fmt.Sprintf("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/TigerWallet:%s?secret=%s", req.UserID, secret)
 
 	c.JSON(http.StatusOK, Setup2FAResponse{
 		Secret:    secret,
@@ -907,10 +903,10 @@ func isNumeric(s string) bool {
 // =============================================================================
 
 type Claims struct {
-	UserID   string `json:"user_id"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
-	ClientID string `json:"client_id"`
+	UserID    string `json:"user_id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	ClientID  string `json:"client_id"`
 	IPAddress string `json:"ip_address"`
 	jwt.RegisteredClaims
 }
@@ -1009,7 +1005,7 @@ func authMiddleware() gin.HandlerFunc {
 func requireRole(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role := c.GetString("role")
-		
+
 		for _, r := range roles {
 			if role == r {
 				c.Next()
@@ -1056,7 +1052,7 @@ func getSuperAdminDashboard(c *gin.Context) {
 
 func listAllClients(c *gin.Context) {
 	var clients []WhiteLabelClient
-	
+
 	whiteLabelClients.Range(func(key, value interface{}) bool {
 		clients = append(clients, *value.(*WhiteLabelClient))
 		return true
@@ -1072,7 +1068,7 @@ func listAllClients(c *gin.Context) {
 
 func getClientDetails(c *gin.Context) {
 	clientID := c.Param("id")
-	
+
 	value, ok := whiteLabelClients.Load(clientID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Client not found"})
@@ -1103,14 +1099,14 @@ func getClientDetails(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"client":   client,
-		"admins":    admins,
-		"products":  clientProducts,
+		"admins":   admins,
+		"products": clientProducts,
 	})
 }
 
 func authorizeClient(c *gin.Context) {
 	clientID := c.Param("id")
-	
+
 	value, ok := whiteLabelClients.Load(clientID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Client not found"})
@@ -1134,19 +1130,19 @@ func authorizeClient(c *gin.Context) {
 	whiteLabelClients.Store(clientID, client)
 
 	// Log
-	logTransaction(c.GetString("user_id"), clientID, "authorize", 
-		fmt.Sprintf("Client %s authorized by Super Admin", client.Name), 
+	logTransaction(c.GetString("user_id"), clientID, "authorize",
+		fmt.Sprintf("Client %s authorized by Super Admin", client.Name),
 		c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Client authorized successfully",
-		"client":   client,
+		"client":  client,
 	})
 }
 
 func suspendClient(c *gin.Context) {
 	clientID := c.Param("id")
-	
+
 	value, ok := whiteLabelClients.Load(clientID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Client not found"})
@@ -1159,7 +1155,7 @@ func suspendClient(c *gin.Context) {
 
 	whiteLabelClients.Store(clientID, client)
 
-	logTransaction(c.GetString("user_id"), clientID, "suspend", 
+	logTransaction(c.GetString("user_id"), clientID, "suspend",
 		"Client suspended by Super Admin", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client suspended"})
@@ -1167,7 +1163,7 @@ func suspendClient(c *gin.Context) {
 
 func resumeClient(c *gin.Context) {
 	clientID := c.Param("id")
-	
+
 	value, ok := whiteLabelClients.Load(clientID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Client not found"})
@@ -1180,7 +1176,7 @@ func resumeClient(c *gin.Context) {
 
 	whiteLabelClients.Store(clientID, client)
 
-	logTransaction(c.GetString("user_id"), clientID, "resume", 
+	logTransaction(c.GetString("user_id"), clientID, "resume",
 		"Client resumed by Super Admin", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client resumed"})
@@ -1188,7 +1184,7 @@ func resumeClient(c *gin.Context) {
 
 func haltClient(c *gin.Context) {
 	clientID := c.Param("id")
-	
+
 	value, ok := whiteLabelClients.Load(clientID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Client not found"})
@@ -1201,7 +1197,7 @@ func haltClient(c *gin.Context) {
 
 	whiteLabelClients.Store(clientID, client)
 
-	logTransaction(c.GetString("user_id"), clientID, "halt", 
+	logTransaction(c.GetString("user_id"), clientID, "halt",
 		"Client halted by Super Admin", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client halted"})
@@ -1209,7 +1205,7 @@ func haltClient(c *gin.Context) {
 
 func deleteClient(c *gin.Context) {
 	clientID := c.Param("id")
-	
+
 	if _, ok := whiteLabelClients.Load(clientID); !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Client not found"})
 		return
@@ -1217,7 +1213,7 @@ func deleteClient(c *gin.Context) {
 
 	whiteLabelClients.Delete(clientID)
 
-	logTransaction(c.GetString("user_id"), clientID, "delete", 
+	logTransaction(c.GetString("user_id"), clientID, "delete",
 		"Client deleted by Super Admin", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client deleted"})
@@ -1225,7 +1221,7 @@ func deleteClient(c *gin.Context) {
 
 func getAllRevenue(c *gin.Context) {
 	var revenues []RevenueRecord
-	
+
 	revenueRecords.Range(func(key, value interface{}) bool {
 		revenues = append(revenues, *value.(*RevenueRecord))
 		return true
@@ -1240,7 +1236,7 @@ func getAllRevenue(c *gin.Context) {
 
 func payRevenue(c *gin.Context) {
 	revenueID := c.Param("id")
-	
+
 	value, ok := revenueRecords.Load(revenueID)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Revenue record not found"})
@@ -1254,7 +1250,7 @@ func payRevenue(c *gin.Context) {
 
 	revenueRecords.Store(revenueID, revenue)
 
-	logTransaction(c.GetString("user_id"), revenue.ClientID, "revenue_paid", 
+	logTransaction(c.GetString("user_id"), revenue.ClientID, "revenue_paid",
 		fmt.Sprintf("Revenue %s paid", revenueID), c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Revenue paid"})
@@ -1262,7 +1258,7 @@ func payRevenue(c *gin.Context) {
 
 func getTransactionLogs(c *gin.Context) {
 	var logs []TransactionLog
-	
+
 	transactionLogs.Range(func(key, value interface{}) bool {
 		logs = append(logs, *value.(*TransactionLog))
 		return true
@@ -1313,7 +1309,7 @@ func updateSuperAdminSettings(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid old password"})
 			return
 		}
-		
+
 		hash, _ := bcrypt.GenerateFromPassword([]byte(req.NewPass), bcrypt.DefaultCost)
 		superAdmin.PasswordHash = string(hash)
 	}
@@ -1328,11 +1324,10 @@ func updateSuperAdminSettings(c *gin.Context) {
 // =============================================================================
 
 func listMyClients(c *gin.Context) {
-	clientID := c.GetString("client_id")
 	userRole := c.GetString("role")
 
 	// If white label admin, only show their clients
-	if userRole == RoleWhiteLabelAdmin {
+	if userRole == RoleWhiteLabel {
 		var myClients []WhiteLabelClient
 		whiteLabelClients.Range(func(key, value interface{}) bool {
 			client := value.(*WhiteLabelClient)
@@ -1353,12 +1348,12 @@ func listMyClients(c *gin.Context) {
 }
 
 type CreateClientRequest struct {
-	Name               string   `json:"name" binding:"required"`
-	Domain             string   `json:"domain" binding:"required"`
-	PrimaryColor       string   `json:"primaryColor"`
-	SecondaryColor     string   `json:"secondaryColor"`
-	LogoURL            string   `json:"logoUrl"`
-	BlockchainAccess   []uint64 `json:"blockchainAccess"`
+	Name             string   `json:"name" binding:"required"`
+	Domain           string   `json:"domain" binding:"required"`
+	PrimaryColor     string   `json:"primaryColor"`
+	SecondaryColor   string   `json:"secondaryColor"`
+	LogoURL          string   `json:"logoUrl"`
+	BlockchainAccess []uint64 `json:"blockchainAccess"`
 }
 
 func createClient(c *gin.Context) {
@@ -1382,27 +1377,27 @@ func createClient(c *gin.Context) {
 		ID:                 uuid.New().String(),
 		Name:               req.Name,
 		Domain:             req.Domain,
-		CustomBranding:    true,
+		CustomBranding:     true,
 		LogoURL:            req.LogoURL,
-		PrimaryColor:      req.PrimaryColor,
-		SecondaryColor:    req.SecondaryColor,
-		Status:            ClientStatusPending, // Requires authorization
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
+		PrimaryColor:       req.PrimaryColor,
+		SecondaryColor:     req.SecondaryColor,
+		Status:             ClientStatusPending, // Requires authorization
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
 		Permissions:        []string{"dashboard", "users", "transactions", "revenue"},
 		Products:           []string{"spot_trading", "perpetual_trading", "staking", "nft_marketplace", "wallet"},
 		BlockchainAccess:   req.BlockchainAccess,
-		APIKey:            apiKey,
-		SecretKey:         secretKey,
+		APIKey:             apiKey,
+		SecretKey:          secretKey,
 		ProfitSharePercent: SuperAdminProfitShare, // 20%
-		CanSell:           false, // Always false - cannot sell
+		CanSell:            false,                 // Always false - cannot sell
 	}
 
 	whiteLabelClients.Store(client.ID, client)
 
 	// Create default fetcher access
 	fetcherAccess := &FetcherAccess{
-		ClientID:    client.ID,
+		ClientID: client.ID,
 		FetcherNames: []string{
 			"erc20", "gas", "price", "dapp", "network", "swap",
 			"ai_price", "mev", "liquidity", "arbitrage", "risk",
@@ -1417,7 +1412,7 @@ func createClient(c *gin.Context) {
 		redisClient.Set(ctx, "fetcher_access:"+client.ID, fetcherAccessData, 0)
 	}
 
-	logTransaction(c.GetString("user_id"), client.ID, "create", 
+	logTransaction(c.GetString("user_id"), client.ID, "create",
 		"Client created", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusCreated, client)
@@ -1486,7 +1481,7 @@ func updateClient(c *gin.Context) {
 	client.UpdatedAt = time.Now()
 	whiteLabelClients.Store(clientID, client)
 
-	logTransaction(c.GetString("user_id"), clientID, "update", 
+	logTransaction(c.GetString("user_id"), clientID, "update",
 		"Client updated", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, client)
@@ -1505,7 +1500,7 @@ func deleteMyClient(c *gin.Context) {
 	whiteLabelClients.Delete(clientID)
 	whiteLabelAdmins.Delete(clientID)
 
-	logTransaction(c.GetString("user_id"), clientID, "delete", 
+	logTransaction(c.GetString("user_id"), clientID, "delete",
 		"Client deleted", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client deleted"})
@@ -1515,7 +1510,7 @@ func suspendMyClient(c *gin.Context) {
 	clientID := c.Param("id")
 
 	role := c.GetString("role")
-	if role != RoleSuperAdmin && role != RoleWhiteLabelAdmin {
+	if role != RoleSuperAdmin && role != RoleWhiteLabel {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 		return
 	}
@@ -1532,7 +1527,7 @@ func suspendMyClient(c *gin.Context) {
 
 	whiteLabelClients.Store(clientID, client)
 
-	logTransaction(c.GetString("user_id"), clientID, "suspend", 
+	logTransaction(c.GetString("user_id"), clientID, "suspend",
 		"Client suspended", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client suspended"})
@@ -1542,7 +1537,7 @@ func resumeMyClient(c *gin.Context) {
 	clientID := c.Param("id")
 
 	role := c.GetString("role")
-	if role != RoleSuperAdmin && role != RoleWhiteLabelAdmin {
+	if role != RoleSuperAdmin && role != RoleWhiteLabel {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 		return
 	}
@@ -1559,7 +1554,7 @@ func resumeMyClient(c *gin.Context) {
 
 	whiteLabelClients.Store(clientID, client)
 
-	logTransaction(c.GetString("user_id"), clientID, "resume", 
+	logTransaction(c.GetString("user_id"), clientID, "resume",
 		"Client resumed", c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Client resumed"})
@@ -1622,16 +1617,16 @@ func createAdmin(c *gin.Context) {
 	}
 
 	admin := &WhiteLabelAdmin{
-		ID:               uuid.New().String(),
-		ClientID:         req.ClientID,
-		Email:            req.Email,
-		PasswordHash:     string(hash),
-		Name:             req.Name,
-		Role:             role,
-		Permissions:      []string{"dashboard", "users", "transactions"},
-		Status:           "active",
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		ID:                  uuid.New().String(),
+		ClientID:            req.ClientID,
+		Email:               req.Email,
+		PasswordHash:        string(hash),
+		Name:                req.Name,
+		Role:                role,
+		Permissions:         []string{"dashboard", "users", "transactions"},
+		Status:              "active",
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 		FailedLoginAttempts: 0,
 	}
 
@@ -1641,7 +1636,7 @@ func createAdmin(c *gin.Context) {
 	client.AdminIDs = append(client.AdminIDs, admin.ID)
 	whiteLabelClients.Store(req.ClientID, client)
 
-	logTransaction(c.GetString("user_id"), req.ClientID, "admin_created", 
+	logTransaction(c.GetString("user_id"), req.ClientID, "admin_created",
 		fmt.Sprintf("Admin %s created", req.Email), c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -1726,7 +1721,7 @@ func deleteAdmin(c *gin.Context) {
 
 	whiteLabelAdmins.Delete(adminID)
 
-	logTransaction(c.GetString("user_id"), "", "admin_deleted", 
+	logTransaction(c.GetString("user_id"), "", "admin_deleted",
 		fmt.Sprintf("Admin %s deleted", adminID), c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusOK, gin.H{"message": "Admin deleted"})
@@ -1737,14 +1732,14 @@ func deleteAdmin(c *gin.Context) {
 // =============================================================================
 
 type CreateProductRequest struct {
-	ClientID    string   `json:"clientId"`
-	Name        string   `json:"name" binding:"required"`
-	Type        string   `json:"type" binding:"required"`
-	Status      string   `json:"status"`
-	Fee         float64  `json:"fee"`
-	MinDeposit  float64  `json:"minDeposit"`
-	MaxDeposit  float64  `json:"maxDeposit"`
-	Features    []string `json:"features"`
+	ClientID   string   `json:"clientId"`
+	Name       string   `json:"name" binding:"required"`
+	Type       string   `json:"type" binding:"required"`
+	Status     string   `json:"status"`
+	Fee        float64  `json:"fee"`
+	MinDeposit float64  `json:"minDeposit"`
+	MaxDeposit float64  `json:"maxDeposit"`
+	Features   []string `json:"features"`
 }
 
 func createProduct(c *gin.Context) {
@@ -1760,22 +1755,22 @@ func createProduct(c *gin.Context) {
 	}
 
 	product := &Product{
-		ID:          uuid.New().String(),
-		ClientID:    clientID,
-		Name:        req.Name,
-		Type:        req.Type,
-		Status:      ProductStatusEnabled,
-		Fee:         req.Fee,
-		MinDeposit:  req.MinDeposit,
-		MaxDeposit:  req.MaxDeposit,
-		Features:    req.Features,
-		CreatedAt:   time.Now(),
+		ID:         uuid.New().String(),
+		ClientID:   clientID,
+		Name:       req.Name,
+		Type:       req.Type,
+		Status:     ProductStatusEnabled,
+		Fee:        req.Fee,
+		MinDeposit: req.MinDeposit,
+		MaxDeposit: req.MaxDeposit,
+		Features:   req.Features,
+		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
 	products.Store(product.ID, product)
 
-	logTransaction(c.GetString("user_id"), clientID, "product_created", 
+	logTransaction(c.GetString("user_id"), clientID, "product_created",
 		fmt.Sprintf("Product %s created", req.Name), c.ClientIP(), c.Request.UserAgent())
 
 	c.JSON(http.StatusCreated, product)
@@ -1891,26 +1886,26 @@ func listFetchers(c *gin.Context) {
 
 func getFetcherDescription(name string) string {
 	descriptions := map[string]string{
-		"erc20":        "ERC-20 Token Fetcher - Fetch token metadata",
-		"gas":          "Gas Estimator - Real-time gas prices",
-		"price":        "Price Feed - Token prices from aggregators",
-		"dapp":         "DApp Connection - WalletConnect integration",
-		"network":      "Network Fetcher - Blockchain network data",
-		"swap":         "Swap Quote - DEX aggregation quotes",
-		"ai_price":     "AI Price Predictor - ML-based price prediction",
-		"mev":          "MEV Opportunity - Sandwich attack detection",
-		"liquidity":    "Liquidity Fetcher - Order book liquidity",
-		"arbitrage":    "Arbitrage Fetcher - Cross-DEX opportunities",
-		"risk":         "Token Risk Fetcher - Risk scoring",
-		"contract":     "Smart Contract Fetcher - Contract verification",
-		"gas_market":   "Gas Market Fetcher - Dynamic gas pricing",
-		"yield":        "DeFi Yield Fetcher - Yield optimization",
-		"staking":      "Staking Optimizer - Best staking rewards",
-		"nft_floor":    "NFT Floor Price - Collection pricing",
-		"whale":        "Whale Transaction - Large transfer alerts",
-		"analytics":    "On-Chain Analytics - DeFi metrics",
-		"simulator":    "Transaction Simulator - Pre-execution simulation",
-		"cross_chain":  "Cross-Chain Route - Multi-chain routing",
+		"erc20":       "ERC-20 Token Fetcher - Fetch token metadata",
+		"gas":         "Gas Estimator - Real-time gas prices",
+		"price":       "Price Feed - Token prices from aggregators",
+		"dapp":        "DApp Connection - WalletConnect integration",
+		"network":     "Network Fetcher - Blockchain network data",
+		"swap":        "Swap Quote - DEX aggregation quotes",
+		"ai_price":    "AI Price Predictor - ML-based price prediction",
+		"mev":         "MEV Opportunity - Sandwich attack detection",
+		"liquidity":   "Liquidity Fetcher - Order book liquidity",
+		"arbitrage":   "Arbitrage Fetcher - Cross-DEX opportunities",
+		"risk":        "Token Risk Fetcher - Risk scoring",
+		"contract":    "Smart Contract Fetcher - Contract verification",
+		"gas_market":  "Gas Market Fetcher - Dynamic gas pricing",
+		"yield":       "DeFi Yield Fetcher - Yield optimization",
+		"staking":     "Staking Optimizer - Best staking rewards",
+		"nft_floor":   "NFT Floor Price - Collection pricing",
+		"whale":       "Whale Transaction - Large transfer alerts",
+		"analytics":   "On-Chain Analytics - DeFi metrics",
+		"simulator":   "Transaction Simulator - Pre-execution simulation",
+		"cross_chain": "Cross-Chain Route - Multi-chain routing",
 	}
 
 	if desc, ok := descriptions[name]; ok {
@@ -1929,23 +1924,51 @@ func getFetcherData(c *gin.Context) {
 		return
 	}
 
-	// Return mock data based on fetcher type
+	// Return real data based on fetcher type
 	c.JSON(http.StatusOK, gin.H{
-		"fetcher":  fetcherName,
-		"data":     getMockFetcherData(fetcherName),
+		"fetcher":   fetcherName,
+		"data":      fetchFetcherData(fetcherName),
 		"timestamp": time.Now().Unix(),
 	})
 }
 
+// fetcherStats tracks real request counters per fetcher (in-memory).
+type fetcherStat struct {
+	mu             sync.Mutex
+	totalRequests  uint64
+	successfulReqs uint64
+	lastLatencyNs  int64
+}
+
+var fetcherStatsMap = map[string]*fetcherStat{}
+var fetcherStatsMu sync.Mutex
+
+func getFetcherStat(name string) *fetcherStat {
+	fetcherStatsMu.Lock()
+	defer fetcherStatsMu.Unlock()
+	st, ok := fetcherStatsMap[name]
+	if !ok {
+		st = &fetcherStat{}
+		fetcherStatsMap[name] = st
+	}
+	return st
+}
+
 func getFetcherStats(c *gin.Context) {
 	fetcherName := c.Param("name")
-
+	st := getFetcherStat(fetcherName)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	successRate := 0.0
+	if st.totalRequests > 0 {
+		successRate = float64(st.successfulReqs) / float64(st.totalRequests) * 100.0
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"fetcher":         fetcherName,
-		"lastLatencyNs":   rand.Uint64() % 1000000,
-		"totalRequests":   rand.Uint64() % 100000,
-		"successfulReqs":   rand.Uint64() % 90000,
-		"successRate":      95.0 + rand.Float64()*5,
+		"fetcher":        fetcherName,
+		"lastLatencyNs":  st.lastLatencyNs,
+		"totalRequests":  st.totalRequests,
+		"successfulReqs": st.successfulReqs,
+		"successRate":    successRate,
 	})
 }
 
@@ -1968,18 +1991,23 @@ func hasFetcherAccess(clientID, fetcherName string) bool {
 	return true
 }
 
-func getMockFetcherData(fetcherName string) interface{} {
+// getFetcherData returns real data for the requested fetcher. Fail-closed:
+// returns an error map when upstream data cannot be fetched (never
+// fabricated numbers).
+func fetchFetcherData(fetcherName string) interface{} {
 	switch fetcherName {
 	case "price":
-		return gin.H{
-			"ETH": gin.H{"usd": 3500.0, "change24h": 2.5},
-			"BTC": gin.H{"usd": 67000.0, "change24h": 1.8},
+		prices, err := fetchLivePricesUSD([]string{"ETH", "BTC"})
+		if err != nil {
+			return gin.H{"error": "price oracle unavailable: " + err.Error()}
 		}
+		out := gin.H{}
+		for sym, p := range prices {
+			out[sym] = gin.H{"usd": p}
+		}
+		return out
 	case "gas":
-		return gin.H{
-			"ethereum": gin.H{"gasPrice": 20, "congestion": "normal"},
-			"polygon":  gin.H{"gasPrice": 50, "congestion": "normal"},
-		}
+		return gin.H{"error": "gas fetcher requires chain RPC configuration"}
 	default:
 		return gin.H{"status": "active"}
 	}
@@ -2051,11 +2079,28 @@ func getClientDashboard(c *gin.Context) {
 func getClientStats(c *gin.Context) {
 	clientID := c.GetString("client_id")
 
+	// Real aggregates computed from the actual revenue + transaction stores.
+	var totalTransactions int64
+	var totalRevenue float64
+	revenueRecords.Range(func(key, value interface{}) bool {
+		rev := value.(*RevenueRecord)
+		if rev.ClientID == clientID {
+			totalRevenue += rev.GrossRevenue
+		}
+		return true
+	})
+	transactionLogs.Range(func(key, value interface{}) bool {
+		tl := value.(*TransactionLog)
+		if tl.ClientID == clientID {
+			totalTransactions++
+		}
+		return true
+	})
+
 	c.JSON(http.StatusOK, gin.H{
-		"totalTransactions": 125000,
-		"totalVolume":      125000000.0,
-		"totalRevenue":     1250000.0,
-		"profitShared":     1250000.0 * SuperAdminProfitShare / 100,
+		"totalTransactions": totalTransactions,
+		"totalRevenue":      totalRevenue,
+		"profitShared":      totalRevenue * SuperAdminProfitShare / 100,
 	})
 }
 
@@ -2075,10 +2120,10 @@ func verifyClient(c *gin.Context) {
 	client := value.(*WhiteLabelClient)
 
 	c.JSON(http.StatusOK, gin.H{
-		"id":      client.ID,
-		"name":    client.Name,
-		"domain":  client.Domain,
-		"status":  client.Status,
+		"id":       client.ID,
+		"name":     client.Name,
+		"domain":   client.Domain,
+		"status":   client.Status,
 		"verified": client.Status == ClientStatusAuthorized,
 	})
 }

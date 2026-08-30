@@ -5,11 +5,7 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"math"
-	"math/big"
 	"os"
 	"os/signal"
 	"sync"
@@ -28,14 +24,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // ============================================================================
@@ -72,62 +68,62 @@ type PerpetualMarket struct {
 
 // Position represents a user's position
 type Position struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	UserAddress     string    `gorm:"index" json:"user_address"`
-	MarketID        uint      `gorm:"index" json:"market_id"`
-	Symbol          string    `json:"symbol"`
-	Side            string    `json:"side"` // LONG or SHORT
-	Size            float64   `json:"size"`
-	EntryPrice      float64   `json:"entry_price"`
-	MarkPrice       float64   `json:"mark_price"`
-	Leverage        float64   `json:"leverage"`
-	Collateral      float64   `json:"collateral"`
-	UnrealizedPNL   float64   `json:"unrealized_pnl"`
-	RealizedPNL     float64   `json:"realized_pnl"`
-	LiquidationPrice float64  `json:"liquidation_price"`
-	StopLossPrice   float64   `json:"stop_loss_price"`
-	TakeProfitPrice float64   `json:"take_profit_price"`
-	Status          string    `json:"status"` // OPEN, CLOSED, LIQUIDATED
-	ChainID         int64     `json:"chain_id"`
-	OpenedAt        time.Time `json:"opened_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ClosedAt        *time.Time `json:"closed_at"`
+	ID               uint       `gorm:"primaryKey" json:"id"`
+	UserAddress      string     `gorm:"index" json:"user_address"`
+	MarketID         uint       `gorm:"index" json:"market_id"`
+	Symbol           string     `json:"symbol"`
+	Side             string     `json:"side"` // LONG or SHORT
+	Size             float64    `json:"size"`
+	EntryPrice       float64    `json:"entry_price"`
+	MarkPrice        float64    `json:"mark_price"`
+	Leverage         float64    `json:"leverage"`
+	Collateral       float64    `json:"collateral"`
+	UnrealizedPNL    float64    `json:"unrealized_pnl"`
+	RealizedPNL      float64    `json:"realized_pnl"`
+	LiquidationPrice float64    `json:"liquidation_price"`
+	StopLossPrice    float64    `json:"stop_loss_price"`
+	TakeProfitPrice  float64    `json:"take_profit_price"`
+	Status           string     `json:"status"` // OPEN, CLOSED, LIQUIDATED
+	ChainID          int64      `json:"chain_id"`
+	OpenedAt         time.Time  `json:"opened_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	ClosedAt         *time.Time `json:"closed_at"`
 }
 
 // Order represents a trading order
 type Order struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	MarketID      uint      `gorm:"index" json:"market_id"`
-	Symbol        string    `json:"symbol"`
-	Side          string    `json:"side"` // BUY or SELL
-	OrderType     string    `json:"order_type"` // MARKET, LIMIT, STOP
-	Price         float64   `json:"price"`
-	Size          float64   `json:"size"`
-	FilledSize    float64   `json:"filled_size"`
-	AvgFillPrice  float64   `json:"avg_fill_price"`
-	Leverage      float64   `json:"leverage"`
-	Status        string    `json:"status"` // PENDING, FILLED, PARTIALLY_FILLED, CANCELLED
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
-	FilledAt      *time.Time `json:"filled_at"`
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	UserAddress  string     `gorm:"index" json:"user_address"`
+	MarketID     uint       `gorm:"index" json:"market_id"`
+	Symbol       string     `json:"symbol"`
+	Side         string     `json:"side"`       // BUY or SELL
+	OrderType    string     `json:"order_type"` // MARKET, LIMIT, STOP
+	Price        float64    `json:"price"`
+	Size         float64    `json:"size"`
+	FilledSize   float64    `json:"filled_size"`
+	AvgFillPrice float64    `json:"avg_fill_price"`
+	Leverage     float64    `json:"leverage"`
+	Status       string     `json:"status"` // PENDING, FILLED, PARTIALLY_FILLED, CANCELLED
+	ChainID      int64      `json:"chain_id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	FilledAt     *time.Time `json:"filled_at"`
 }
 
 // Trade represents a filled trade
 type Trade struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	OrderID       uint      `json:"order_id"`
-	UserAddress   string    `json:"user_address"`
-	MarketID      uint      `json:"market_id"`
-	Symbol        string    `json:"symbol"`
-	Side          string    `json:"side"`
-	Size          float64   `json:"size"`
-	Price         float64   `json:"price"`
-	Fee           float64   `json:"fee"`
-	FeeAsset      string    `json:"fee_asset"`
-	RealizedPNL   float64   `json:"realized_pnl"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	OrderID     uint      `json:"order_id"`
+	UserAddress string    `json:"user_address"`
+	MarketID    uint      `json:"market_id"`
+	Symbol      string    `json:"symbol"`
+	Side        string    `json:"side"`
+	Size        float64   `json:"size"`
+	Price       float64   `json:"price"`
+	Fee         float64   `json:"fee"`
+	FeeAsset    string    `json:"fee_asset"`
+	RealizedPNL float64   `json:"realized_pnl"`
+	ChainID     int64     `json:"chain_id"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // FundingPayment represents funding rate payments
@@ -150,11 +146,11 @@ type FundingPayment struct {
 // ============================================================================
 
 type PerpetualService struct {
-	db     *gorm.DB
-	redis  *redis.Client
-	config Config
-	markets map[string]*PerpetualMarket
-	mu     sync.RWMutex
+	db         *gorm.DB
+	redis      *redis.Client
+	config     Config
+	markets    map[string]*PerpetualMarket
+	mu         sync.RWMutex
 	priceFeeds map[string]float64
 }
 
@@ -185,10 +181,10 @@ func NewPerpetualService(config Config) (*PerpetualService, error) {
 	})
 
 	service := &PerpetualService{
-		db: db,
-		redis: rdb,
-		config: config,
-		markets: make(map[string]*PerpetualMarket),
+		db:         db,
+		redis:      rdb,
+		config:     config,
+		markets:    make(map[string]*PerpetualMarket),
 		priceFeeds: make(map[string]float64),
 	}
 
@@ -199,15 +195,59 @@ func NewPerpetualService(config Config) (*PerpetualService, error) {
 }
 
 // Initialize default markets
+// initializeMarkets seeds default perpetual markets with REAL spot prices
+// from the CoinGecko oracle (Mark/Index/Last/High/Low). Open-interest and
+// 24h volume start at 0 and are filled by real trading activity. Fail-closed:
+// an asset with no live price is not listed.
 func (s *PerpetualService) initializeMarkets() {
-	defaultMarkets := []PerpetualMarket{
-		{Symbol: "ETH-USDT", Name: "Ethereum Perpetual", BaseAsset: "ETH", QuoteAsset: "USDT", ContractSize: 1, MinOrderSize: 0.01, MaxOrderSize: 1000, MaxLeverage: 100, MaintenanceMargin: 0.005, MarkPrice: 3500, IndexPrice: 3498, LastPrice: 3500, FundingRate: 0.0001, OpenInterest: 50000000, Volume24h: 250000000, Change24h: 2.5, High24h: 3600, Low24h: 3400, IsActive: true, ChainID: 1},
-		{Symbol: "BTC-USDT", Name: "Bitcoin Perpetual", BaseAsset: "BTC", QuoteAsset: "USDT", ContractSize: 0.001, MinOrderSize: 0.001, MaxOrderSize: 100, MaxLeverage: 100, MaintenanceMargin: 0.005, MarkPrice: 65000, IndexPrice: 64980, LastPrice: 65000, FundingRate: 0.0001, OpenInterest: 100000000, Volume24h: 500000000, Change24h: 1.8, High24h: 66000, Low24h: 64000, IsActive: true, ChainID: 1},
-		{Symbol: "SOL-USDT", Name: "Solana Perpetual", BaseAsset: "SOL", QuoteAsset: "USDT", ContractSize: 1, MinOrderSize: 0.1, MaxOrderSize: 10000, MaxLeverage: 50, MaintenanceMargin: 0.01, MarkPrice: 150, IndexPrice: 149.5, LastPrice: 150, FundingRate: 0.0002, OpenInterest: 10000000, Volume24h: 50000000, Change24h: 5.2, High24h: 155, Low24h: 142, IsActive: true, ChainID: 1},
-		{Symbol: "ARB-USDT", Name: "Arbitrum Perpetual", BaseAsset: "ARB", QuoteAsset: "USDT", ContractSize: 1, MinOrderSize: 1, MaxOrderSize: 100000, MaxLeverage: 50, MaintenanceMargin: 0.01, MarkPrice: 1.85, IndexPrice: 1.84, LastPrice: 1.85, FundingRate: 0.00015, OpenInterest: 5000000, Volume24h: 25000000, Change24h: -1.2, High24h: 1.90, Low24h: 1.80, IsActive: true, ChainID: 1},
+	type mkt struct {
+		symbol, name, base string
+		contractSize       float64
+		minOrder, maxOrder float64
+		maxLev             float64
+		maintMargin        float64
 	}
-
-	for _, market := range defaultMarkets {
+	defs := []mkt{
+		{"ETH-USDT", "Ethereum Perpetual", "ETH", 1, 0.01, 1000, 100, 0.005},
+		{"BTC-USDT", "Bitcoin Perpetual", "BTC", 0.001, 0.001, 100, 100, 0.005},
+		{"SOL-USDT", "Solana Perpetual", "SOL", 1, 0.1, 10000, 50, 0.01},
+		{"ARB-USDT", "Arbitrum Perpetual", "ARB", 1, 1, 100000, 50, 0.01},
+	}
+	bases := []string{}
+	for _, d := range defs {
+		bases = append(bases, d.base)
+	}
+	spot, err := fetchLivePricesUSD(bases)
+	if err != nil {
+		spot = map[string]float64{}
+	}
+	for _, d := range defs {
+		price := spot[d.base]
+		if price <= 0 {
+			continue
+		}
+		market := PerpetualMarket{
+			Symbol:            d.symbol,
+			Name:              d.name,
+			BaseAsset:         d.base,
+			QuoteAsset:        "USDT",
+			ContractSize:      d.contractSize,
+			MinOrderSize:      d.minOrder,
+			MaxOrderSize:      d.maxOrder,
+			MaxLeverage:       d.maxLev,
+			MaintenanceMargin: d.maintMargin,
+			MarkPrice:         price,
+			IndexPrice:        price,
+			LastPrice:         price,
+			FundingRate:       0,
+			OpenInterest:      0,
+			Volume24h:         0,
+			Change24h:         0,
+			High24h:           price,
+			Low24h:            price,
+			IsActive:          true,
+			ChainID:           1,
+		}
 		var existing PerpetualMarket
 		if s.db.Where("symbol = ?", market.Symbol).First(&existing).RowsAffected == 0 {
 			s.db.Create(&market)
@@ -217,31 +257,50 @@ func (s *PerpetualService) initializeMarkets() {
 }
 
 // Simulated price feeds
+// startPriceFeeds refreshes mark/index/last prices from the real CoinGecko
+// oracle every 10s. No simulated random walk. Fail-closed: keeps last known
+// real price on upstream error.
 func (s *PerpetualService) startPriceFeeds() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	
-	basePrices := map[string]float64{
-		"ETH-USDT": 3500,
-		"BTC-USDT": 65000,
-		"SOL-USDT": 150,
-		"ARB-USDT": 1.85,
-	}
-
-	for range ticker.C {
-		for symbol, base := range basePrices {
-			// Random walk with small changes
-			change := (math.Random() - 0.5) * base * 0.001
-			newPrice := base + change
-			s.priceFeeds[symbol] = newPrice
-			
-			// Update market
-			if market, ok := s.markets[symbol]; ok {
-				market.MarkPrice = newPrice
-				market.LastPrice = newPrice
-				s.db.Save(market)
-			}
+	refresh := func() {
+		s.mu.RLock()
+		bases := []string{}
+		for _, m := range s.markets {
+			bases = append(bases, m.BaseAsset)
 		}
+		s.mu.RUnlock()
+		spot, err := fetchLivePricesUSD(bases)
+		if err != nil || len(spot) == 0 {
+			return
+		}
+		s.mu.Lock()
+		for symbol, market := range s.markets {
+			price := spot[market.BaseAsset]
+			if price <= 0 {
+				continue
+			}
+			s.priceFeeds[symbol] = price
+			old := market.MarkPrice
+			market.MarkPrice = price
+			market.IndexPrice = price
+			market.LastPrice = price
+			if old > 0 {
+				market.Change24h = ((price - old) / old) * 100
+			}
+			if price > market.High24h || market.High24h == 0 {
+				market.High24h = price
+			}
+			if price < market.Low24h || market.Low24h == 0 {
+				market.Low24h = price
+			}
+			s.db.Save(market)
+		}
+		s.mu.Unlock()
+	}
+	refresh()
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		refresh()
 	}
 }
 
@@ -261,14 +320,14 @@ type OpenPositionRequest struct {
 }
 
 type OpenPositionResponse struct {
-	Success         bool    `json:"success"`
-	PositionID      uint    `json:"position_id,omitempty"`
-	TransactionHash string  `json:"transaction_hash,omitempty"`
-	EntryPrice      float64 `json:"entry_price"`
-	Size            float64 `json:"size"`
-	Leverage        float64 `json:"leverage"`
+	Success          bool    `json:"success"`
+	PositionID       uint    `json:"position_id,omitempty"`
+	TransactionHash  string  `json:"transaction_hash,omitempty"`
+	EntryPrice       float64 `json:"entry_price"`
+	Size             float64 `json:"size"`
+	Leverage         float64 `json:"leverage"`
 	LiquidationPrice float64 `json:"liquidation_price"`
-	Error           string  `json:"error,omitempty"`
+	Error            string  `json:"error,omitempty"`
 }
 
 // Open a new position
@@ -302,9 +361,9 @@ func (s *PerpetualService) OpenPosition(ctx *gin.Context) {
 	// Calculate liquidation price
 	var liqPrice float64
 	if req.Side == "LONG" {
-		liqPrice = entryPrice * (1 - (1/req.Leverage) + market.MaintenanceMargin)
+		liqPrice = entryPrice * (1 - (1 / req.Leverage) + market.MaintenanceMargin)
 	} else {
-		liqPrice = entryPrice * (1 + (1/req.Leverage) - market.MaintenanceMargin)
+		liqPrice = entryPrice * (1 + (1 / req.Leverage) - market.MaintenanceMargin)
 	}
 
 	// Create position
@@ -432,8 +491,8 @@ func (s *PerpetualService) ClosePosition(ctx *gin.Context) {
 	s.db.Save(market)
 
 	ctx.JSON(200, gin.H{
-		"success":       true,
-		"realized_pnl":  pnl,
+		"success":        true,
+		"realized_pnl":   pnl,
 		"remaining_size": position.Size,
 	})
 }
@@ -443,18 +502,18 @@ func (s *PerpetualService) ClosePosition(ctx *gin.Context) {
 // ============================================================================
 
 type PositionResponse struct {
-	ID                uint    `json:"id"`
-	Symbol            string  `json:"symbol"`
-	Side              string  `json:"side"`
-	Size              float64 `json:"size"`
-	EntryPrice        float64 `json:"entry_price"`
-	MarkPrice         float64 `json:"mark_price"`
-	Leverage          float64 `json:"leverage"`
-	Collateral        float64 `json:"collateral"`
-	UnrealizedPNL     float64 `json:"unrealized_pnl"`
-	RealizedPNL       float64 `json:"realized_pnl"`
-	LiquidationPrice  float64 `json:"liquidation_price"`
-	Status            string  `json:"status"`
+	ID               uint    `json:"id"`
+	Symbol           string  `json:"symbol"`
+	Side             string  `json:"side"`
+	Size             float64 `json:"size"`
+	EntryPrice       float64 `json:"entry_price"`
+	MarkPrice        float64 `json:"mark_price"`
+	Leverage         float64 `json:"leverage"`
+	Collateral       float64 `json:"collateral"`
+	UnrealizedPNL    float64 `json:"unrealized_pnl"`
+	RealizedPNL      float64 `json:"realized_pnl"`
+	LiquidationPrice float64 `json:"liquidation_price"`
+	Status           string  `json:"status"`
 }
 
 // Get user positions

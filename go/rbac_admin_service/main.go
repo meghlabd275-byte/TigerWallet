@@ -411,30 +411,48 @@ func (s *RBACAdminService) initDemoData() {
 		s.feeStructures[fee.ID] = &fee
 	}
 
-	// Initialize trading pairs
+	// Initialize trading pairs with REAL prices from the CoinGecko oracle.
+	// Fail-closed: if the oracle is unavailable, pairs are created with
+	// Price 0 (no quote) rather than a fabricated number.
+	live, _ := fetchLivePricesUSD([]string{"ETH", "BNB", "MATIC", "SOL"})
+	pairPrice := func(sym string) float64 { return live[sym] }
 	pairs := []TradingPair{
-		{ID: "eth_usdt", Base: "ETH", Quote: "USDT", PairName: "ETH/USDT", Price: 3500.00, Volume24h: 50000000, Liquidity: 100000000, PairStatus: PairActive, ChainID: 1, CreatedAt: time.Now().Unix()},
-		{ID: "bnb_usdt", Base: "BNB", Quote: "USDT", PairName: "BNB/USDT", Price: 600.00, Volume24h: 30000000, Liquidity: 50000000, PairStatus: PairActive, ChainID: 56, CreatedAt: time.Now().Unix()},
-		{ID: "matic_usdt", Base: "MATIC", Quote: "USDT", PairName: "MATIC/USDT", Price: 0.85, Volume24h: 10000000, Liquidity: 20000000, PairStatus: PairActive, ChainID: 137, CreatedAt: time.Now().Unix()},
-		{ID: "arb_usdt", Base: "ETH", Quote: "USDT", PairName: "ARB/USDT", Price: 1.20, Volume24h: 8000000, Liquidity: 15000000, PairStatus: PairActive, ChainID: 42161, CreatedAt: time.Now().Unix()},
-		{ID: "sol_usdt", Base: "SOL", Quote: "USDT", PairName: "SOL/USDT", Price: 150.00, Volume24h: 20000000, Liquidity: 40000000, PairStatus: PairActive, ChainID: 101, CreatedAt: time.Now().Unix()},
+		{ID: "eth_usdt", Base: "ETH", Quote: "USDT", PairName: "ETH/USDT", Price: pairPrice("ETH"), Volume24h: 0, Liquidity: 0, PairStatus: PairActive, ChainID: 1, CreatedAt: time.Now().Unix()},
+		{ID: "bnb_usdt", Base: "BNB", Quote: "USDT", PairName: "BNB/USDT", Price: pairPrice("BNB"), Volume24h: 0, Liquidity: 0, PairStatus: PairActive, ChainID: 56, CreatedAt: time.Now().Unix()},
+		{ID: "matic_usdt", Base: "MATIC", Quote: "USDT", PairName: "MATIC/USDT", Price: pairPrice("MATIC"), Volume24h: 0, Liquidity: 0, PairStatus: PairActive, ChainID: 137, CreatedAt: time.Now().Unix()},
+		{ID: "sol_usdt", Base: "SOL", Quote: "USDT", PairName: "SOL/USDT", Price: pairPrice("SOL"), Volume24h: 0, Liquidity: 0, PairStatus: PairActive, ChainID: 101, CreatedAt: time.Now().Unix()},
 	}
 
 	for _, pair := range pairs {
 		s.tradingPairs[pair.ID] = &pair
 	}
 
-	// Initialize stats
+	// Initialize stats from the real user store (no fabricated numbers).
+	s.refreshStats()
+}
+
+// refreshStats recomputes platform stats from the live in-memory stores.
+// Counts are real; monetary aggregates stay 0 until a real ledger feeds them.
+func (s *RBACAdminService) refreshStats() {
+	s.mu.RLock()
+	totalUsers := len(s.users)
+	activeUsers := 0
+	for _, u := range s.users {
+		if u.Status == StatusActive {
+			activeUsers++
+		}
+	}
+	s.mu.RUnlock()
 	s.stats = PlatformStats{
-		TotalUsers:        1250,
-		ActiveUsers:       890,
-		TotalVolume:       125000000,
-		TotalTransactions: 45000,
-		TotalFees:         850000,
-		ActiveBots:        890,
-		TotalBots:         3420,
-		ActiveCEXConns:    2100,
-		ActiveDEXConns:    450,
+		TotalUsers:        totalUsers,
+		ActiveUsers:       activeUsers,
+		TotalVolume:       0,
+		TotalTransactions: 0,
+		TotalFees:         0,
+		ActiveBots:        0,
+		TotalBots:         0,
+		ActiveCEXConns:    0,
+		ActiveDEXConns:    0,
 	}
 }
 

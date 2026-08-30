@@ -13,23 +13,23 @@ import (
 
 // Order status
 const (
-	OrderStatusPending       = "PENDING"
-	OrderStatusOpen         = "OPEN"
+	OrderStatusPending         = "PENDING"
+	OrderStatusOpen            = "OPEN"
 	OrderStatusPartiallyFilled = "PARTIALLY_FILLED"
-	OrderStatusFilled       = "FILLED"
-	OrderStatusCancelled    = "CANCELLED"
-	OrderStatusRejected    = "REJECTED"
-	OrderStatusExpired    = "EXPIRED"
+	OrderStatusFilled          = "FILLED"
+	OrderStatusCancelled       = "CANCELLED"
+	OrderStatusRejected        = "REJECTED"
+	OrderStatusExpired         = "EXPIRED"
 )
 
 // Order type
 const (
-	OrderTypeLimit       = "LIMIT"
+	OrderTypeLimit      = "LIMIT"
 	OrderTypeMarket     = "MARKET"
 	OrderTypeStopMarket = "STOP_MARKET"
 	OrderTypeStopLimit  = "STOP_LIMIT"
 	OrderTypeTakeProfit = "TAKE_PROFIT"
-	OrderTypeTrailing  = "TRAILING_STOP"
+	OrderTypeTrailing   = "TRAILING_STOP"
 )
 
 // Order side
@@ -47,36 +47,36 @@ const (
 
 // Order represents a trading order
 type Order struct {
-	ID                  string          `json:"id"`
-	UserID              string          `json:"userId"`
-	Symbol             string          `json:"symbol"`
-	Side               string          `json:"side"`
-	OrderType          string          `json:"orderType"`
-	Price             string          `json:"price"`
-	Quantity          string          `json:"quantity"`
-	FilledQuantity    string          `json:"filledQuantity"`
-	RemainingQty     string          `json:"remainingQty"`
-	AvgFillPrice     string          `json:"avgFillPrice"`
-	Status            string          `json:"status"`
-	ReduceOnly       bool            `json:"reduceOnly"`
-	PostOnly         bool            `json:"postOnly"`
-	TimeInForce      string          `json:"timeInForce"`
-	StopPrice        string          `json:"stopPrice"`
-	Leverage         string          `json:"leverage"`
-	MarginType       string          `json:"marginType"`
-	PositionSide    string          `json:"positionSide"`
-	ClientOrderID    string          `json:"clientOrderId"`
-	CreatedAt        int64           `json:"createdAt"`
-	UpdatedAt        int64           `json:"updatedAt"`
-	ExpiresAt        int64           `json:"expiresAt"`
+	ID             string `json:"id"`
+	UserID         string `json:"userId"`
+	Symbol         string `json:"symbol"`
+	Side           string `json:"side"`
+	OrderType      string `json:"orderType"`
+	Price          string `json:"price"`
+	Quantity       string `json:"quantity"`
+	FilledQuantity string `json:"filledQuantity"`
+	RemainingQty   string `json:"remainingQty"`
+	AvgFillPrice   string `json:"avgFillPrice"`
+	Status         string `json:"status"`
+	ReduceOnly     bool   `json:"reduceOnly"`
+	PostOnly       bool   `json:"postOnly"`
+	TimeInForce    string `json:"timeInForce"`
+	StopPrice      string `json:"stopPrice"`
+	Leverage       string `json:"leverage"`
+	MarginType     string `json:"marginType"`
+	PositionSide   string `json:"positionSide"`
+	ClientOrderID  string `json:"clientOrderId"`
+	CreatedAt      int64  `json:"createdAt"`
+	UpdatedAt      int64  `json:"updatedAt"`
+	ExpiresAt      int64  `json:"expiresAt"`
 }
 
 // OrderService handles order operations
 type OrderService struct {
-	mu        sync.RWMutex
-	orders    map[string]*Order
-	redis     *redis.Client
-	orderCh   chan *Order
+	mu      sync.RWMutex
+	orders  map[string]*Order
+	redis   *redis.Client
+	orderCh chan *Order
 }
 
 // NewOrderService creates a new order service
@@ -92,7 +92,7 @@ func NewOrderService() *OrderService {
 }
 
 func (s *OrderService) processOrders() {
-	for order := range s.orderCh {
+	for range s.orderCh {
 		// Process order matching
 		// This would connect to the Rust matching engine
 	}
@@ -101,22 +101,22 @@ func (s *OrderService) processOrders() {
 // CreateOrder creates a new order
 func (s *OrderService) CreateOrder(ctx context.Context, req CreateOrderRequest) (*Order, error) {
 	order := &Order{
-		ID:           uuid.New().String(),
-		UserID:       req.UserID,
-		Symbol:       req.Symbol,
+		ID:          uuid.New().String(),
+		UserID:      req.UserID,
+		Symbol:      req.Symbol,
 		Side:        req.Side,
 		OrderType:   req.OrderType,
-		Price:      req.Price,
-		Quantity:   req.Quantity,
-		Status:     OrderStatusOpen,
-		ReduceOnly: req.ReduceOnly,
-		PostOnly:   req.PostOnly,
+		Price:       req.Price,
+		Quantity:    req.Quantity,
+		Status:      OrderStatusOpen,
+		ReduceOnly:  req.ReduceOnly,
+		PostOnly:    req.PostOnly,
 		TimeInForce: req.TimeInForce,
-		StopPrice:  req.StopPrice,
-		Leverage:   req.Leverage,
-		MarginType: req.MarginType,
-		CreatedAt:  time.Now().Unix(),
-		UpdatedAt: time.Now().Unix(),
+		StopPrice:   req.StopPrice,
+		Leverage:    req.Leverage,
+		MarginType:  req.MarginType,
+		CreatedAt:   time.Now().Unix(),
+		UpdatedAt:   time.Now().Unix(),
 	}
 
 	// Validate order
@@ -203,10 +203,10 @@ func (s *OrderService) GetOrders(ctx context.Context, userID, symbol string) ([]
 func (s *OrderService) GetBalance(ctx context.Context, userID string) (*AccountBalance, error) {
 	// In production, fetch from database
 	return &AccountBalance{
-		UserID:      userID,
-		TotalEquity: "10000",
-		Available:  "10000",
-		UsedMargin:  "0",
+		UserID:        userID,
+		TotalEquity:   "10000",
+		Available:     "10000",
+		UsedMargin:    "0",
 		UnrealizedPNL: "0",
 	}, nil
 }
@@ -214,10 +214,10 @@ func (s *OrderService) GetBalance(ctx context.Context, userID string) (*AccountB
 // GetRiskInfo gets user risk information
 func (s *OrderService) GetRiskInfo(ctx context.Context, userID string) (*RiskInfo, error) {
 	return &RiskInfo{
-		RiskLevel:        "STANDARD",
+		RiskLevel:          "STANDARD",
 		AllowanceRemaining: "1000000",
-		PositionLimit:     "1000000",
-		OpenInterest:     "0",
+		PositionLimit:      "1000000",
+		OpenInterest:       "0",
 	}, nil
 }
 
@@ -229,10 +229,10 @@ func OrderToJSON(order *Order) string {
 
 // AccountBalance represents account balance
 type AccountBalance struct {
-	UserID       string `json:"userId"`
-	TotalEquity string `json:"totalEquity"`
-	Available  string `json:"available"`
-	UsedMargin string `json:"usedMargin"`
+	UserID        string `json:"userId"`
+	TotalEquity   string `json:"totalEquity"`
+	Available     string `json:"available"`
+	UsedMargin    string `json:"usedMargin"`
 	UnrealizedPNL string `json:"unrealizedPnl"`
 }
 
@@ -240,6 +240,6 @@ type AccountBalance struct {
 type RiskInfo struct {
 	RiskLevel          string `json:"riskLevel"`
 	AllowanceRemaining string `json:"allowanceRemaining"`
-	PositionLimit     string `json:"positionLimit"`
-	OpenInterest      string `json:"openInterest"`
+	PositionLimit      string `json:"positionLimit"`
+	OpenInterest       string `json:"openInterest"`
 }

@@ -1,7 +1,7 @@
 /**
  * TigerWallet Advanced Caching Service
  * High-Performance Distributed Cache with Redis Backend
- * 
+ *
  * Features:
  * - Multi-layer caching (L1 memory, L2 Redis)
  * - Cache invalidation strategies
@@ -17,21 +17,16 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"math"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,12 +82,12 @@ var cfg = Config{
 
 // Cache entry
 type CacheEntry struct {
-	Key        string          `json:"key"`
-	Value      string          `json:"value"`
-	Compressed bool            `json:"compressed"`
-	Metadata   CacheMetadata  `json:"metadata"`
-	CreatedAt time.Time       `json:"created_at"`
-	ExpiresAt *time.Time      `json:"expires_at"`
+	Key        string        `json:"key"`
+	Value      string        `json:"value"`
+	Compressed bool          `json:"compressed"`
+	Metadata   CacheMetadata `json:"metadata"`
+	CreatedAt  time.Time     `json:"created_at"`
+	ExpiresAt  *time.Time    `json:"expires_at"`
 }
 
 type CacheMetadata struct {
@@ -107,34 +102,34 @@ type CacheMetadata struct {
 
 // Cache stats
 type CacheStats struct {
-	Hits         int64   `json:"hits"`
-	Misses       int64   `json:"misses"`
-	HitRate      float64 `json:"hit_rate"`
-	Items        int64   `json:"items"`
-	MemoryUsed   int64   `json:"memory_used"`
-	Evictions    int64   `json:"evictions"`
-	Invalidations int64  `json:"invalidations"`
-	Compressed   int64   `json:"compressed"`
+	Hits          int64   `json:"hits"`
+	Misses        int64   `json:"misses"`
+	HitRate       float64 `json:"hit_rate"`
+	Items         int64   `json:"items"`
+	MemoryUsed    int64   `json:"memory_used"`
+	Evictions     int64   `json:"evictions"`
+	Invalidations int64   `json:"invalidations"`
+	Compressed    int64   `json:"compressed"`
 }
 
 // Rate limit info
 type RateLimitInfo struct {
-	Requests    int       `json:"requests"`
-	Allowed     int       `json:"allowed"`
-	Rejected    int       `json:"rejected"`
-	ResetAt     time.Time `json:"reset_at"`
-	WindowSize  time.Duration `json:"window_size"`
+	Requests   int           `json:"requests"`
+	Allowed    int           `json:"allowed"`
+	Rejected   int           `json:"rejected"`
+	ResetAt    time.Time     `json:"reset_at"`
+	WindowSize time.Duration `json:"window_size"`
 }
 
 // Cache configuration per key pattern
 type CacheConfig struct {
-	Pattern         string        `json:"pattern"`
-	TTL            time.Duration `json:"ttl"`
-	MaxSize        int           `json:"max_size"`
-	Compression    bool          `json:"compression"`
-	InvalidateOn   []string      `json:"invalidate_on"` // patterns that invalidate this
-	Preload        bool          `json:"preload"`
-	StaleWhileRevalidate bool    `json:"stale_while_revalidate"`
+	Pattern              string        `json:"pattern"`
+	TTL                  time.Duration `json:"ttl"`
+	MaxSize              int           `json:"max_size"`
+	Compression          bool          `json:"compression"`
+	InvalidateOn         []string      `json:"invalidate_on"` // patterns that invalidate this
+	Preload              bool          `json:"preload"`
+	StaleWhileRevalidate bool          `json:"stale_while_revalidate"`
 }
 
 // Distributed lock
@@ -148,12 +143,12 @@ type DistributedLock struct {
 
 // Cache warm-up task
 type WarmUpTask struct {
-	TaskID      string    `json:"task_id"`
-	Pattern     string    `json:"pattern"`
-	Priority    int       `json:"priority"`
-	Status      string    `json:"status"` // pending, running, completed, failed
-	ItemsLoaded int       `json:"items_loaded"`
-	Error       string    `json:"error"`
+	TaskID      string     `json:"task_id"`
+	Pattern     string     `json:"pattern"`
+	Priority    int        `json:"priority"`
+	Status      string     `json:"status"` // pending, running, completed, failed
+	ItemsLoaded int        `json:"items_loaded"`
+	Error       string     `json:"error"`
 	StartedAt   *time.Time `json:"started_at"`
 	CompletedAt *time.Time `json:"completed_at"`
 }
@@ -163,20 +158,20 @@ type WarmUpTask struct {
 // ============================================================================
 
 type L1Cache struct {
-	mu         sync.RWMutex
-	items      map[string]*CacheEntry
+	mu          sync.RWMutex
+	items       map[string]*CacheEntry
 	accessOrder []string
-	maxSize    int
-	stats      CacheStats
-	hits       int64
-	misses     int64
+	maxSize     int
+	stats       CacheStats
+	hits        int64
+	misses      int64
 }
 
 func NewL1Cache(maxSize int) *L1Cache {
 	return &L1Cache{
-		items:      make(map[string]*CacheEntry),
+		items:       make(map[string]*CacheEntry),
 		accessOrder: make([]string, 0, maxSize),
-		maxSize:    maxSize,
+		maxSize:     maxSize,
 	}
 }
 
@@ -256,14 +251,14 @@ func (c *L1Cache) GetStats() CacheStats {
 	}
 
 	return CacheStats{
-		Hits:         hits,
-		Misses:       misses,
-		HitRate:      hitRate,
-		Items:        int64(len(c.items)),
-		MemoryUsed:   int64(len(c.items) * 200), // Estimate
-		Evictions:    c.stats.Evictions,
+		Hits:          hits,
+		Misses:        misses,
+		HitRate:       hitRate,
+		Items:         int64(len(c.items)),
+		MemoryUsed:    int64(len(c.items) * 200), // Estimate
+		Evictions:     c.stats.Evictions,
 		Invalidations: c.stats.Invalidations,
-		Compressed:   c.stats.Compressed,
+		Compressed:    c.stats.Compressed,
 	}
 }
 
@@ -273,7 +268,7 @@ func (c *L1Cache) evictOldest() {
 	}
 
 	oldest := c.accessOrder[len(c.accessOrder)-1]
-	delete(c.items, c.accessOrder[:len(c.accessOrder)-1])
+	delete(c.items, oldest)
 	c.accessOrder = c.accessOrder[:len(c.accessOrder)-1]
 	atomic.AddInt64(&c.stats.Evictions, 1)
 }
@@ -292,8 +287,8 @@ func (c *L1Cache) moveToFront(key string) {
 // ============================================================================
 
 type L2Cache struct {
-	client     *redis.Client
-	ctx        context.Context
+	client             *redis.Client
+	ctx                context.Context
 	compressionEnabled bool
 }
 
@@ -316,8 +311,8 @@ func NewL2Cache(addr, password string, db int, compression bool) (*L2Cache, erro
 	}
 
 	return &L2Cache{
-		client:            client,
-		ctx:               ctx,
+		client:             client,
+		ctx:                ctx,
 		compressionEnabled: compression,
 	}, nil
 }
@@ -553,13 +548,13 @@ func (s *CacheService) Set(c *gin.Context) {
 	expiresAt := time.Now().Add(ttl)
 
 	entry := &CacheEntry{
-		Key:  req.Key,
-		Value: req.Value,
+		Key:        req.Key,
+		Value:      req.Value,
 		Compressed: compression,
 		Metadata: CacheMetadata{
-			Size:        len(req.Value),
+			Size:         len(req.Value),
 			LastAccessed: time.Now(),
-			ContentType: req.ContentType,
+			ContentType:  req.ContentType,
 		},
 		CreatedAt: time.Now(),
 		ExpiresAt: &expiresAt,
@@ -639,9 +634,9 @@ func (s *CacheService) Stats(c *gin.Context) {
 	l1Stats := s.l1.GetStats()
 
 	stats := map[string]interface{}{
-		"l1": l1Stats,
+		"l1":           l1Stats,
 		"rate_limiter": s.rateLimiter.GetStats(),
-		"metrics": s.metrics.GetStats(),
+		"metrics":      s.metrics.GetStats(),
 	}
 
 	if s.l2 != nil {
@@ -676,10 +671,10 @@ type RateLimiter struct {
 }
 
 type ClientLimit struct {
-	Tokens     int
-	Requests   int
-	Rejected   int
-	ResetAt    time.Time
+	Tokens   int
+	Requests int
+	Rejected int
+	ResetAt  time.Time
 }
 
 func NewRateLimiter(rps, burstMultiplier int) *RateLimiter {
@@ -746,7 +741,7 @@ func (rl *RateLimiter) GetStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"tokens":          rl.tokens,
+		"tokens":         rl.tokens,
 		"max_tokens":     rl.maxTokens,
 		"total_requests": totalRequests,
 		"total_rejected": totalRejected,
@@ -824,14 +819,14 @@ func (lm *LockManager) Release(ctx context.Context, key, token string) error {
 // ============================================================================
 
 type MetricsCollector struct {
-	mu            sync.RWMutex
-	hits          int64
-	misses        int64
-	sets          int64
-	deletes       int64
-	errors        int64
-	latencies     []time.Duration
-	startTime     time.Time
+	mu        sync.RWMutex
+	hits      int64
+	misses    int64
+	sets      int64
+	deletes   int64
+	errors    int64
+	latencies []time.Duration
+	startTime time.Time
 }
 
 func NewMetricsCollector() *MetricsCollector {
@@ -914,9 +909,9 @@ func (m *MetricsCollector) GetStats() map[string]interface{} {
 // ============================================================================
 
 type WarmUpManager struct {
-	cache  *L2Cache
-	tasks  map[string]*WarmUpTask
-	mu     sync.RWMutex
+	cache *L2Cache
+	tasks map[string]*WarmUpTask
+	mu    sync.RWMutex
 }
 
 func NewWarmUpManager(cache *L2Cache) *WarmUpManager {
@@ -951,10 +946,9 @@ func (w *WarmUpManager) runTask(task *WarmUpTask) {
 	task.StartedAt = &now
 	w.mu.Unlock()
 
-	// Simulate loading data
-	time.Sleep(100 * time.Millisecond)
-
-	task.ItemsLoaded = rand.Intn(1000)
+	// No fabricated load: with no backing data source wired, zero items are
+	// loaded. When a source is attached, populate the real count here.
+	task.ItemsLoaded = 0
 
 	w.mu.Lock()
 	completedAt := time.Now()
@@ -1041,9 +1035,9 @@ func (s *CacheService) GetConfigs(c *gin.Context) {
 
 func (s *CacheService) AcquireLock(c *gin.Context) {
 	var req struct {
-		Key     string `json:"key" binding:"required"`
-		Holder  string `json:"holder" binding:"required"`
-		TTLMs   int    `json:"ttl_ms"`
+		Key    string `json:"key" binding:"required"`
+		Holder string `json:"holder" binding:"required"`
+		TTLMs  int    `json:"ttl_ms"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1071,8 +1065,8 @@ func (s *CacheService) AcquireLock(c *gin.Context) {
 
 func (s *CacheService) ReleaseLock(c *gin.Context) {
 	var req struct {
-		Key    string `json:"key" binding:"required"`
-		Token  string `json:"token" binding:"required"`
+		Key   string `json:"key" binding:"required"`
+		Token string `json:"token" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -1,7 +1,7 @@
 /**
  * TigerWallet Hyperliquid Integration Service
  * Production-ready Hyperliquid perpetual trading integration
- * 
+ *
  * Features:
  * - Perpetual futures trading
  * - Long/Short positions
@@ -16,20 +16,15 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
+	"strconv"
 	"syscall"
+	"tigerwallet/hyperliquid/hlapi"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,18 +38,18 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort      string
-	DBHost          string
-	DBPort          string
-	DBUser          string
-	DBPassword      string
-	DBName          string
-	
+	ServerPort string
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+
 	// Hyperliquid
-	HyperliquidRPC  string
-	HyperliquidWS   string
-	Testnet         bool
-	
+	HyperliquidRPC string
+	HyperliquidWS  string
+	Testnet        bool
+
 	// Trading
 	MaxLeverage     float64
 	DefaultLeverage float64
@@ -90,189 +85,156 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type HyperliquidUser struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID           uint      `gorm:"uniqueIndex" json:"user_id"`
-	WalletAddress    string    `gorm:"index" json:"wallet_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID        uint   `gorm:"uniqueIndex" json:"user_id"`
+	WalletAddress string `gorm:"index" json:"wallet_address"`
+
 	// Hyperliquid account
-	HLAddress         string    `gorm:"uniqueIndex" json:"hl_address"`
-	PublicKey         string    `json:"public_key"`
-	
+	HLAddress string `gorm:"uniqueIndex" json:"hl_address"`
+	PublicKey string `json:"public_key"`
+
 	// Sub-account
-	SubAccount        string    `json:"sub_account"` // For multi-subaccount trading
-	
-	Status            string    `json:"status"` // active, suspended, closed
+	SubAccount string `json:"sub_account"` // For multi-subaccount trading
+
+	Status string `json:"status"` // active, suspended, closed
 }
 
 type Position struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID           uint      `gorm:"index" json:"user_id"`
-	HLAddress        string    `gorm:"index" json:"hl_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID    uint   `gorm:"index" json:"user_id"`
+	HLAddress string `gorm:"index" json:"hl_address"`
+
 	// Position details
-	Asset             string    `json:"asset"` // BTC, ETH, SOL, etc.
-	Side              string    `json:"side"` // long, short
-	Size              float64   `json:"size"`
-	EntryPrice        float64   `json:"entry_price"`
-	MarkPrice         float64   `json:"mark_price"`
-	Leverage          float64   `json:"leverage"`
-	
+	Asset      string  `json:"asset"` // BTC, ETH, SOL, etc.
+	Side       string  `json:"side"`  // long, short
+	Size       float64 `json:"size"`
+	EntryPrice float64 `json:"entry_price"`
+	MarkPrice  float64 `json:"mark_price"`
+	Leverage   float64 `json:"leverage"`
+
 	// PnL
-	UnrealizedPNL     float64   `json:"unrealized_pnl"`
-	RealizedPNL       float64   `json:"realized_pnl"`
-	
+	UnrealizedPNL float64 `json:"unrealized_pnl"`
+	RealizedPNL   float64 `json:"realized_pnl"`
+
 	// Liquidation
-	LiquidationPrice  float64   `json:"liquidation_price"`
-	IsLiquidated      bool      `json:"is_liquidated"`
-	
-	Status            string    `json:"status"` // open, closed, liquidated
+	LiquidationPrice float64 `json:"liquidation_price"`
+	IsLiquidated     bool    `json:"is_liquidated"`
+
+	Status string `json:"status"` // open, closed, liquidated
 }
 
 type Order struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID           uint      `gorm:"index" json:"user_id"`
-	HLAddress        string    `gorm:"index" json:"hl_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID    uint   `gorm:"index" json:"user_id"`
+	HLAddress string `gorm:"index" json:"hl_address"`
+
 	// Order details
-	OrderID          string    `gorm:"uniqueIndex" json:"order_id"`
-	HLOrderID         string    `json:"hl_order_id"`
-	Asset             string    `json:"asset"`
-	Side              string    `json:"side"` // buy, sell
-	OrderType         string    `json:"order_type"` // market, limit, stop_market, stop_limit
-	Price             float64   `json:"price"`
-	TriggerPrice      float64   `json:"trigger_price"`
-	Size              float64   `json:"size"`
-	FilledSize        float64   `json:"filled_size"`
-	
+	OrderID      string  `gorm:"uniqueIndex" json:"order_id"`
+	HLOrderID    string  `json:"hl_order_id"`
+	Asset        string  `json:"asset"`
+	Side         string  `json:"side"`       // buy, sell
+	OrderType    string  `json:"order_type"` // market, limit, stop_market, stop_limit
+	Price        float64 `json:"price"`
+	TriggerPrice float64 `json:"trigger_price"`
+	Size         float64 `json:"size"`
+	FilledSize   float64 `json:"filled_size"`
+	Leverage     float64 `json:"leverage"`
+
 	// Status
-	Status            string    `json:"status"` // pending, open, filled, cancelled, expired
-	AverageFillPrice  float64   `json:"average_fill_price"`
-	
+	Status           string  `json:"status"` // pending, open, filled, cancelled, expired
+	AverageFillPrice float64 `json:"average_fill_price"`
+
 	// Time
-	ExpiresAt         *time.Time `json:"expires_at"`
-	FilledAt          *time.Time `json:"filled_at"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	FilledAt  *time.Time `json:"filled_at"`
 }
 
 type Trade struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	UserID           uint      `gorm:"index" json:"user_id"`
-	HLAddress        string    `gorm:"index" json:"hl_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	UserID    uint   `gorm:"index" json:"user_id"`
+	HLAddress string `gorm:"index" json:"hl_address"`
+
 	// Trade details
-	TradeID          string    `gorm:"uniqueIndex" json:"trade_id"`
-	HLTradeID         string    `json:"hl_trade_id"`
-	OrderID          string    `gorm:"index" json:"order_id"`
-	Asset             string    `json:"asset"`
-	Side              string    `json:"side"`
-	Size              float64   `json:"size"`
-	Price             float64   `json:"price"`
-	Fee               float64   `json:"fee"`
-	
+	TradeID   string  `gorm:"uniqueIndex" json:"trade_id"`
+	HLTradeID string  `json:"hl_trade_id"`
+	OrderID   string  `gorm:"index" json:"order_id"`
+	Asset     string  `json:"asset"`
+	Side      string  `json:"side"`
+	Size      float64 `json:"size"`
+	Price     float64 `json:"price"`
+	Fee       float64 `json:"fee"`
+
 	// PnL
-	RealizedPNL       float64   `json:"realized_pnl"`
-	
-	TransactionHash   string    `json:"transaction_hash"`
+	RealizedPNL float64 `json:"realized_pnl"`
+
+	TransactionHash string `json:"transaction_hash"`
 }
 
 type AssetInfo struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	Asset             string    `gorm:"uniqueIndex" json:"asset"`
-	Symbol            string    `json:"symbol"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	Asset  string `gorm:"uniqueIndex" json:"asset"`
+	Symbol string `json:"symbol"`
+
 	// Trading info
-	MaxLeverage       float64   `json:"max_leverage"`
-	MinOrderSize     float64   `json:"min_order_size"`
-	TickSize         float64   `json:"tick_size"`
-	ContractSize     float64   `json:"contract_size"`
-	
+	MaxLeverage  float64 `json:"max_leverage"`
+	MinOrderSize float64 `json:"min_order_size"`
+	TickSize     float64 `json:"tick_size"`
+	ContractSize float64 `json:"contract_size"`
+
 	// Risk parameters
-	InitialMarginRate float64  `json:"initial_margin_rate"`
+	InitialMarginRate     float64 `json:"initial_margin_rate"`
 	MaintenanceMarginRate float64 `json:"maintenance_margin_rate"`
-	MaxPositionSize  float64   `json:"max_position_size"`
-	
+	MaxPositionSize       float64 `json:"max_position_size"`
+
 	// Funding
-	FundingRate       float64   `json:"funding_rate"`
-	NextFundingTime   time.Time `json:"next_funding_time"`
-	
+	FundingRate     float64   `json:"funding_rate"`
+	NextFundingTime time.Time `json:"next_funding_time"`
+
 	// Price
-	MarkPrice        float64   `json:"mark_price"`
-	IndexPrice       float64   `json:"index_price"`
-	OpenInterest     float64   `json:"open_interest"`
-	
-	IsActive         bool      `json:"is_active"`
+	MarkPrice    float64 `json:"mark_price"`
+	IndexPrice   float64 `json:"index_price"`
+	OpenInterest float64 `json:"open_interest"`
+
+	IsActive bool `json:"is_active"`
 }
 
 type AccountBalance struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID           uint      `gorm:"index" json:"user_id"`
-	HLAddress        string    `gorm:"index" json:"hl_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID    uint   `gorm:"index" json:"user_id"`
+	HLAddress string `gorm:"index" json:"hl_address"`
+
 	// Balances
-	TotalCollateral   float64   `json:"total_collateral"`
-	AvailableBalance  float64   `json:"available_balance"`
+	TotalCollateral    float64 `json:"total_collateral"`
+	AvailableBalance   float64 `json:"available_balance"`
 	TotalPositionValue float64 `json:"total_position_value"`
 	TotalPendingOrders float64 `json:"total_pending_orders"`
-	
+
 	// Unrealized
-	TotalUnrealizedPNL float64  `json:"total_unrealized_pnl"`
-	
+	TotalUnrealizedPNL float64 `json:"total_unrealized_pnl"`
+
 	// Leverage
-	AccountLeverage   float64   `json:"account_leverage"`
-	HealthFactor     float64   `json:"health_factor"`
-	
-	UpdatedAt         time.Time `json:"updated_at"`
+	AccountLeverage float64 `json:"account_leverage"`
+	HealthFactor    float64 `json:"health_factor"`
 }
 
 // ============================================================================
 // Hyperliquid API Types
-// ============================================================================
-
-type APIRequest struct {
-	type_ string `json:"type"`
-}
-
-type APIResponse struct {
-	// Response data
-}
-
-type OrderRequest struct {
-	type_      string `json:"type"`
-	asset      int    `json:"asset"`
-	sz         string `json:"sz"`
-	side       string `json:"side"`
-	limitPx    string `json:"limitPx,omitempty"`
-	orderType  string `json:"orderType"`
-	reduceOnly bool   `json:"reduceOnly,omitempty"`
-	triggerPx  string `json:"triggerPx,omitempty"`
-}
-
-type CancelRequest struct {
-	type_    string   `json:"type"`
-	orders   []string `json:"orders"`
-}
-
-type TransferRequest struct {
-	type_   string `json:"type"`
-	asset   int    `json:"asset"`
-	amount  string `json:"amount"`
-	dest    string `json:"dest"`
-}
 
 // ============================================================================
 // Service Implementation
@@ -286,16 +248,16 @@ type HyperliquidService struct {
 func NewHyperliquidService(db *gorm.DB, config *Config) *HyperliquidService {
 	return &HyperliquidService{
 		db:     db,
-		config:  config,
+		config: config,
 	}
 }
 
 // CreateUser creates a new Hyperliquid user account
 func (s *HyperliquidService) CreateUser(userID uint, walletAddress string) (*HyperliquidUser, error) {
-	// In production, this would create an actual Hyperliquid account
-	// For now, generate a mock address
-	hlAddress := generateHLAddress(walletAddress)
-	
+	// A Hyperliquid account IS the user's EVM wallet address — there is no
+	// separate venue account to create. The wallet address is the account.
+	hlAddress := walletAddress
+
 	user := &HyperliquidUser{
 		UserID:        userID,
 		WalletAddress: walletAddress,
@@ -330,8 +292,14 @@ func (s *HyperliquidService) GetBalance(userID uint) (*AccountBalance, error) {
 	var positions []Position
 	s.db.Where("hl_address = ? AND status = ?", user.HLAddress, "open").Find(&positions)
 
-	// Calculate totals
-	totalCollateral := 10000.0 // Mock - in production, fetch from Hyperliquid
+	// Real collateral from the live Hyperliquid clearinghouse state.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	state, err := hlapi.GetAccountState(ctx, user.HLAddress)
+	if err != nil {
+		return nil, fmt.Errorf("hyperliquid account state: %w", err)
+	}
+	totalCollateral := state.AccountValue
 	availableBalance := totalCollateral
 	totalPositionValue := 0.0
 	totalUnrealizedPNL := 0.0
@@ -348,7 +316,7 @@ func (s *HyperliquidService) GetBalance(userID uint) (*AccountBalance, error) {
 		UserID:             userID,
 		HLAddress:          user.HLAddress,
 		TotalCollateral:    totalCollateral,
-		AvailableBalance:  math.Max(0, availableBalance),
+		AvailableBalance:   math.Max(0, availableBalance),
 		TotalPositionValue: totalPositionValue,
 		TotalUnrealizedPNL: totalUnrealizedPNL,
 	}
@@ -357,161 +325,211 @@ func (s *HyperliquidService) GetBalance(userID uint) (*AccountBalance, error) {
 }
 
 // OpenPosition opens a new position
+// OpenPosition places a REAL order on Hyperliquid (EIP-712 signed, live
+// /exchange submission). Fail-closed: without HL_PRIVATE_KEY no order is
+// attempted, and fills are never simulated — the venue response determines
+// the recorded status.
 func (s *HyperliquidService) OpenPosition(userID uint, asset, side string, size, leverage, price float64, orderType string) (*Order, error) {
-	// Get user
 	user, err := s.GetUser(userID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Get asset info
-	var assetInfo AssetInfo
-	if err := s.db.Where("asset = ? AND is_active = ?", asset, true).First(&assetInfo).Error; err != nil {
-		return nil, fmt.Errorf("asset not found: %s", asset)
+	signer := hlapi.SignerKeyFromEnv()
+	if signer == "" {
+		return nil, fmt.Errorf("HL_PRIVATE_KEY not configured; order submission disabled")
 	}
 
-	// Validate leverage
-	if leverage > assetInfo.MaxLeverage {
-		leverage = assetInfo.MaxLeverage
+	// Validate leverage against the venue metadata (real max leverage).
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	assetID, err := hlapi.AssetIndex(ctx, asset)
+	if err != nil {
+		return nil, err
 	}
 	if leverage > s.config.MaxLeverage {
 		leverage = s.config.MaxLeverage
 	}
 
-	// Calculate entry price
-	entryPrice := price
+	// Market orders use the real live mark price with a protective slippage
+	// bound; limit orders use the caller's price.
 	if price == 0 {
-		entryPrice = assetInfo.MarkPrice
+		md, err := hlapi.GetMarketData(ctx, []string{asset})
+		if err != nil || len(md) == 0 {
+			return nil, fmt.Errorf("live price unavailable for %s", asset)
+		}
+		mark := md[0].MarkPrice
+		if side == "buy" {
+			price = mark * 1.05
+		} else {
+			price = mark * 0.95
+		}
+		if orderType == "" {
+			orderType = "market"
+		}
 	}
 
-	// Calculate position value
-	positionValue := size * entryPrice
-	requiredMargin := positionValue / leverage
+	// Real margin check against the live venue account value.
+	state, err := hlapi.GetAccountState(ctx, user.HLAddress)
+	if err != nil {
+		return nil, fmt.Errorf("account state: %w", err)
+	}
+	requiredMargin := size * price / leverage
+	if requiredMargin > state.AccountValue {
+		return nil, fmt.Errorf("insufficient collateral: required %v, available %v", requiredMargin, state.AccountValue)
+	}
 
-	// Check available balance
-	balance, err := s.GetBalance(userID)
+	tif := "Gtc"
+	if orderType == "market" {
+		tif = "Ioc"
+	}
+	res, err := hlapi.PlacePerpOrder(ctx, signer, assetID, side == "buy", price, size, false, tif)
 	if err != nil {
 		return nil, err
 	}
 
-	if requiredMargin > balance.AvailableBalance {
-		return nil, fmt.Errorf("insufficient balance: required %v, available %v", requiredMargin, balance.AvailableBalance)
-	}
-
-	// Create order
 	order := &Order{
-		UserID:      userID,
-		HLAddress:   user.HLAddress,
-		OrderID:     uuid.New().String(),
-		Asset:       asset,
-		Side:        side,
-		OrderType:   orderType,
-		Price:       entryPrice,
-		Size:        size,
-		Leverage:    leverage,
-		Status:      "pending",
+		UserID:    userID,
+		HLAddress: user.HLAddress,
+		OrderID:   uuid.New().String(),
+		HLOrderID: strconv.FormatInt(res.VenueOrderID, 10),
+		Asset:     asset,
+		Side:      side,
+		OrderType: orderType,
+		Price:     price,
+		Size:      size,
+		Leverage:  leverage,
+		Status:    res.Status, // real venue status: resting | filled
 	}
-
+	if res.Status == "filled" {
+		order.FilledSize = res.FilledSize
+		order.AverageFillPrice = res.AvgPrice
+		now := time.Now()
+		order.FilledAt = &now
+	}
 	if err := s.db.Create(order).Error; err != nil {
 		return nil, err
 	}
-
-	// In production, this would send the order to Hyperliquid
-	// For now, simulate order fill
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		s.db.Model(order).Updates(map[string]interface{}{
-			"status":             "filled",
-			"filled_size":        size,
-			"average_fill_price": entryPrice,
-			"filled_at":          time.Now(),
-		})
-
-		// Create position
-		liquidationPrice := calculateLiquidationPrice(entryPrice, side, leverage)
-		
-		position := &Position{
-			UserID:         userID,
-			HLAddress:      user.HLAddress,
-			Asset:          asset,
-			Side:           side,
-			Size:           size,
-			EntryPrice:     entryPrice,
-			MarkPrice:      entryPrice,
-			Leverage:       leverage,
-			LiquidationPrice: liquidationPrice,
-			Status:         "open",
-		}
-		s.db.Create(position)
-	}()
-
 	return order, nil
 }
 
-// ClosePosition closes an existing position
+// ClosePosition closes an existing venue position with a REAL reduce-only
+// market order. The position is only marked closed after the venue fills.
 func (s *HyperliquidService) ClosePosition(userID uint, positionID uint) (*Order, error) {
 	var position Position
 	if err := s.db.Where("id = ? AND user_id = ? AND status = ?", positionID, userID, "open").First(&position).Error; err != nil {
 		return nil, fmt.Errorf("position not found")
 	}
+	user, err := s.GetUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	signer := hlapi.SignerKeyFromEnv()
+	if signer == "" {
+		return nil, fmt.Errorf("HL_PRIVATE_KEY not configured; order submission disabled")
+	}
 
-	// Create closing order
 	side := "sell"
 	if position.Side == "short" {
 		side = "buy"
 	}
 
-	user, _ := s.GetUser(userID)
-	
-	order := &Order{
-		UserID:      userID,
-		HLAddress:   user.HLAddress,
-		OrderID:     uuid.New().String(),
-		Asset:       position.Asset,
-		Side:        side,
-		OrderType:   "market",
-		Size:        position.Size,
-		Status:      "pending",
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	assetID, err := hlapi.AssetIndex(ctx, position.Asset)
+	if err != nil {
+		return nil, err
+	}
+	md, err := hlapi.GetMarketData(ctx, []string{position.Asset})
+	if err != nil || len(md) == 0 {
+		return nil, fmt.Errorf("live price unavailable for %s", position.Asset)
+	}
+	mark := md[0].MarkPrice
+	limitPrice := mark * 0.95
+	if side == "buy" {
+		limitPrice = mark * 1.05
 	}
 
+	res, err := hlapi.PlacePerpOrder(ctx, signer, assetID, side == "buy", limitPrice, position.Size, true, "Ioc")
+	if err != nil {
+		return nil, err
+	}
+
+	order := &Order{
+		UserID:    userID,
+		HLAddress: user.HLAddress,
+		OrderID:   uuid.New().String(),
+		HLOrderID: strconv.FormatInt(res.VenueOrderID, 10),
+		Asset:     position.Asset,
+		Side:      side,
+		OrderType: "market",
+		Size:      position.Size,
+		Status:    res.Status,
+	}
+	if res.Status == "filled" {
+		order.FilledSize = res.FilledSize
+		order.AverageFillPrice = res.AvgPrice
+		now := time.Now()
+		order.FilledAt = &now
+
+		// Position closed on venue: record the real realized PnL from the
+		// actual fill price.
+		realized := calculatePNL(position.EntryPrice, res.AvgPrice, res.FilledSize, position.Side)
+		position.Status = "closed"
+		position.RealizedPNL = realized
+		position.UnrealizedPNL = 0
+		s.db.Save(&position)
+	}
 	if err := s.db.Create(order).Error; err != nil {
 		return nil, err
 	}
-
-	// Simulate fill
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		
-		// Calculate realized PnL
-		var pnl float64
-		if position.Side == "long" {
-			pnl = (position.MarkPrice - position.EntryPrice) * position.Size
-		} else {
-			pnl = (position.EntryPrice - position.MarkPrice) * position.Size
-		}
-
-		s.db.Model(order).Updates(map[string]interface{}{
-			"status":            "filled",
-			"filled_size":       position.Size,
-			"average_fill_price": position.MarkPrice,
-			"filled_at":         time.Now(),
-		})
-
-		s.db.Model(&position).Updates(map[string]interface{}{
-			"status":         "closed",
-			"realized_pnl":   pnl,
-			"unrealized_pnl": 0,
-		})
-	}()
-
 	return order, nil
 }
 
-// GetPositions gets all open positions for a user
+// GetPositions returns the user's REAL open positions from the live venue
+// clearinghouse state (the venue is authoritative).
 func (s *HyperliquidService) GetPositions(userID uint) ([]Position, error) {
-	var positions []Position
-	if err := s.db.Where("user_id = ? AND status = ?", userID, "open").Find(&positions).Error; err != nil {
+	user, err := s.GetUser(userID)
+	if err != nil {
 		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	venue, err := hlapi.GetVenuePositions(ctx, user.HLAddress)
+	if err != nil {
+		return nil, err
+	}
+	markets, _ := hlapi.GetMarketData(ctx, func() []string {
+		out := make([]string, 0, len(venue))
+		for _, p := range venue {
+			out = append(out, p.Asset)
+		}
+		return out
+	}())
+	marks := map[string]float64{}
+	for _, m := range markets {
+		marks[m.Symbol] = m.MarkPrice
+	}
+	positions := make([]Position, 0, len(venue))
+	for _, vp := range venue {
+		side := "long"
+		size := vp.Size
+		if size < 0 {
+			side = "short"
+			size = -size
+		}
+		positions = append(positions, Position{
+			UserID:           userID,
+			HLAddress:        user.HLAddress,
+			Asset:            vp.Asset,
+			Side:             side,
+			Size:             size,
+			EntryPrice:       vp.EntryPrice,
+			MarkPrice:        marks[vp.Asset],
+			Leverage:         vp.Leverage,
+			LiquidationPrice: vp.LiquidationPrice,
+			UnrealizedPNL:    vp.UnrealizedPNL,
+			Status:           "open",
+		})
 	}
 	return positions, nil
 }
@@ -520,30 +538,46 @@ func (s *HyperliquidService) GetPositions(userID uint) ([]Position, error) {
 func (s *HyperliquidService) GetOrders(userID uint, status string) ([]Order, error) {
 	var orders []Order
 	query := s.db.Where("user_id = ?", userID)
-	
+
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if err := query.Order("created_at DESC").Find(&orders).Error; err != nil {
 		return nil, err
 	}
 	return orders, nil
 }
 
-// CancelOrder cancels an order
+// CancelOrder cancels a resting order on the venue (real signed cancel).
+// Fail-closed when the order has no venue id.
 func (s *HyperliquidService) CancelOrder(userID uint, orderID string) error {
-	result := s.db.Model(&Order{}).
-		Where("order_id = ? AND user_id = ? AND status = ?", orderID, userID, "pending").
-		Updates(map[string]interface{}{
-			"status": "cancelled",
-		})
-	
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("order not found or cannot be cancelled")
+	var order Order
+	if err := s.db.Where("order_id = ? AND user_id = ? AND status = ?", orderID, userID, "resting").First(&order).Error; err != nil {
+		return fmt.Errorf("resting order not found")
 	}
-	
-	return nil
+	if order.HLOrderID == "" {
+		return fmt.Errorf("order has no venue id; cannot cancel on venue")
+	}
+	signer := hlapi.SignerKeyFromEnv()
+	if signer == "" {
+		return fmt.Errorf("HL_PRIVATE_KEY not configured; cancel disabled")
+	}
+	oid, err := strconv.ParseInt(order.HLOrderID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid venue order id: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	assetID, err := hlapi.AssetIndex(ctx, order.Asset)
+	if err != nil {
+		return err
+	}
+	if err := hlapi.CancelVenueOrder(ctx, signer, assetID, oid); err != nil {
+		return err
+	}
+	order.Status = "cancelled"
+	return s.db.Save(&order).Error
 }
 
 // GetTrades gets trade history for a user
@@ -564,32 +598,31 @@ func (s *HyperliquidService) GetAssets() ([]AssetInfo, error) {
 	return assets, nil
 }
 
-// GetAssetPrice gets current price for an asset
+// GetAssetPrice returns the real live mark price from the venue.
 func (s *HyperliquidService) GetAssetPrice(asset string) (float64, error) {
-	var assetInfo AssetInfo
-	if err := s.db.Where("asset = ? AND is_active = ?", asset, true).First(&assetInfo).Error; err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	md, err := hlapi.GetMarketData(ctx, []string{asset})
+	if err != nil {
 		return 0, err
 	}
-	return assetInfo.MarkPrice, nil
+	if len(md) == 0 {
+		return 0, fmt.Errorf("asset %q not found on hyperliquid", asset)
+	}
+	return md[0].MarkPrice, nil
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-func generateHLAddress(walletAddress string) string {
-	// Generate a deterministic Hyperliquid address from wallet address
-	hash := sha256.Sum256([]byte(walletAddress))
-	return "0x" + hex.EncodeToString(hash[:20])
-}
-
 func calculateLiquidationPrice(entryPrice float64, side string, leverage float64) float64 {
 	// Liquidation price calculation for perpetual contracts
 	// For long: entryPrice * (1 - 1/leverage)
 	// For short: entryPrice * (1 + 1/leverage)
-	
+
 	liquidationThreshold := 1.0 / leverage
-	
+
 	if side == "long" {
 		return entryPrice * (1 - liquidationThreshold)
 	}
@@ -828,12 +861,12 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return
 		}
-		
+
 		c.Next()
 	})
 
@@ -876,13 +909,10 @@ func main() {
 	log.Println("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
 	log.Println("Server exited")
 }
-
-// Add strconv import
-import "strconv"

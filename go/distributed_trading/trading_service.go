@@ -131,77 +131,95 @@ func NewDistributedTradingService(shards int) *DistributedTradingService {
 		shardMutexes: make([]sync.RWMutex, shards),
 	}
 	dts.initializePairs()
+	go dts.StartPriceUpdater()
 	return dts
 }
 
 func (dts *DistributedTradingService) initializePairs() {
 	bases := []string{"BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK", "MATIC", "LTC", "UNI", "ATOM", "XLM", "NEAR", "APT", "ARB", "OP", "INJ"}
 	quotes := []string{"USDT", "USDC"}
-	prices := map[string]float64{
-		"BTC": 43250, "ETH": 2280, "BNB": 312.5, "SOL": 98.75, "XRP": 0.62,
-		"DOGE": 0.082, "ADA": 0.58, "AVAX": 38.20, "DOT": 7.85, "LINK": 14.50,
-		"MATIC": 0.92, "LTC": 72.30, "UNI": 6.25, "ATOM": 10.45, "XLM": 0.125,
-		"NEAR": 3.25, "APT": 9.80, "ARB": 1.12, "OP": 2.45, "INJ": 35.50,
+
+	// Real live prices from the CoinGecko oracle. Fail-closed: a base asset
+	// without a real price is not listed (never fabricated).
+	prices, err := fetchLivePricesUSD(append(append([]string{}, bases...), quotes...))
+	if err != nil {
+		prices = map[string]float64{}
 	}
 
 	id := 0
-	// Top 200 pre-installed pairs
 	for _, base := range bases {
+		price := prices[base]
+		if price <= 0 {
+			continue // no real price: do not list the pair
+		}
 		for _, quote := range quotes {
-			if base != quote {
-				id++
-				price := prices[base]
-				if price == 0 {
-					price = 10.0
-				}
-				pair := &TradingPair{
-					ID:             fmt.Sprintf("pair-%d", id),
-					Symbol:         fmt.Sprintf("%s/%s", base, quote),
-					Base:           base,
-					Quote:          quote,
-					Price:          price,
-					High24h:        price * 1.05,
-					Low24h:         price * 0.95,
-					Volume24h:      0,
-					Change24h:      0,
-					IsPreInstalled: id <= 200,
-					Status:         "active",
-					MinOrderSize:   0.001,
-					MaxOrderSize:   1000000,
-					MakerFee:       0.02,
-					TakerFee:       0.04,
-				}
-				dts.pairs[pair.Symbol] = pair
+			if base == quote {
+				continue
 			}
+			quotePrice := prices[quote]
+			if quotePrice <= 0 {
+				continue
+			}
+			id++
+			pairPrice := price / quotePrice
+			pair := &TradingPair{
+				ID:             fmt.Sprintf("pair-%d", id),
+				Symbol:         fmt.Sprintf("%s/%s", base, quote),
+				Base:           base,
+				Quote:          quote,
+				Price:          pairPrice,
+				High24h:        pairPrice,
+				Low24h:         pairPrice,
+				Volume24h:      0,
+				Change24h:      0,
+				IsPreInstalled: true,
+				Status:         "active",
+				MinOrderSize:   0.001,
+				MaxOrderSize:   1000000,
+				MakerFee:       0.02,
+				TakerFee:       0.04,
+			}
+			dts.pairs[pair.Symbol] = pair
 		}
 	}
+}
 
-	// Additional pairs to reach 50,000+
-	for i := 201; i <= 50000; i++ {
-		base := fmt.Sprintf("TOKEN%d", i)
-		symbol := fmt.Sprintf("%s/USDT", base)
-		price := 10.0 + float64(i)*0.001
-		pair := &TradingPair{
-			ID:             fmt.Sprintf("pair-%d", i),
-			Symbol:         symbol,
-			Base:           base,
-			Quote:          "USDT",
-			Price:          price,
-			High24h:        price * 1.05,
-			Low24h:         price * 0.95,
-			Volume24h:      0,
-			Change24h:      0,
-			IsPreInstalled: false,
-			Status:         "active",
-			MinOrderSize:   1,
-			MaxOrderSize:   1000000,
-			MakerFee:       0.02,
-			TakerFee:       0.04,
+// StartPriceUpdater refreshes every listed pair from the real CoinGecko
+// oracle every 30s via UpdatePrice (which also re-marks positions).
+func (dts *DistributedTradingService) StartPriceUpdater() {
+	ticker := time.NewTicker(30 * time.Second)
+	for range ticker.C {
+		dts.mu.RLock()
+		type pq struct{ sym, base, quote string }
+		var list []pq
+		bases := map[string]bool{}
+		quotes := map[string]bool{}
+		for sym, pair := range dts.pairs {
+			list = append(list, pq{sym, pair.Base, pair.Quote})
+			bases[pair.Base] = true
+			quotes[pair.Quote] = true
 		}
-		dts.pairs[pair.Symbol] = pair
+		dts.mu.RUnlock()
+		symbols := make([]string, 0, len(bases)+len(quotes))
+		for s := range bases {
+			symbols = append(symbols, s)
+		}
+		for s := range quotes {
+			symbols = append(symbols, s)
+		}
+		prices, err := fetchLivePricesUSD(symbols)
+		if err != nil || len(prices) == 0 {
+			continue // keep last known real prices
+		}
+		for _, item := range list {
+			baseP := prices[item.base]
+			quoteP := prices[item.quote]
+			if baseP <= 0 || quoteP <= 0 {
+				continue
+			}
+			_ = dts.UpdatePrice(item.sym, baseP/quoteP)
+		}
 	}
-
-	dts.pairCount = int64(len(dts.pairs))
 }
 
 // ============================================================================

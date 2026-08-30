@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"context"
+	"encoding/hex"
+	"fmt"
 	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -13,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tigerwallet/wl-user-wallet/internal/crypto"
 	"github.com/tigerwallet/wl-user-wallet/internal/middleware"
+	"github.com/tigerwallet/wl-user-wallet/internal/store"
 )
 
 // GET /balance?wallet_id=&address=&chain_id= — flat canonical balance read.
@@ -64,11 +68,15 @@ func (s *Svc) FlatBalance(c *gin.Context) {
 
 // POST /send — flat canonical send. Accepts wallet_id in the body and uses
 // the wallet's own chain/signer. Real EIP-1559 signing + broadcast.
+// Optional `data` (hex calldata) turns this into a contract call; optional
+// `amount_wei` sends an exact wei value (no float rounding).
 func (s *Svc) FlatSend(c *gin.Context) {
 	var req struct {
 		WalletID     uuid.UUID `json:"wallet_id" binding:"required"`
 		To           string    `json:"to" binding:"required"`
-		Amount       string    `json:"amount" binding:"required"`
+		Amount       string    `json:"amount"`
+		AmountWei    string    `json:"amount_wei,omitempty"`
+		Data         string    `json:"data,omitempty"`
 		Password     string    `json:"password" binding:"required"`
 		GasLimit     uint64    `json:"gas_limit"`
 		Token        string    `json:"token"`
@@ -91,20 +99,85 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not your wallet"})
 		return
 	}
-	wid, ok := s.requireApproval(c, "transfer", req.To, req.Token, req.Amount, req.WithdrawalID)
+	amountStr := req.Amount
+	amountInt, err := parseAmountWei(req.Amount, req.AmountWei)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.AmountWei != "" {
+		amountStr = new(big.Rat).SetFrac(amountInt, big.NewInt(1e18)).FloatString(18)
+	}
+	var data []byte
+	if req.Data != "" {
+		data, err = decodeHexData(req.Data)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	gasLimit := req.GasLimit
+	if gasLimit == 0 && len(data) > 0 {
+		gasLimit = 120000 // contract call default; plain-transfer default is in crypto.SignTransaction
+	}
+	wid, ok := s.requireApproval(c, "transfer", req.To, req.Token, amountStr, req.WithdrawalID)
 	if !ok {
 		return
 	}
-	// requireApproval returns wid=Nil + ok=true for the AUTO fast path
-	// (license alive + non-treasury tx) and wid!=Nil + ok=true for the
-	// MANUAL two-party path (SuperAdmin co-signed). Surface both to the
-	// client so the UI can show the ⚡Auto-approved badge.
 	autoApproved := ok && wid == uuid.Nil
 	autoReason := ""
 	if ok && wid != uuid.Nil {
 		autoReason = "two-party approved by SuperAdmin"
 	}
-	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, req.Password)
+	s.execFlatEVMSend(c, w, req.Password, req.To, amountInt, gasLimit, data,
+		req.MaxFeeGwei, req.MaxPriorityGwei, wid, autoApproved, autoReason, "transfer", amountStr)
+}
+
+// parseAmountWei resolves the tx value: exact wei when amount_wei is given,
+// otherwise decimal ether units (amount) converted to wei. Fail-closed on
+// unparseable input.
+func parseAmountWei(amount, amountWei string) (*big.Int, error) {
+	if amountWei != "" {
+		v, ok := new(big.Int).SetString(amountWei, 10)
+		if !ok || v.Sign() < 0 {
+			return nil, fmt.Errorf("invalid amount_wei")
+		}
+		return v, nil
+	}
+	if amount == "" {
+		return nil, fmt.Errorf("amount is required")
+	}
+	f, ok := new(big.Float).SetString(amount)
+	if !ok {
+		return nil, fmt.Errorf("invalid amount")
+	}
+	f = f.Mul(f, big.NewFloat(1e18))
+	v, _ := f.Int(nil)
+	return v, nil
+}
+
+// decodeHexData decodes 0x-prefixed (or bare) hex calldata. Fail-closed.
+func decodeHexData(s string) ([]byte, error) {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "0x")
+	if s == "" {
+		return nil, nil
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid data: not hex")
+	}
+	return b, nil
+}
+
+// execFlatEVMSend is the shared sign+broadcast executor for /send and
+// /nft/transfer: decrypts the seed, derives the key, signs a real EIP-1559
+// transaction and broadcasts it. Fail-closed at every step — never fabricates
+// a transaction hash.
+func (s *Svc) execFlatEVMSend(c *gin.Context, w *store.Wallet, password, to string,
+	amountInt *big.Int, gasLimit uint64, data []byte,
+	maxFeeGwei, maxPriorityGwei string, wid uuid.UUID,
+	autoApproved bool, autoReason, txType, amountStr string) {
+	seed, err := crypto.DecryptSeedAtRest(w.EncryptedSeed, password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
 		return
@@ -132,13 +205,6 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "nonce fetch failed"})
 		return
 	}
-	amount, ok := new(big.Float).SetString(req.Amount)
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
-		return
-	}
-	amount = amount.Mul(amount, big.NewFloat(1e18))
-	amountInt, _ := amount.Int(nil)
 	chainID := big.NewInt(w.ChainID)
 	gasTipCap, _ := client.SuggestGasTipCap(ctx)
 	head, _ := client.HeaderByNumber(ctx, nil)
@@ -149,13 +215,13 @@ func (s *Svc) FlatSend(c *gin.Context) {
 	// EIP-1559 editable fee overrides (gwei -> wei). Defaults: fee cap is
 	// 2*baseFee + tip (standard safe ceiling), tip from the node suggestion.
 	feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), gasTipCap)
-	if v := gweiToWeiString(req.MaxFeeGwei); v != nil {
+	if v := gweiToWeiString(maxFeeGwei); v != nil {
 		feeCap = v
 	}
-	if v := gweiToWeiString(req.MaxPriorityGwei); v != nil {
+	if v := gweiToWeiString(maxPriorityGwei); v != nil {
 		gasTipCap = v
 	}
-	rawTx, err := crypto.SignTransaction(priv, chainID, common.HexToAddress(req.To), amountInt, req.GasLimit, feeCap, gasTipCap, nonce, nil)
+	rawTx, err := crypto.SignTransaction(priv, chainID, common.HexToAddress(to), amountInt, gasLimit, feeCap, gasTipCap, nonce, data)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -165,7 +231,7 @@ func (s *Svc) FlatSend(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "broadcast failed: " + err.Error()})
 		return
 	}
-	_ = s.store.CreateTransaction(c.Request.Context(), w.ID, txHash, "transfer", "broadcast", w.Address, req.To, req.Amount, "", w.ChainID)
+	_ = s.store.CreateTransaction(c.Request.Context(), w.ID, txHash, txType, "broadcast", w.Address, to, amountStr, "", w.ChainID)
 	if wid != uuid.Nil {
 		if g := middleware.GetTwoPartyGate(); g != nil {
 			_ = g.MarkWithdrawalExecuted(c.Request.Context(), wid, txHash)

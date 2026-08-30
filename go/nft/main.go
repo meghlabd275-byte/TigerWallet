@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,9 +14,13 @@ import (
 
 func main() {
 	svc := nft.NewService()
-	// Register built-in marketplaces so list/buy operations are operational.
-	svc.RegisterMarketplace("opensea", nft.NewOpenSeaMarketplace(""))
-	svc.RegisterMarketplace("magiceden", nft.NewMagicEdenMarketplace(""))
+	// Register built-in marketplaces. API keys come from the operator
+	// environment (OPENSEA_API_KEY / MAGICEDEN_API_KEY / RESERVOIR_API_KEY);
+	// keyed endpoints fail closed with a descriptive error when unset.
+	svc.RegisterMarketplace("opensea", nft.NewOpenSeaMarketplace(os.Getenv("OPENSEA_API_KEY")))
+	svc.RegisterMarketplace("magiceden",
+		nft.NewMagicEdenMarketplace(os.Getenv("MAGICEDEN_API_KEY")).
+			WithReservoir(os.Getenv("RESERVOIR_API_URL"), os.Getenv("RESERVOIR_API_KEY")))
 
 	// The route set includes both "/api/v1/nft/collections/{id}" and
 	// "/api/v1/nft/{address}/tokens". These two wildcard patterns overlap
@@ -50,8 +55,14 @@ func nftGetHandler(svc *nft.Service) http.HandlerFunc {
 
 		switch {
 		case len(segments) == 1 && segments[0] == "collections":
-			writeError(w, http.StatusNotImplemented,
-				"not implemented: no method to enumerate all collections")
+			chain := r.URL.Query().Get("chain")
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			collections, next, err := svc.ListCollections(r.Context(), chain, limit)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"collections": collections, "next": next})
 		case len(segments) == 2 && segments[0] == "collections":
 			addr := segments[1]
 			collection, err := svc.GetCollection(r.Context(), addr)
@@ -61,8 +72,14 @@ func nftGetHandler(svc *nft.Service) http.HandlerFunc {
 			}
 			writeJSON(w, http.StatusOK, collection)
 		case len(segments) == 2 && segments[1] == "tokens":
-			writeError(w, http.StatusNotImplemented,
-				"not implemented: no method to enumerate tokens by owner (address="+segments[0]+")")
+			chain := r.URL.Query().Get("chain")
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			tokens, next, err := svc.GetNFTsByOwner(r.Context(), chain, segments[0], limit)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, err.Error())
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"tokens": tokens, "next": next})
 		case len(segments) == 1 && segments[0] == "listings":
 			collection := r.URL.Query().Get("collection")
 			listings, err := svc.GetListings(r.Context(), collection)
@@ -100,7 +117,7 @@ func nftPostHandler(svc *nft.Service) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			writeJSON(w, http.StatusOK, map[string]string{"status": "listed"})
 		case len(segments) == 1 && segments[0] == "buy":
 			var req struct {
 				Marketplace string `json:"marketplace"`
@@ -114,11 +131,15 @@ func nftPostHandler(svc *nft.Service) http.HandlerFunc {
 			if req.Marketplace == "" {
 				req.Marketplace = "opensea"
 			}
-			if err := svc.FillListing(r.Context(), req.Marketplace, req.ListingID, req.Buyer); err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+			// FillListing resolves the real unsigned fulfillment transaction;
+			// the buyer's wallet signs + broadcasts it on-chain.
+			tx, err := svc.FillListing(r.Context(), req.Marketplace, req.ListingID, req.Buyer)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, err.Error())
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			writeJSON(w, http.StatusOK, map[string]any{"status": "fulfillment_ready", "transaction": tx})
+			return
 		default:
 			writeError(w, http.StatusNotFound, "no route for POST "+r.URL.Path)
 		}

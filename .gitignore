@@ -172,3 +172,19 @@ master_wallet/backend/master-wallet-backend
 go/wallet_api/wallet-api
 admin/go/admin
 kyc_onboarding_workflow/go/kyc_onboarding_workflow
+
+# build binaries
+*_bot
+*_system
+liquidity
+monitoring_service
+advanced_cache
+rbac-admin-service
+gas_account
+
+# build binaries
+compliance_aml
+api_gateway
+lending_borrowing
+perpetual_backend
+perpetual_trading

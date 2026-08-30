@@ -3,12 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"github.com/gorilla/handlers"
@@ -18,37 +16,37 @@ import (
 
 // Config holds server configuration
 type Config struct {
-	Port            string
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	MaxHeaderBytes  int
+	Port           string
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	MaxHeaderBytes int
 	EnableTLS      bool
 	CertFile       string
 	KeyFile        string
 	DatabaseURL    string
-	RedisURL      string
+	RedisURL       string
 	ClickHouseURL  string
 }
 
 // Server is the main perpetuals backend server
 type Server struct {
-	config         Config
-	router        *mux.Router
-	httpServer    *http.Server
-	wsUpgrader    websocket.Upgrader
-	orderService  *OrderService
+	config       Config
+	router       *mux.Router
+	httpServer   *http.Server
+	wsUpgrader   websocket.Upgrader
+	orderService *OrderService
 	positionSvc  *PositionService
 	marketSvc    *MarketService
-	wsHub       *WSHub
+	wsHub        *WSHub
 	notification *NotificationService
-	settlement  *SettlementService
+	settlement   *SettlementService
 }
 
 // NewServer creates a new perpetuals backend server
 func NewServer(cfg Config) *Server {
 	s := &Server{
-		config:    cfg,
-		router:    mux.NewRouter(),
+		config: cfg,
+		router: mux.NewRouter(),
 		wsUpgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // In production, implement proper origin checking
@@ -108,8 +106,15 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) setupMiddlewares() {
 	s.router.Use(handlers.RecoveryHandler())
-	s.router.Use(handlers.Logger())
-	s.router.Use(handlers.ContentTypeHandler())
+	s.router.Use(jsonContentTypeMiddleware)
+}
+
+// jsonContentTypeMiddleware sets the JSON content type on responses.
+func jsonContentTypeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Start starts the server
@@ -391,25 +396,25 @@ func WriteError(w http.ResponseWriter, r *http.Request, status int, message stri
 // Request/Response types
 
 type CreateOrderRequest struct {
-	UserID         string  `json:"userId"`
-	Symbol        string  `json:"symbol"`
-	Side          string  `json:"side"` // BUY, SELL
-	OrderType     string  `json:"orderType"` // LIMIT, MARKET, STOP, TAKE_PROFIT
-	Price        string  `json:"price"`
-	Quantity     string  `json:"quantity"`
-	ReduceOnly   bool    `json:"reduceOnly"`
-	PostOnly     bool    `json:"postOnly"`
-	TimeInForce  string  `json:"timeInForce"` // GTC, IOC, FOK
-	StopPrice    string  `json:"stopPrice"`
-	Leverage     string  `json:"leverage"`
-	MarginType   string  `json:"marginType"` // CROSS, ISOLATED
-	PositionSide string  `json:"positionSide"` // LONG, SHORT
+	UserID       string `json:"userId"`
+	Symbol       string `json:"symbol"`
+	Side         string `json:"side"`      // BUY, SELL
+	OrderType    string `json:"orderType"` // LIMIT, MARKET, STOP, TAKE_PROFIT
+	Price        string `json:"price"`
+	Quantity     string `json:"quantity"`
+	ReduceOnly   bool   `json:"reduceOnly"`
+	PostOnly     bool   `json:"postOnly"`
+	TimeInForce  string `json:"timeInForce"` // GTC, IOC, FOK
+	StopPrice    string `json:"stopPrice"`
+	Leverage     string `json:"leverage"`
+	MarginType   string `json:"marginType"`   // CROSS, ISOLATED
+	PositionSide string `json:"positionSide"` // LONG, SHORT
 }
 
 type ClosePositionRequest struct {
-	UserID    string `json:"userId"`
-	Symbol    string `json:"symbol"`
-	Quantity  string `json:"quantity"`
+	UserID   string `json:"userId"`
+	Symbol   string `json:"symbol"`
+	Quantity string `json:"quantity"`
 }
 
 func main() {
@@ -419,11 +424,11 @@ func main() {
 		WriteTimeout:   30 * time.Second,
 		MaxHeaderBytes: 1 << 10,
 		EnableTLS:      getEnv("ENABLE_TLS", "false") == "true",
-		CertFile:      getEnv("CERT_FILE", ""),
-		KeyFile:       getEnv("KEY_FILE", ""),
+		CertFile:       getEnv("CERT_FILE", ""),
+		KeyFile:        getEnv("KEY_FILE", ""),
 		DatabaseURL:    getEnv("DATABASE_URL", "postgres://localhost:5432/tigerwallet"),
-		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
-		ClickHouseURL: getEnv("CLICKHOUSE_URL", "localhost:9000"),
+		RedisURL:       getEnv("REDIS_URL", "localhost:6379"),
+		ClickHouseURL:  getEnv("CLICKHOUSE_URL", "localhost:9000"),
 	}
 
 	server := NewServer(cfg)

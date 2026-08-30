@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"sync"
 	"time"
 
@@ -14,9 +13,9 @@ import (
 type WSHub struct {
 	clients    map[*WSClient]bool
 	broadcast  chan []byte
-	register  chan *WSClient
+	register   chan *WSClient
 	unregister chan *WSClient
-	mu        sync.RWMutex
+	mu         sync.RWMutex
 }
 
 // NewWSHub creates a new WebSocket hub
@@ -24,7 +23,7 @@ func NewWSHub() *WSHub {
 	return &WSHub{
 		clients:    make(map[*WSClient]bool),
 		broadcast:  make(chan []byte, 256),
-		register:  make(chan *WSClient),
+		register:   make(chan *WSClient),
 		unregister: make(chan *WSClient),
 	}
 }
@@ -208,8 +207,8 @@ func (c *WSClient) unsubscribe(channel string) {
 
 // WebSocketMessage represents a WebSocket message
 type WebSocketMessage struct {
-	Type      string          `json:"type"`
-	Channel  string          `json:"channel,omitempty"`
+	Type    string          `json:"type"`
+	Channel string          `json:"channel,omitempty"`
 	Data    json.RawMessage `json:"data"`
 }
 
@@ -223,5 +222,5 @@ type SubscriptionRequest struct {
 type SubscriptionResponse struct {
 	Type     string   `json:"type"`
 	Channels []string `json:"channels"`
-	Status  string   `json:"status"`
+	Status   string   `json:"status"`
 }

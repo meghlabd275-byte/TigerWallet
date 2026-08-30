@@ -3,16 +3,13 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,7 +33,7 @@ var (
 
 func main() {
 	// Initialize logger
-	output := zerolog.ConsoleWriter{Output: os.Stdout}
+	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	logger = zerolog.New(output).With().Timestamp().Logger()
 
 	// Load configuration
@@ -91,22 +88,22 @@ func main() {
 
 // Configuration
 type Config struct {
-	Port          string
+	Port           string
 	RedisURL       string
 	NativeToken    string
 	GasTokenSymbol string
-	MinDepositUSD float64
-	MaxGasPerTx   float64
+	MinDepositUSD  float64
+	MaxGasPerTx    float64
 }
 
 func loadConfig() *Config {
 	return &Config{
-		Port:          getEnv("GAS_PORT", "9218"),
-		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
-		NativeToken:   "ETH",
+		Port:           getEnv("GAS_PORT", "9218"),
+		RedisURL:       getEnv("REDIS_URL", "localhost:6379"),
+		NativeToken:    "ETH",
 		GasTokenSymbol: "ETH",
-		MinDepositUSD: 50,
-		MaxGasPerTx:   10,
+		MinDepositUSD:  50,
+		MaxGasPerTx:    10,
 	}
 }
 
@@ -123,79 +120,79 @@ func getEnv(key, def string) string {
 
 // GasAccount represents a user's gas account
 type GasAccount struct {
-	AccountID       string    `json:"accountId"`
-	UserID          string    `json:"userId"`
-	Address         string    `json:"address"`
-	ChainID         uint64    `json:"chainId"` // Native chain where deposit is held
-	Token           string    `json:"token"`
-	Balance         float64   `json:"balance"`
-	BalanceUSD      float64   `json:"balanceUSD"`
-	Status          string    `json:"status"` // active, paused, depleted
-	AutoRefill      bool      `json:"autoRefill"`
-	RefillThreshold float64  `json:"refillThreshold"`
-	RefillAmount   float64   `json:"refillAmount"`
-	LinkedChains   []uint64  `json:"linkedChains"` // All chains where gas is paid
-	TotalGasPaid    float64   `json:"totalGasPaid"`
-	TotalGasPaidUSD float64   `json:"totalGasPaidUSD"`
-	TransactionCount int     `json:"transactionCount"`
-	CreatedAt       int64     `json:"createdAt"`
-	UpdatedAt       int64     `json:"updatedAt"`
+	AccountID        string   `json:"accountId"`
+	UserID           string   `json:"userId"`
+	Address          string   `json:"address"`
+	ChainID          uint64   `json:"chainId"` // Native chain where deposit is held
+	Token            string   `json:"token"`
+	Balance          float64  `json:"balance"`
+	BalanceUSD       float64  `json:"balanceUSD"`
+	Status           string   `json:"status"` // active, paused, depleted
+	AutoRefill       bool     `json:"autoRefill"`
+	RefillThreshold  float64  `json:"refillThreshold"`
+	RefillAmount     float64  `json:"refillAmount"`
+	LinkedChains     []uint64 `json:"linkedChains"` // All chains where gas is paid
+	TotalGasPaid     float64  `json:"totalGasPaid"`
+	TotalGasPaidUSD  float64  `json:"totalGasPaidUSD"`
+	TransactionCount int      `json:"transactionCount"`
+	CreatedAt        int64    `json:"createdAt"`
+	UpdatedAt        int64    `json:"updatedAt"`
 }
 
 // GasDeposit represents a deposit to gas account
 type GasDeposit struct {
-	DepositID    string    `json:"depositId"`
-	AccountID   string    `json:"accountId"`
-	UserID      string    `json:"userId"`
-	Amount      float64   `json:"amount"`
-	AmountUSD   float64   `json:"amountUSD"`
-	Token       string    `json:"token"`
-	ChainID     uint64    `json:"chainId"`
-	TxHash      string    `json:"txHash"`
-	Status      string    `json:"status"` // pending, confirmed, failed
-	CreatedAt   int64     `json:"createdAt"`
-	ConfirmedAt int64     `json:"confirmedAt,omitempty"`
+	DepositID   string  `json:"depositId"`
+	AccountID   string  `json:"accountId"`
+	UserID      string  `json:"userId"`
+	Amount      float64 `json:"amount"`
+	AmountUSD   float64 `json:"amountUSD"`
+	Token       string  `json:"token"`
+	ChainID     uint64  `json:"chainId"`
+	TxHash      string  `json:"txHash"`
+	Status      string  `json:"status"` // pending, confirmed, failed
+	CreatedAt   int64   `json:"createdAt"`
+	ConfirmedAt int64   `json:"confirmedAt,omitempty"`
 }
 
 // GasPayment represents a gas payment made
 type GasPayment struct {
-	PaymentID     string    `json:"paymentId"`
-	AccountID    string    `json:"accountId"`
-	UserID       string    `json:"userId"`
-	ChainID      uint64    `json:"chainId"`
+	PaymentID      string  `json:"paymentId"`
+	AccountID      string  `json:"accountId"`
+	UserID         string  `json:"userId"`
+	ChainID        uint64  `json:"chainId"`
 	OriginalTxHash string  `json:"originalTxHash"`
-	Token        string    `json:"token"`
-	GasUsed      float64   `json:"gasUsed"`
-	GasPrice     float64   `json:"gasPrice"`
-	GasFeeUSD    float64   `json:"gasFeeUSD"`
-	RefundToken  string    `json:"refundToken"`
-	RefundAmount float64   `json:"refundAmount"`
-	Status       string    `json:"status"` // pending, settled
-	SettledAt    int64     `json:"settledAt,omitempty"`
-	CreatedAt    int64     `json:"createdAt"`
+	Token          string  `json:"token"`
+	GasUsed        float64 `json:"gasUsed"`
+	GasPrice       float64 `json:"gasPrice"`
+	GasFeeUSD      float64 `json:"gasFeeUSD"`
+	RefundToken    string  `json:"refundToken"`
+	RefundAmount   float64 `json:"refundAmount"`
+	Status         string  `json:"status"` // pending, settled
+	SettledAt      int64   `json:"settledAt,omitempty"`
+	CreatedAt      int64   `json:"createdAt"`
 }
 
 // ChainGasConfig represents gas configuration for a chain
 type ChainGasConfig struct {
-	ChainID          uint64  `json:"chainId"`
-	ChainName       string  `json:"chainName"`
-	NativeToken     string  `json:"nativeToken"`
-	MinGasPrice     float64 `json:"minGasPrice"`
-	MaxGasPrice     float64 `json:"maxGasPrice"`
-	AvgGasPrice     float64 `json:"avgGasPrice"`
-	GasOracle       string  `json:"gasOracle"`
-	Supported       bool    `json:"supported"`
+	ChainID     uint64  `json:"chainId"`
+	ChainName   string  `json:"chainName"`
+	NativeToken string  `json:"nativeToken"`
+	MinGasPrice float64 `json:"minGasPrice"`
+	MaxGasPrice float64 `json:"maxGasPrice"`
+	AvgGasPrice float64 `json:"avgGasPrice"`
+	GasOracle   string  `json:"gasOracle"`
+	Supported   bool    `json:"supported"`
 }
 
 // GasQuote represents a gas quote
 type GasQuote struct {
-	ChainID        uint64  `json:"chainId"`
-	Token          string  `json:"token"`
-	GasEstimate    float64 `json:"gasEstimate"`
-	GasPriceUSD    float64 `json:"gasPriceUSD"`
-	TotalFeeUSD    float64 `json:"totalFeeUSD"`
-	EstimatedTime  int     `json:"estimatedTime"` // seconds
-	ValidUntil     int64   `json:"validUntil"`
+	ChainID       uint64  `json:"chainId"`
+	Token         string  `json:"token"`
+	GasEstimate   float64 `json:"gasEstimate"`
+	GasPriceUSD   float64 `json:"gasPriceUSD"`
+	TotalFeeUSD   float64 `json:"totalFeeUSD"`
+	EstimatedTime int     `json:"estimatedTime"` // seconds
+	ValidUntil    int64   `json:"validUntil"`
 }
 
 // ============================================================================
@@ -313,7 +310,7 @@ func setupRouter(cfg *Config) *gin.Engine {
 		history := v1.Group("/history")
 		{
 			history.GET("/deposits/:accountId", getDeposits)
-			history.Get("/payments/:accountId", getPayments)
+			history.GET("/payments/:accountId", getPayments)
 		}
 
 		// Analytics
@@ -348,10 +345,10 @@ func corsMiddleware() gin.HandlerFunc {
 
 func createAccount(c *gin.Context) {
 	var req struct {
-		UserID        string  `json:"userId" binding:"required"`
-		ChainID       uint64  `json:"chainId"`
-		Token         string  `json:"token"`
-		AutoRefill    bool    `json:"autoRefill"`
+		UserID       string  `json:"userId" binding:"required"`
+		ChainID      uint64  `json:"chainId"`
+		Token        string  `json:"token"`
+		AutoRefill   bool    `json:"autoRefill"`
 		RefillAmount float64 `json:"refillAmount"`
 	}
 
@@ -382,23 +379,23 @@ func createAccount(c *gin.Context) {
 	address := generateAddress()
 
 	account := GasAccount{
-		AccountID:       generateID(),
-		UserID:          req.UserID,
-		Address:         address,
-		ChainID:         req.ChainID,
-		Token:           req.Token,
-		Balance:         0,
-		BalanceUSD:      0,
-		Status:          "active",
-		AutoRefill:      req.AutoRefill,
-		RefillThreshold: 20, // Auto-refill when below $20
-		RefillAmount:    req.RefillAmount,
-		LinkedChains:    []uint64{1, 56, 137, 42161, 10, 8453, 43114}, // Link all supported chains
-		TotalGasPaid:    0,
-		TotalGasPaidUSD: 0,
+		AccountID:        generateID(),
+		UserID:           req.UserID,
+		Address:          address,
+		ChainID:          req.ChainID,
+		Token:            req.Token,
+		Balance:          0,
+		BalanceUSD:       0,
+		Status:           "active",
+		AutoRefill:       req.AutoRefill,
+		RefillThreshold:  20, // Auto-refill when below $20
+		RefillAmount:     req.RefillAmount,
+		LinkedChains:     []uint64{1, 56, 137, 42161, 10, 8453, 43114}, // Link all supported chains
+		TotalGasPaid:     0,
+		TotalGasPaidUSD:  0,
 		TransactionCount: 0,
-		CreatedAt:       time.Now().Unix(),
-		UpdatedAt:       time.Now().Unix(),
+		CreatedAt:        time.Now().Unix(),
+		UpdatedAt:        time.Now().Unix(),
 	}
 
 	// Save account
@@ -466,9 +463,15 @@ func deposit(c *gin.Context) {
 	var account GasAccount
 	json.Unmarshal(data, &account)
 
+	price := getTokenPrice(req.Token)
+	if price <= 0 {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "price unavailable for " + req.Token})
+		return
+	}
+
 	// Update balance
 	account.Balance += req.Amount
-	account.BalanceUSD = account.Balance * getTokenPrice(req.Token)
+	account.BalanceUSD = account.Balance * price
 	account.UpdatedAt = time.Now().Unix()
 
 	// Save updated account
@@ -478,22 +481,25 @@ func deposit(c *gin.Context) {
 
 	// Record deposit
 	deposit := GasDeposit{
-		DepositID:  generateID(),
-		AccountID:  id,
-		UserID:     account.UserID,
-		Amount:     req.Amount,
-		AmountUSD:  req.Amount * getTokenPrice(req.Token),
-		Token:      req.Token,
-		ChainID:    req.ChainID,
-		TxHash:     req.TxHash,
-		Status:     "confirmed",
-		CreatedAt:  time.Now().Unix(),
+		DepositID:   generateID(),
+		AccountID:   id,
+		UserID:      account.UserID,
+		Amount:      req.Amount,
+		AmountUSD:   req.Amount * price,
+		Token:       req.Token,
+		ChainID:     req.ChainID,
+		TxHash:      req.TxHash,
+		Status:      "confirmed",
+		CreatedAt:   time.Now().Unix(),
 		ConfirmedAt: time.Now().Unix(),
 	}
 
 	depositKey := fmt.Sprintf("gas:deposit:%s", deposit.DepositID)
 	if data, err := json.Marshal(deposit); err == nil {
 		redisClient.Set(context.Background(), depositKey, data, 365*24*time.Hour)
+		// Per-account index for real history queries.
+		indexKey := fmt.Sprintf("gas:deposits:%s", deposit.AccountID)
+		redisClient.LPush(context.Background(), indexKey, deposit.DepositID)
 	}
 
 	c.JSON(http.StatusOK, account)
@@ -668,10 +674,10 @@ func getSupportedChains(c *gin.Context) {
 
 func payGas(c *gin.Context) {
 	var req struct {
-		AccountID    string  `json:"accountId" binding:"required"`
-		ChainID      uint64  `json:"chainId" binding:"required"`
-		OriginalTxHash string `json:"originalTxHash" binding:"required"`
-		GasUsed      float64 `json:"gasUsed"`
+		AccountID      string  `json:"accountId" binding:"required"`
+		ChainID        uint64  `json:"chainId" binding:"required"`
+		OriginalTxHash string  `json:"originalTxHash" binding:"required"`
+		GasUsed        float64 `json:"gasUsed"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -715,7 +721,12 @@ func payGas(c *gin.Context) {
 		return
 	}
 
-	gasFeeUSD := req.GasUsed * chain.AvgGasPrice * getTokenPrice(chain.NativeToken) / 1000000000
+	nativePrice := getTokenPrice(chain.NativeToken)
+	if nativePrice <= 0 {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "price unavailable for " + chain.NativeToken})
+		return
+	}
+	gasFeeUSD := req.GasUsed * chain.AvgGasPrice * nativePrice / 1000000000
 
 	// Check balance
 	if account.BalanceUSD < gasFeeUSD {
@@ -723,10 +734,15 @@ func payGas(c *gin.Context) {
 		return
 	}
 
+	accountPrice := getTokenPrice(account.Token)
+	if accountPrice <= 0 {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "price unavailable for " + account.Token})
+		return
+	}
 	// Deduct from account
-	account.Balance -= gasFeeUSD / getTokenPrice(account.Token)
-	account.BalanceUSD = account.Balance * getTokenPrice(account.Token)
-	account.TotalGasPaid += gasFeeUSD / getTokenPrice(account.Token)
+	account.Balance -= gasFeeUSD / accountPrice
+	account.BalanceUSD = account.Balance * accountPrice
+	account.TotalGasPaid += gasFeeUSD / accountPrice
 	account.TotalGasPaidUSD += gasFeeUSD
 	account.TransactionCount++
 	account.UpdatedAt = time.Now().Unix()
@@ -738,23 +754,26 @@ func payGas(c *gin.Context) {
 
 	// Record payment
 	payment := GasPayment{
-		PaymentID:       generateID(),
-		AccountID:       req.AccountID,
-		UserID:          account.UserID,
-		ChainID:         req.ChainID,
-		OriginalTxHash:  req.OriginalTxHash,
-		Token:           chain.NativeToken,
-		GasUsed:         req.GasUsed,
-		GasPrice:        chain.AvgGasPrice,
-		GasFeeUSD:       gasFeeUSD,
-		Status:          "settled",
-		SettledAt:       time.Now().Unix(),
-		CreatedAt:       time.Now().Unix(),
+		PaymentID:      generateID(),
+		AccountID:      req.AccountID,
+		UserID:         account.UserID,
+		ChainID:        req.ChainID,
+		OriginalTxHash: req.OriginalTxHash,
+		Token:          chain.NativeToken,
+		GasUsed:        req.GasUsed,
+		GasPrice:       chain.AvgGasPrice,
+		GasFeeUSD:      gasFeeUSD,
+		Status:         "settled",
+		SettledAt:      time.Now().Unix(),
+		CreatedAt:      time.Now().Unix(),
 	}
 
 	paymentKey := fmt.Sprintf("gas:payment:%s", payment.PaymentID)
 	if data, err := json.Marshal(payment); err == nil {
 		redisClient.Set(context.Background(), paymentKey, data, 365*24*time.Hour)
+		// Per-account index for real history queries.
+		indexKey := fmt.Sprintf("gas:payments:%s", payment.AccountID)
+		redisClient.LPush(context.Background(), indexKey, payment.PaymentID)
 	}
 
 	// Check for auto-refill
@@ -764,9 +783,9 @@ func payGas(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":         true,
-		"paymentId":       payment.PaymentID,
-		"gasFeeUSD":       gasFeeUSD,
+		"success":          true,
+		"paymentId":        payment.PaymentID,
+		"gasFeeUSD":        gasFeeUSD,
 		"remainingBalance": account.BalanceUSD,
 	})
 }
@@ -774,10 +793,10 @@ func payGas(c *gin.Context) {
 func batchPayGas(c *gin.Context) {
 	var req struct {
 		Payments []struct {
-			AccountID     string  `json:"accountId" binding:"required"`
-			ChainID       uint64  `json:"chainId" binding:"required"`
-			OriginalTxHash string `json:"originalTxHash" binding:"required"`
-			GasUsed       float64 `json:"gasUsed"`
+			AccountID      string  `json:"accountId" binding:"required"`
+			ChainID        uint64  `json:"chainId" binding:"required"`
+			OriginalTxHash string  `json:"originalTxHash" binding:"required"`
+			GasUsed        float64 `json:"gasUsed"`
 		} `json:"payments" binding:"required"`
 	}
 
@@ -807,14 +826,46 @@ func batchPayGas(c *gin.Context) {
 
 func getDeposits(c *gin.Context) {
 	accountID := c.Param("accountId")
-	// In production: query from Redis/DB
-	c.JSON(http.StatusOK, []GasDeposit{})
+	ctx := context.Background()
+	ids, err := redisClient.LRange(ctx, fmt.Sprintf("gas:deposits:%s", accountID), 0, 99).Result()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	deposits := make([]GasDeposit, 0, len(ids))
+	for _, id := range ids {
+		data, err := redisClient.Get(ctx, fmt.Sprintf("gas:deposit:%s", id)).Bytes()
+		if err != nil {
+			continue // record expired/missing: skip, never fabricate
+		}
+		var d GasDeposit
+		if json.Unmarshal(data, &d) == nil {
+			deposits = append(deposits, d)
+		}
+	}
+	c.JSON(http.StatusOK, deposits)
 }
 
 func getPayments(c *gin.Context) {
 	accountID := c.Param("accountId")
-	// In production: query from Redis/DB
-	c.JSON(http.StatusOK, []GasPayment{})
+	ctx := context.Background()
+	ids, err := redisClient.LRange(ctx, fmt.Sprintf("gas:payments:%s", accountID), 0, 99).Result()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	payments := make([]GasPayment, 0, len(ids))
+	for _, id := range ids {
+		data, err := redisClient.Get(ctx, fmt.Sprintf("gas:payment:%s", id)).Bytes()
+		if err != nil {
+			continue // record expired/missing: skip, never fabricate
+		}
+		var p GasPayment
+		if json.Unmarshal(data, &p) == nil {
+			payments = append(payments, p)
+		}
+	}
+	c.JSON(http.StatusOK, payments)
 }
 
 // ============================================================================
@@ -847,10 +898,10 @@ func getSavings(c *gin.Context) {
 
 	// Calculate savings (compared to paying gas on each chain separately)
 	savings := map[string]interface{}{
-		"userId":            userID,
+		"userId":           userID,
 		"estimatedSavings": 150.00, // Estimated monthly savings
-		"savingsPercent":    35,
-		"comparedTo":        "Paying gas individually on each chain",
+		"savingsPercent":   35,
+		"comparedTo":       "Paying gas individually on each chain",
 	}
 
 	c.JSON(http.StatusOK, savings)
@@ -882,20 +933,13 @@ func getUint64Param(c *gin.Context, name string, def uint64) uint64 {
 	return def
 }
 
-// Simulated token prices (in production: fetch from price API)
+// getTokenPrice returns the real live USD price for a token via the
+// CoinGecko oracle. Fail-closed: 0 when the price cannot be determined
+// (callers treat 0 as "unknown", never a fabricated fallback).
 func getTokenPrice(token string) float64 {
-	prices := map[string]float64{
-		"ETH":  3500.00,
-		"BNB":  600.00,
-		"MATIC": 0.80,
-		"AVAX": 35.00,
-		"FTM":  0.30,
-		"ONE":  0.02,
-		"MOVR": 15.00,
+	price, err := livePriceUSD(token)
+	if err != nil {
+		return 0
 	}
-
-	if price, ok := prices[strings.ToUpper(token)]; ok {
-		return price
-	}
-	return 1.0 // Default fallback
+	return price
 }

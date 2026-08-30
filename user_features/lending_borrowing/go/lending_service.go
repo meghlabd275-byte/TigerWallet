@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -28,16 +27,16 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
-	ChainRPCURL  string `json:"chain_rpc_url"`
-	PrivateKey   string `json:"private_key"` // Encrypted
+	ServerPort  string `json:"server_port"`
+	DBHost      string `json:"db_host"`
+	DBPort      string `json:"db_port"`
+	DBUser      string `json:"db_user"`
+	DBPassword  string `json:"db_password"`
+	DBName      string `json:"db_name"`
+	RedisHost   string `json:"redis_host"`
+	RedisPort   string `json:"redis_port"`
+	ChainRPCURL string `json:"chain_rpc_url"`
+	PrivateKey  string `json:"private_key"` // Encrypted
 }
 
 // ============================================================================
@@ -46,7 +45,7 @@ type Config struct {
 
 // LendingMarket represents a lending market for an asset
 type LendingMarket struct {
-	ID                    uint      `gorm:"primaryKey" json:"id"`
+	ID                   uint      `gorm:"primaryKey" json:"id"`
 	AssetAddress         string    `gorm:"uniqueIndex;not null" json:"asset_address"`
 	AssetSymbol          string    `json:"asset_symbol"`
 	AssetName            string    `json:"asset_name"`
@@ -69,17 +68,17 @@ type LendingMarket struct {
 
 // UserSupply represents a user's supply position
 type UserSupply struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserAddress   string    `gorm:"index;not null" json:"user_address"`
-	MarketID      uint      `gorm:"index;not null" json:"market_id"`
-	AssetAddress  string    `json:"asset_address"`
-	Balance       string    `json:"balance"`
-	BalanceUSD    float64   `json:"balance_usd"`
-	AccruedRewards string   `json:"accrued_rewards"`
-	APY           float64   `json:"apy"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	UserAddress    string    `gorm:"index;not null" json:"user_address"`
+	MarketID       uint      `gorm:"index;not null" json:"market_id"`
+	AssetAddress   string    `json:"asset_address"`
+	Balance        string    `json:"balance"`
+	BalanceUSD     float64   `json:"balance_usd"`
+	AccruedRewards string    `json:"accrued_rewards"`
+	APY            float64   `json:"apy"`
+	ChainID        int64     `json:"chain_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // UserBorrow represents a user's borrow position
@@ -99,12 +98,12 @@ type UserBorrow struct {
 
 // UserCollateral represents user's collateral positions
 type UserCollateral struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserAddress   string    `gorm:"index;not null" json:"user_address"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserAddress  string    `gorm:"index;not null" json:"user_address"`
 	AssetAddress string    `json:"asset_address"`
 	AssetSymbol  string    `json:"asset_symbol"`
 	ValueUSD     float64   `json:"value_usd"`
-	IsCollateral  bool      `json:"is_collateral"`
+	IsCollateral bool      `json:"is_collateral"`
 	ChainID      int64     `json:"chain_id"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -112,25 +111,25 @@ type UserCollateral struct {
 
 // Liquidation represents a liquidation event
 type Liquidation struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	Liquidator     string    `json:"liquidator"`
-	UserAddress    string    `json:"user_address"`
-	RepayAsset     string    `json:"repay_asset"`
-	RepayAmount    string    `json:"repay_amount"`
-	CollateralAsset string   `json:"collateral_asset"`
-	CollateralAmount string  `json:"collateral_amount"`
-	ProfitUSD      float64   `json:"profit_usd"`
-	TransactionHash string   `json:"transaction_hash"`
-	ChainID        int64     `json:"chain_id"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	Liquidator       string    `json:"liquidator"`
+	UserAddress      string    `json:"user_address"`
+	RepayAsset       string    `json:"repay_asset"`
+	RepayAmount      string    `json:"repay_amount"`
+	CollateralAsset  string    `json:"collateral_asset"`
+	CollateralAmount string    `json:"collateral_amount"`
+	ProfitUSD        float64   `json:"profit_usd"`
+	TransactionHash  string    `json:"transaction_hash"`
+	ChainID          int64     `json:"chain_id"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // InterestRate holds interest rate configuration
 type InterestRate struct {
-	BaseRate       float64 `json:"base_rate"`
-	Slope1         float64 `json:"slope1"`
-	Slope2         float64 `json:"slope2"`
-	OptimalUtil    float64 `json:"optimal_util"`
+	BaseRate    float64 `json:"base_rate"`
+	Slope1      float64 `json:"slope1"`
+	Slope2      float64 `json:"slope2"`
+	OptimalUtil float64 `json:"optimal_util"`
 }
 
 // ============================================================================
@@ -182,14 +181,14 @@ func NewLendingService(config Config) (*LendingService, error) {
 	}
 
 	service := &LendingService{
-		db:    db,
-		redis: rdb,
+		db:     db,
+		redis:  rdb,
 		config: config,
 		interestRate: InterestRate{
-			BaseRate:    0.02,   // 2% base rate
-			Slope1:      0.10,   // 10% slope 1
-			Slope2:      0.60,   // 60% slope 2
-			OptimalUtil: 0.80,   // 80% optimal utilization
+			BaseRate:    0.02, // 2% base rate
+			Slope1:      0.10, // 10% slope 1
+			Slope2:      0.60, // 60% slope 2
+			OptimalUtil: 0.80, // 80% optimal utilization
 		},
 		markets: make(map[string]*LendingMarket),
 	}
@@ -208,48 +207,48 @@ func (s *LendingService) initializeMarkets() {
 	// Initialize default markets
 	defaultMarkets := []LendingMarket{
 		{
-			AssetAddress:    "0x0000000000000000000000000000000000000000", // ETH
-			AssetSymbol:     "ETH",
-			AssetName:       "Ethereum",
-			AssetDecimals:   18,
-			LTV:             0.80,
+			AssetAddress:         "0x0000000000000000000000000000000000000000", // ETH
+			AssetSymbol:          "ETH",
+			AssetName:            "Ethereum",
+			AssetDecimals:        18,
+			LTV:                  0.80,
 			LiquidationThreshold: 0.85,
-			LiquidationBonus: 0.05,
-			IsActive:        true,
-			ChainID:         1,
+			LiquidationBonus:     0.05,
+			IsActive:             true,
+			ChainID:              1,
 		},
 		{
-			AssetAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
-			AssetSymbol:     "USDT",
-			AssetName:       "Tether USD",
-			AssetDecimals:   6,
-			LTV:             0.90,
+			AssetAddress:         "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
+			AssetSymbol:          "USDT",
+			AssetName:            "Tether USD",
+			AssetDecimals:        6,
+			LTV:                  0.90,
 			LiquidationThreshold: 0.95,
-			LiquidationBonus: 0.02,
-			IsActive:        true,
-			ChainID:         1,
+			LiquidationBonus:     0.02,
+			IsActive:             true,
+			ChainID:              1,
 		},
 		{
-			AssetAddress:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
-			AssetSymbol:     "USDC",
-			AssetName:       "USD Coin",
-			AssetDecimals:   6,
-			LTV:             0.90,
+			AssetAddress:         "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+			AssetSymbol:          "USDC",
+			AssetName:            "USD Coin",
+			AssetDecimals:        6,
+			LTV:                  0.90,
 			LiquidationThreshold: 0.95,
-			LiquidationBonus: 0.02,
-			IsActive:        true,
-			ChainID:         1,
+			LiquidationBonus:     0.02,
+			IsActive:             true,
+			ChainID:              1,
 		},
 		{
-			AssetAddress:    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", // WBTC
-			AssetSymbol:     "WBTC",
-			AssetName:       "Wrapped Bitcoin",
-			AssetDecimals:   8,
-			LTV:             0.70,
+			AssetAddress:         "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", // WBTC
+			AssetSymbol:          "WBTC",
+			AssetName:            "Wrapped Bitcoin",
+			AssetDecimals:        8,
+			LTV:                  0.70,
 			LiquidationThreshold: 0.80,
-			LiquidationBonus: 0.05,
-			IsActive:        true,
-			ChainID:         1,
+			LiquidationBonus:     0.05,
+			IsActive:             true,
+			ChainID:              1,
 		},
 	}
 
@@ -314,17 +313,17 @@ func (s *LendingService) UpdateMarketRates(marketID uint) error {
 // ============================================================================
 
 type SupplyRequest struct {
-	UserAddress   string `json:"user_address" binding:"required"`
-	AssetAddress  string `json:"asset_address" binding:"required"`
-	Amount        string `json:"amount" binding:"required"`
-	ChainID       int64  `json:"chain_id"`
+	UserAddress  string `json:"user_address" binding:"required"`
+	AssetAddress string `json:"asset_address" binding:"required"`
+	Amount       string `json:"amount" binding:"required"`
+	ChainID      int64  `json:"chain_id"`
 }
 
 type SupplyResponse struct {
 	Success         bool    `json:"success"`
 	TransactionHash string  `json:"transaction_hash,omitempty"`
 	NewBalance      string  `json:"new_balance"`
-	NewBalanceUSD  float64  `json:"new_balance_usd"`
+	NewBalanceUSD   float64 `json:"new_balance_usd"`
 	APY             float64 `json:"apy"`
 	Error           string  `json:"error,omitempty"`
 }
@@ -363,11 +362,11 @@ func (s *LendingService) Supply(ctx *gin.Context) {
 	if result.RowsAffected == 0 {
 		userSupply = UserSupply{
 			UserAddress:  req.UserAddress,
-			MarketID:    market.ID,
+			MarketID:     market.ID,
 			AssetAddress: req.AssetAddress,
-			Balance:     amount.String(),
-			APY:         market.SupplyAPY,
-			ChainID:     req.ChainID,
+			Balance:      amount.String(),
+			APY:          market.SupplyAPY,
+			ChainID:      req.ChainID,
 		}
 		s.db.Create(&userSupply)
 	} else {
@@ -396,20 +395,20 @@ func (s *LendingService) Supply(ctx *gin.Context) {
 // ============================================================================
 
 type BorrowRequest struct {
-	UserAddress   string `json:"user_address" binding:"required"`
-	AssetAddress  string `json:"asset_address" binding:"required"`
-	Amount        string `json:"amount" binding:"required"`
-	ChainID       int64  `json:"chain_id"`
+	UserAddress  string `json:"user_address" binding:"required"`
+	AssetAddress string `json:"asset_address" binding:"required"`
+	Amount       string `json:"amount" binding:"required"`
+	ChainID      int64  `json:"chain_id"`
 }
 
 type BorrowResponse struct {
 	Success          bool    `json:"success"`
 	TransactionHash  string  `json:"transaction_hash,omitempty"`
 	NewBorrowBalance string  `json:"new_borrow_balance"`
-	NewBorrowUSD    float64 `json:"new_borrow_usd"`
-	APY             float64 `json:"apy"`
-	HealthFactor    float64 `json:"health_factor"`
-	Error           string  `json:"error,omitempty"`
+	NewBorrowUSD     float64 `json:"new_borrow_usd"`
+	APY              float64 `json:"apy"`
+	HealthFactor     float64 `json:"health_factor"`
+	Error            string  `json:"error,omitempty"`
 }
 
 // Borrow assets from the lending market
@@ -450,7 +449,7 @@ func (s *LendingService) Borrow(ctx *gin.Context) {
 
 	// Update market total borrows
 	currentTotal, _ := big.NewInt(0).SetString(market.TotalBorrows, 10)
-	newTotal := new(big.Int).Add(currentTotal, new(big.Int).SetString(req.Amount, 10))
+	newTotal := new(big.Int).Add(currentTotal, mustBig(req.Amount))
 	market.TotalBorrows = newTotal.String()
 	s.db.Save(&market)
 
@@ -461,16 +460,16 @@ func (s *LendingService) Borrow(ctx *gin.Context) {
 	if result.RowsAffected == 0 {
 		userBorrow = UserBorrow{
 			UserAddress:  req.UserAddress,
-			MarketID:    market.ID,
+			MarketID:     market.ID,
 			AssetAddress: req.AssetAddress,
-			Balance:     req.Amount,
-			APY:         market.BorrowAPY,
-			ChainID:     req.ChainID,
+			Balance:      req.Amount,
+			APY:          market.BorrowAPY,
+			ChainID:      req.ChainID,
 		}
 		s.db.Create(&userBorrow)
 	} else {
 		currentBalance, _ := big.NewInt(0).SetString(userBorrow.Balance, 10)
-		newBalance := new(big.Int).Add(currentBalance, new(big.Int).SetString(req.Amount, 10))
+		newBalance := new(big.Int).Add(currentBalance, mustBig(req.Amount))
 		userBorrow.Balance = newBalance.String()
 		userBorrow.APY = market.BorrowAPY
 		s.db.Save(&userBorrow)
@@ -480,9 +479,9 @@ func (s *LendingService) Borrow(ctx *gin.Context) {
 		Success:          true,
 		TransactionHash:  "",
 		NewBorrowBalance: userBorrow.Balance,
-		NewBorrowUSD:    newBorrowUSD,
-		APY:             market.BorrowAPY,
-		HealthFactor:    healthFactor,
+		NewBorrowUSD:     newBorrowUSD,
+		APY:              market.BorrowAPY,
+		HealthFactor:     healthFactor,
 	})
 }
 
@@ -540,29 +539,47 @@ func (s *LendingService) calculateHealthFactor(userAddress string, chainID int64
 	return (collateralUSD * weightedThreshold) / borrowUSD
 }
 
-func (s *LendingService) calculateAssetUSD(assetAddress, amount string, chainID int64) float64 {
-	// Get price from oracle (simplified)
-	prices := map[string]float64{
-		"0x0000000000000000000000000000000000000000": 3500.0,  // ETH
-		"0xdAC17F958D2ee523a2206206994597C13D831ec7": 1.0,    // USDT
-		"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": 1.0,  // USDC
-		"0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": 65000.0, // WBTC
-	}
-
-	price, ok := prices[assetAddress]
+// mustBig parses a decimal string to big.Int, returning 0 on failure.
+func mustBig(s string) *big.Int {
+	v, ok := new(big.Int).SetString(s, 10)
 	if !ok {
-		price = 0 // Unknown asset
+		return big.NewInt(0)
 	}
+	return v
+}
 
-	amountFloat, _ := big.NewInt(0).SetString(amount, 10)
-	decimals := 18
-	if assetAddress == "0xdAC17F958D2ee523a2206206994597C13D831ec7" ||
-		assetAddress == "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" {
-		decimals = 6
+// assetMeta maps a known mainnet token address to its oracle symbol and
+// decimals. Unknown assets fail closed (price 0 -> rejected by callers).
+var assetMeta = map[string]struct {
+	symbol   string
+	decimals int
+}{
+	"0x0000000000000000000000000000000000000000": {"ETH", 18},
+	"0xdAC17F958D2ee523a2206206994597C13D831ec7": {"USDT", 6},
+	"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": {"USDC", 6},
+	"0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": {"WBTC", 8},
+}
+
+// calculateAssetUSD values an amount using the real CoinGecko oracle.
+// Fail-closed: unknown assets and oracle failures yield 0, which callers
+// treat as cannot-value rather than a fabricated price.
+func (s *LendingService) calculateAssetUSD(assetAddress, amount string, chainID int64) float64 {
+	meta, ok := assetMeta[assetAddress]
+	if !ok {
+		return 0 // unknown asset: cannot value
 	}
-
-	amountEth := float64(amountFloat.Int64()) / math.Pow10(decimals)
-	return amountEth * price
+	price, err := livePriceUSD(meta.symbol)
+	if err != nil || price <= 0 {
+		return 0
+	}
+	amountInt, _ := new(big.Int).SetString(amount, 10)
+	if amountInt == nil {
+		return 0
+	}
+	amountF := new(big.Float).SetInt(amountInt)
+	divisor := new(big.Float).SetFloat64(math.Pow10(meta.decimals))
+	human, _ := new(big.Float).Quo(amountF, divisor).Float64()
+	return human * price
 }
 
 // ============================================================================
@@ -570,10 +587,10 @@ func (s *LendingService) calculateAssetUSD(assetAddress, amount string, chainID 
 // ============================================================================
 
 type RepayRequest struct {
-	UserAddress   string `json:"user_address" binding:"required"`
-	AssetAddress  string `json:"asset_address" binding:"required"`
-	Amount        string `json:"amount" binding:"required"`
-	ChainID       int64  `json:"chain_id"`
+	UserAddress  string `json:"user_address" binding:"required"`
+	AssetAddress string `json:"asset_address" binding:"required"`
+	Amount       string `json:"amount" binding:"required"`
+	ChainID      int64  `json:"chain_id"`
 }
 
 // Repay borrowed assets
@@ -616,7 +633,7 @@ func (s *LendingService) Repay(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"success":           true,
 		"transaction_hash":  "",
-		"remaining_balance":  userBorrow.Balance,
+		"remaining_balance": userBorrow.Balance,
 	})
 }
 
@@ -625,10 +642,10 @@ func (s *LendingService) Repay(ctx *gin.Context) {
 // ============================================================================
 
 type WithdrawRequest struct {
-	UserAddress   string `json:"user_address" binding:"required"`
-	AssetAddress  string `json:"asset_address" binding:"required"`
-	Amount        string `json:"amount" binding:"required"`
-	ChainID       int64  `json:"chain_id"`
+	UserAddress  string `json:"user_address" binding:"required"`
+	AssetAddress string `json:"asset_address" binding:"required"`
+	Amount       string `json:"amount" binding:"required"`
+	ChainID      int64  `json:"chain_id"`
 }
 
 // Withdraw supplied assets
@@ -654,7 +671,6 @@ func (s *LendingService) Withdraw(ctx *gin.Context) {
 	// Check if withdrawal would cause undercollateralization
 	amountUSD := s.calculateAssetUSD(req.AssetAddress, req.Amount, req.ChainID)
 	collateralUSD := s.calculateUserCollateral(req.UserAddress, req.ChainID)
-	newCollateralUSD := collateralUSD - amountUSD
 	borrowUSD := s.calculateUserBorrows(req.UserAddress, req.ChainID)
 
 	if borrowUSD > 0 {
@@ -693,12 +709,12 @@ func (s *LendingService) Withdraw(ctx *gin.Context) {
 // ============================================================================
 
 type UserPositionResponse struct {
-	Supplies    []UserSupply   `json:"supplies"`
-	Borrows     []UserBorrow   `json:"borrows"`
-	Collateral  float64        `json:"collateral_usd"`
-	BorrowsUSD  float64        `json:"borrows_usd"`
-	HealthFactor float64       `json:"health_factor"`
-	NetAPY      float64        `json:"net_apy"`
+	Supplies     []UserSupply `json:"supplies"`
+	Borrows      []UserBorrow `json:"borrows"`
+	Collateral   float64      `json:"collateral_usd"`
+	BorrowsUSD   float64      `json:"borrows_usd"`
+	HealthFactor float64      `json:"health_factor"`
+	NetAPY       float64      `json:"net_apy"`
 }
 
 // Get user's lending positions

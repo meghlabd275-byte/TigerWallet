@@ -581,7 +581,7 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 
 // sendSMTP - Send email via SMTP
 func (s *EmailService) sendSMTP(to string, data []byte) error {
-	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)
+	addr := net.JoinHostPort(s.config.SMTPHost, fmt.Sprintf("%d", s.config.SMTPPort))
 	
 	var conn net.Conn
 	var err error

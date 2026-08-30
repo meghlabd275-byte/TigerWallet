@@ -18,11 +18,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand/v2"
+	"math/big"
 	"net/http"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // ============== Data Structures ==============
@@ -206,8 +210,23 @@ func (s *CrossChainService) handleQuote(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get price
-	price := s.getTokenPrice(req.Token)
+	// Get price (fail-closed: a quote without a real price is meaningless)
+	price, ok := s.getTokenPrice(req.Token)
+	if !ok {
+		// Attempt one live refresh before failing.
+		if fetched, err := fetchLivePricesUSD([]string{req.Token}); err == nil {
+			if p, ok2 := fetched[strings.ToUpper(req.Token)]; ok2 {
+				s.mu.Lock()
+				s.priceCache[strings.ToUpper(req.Token)] = p
+				s.mu.Unlock()
+				price, ok = p, true
+			}
+		}
+	}
+	if !ok {
+		http.Error(w, "price unavailable for token "+req.Token, http.StatusServiceUnavailable)
+		return
+	}
 	amountUSD := req.Amount * price
 
 	// Find available bridges
@@ -408,83 +427,203 @@ func (s *CrossChainService) calculateRoute(req QuoteRequest, bridgeName string, 
 	return route
 }
 
+// processTransfer executes a REAL cross-chain transfer through the LI.FI
+// aggregation API: a real quote yields an unsigned bridge transaction which
+// the configured executor key signs and broadcasts on the source chain; the
+// destination leg is tracked via the real LI.FI status API. Fail-closed:
+// without BRIDGE_EXECUTOR_PRIVATE_KEY the transfer fails immediately, and a
+// tx hash is recorded only after a real broadcast/confirmation.
 func (s *CrossChainService) processTransfer(transferID string, route *BridgeRoute, amount float64, toAddress string) {
-	transfer, ok := s.transfers[transferID]
+	fail := func(step int, err error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		transfer := s.transfers[transferID]
+		if transfer == nil {
+			return
+		}
+		if step >= 1 && step <= len(transfer.Steps) {
+			transfer.Steps[step-1].Status = "failed"
+			transfer.Steps[step-1].Error = err.Error()
+		}
+		transfer.Status = "failed"
+		transfer.UpdatedAt = time.Now().Unix()
+	}
+	progress := func(step int, status string, txHash string, pct float64) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		transfer := s.transfers[transferID]
+		if transfer == nil {
+			return
+		}
+		if step >= 1 && step <= len(transfer.Steps) {
+			transfer.Steps[step-1].Status = status
+			if txHash != "" {
+				transfer.Steps[step-1].TxHash = txHash
+			}
+		}
+		transfer.Progress = pct
+		transfer.UpdatedAt = time.Now().Unix()
+	}
+
+	execKey := os.Getenv("BRIDGE_EXECUTOR_PRIVATE_KEY")
+	if execKey == "" {
+		fail(1, fmt.Errorf("BRIDGE_EXECUTOR_PRIVATE_KEY not configured; bridge execution disabled"))
+		return
+	}
+	source, ok := s.chains[route.SourceChain]
 	if !ok {
+		fail(1, fmt.Errorf("source chain %q not supported", route.SourceChain))
+		return
+	}
+	target, ok := s.chains[route.TargetChain]
+	if !ok {
+		fail(1, fmt.Errorf("target chain %q not supported", route.TargetChain))
+		return
+	}
+	rpcURL, err := rpcForChain(route.SourceChain)
+	if err != nil {
+		fail(1, err)
+		return
+	}
+	tokenAddr, decimals, err := resolveTokenAddress(route.SourceChain, route.Token, int64(source.ChainID))
+	if err != nil {
+		fail(1, err)
+		return
+	}
+	targetTokenAddr, _, err := resolveTokenAddress(route.TargetChain, route.Token, int64(target.ChainID))
+	if err != nil {
+		fail(1, err)
 		return
 	}
 
-	// Step 1: Approve
-	transfer.Steps[0].Status = "processing"
-	transfer.Progress = 10
-	transfer.UpdatedAt = time.Now().Unix()
-	time.Sleep(2 * time.Second)
-
-	transfer.Steps[0].Status = "completed"
-	transfer.Steps[0].TxHash = "0x" + generateRequestID()
-	transfer.Progress = 33
-
-	// Step 2: Bridge
-	transfer.Steps[1].Status = "processing"
-	transfer.Status = "processing"
-	transfer.UpdatedAt = time.Now().Unix()
-	time.Sleep(5 * time.Second)
-
-	transfer.Steps[1].Status = "completed"
-	transfer.Steps[1].TxHash = "0x" + generateRequestID()
-	transfer.SourceTx = transfer.Steps[1].TxHash
-	transfer.Progress = 66
-
-	// Step 3: Claim
-	transfer.Steps[2].Status = "processing"
-	transfer.UpdatedAt = time.Now().Unix()
-	time.Sleep(3 * time.Second)
-
-	transfer.Steps[2].Status = "completed"
-	transfer.Steps[2].TxHash = "0x" + generateRequestID()
-	transfer.TargetTx = transfer.Steps[2].TxHash
-	transfer.Status = "completed"
-	transfer.Progress = 100
-	transfer.UpdatedAt = time.Now().Unix()
-}
-
-func (s *CrossChainService) updatePrices() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	prices := map[string]float64{
-		"ETH":   3500,
-		"BTC":   65000,
-		"USDT":  1.0,
-		"USDC":  1.0,
-		"BNB":   600,
-		"MATIC": 0.8,
-		"AVAX":  35,
-		"SOL":   145,
-		"FTM":   0.4,
-		"OP":    2.5,
-		"ARB":   1.2,
+	// amount (token units, float) -> integer smallest-unit amount
+	multiplier := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil))
+	amountF := new(big.Float).Mul(new(big.Float).SetFloat64(amount), multiplier)
+	amountWei, _ := amountF.Int(nil)
+	if amountWei.Sign() <= 0 {
+		fail(1, fmt.Errorf("amount too small after decimal conversion"))
+		return
 	}
 
-	for range ticker.C {
+	execPriv, err := crypto.HexToECDSA(strings.TrimPrefix(execKey, "0x"))
+	if err != nil {
+		fail(1, fmt.Errorf("invalid executor key: %w", err))
+		return
+	}
+	fromAddress := crypto.PubkeyToAddress(execPriv.PublicKey).Hex()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// Step 1: real quote from LI.FI (returns the bridge tx to execute).
+	progress(1, "processing", "", 10)
+	quote, err := fetchLiFiQuote(ctx, int64(source.ChainID), int64(target.ChainID),
+		tokenAddr, targetTokenAddr, fromAddress, toAddress, amountWei, route.Slippage)
+	if err != nil {
+		fail(1, fmt.Errorf("bridge quote: %w", err))
+		return
+	}
+	progress(1, "completed", "", 33)
+
+	// Step 2: sign + broadcast the real bridge transaction on the source chain.
+	progress(2, "processing", "", 40)
+	sourceTx, err := signAndBroadcastTx(ctx, rpcURL, execKey, quote.TxTo, quote.TxValue, quote.TxData)
+	if err != nil {
+		fail(2, fmt.Errorf("source tx: %w", err))
+		return
+	}
+	s.mu.Lock()
+	if transfer := s.transfers[transferID]; transfer != nil {
+		transfer.Status = "processing"
+		transfer.SourceTx = sourceTx
+		transfer.Steps[1].Status = "completed"
+		transfer.Steps[1].TxHash = sourceTx
+		transfer.Progress = 66
+		transfer.UpdatedAt = time.Now().Unix()
+	}
+	s.mu.Unlock()
+
+	// Step 3: track the destination leg via the real LI.FI status API until
+	// completion (relayer executes the claim; no manual claim tx for the
+	// aggregated routes LI.FI selects by default).
+	progress(3, "processing", "", 75)
+	deadline := time.Now().Add(30 * time.Minute)
+	for time.Now().Before(deadline) {
+		status, receivingTx, err := lifiBridgeStatus(ctx, sourceTx, int64(source.ChainID), int64(target.ChainID))
+		if err == nil {
+			switch status {
+			case "DONE":
+				s.mu.Lock()
+				if transfer := s.transfers[transferID]; transfer != nil {
+					transfer.Steps[2].Status = "completed"
+					if receivingTx != "" {
+						transfer.Steps[2].TxHash = receivingTx
+						transfer.TargetTx = receivingTx
+					}
+					transfer.Status = "completed"
+					transfer.Progress = 100
+					transfer.UpdatedAt = time.Now().Unix()
+				}
+				s.mu.Unlock()
+				return
+			case "FAILED":
+				fail(3, fmt.Errorf("bridge relay failed for source tx %s", sourceTx))
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			fail(3, fmt.Errorf("context cancelled while awaiting destination confirmation"))
+			return
+		case <-time.After(10 * time.Second):
+		}
+	}
+	fail(3, fmt.Errorf("destination confirmation timed out after 30m for source tx %s", sourceTx))
+}
+
+// updatePrices refreshes the price cache from the real CoinGecko oracle
+// every 30s. On upstream failure the last known real prices are kept —
+// prices are never fabricated or randomly perturbed.
+func (s *CrossChainService) updatePrices() {
+	symbols := []string{"USDT", "USDC"}
+	seen := map[string]bool{"USDT": true, "USDC": true}
+	for _, chain := range s.chains {
+		if !seen[chain.NativeToken] {
+			seen[chain.NativeToken] = true
+			symbols = append(symbols, chain.NativeToken)
+		}
+	}
+
+	refresh := func() {
+		fetched, err := fetchLivePricesUSD(symbols)
+		if err != nil || len(fetched) == 0 {
+			return // keep last known real prices
+		}
 		s.mu.Lock()
-		for token, price := range prices {
-			// Add small variance
-			variance := (rand.Float64() - 0.5) * 0.02 * price
-			s.priceCache[token] = price + variance
+		for token, price := range fetched {
+			s.priceCache[token] = price
 		}
 		s.mu.Unlock()
 	}
+
+	refresh()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		refresh()
+	}
 }
 
-func (s *CrossChainService) getTokenPrice(token string) float64 {
+// getTokenPrice returns the last known real price; (0, false) when unknown.
+// Callers must fail closed rather than assume a price.
+func (s *CrossChainService) getTokenPrice(token string) (float64, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if price, ok := s.priceCache[token]; ok {
-		return price
+	if price, ok := s.priceCache[token]; ok && price > 0 {
+		return price, true
 	}
-	return 1.0
+	return 0, false
 }
 
 func generateRequestID() string {
