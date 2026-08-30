@@ -138,19 +138,27 @@ func trimSpace(s string) string {
 	return s[start:end]
 }
 
+// limiter is the interface enforced by the RateLimit middleware. It is
+// satisfied by the in-process rateLimiter (single replica) and by
+// redisRateLimiter (cluster-wide; see ratelimit_redis.go).
+type limiter interface {
+	allow(key string) bool
+	retryAfterSeconds() int
+}
+
 // RateLimit returns gin middleware enforcing the given refill rate + burst on
 // the routes it wraps. On limit exceeded it responds 429 with a Retry-After
 // header. The key is the authenticated user ID when present, else the client
 // IP, so a single account cannot bypass the limit by rotating IPs and a single
 // IP cannot bypass it across accounts.
-func RateLimit(rl *rateLimiter) gin.HandlerFunc {
+func RateLimit(rl limiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := clientKey(c)
 		if !rl.allow(key) {
 			retry := rl.retryAfterSeconds()
 			c.Header("Retry-After", strconv.Itoa(retry))
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"error":      "rate limit exceeded, please retry later",
+				"error":       "rate limit exceeded, please retry later",
 				"retry_after": retry,
 			})
 			return
@@ -168,6 +176,6 @@ func RateLimit(rl *rateLimiter) gin.HandlerFunc {
 // are the funds-movement surfaces; the limit is generous for normal use but
 // caps automated drain attempts.
 var (
-	authLimiter   = newRateLimiter(5.0/60.0, 5)    // ~5/min, burst 5
-	signLimiter   = newRateLimiter(20.0/60.0, 20) // ~20/min, burst 20
+	authLimiter limiter = newRateLimiter(5.0/60.0, 5)   // ~5/min, burst 5
+	signLimiter limiter = newRateLimiter(20.0/60.0, 20) // ~20/min, burst 20
 )

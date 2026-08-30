@@ -812,3 +812,28 @@
   each need a chain-specific SDK signer; extension dApp injection and desktop
   native GUI are by-design absences; FCM google-services.json is deployment
   config; Kotlin/Swift/Dart clients not compile-verified (no SDKs in sandbox).
+## Session 23 (2026-08-29) — UserWallet cluster engine for global scale
+- go/wallet_api is now cluster-native (stateless replicas + Redis coordination):
+  - cluster.go: Redis-heartbeat node registry (5s beat / 15s TTL, self-sweeping,
+    immediate deregistration on shutdown); admin-gated GET
+    /api/v1/admin/cluster/status (topology, regions, WS client counts).
+  - ratelimit_redis.go: auth (5/min) + signing (20/min) limiters upgraded to a
+    Redis Lua token bucket (atomic, cluster-wide) via a new `limiter`
+    interface; fail-CLOSED fallback to in-process bucket on Redis outage.
+  - live_feed.go: cluster-shared price feed — Redis SET NX fetch lock elects
+    ONE upstream fetcher per tick fleet-wide, tickers written to shared cache
+    (livefeed:ticker:<SYM>), every replica serves its subscribers via MGET.
+    N replicas x M clients = 1 upstream call/tick. Fail-closed (error frames,
+    never fabricated prices).
+  - handlers.go: /health/live (liveness) + /health/ready (PG+Redis readiness)
+    probes; handleHealth now reports node_id + version.
+  - store.go: PG pool env-tunable (PG_MAX_CONNS/PG_MIN_CONNS/
+    PG_MAX_CONN_LIFETIME_MIN/PG_MAX_CONN_IDLE_MIN).
+- k8s/wallet-api.yaml: Namespace+Deployment (4 replicas, maxUnavailable 0,
+  zone spread, preStop drain), Service (no affinity), HPA 4-100 @65% CPU,
+  PDB minAvailable 2, downward-API POD_IP/CLUSTER_REGION env.
+- docs/CLUSTER.md: full global-expansion architecture (geo-DNS multi-region
+  topology, PgBouncer invariant replicas x MaxConns <= PG budget, sharding
+  link, read/write routing).
+- Build+vet+test PASS (Go 1.22.12 reinstalled at /tmp/go122 — sandbox reset
+  had wiped the toolchain).

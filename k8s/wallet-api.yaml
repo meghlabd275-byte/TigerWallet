@@ -1,0 +1,174 @@
+# Kubernetes deployment for the canonical UserWallet backend (go/wallet_api).
+#
+# The service is STATELESS (JWT auth, PostgreSQL + Redis for all durable and
+# hot state, cluster coordination via Redis — see docs/CLUSTER.md), so it
+# scales horizontally to any replica count behind the Service. Deploy one
+# namespace per region and front the regional Services with a global
+# anycast/geo-DNS load balancer for worldwide expansion.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tigerwallet
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-api
+  namespace: tigerwallet
+  labels:
+    app: wallet-api
+spec:
+  replicas: 4
+  strategy:
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: wallet-api
+  template:
+    metadata:
+      labels:
+        app: wallet-api
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: wallet-api
+      containers:
+        - name: wallet-api
+          image: tigerwallet/wallet-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8443
+          env:
+            - name: WALLET_API_PORT
+              value: "8443"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: wallet-api-secrets
+                  key: database-url
+            - name: REDIS_ADDR
+              value: "redis-master.tigerwallet.svc.cluster.local:6379"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: wallet-api-secrets
+                  key: jwt-secret
+            # Cluster identity: pod name + IP feed the Redis node registry
+            # (cluster.go); CLUSTER_REGION labels the topology per region.
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CLUSTER_REGION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['topology.kubernetes.io/region']
+            # Pool sizing: per-replica MaxConns x replica count must fit the
+            # Postgres budget (use PgBouncer beyond ~100 replicas).
+            - name: PG_MAX_CONNS
+              value: "25"
+            - name: PG_MIN_CONNS
+              value: "2"
+            - name: LIVE_FEED_INTERVAL_MS
+              value: "5000"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "2"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                # Give the LB endpoints controller time to drain before
+                # SIGTERM; the process then deregisters from the cluster
+                # registry and shuts down gracefully.
+                command: ["sh", "-c", "sleep 5"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallet-api
+  namespace: tigerwallet
+  labels:
+    app: wallet-api
+spec:
+  type: ClusterIP
+  selector:
+    app: wallet-api
+  ports:
+    - name: http
+      port: 8443
+      targetPort: http
+  # WebSocket live feed (/api/v1/ws) is long-lived; keep client affinity off
+  # (any replica can serve any client — state is cluster-shared via Redis).
+  sessionAffinity: None
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wallet-api
+  namespace: tigerwallet
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wallet-api
+  minReplicas: 4
+  maxReplicas: 100
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 8
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wallet-api
+  namespace: tigerwallet
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: wallet-api

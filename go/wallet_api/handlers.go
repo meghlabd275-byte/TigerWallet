@@ -26,9 +26,39 @@ func handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
 		"service": "tigerwallet-wallet-api",
-		"version": "1.0.0",
+		"version": serviceVersion,
+		"node_id": clusterNodeID(),
 		"time":    time.Now().UTC(),
 	})
+}
+
+// handleLiveness is the k8s liveness probe: the process is up and its HTTP
+// loop answers. It deliberately checks nothing else — a dependency hiccup
+// must never restart an otherwise healthy replica.
+func handleLiveness(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "alive", "node_id": clusterNodeID()})
+}
+
+// handleReadiness is the k8s readiness probe: the replica only receives
+// traffic when its dependencies (PostgreSQL + Redis) are reachable. On
+// failure it returns 503 so the load balancer drains this replica until the
+// dependency recovers; the replica itself keeps running.
+func handleReadiness(c *gin.Context) {
+	if store == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "reason": "store not initialized"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+	if err := store.PG.Ping(ctx); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "reason": "postgres unreachable"})
+		return
+	}
+	if err := store.Redis.Ping(ctx).Err(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "reason": "redis unreachable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ready", "node_id": clusterNodeID()})
 }
 
 // ---- Auth ----

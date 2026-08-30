@@ -31,8 +31,14 @@ func NewStore(ctx context.Context, dbURL, redisAddr string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse db url: %w", err)
 	}
-	cfg.MaxConns = 25
-	cfg.MinConns = 2
+	// Pool sizing is deployment-tunable: at cluster scale every replica holds
+	// its own pool, so per-replica MaxConns × replica count must stay within
+	// the Postgres connection budget (front it with PgBouncer when the fleet
+	// grows past the budget). Defaults are sized for a single-region pod.
+	cfg.MaxConns = int32(envInt("PG_MAX_CONNS", 25))
+	cfg.MinConns = int32(envInt("PG_MIN_CONNS", 2))
+	cfg.MaxConnLifetime = time.Duration(envInt("PG_MAX_CONN_LIFETIME_MIN", 30)) * time.Minute
+	cfg.MaxConnIdleTime = time.Duration(envInt("PG_MAX_CONN_IDLE_MIN", 5)) * time.Minute
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
@@ -610,18 +616,18 @@ type TxLogRecord struct {
 // for a given chain. Populated by the curated defaults and by the MasterWallet
 // owner / ProjectParty approval flow over POST /api/v1/admin/tokens.
 type RegistryToken struct {
-	ID         uuid.UUID `json:"id"`
-	ChainID    int64     `json:"chain_id"`
-	Contract   string    `json:"contract"`
-	Symbol     string    `json:"symbol"`
-	Name       string    `json:"name"`
-	Decimals   int       `json:"decimals"`
-	LogoURI    string    `json:"logo_uri"`
-	IsNative   bool      `json:"is_native"`
-	IsActive   bool      `json:"is_active"`
-	Source     string    `json:"source"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	ChainID   int64     `json:"chain_id"`
+	Contract  string    `json:"contract"`
+	Symbol    string    `json:"symbol"`
+	Name      string    `json:"name"`
+	Decimals  int       `json:"decimals"`
+	LogoURI   string    `json:"logo_uri"`
+	IsNative  bool      `json:"is_native"`
+	IsActive  bool      `json:"is_active"`
+	Source    string    `json:"source"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // seedTokenRegistry inserts the curated defaultTokenRegistry into the DB on

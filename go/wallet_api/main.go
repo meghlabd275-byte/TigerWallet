@@ -41,6 +41,14 @@ func main() {
 	} else {
 		store = s
 		log.Println("Connected to PostgreSQL + Redis")
+		// Cluster plane: register this replica in the shared node
+		// registry (Redis heartbeat) and upgrade the auth/sign rate
+		// limiters from per-replica to cluster-wide. Both are
+		// best-effort and degrade gracefully when Redis is down.
+		clusterReg = startClusterRegistry(store.Redis, appConfig.Port)
+		initClusterLimiters(store.Redis)
+		// Cluster-shared live feed: one upstream fetch per tick fleet-wide.
+		liveFeed.rdb = store.Redis
 		// Load any admin-managed chain config overrides into the live registry
 		// so admin-added/updated chains are visible immediately at boot.
 		bgCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
@@ -69,6 +77,11 @@ func main() {
 	// ---- Public routes ----
 	r.GET("/health", handleHealth)
 	r.GET("/api/v1/health", handleHealth)
+	// K8s probes: liveness = process alive; readiness = dependencies
+	// (PostgreSQL + Redis) reachable so the load balancer only routes to
+	// replicas that can actually serve.
+	r.GET("/health/live", handleLiveness)
+	r.GET("/health/ready", handleReadiness)
 	r.GET("/api/v1/chains", handleSupportedChains)
 	r.GET("/api/v1/price", handlePrice)
 	r.GET("/api/v1/gas", handleGasPrice)
@@ -277,6 +290,8 @@ func main() {
 		admin.Use(RequireAdmin())
 		{
 			admin.GET("/stats", handleAdminStats)
+			// Live cluster topology (node registry heartbeats).
+			admin.GET("/cluster/status", handleClusterStatus)
 			admin.GET("/wallets", handleAdminWallets)
 			admin.GET("/transactions", handleAdminTransactions)
 			admin.GET("/users", handleAdminUsers)
@@ -348,6 +363,11 @@ func main() {
 	defer shutCancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
 		log.Printf("forced shutdown: %v", err)
+	}
+	// Deregister from the cluster registry first so the topology drops
+	// this replica immediately instead of waiting for heartbeat TTL.
+	if clusterReg != nil {
+		clusterReg.stopRegistry()
 	}
 	if store != nil {
 		store.PG.Close()
