@@ -1040,6 +1040,47 @@
                         <button id="hw-sign-btn" class="btn-primary">Sign Message</button>
                     </div>
                     <div id="hw-sign-result" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Sign transaction (on-device)</h4>
+                        <div class="input-group">
+                            <label>To</label>
+                            <input type="text" id="hw-tx-to" placeholder="0x…">
+                        </div>
+                        <div class="input-group">
+                            <label>Value (wei)</label>
+                            <input type="text" id="hw-tx-value" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label>Nonce</label>
+                            <input type="text" id="hw-tx-nonce" placeholder="0">
+                        </div>
+                        <div class="input-group">
+                            <label>Gas limit</label>
+                            <input type="text" id="hw-tx-gaslimit" placeholder="21000">
+                        </div>
+                        <div class="input-group">
+                            <label>Gas price (wei) — legacy EIP-155</label>
+                            <input type="text" id="hw-tx-gasprice" placeholder="leave empty for EIP-1559">
+                        </div>
+                        <div class="input-group">
+                            <label>Max fee (wei) — EIP-1559</label>
+                            <input type="text" id="hw-tx-maxfee" placeholder="optional">
+                        </div>
+                        <div class="input-group">
+                            <label>Max priority fee (wei) — EIP-1559</label>
+                            <input type="text" id="hw-tx-maxprio" placeholder="optional">
+                        </div>
+                        <div class="input-group">
+                            <label>Chain ID</label>
+                            <input type="text" id="hw-tx-chainid" placeholder="1">
+                        </div>
+                        <div class="input-group">
+                            <label>Data (hex)</label>
+                            <input type="text" id="hw-tx-data" placeholder="0x">
+                        </div>
+                        <button id="hw-tx-sign-btn" class="btn-primary">Sign Transaction on Device</button>
+                    </div>
+                    <div id="hw-tx-result" class="assets-list"></div>
                 </div>
 
                 <!-- Transactions Page -->

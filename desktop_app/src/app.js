@@ -234,6 +234,7 @@ class TigerWalletApp {
         document.getElementById('hw-detect-btn')?.addEventListener('click', () => this.hwDetect());
         document.getElementById('hw-address-btn')?.addEventListener('click', () => this.hwGetAddress());
         document.getElementById('hw-sign-btn')?.addEventListener('click', () => this.hwSignMessage());
+        document.getElementById('hw-tx-sign-btn')?.addEventListener('click', () => this.hwSignTransaction());
 
         // Copy trading (trading page)
         document.getElementById('copy-follow-btn')?.addEventListener('click', () => this.followTrader());
@@ -2738,6 +2739,33 @@ class TigerWalletApp {
             const sig = await this.getHwManager().signMessage(message);
             if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signature</div><div class="asset-address">' + this.escapeHtml(sig || 'unavailable') + '</div></div></div>';
         } catch (e) { alert('Hardware sign error: ' + e.message); }
+    }
+
+    async hwSignTransaction() {
+        const g = (id) => (document.getElementById(id)?.value || '').trim();
+        const out = document.getElementById('hw-tx-result');
+        const to = g('hw-tx-to');
+        if (!/^0x[0-9a-fA-F]{40}$/.test(to)) { alert('Enter a valid recipient address'); return; }
+        const gasPrice = g('hw-tx-gasprice');
+        const maxFee = g('hw-tx-maxfee');
+        const tx = {
+            to,
+            value: g('hw-tx-value') || '0',
+            nonce: g('hw-tx-nonce') || '0',
+            gasLimit: g('hw-tx-gaslimit') || '21000',
+            chainId: g('hw-tx-chainid') || '1',
+            data: g('hw-tx-data') || '0x',
+        };
+        // Legacy EIP-155 when a gas price is given, EIP-1559 type-2 otherwise.
+        if (gasPrice) tx.gasPrice = gasPrice;
+        else { tx.maxFeePerGas = maxFee || '0'; tx.maxPriorityFeePerGas = g('hw-tx-maxprio') || '0'; }
+        try {
+            const res = await this.getHwManager().signTransaction(tx);
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signed raw transaction</div>' +
+                '<div class="asset-address">' + this.escapeHtml(res.rawTransaction) + '</div>' +
+                '<div class="asset-address">v=' + res.v + ' r=' + this.escapeHtml(res.r) + ' s=' + this.escapeHtml(res.s) + '</div>' +
+                '<div class="asset-address">Broadcast via eth_sendRawTransaction on chain ' + this.escapeHtml(tx.chainId) + '</div></div></div>';
+        } catch (e) { alert('Hardware transaction sign error: ' + e.message); }
     }
 
     // ---- Trading page extras: futures catalog + copy trading (tradingFeatures.js) ----

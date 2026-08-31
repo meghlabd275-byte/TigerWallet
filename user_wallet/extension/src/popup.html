@@ -162,6 +162,7 @@
       <button class="tab-btn" data-tab="predictionTab">Prediction</button>
       <button class="tab-btn" data-tab="copyTradingTab">Copy</button>
       <button class="tab-btn" data-tab="feesTab">Fees</button>
+      <button class="tab-btn" data-tab="nonEvmTab">Non-EVM</button>
       <button class="tab-btn" data-tab="settingsTab">Settings</button>
     </div>
 
@@ -312,6 +313,8 @@
       <div id="dappPairingsList" style="max-height:120px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Active sessions</div>
       <div id="dappSessionsList" style="max-height:120px;overflow-y:auto;font-size:12px;"></div>
+      <div style="font-size:12px;color:var(--text-secondary);margin:8px 0 4px;">Live requests</div>
+      <div id="dappLiveEvents" style="max-height:120px;overflow-y:auto;font-size:12px;"></div>
       <div id="dappError" class="error hidden"></div>
     </div>
 
@@ -548,6 +551,39 @@
       <div id="feesTiers" style="max-height:120px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Recent Settled Fees</div>
       <div id="feesTransactions" style="max-height:120px;overflow-y:auto;font-size:12px;"></div>
+    </div>
+
+    <!-- Non-EVM tab (Solana / Bitcoin / Cosmos) -->
+    <div id="nonEvmTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Non-EVM Chains (Solana / Bitcoin / Cosmos)</div>
+      <label for="nonEvmWallet">Wallet</label>
+      <select id="nonEvmWallet"></select>
+      <label for="nonEvmChain">Chain family</label>
+      <select id="nonEvmChain">
+        <option value="solana">Solana</option>
+        <option value="bitcoin">Bitcoin</option>
+        <option value="cosmos">Cosmos</option>
+      </select>
+      <label for="nonEvmPassword">Wallet password</label>
+      <input type="password" id="nonEvmPassword" placeholder="••••••••" />
+      <label for="nonEvmPrefix">Bech32 prefix (Cosmos, optional)</label>
+      <input type="text" id="nonEvmPrefix" placeholder="cosmos" />
+      <button id="nonEvmDeriveBtn" class="secondary">Derive Address</button>
+      <div id="nonEvmAddressResult" class="wallet-balance" style="word-break:break-all;"></div>
+      <label for="nonEvmMessage">Message to sign</label>
+      <input type="text" id="nonEvmMessage" placeholder="Hello TigerWallet" />
+      <button id="nonEvmSignBtn" class="secondary">Sign Message</button>
+      <div id="nonEvmSigResult" class="wallet-balance" style="word-break:break-all;"></div>
+      <div style="font-size:12px;color:var(--text-secondary);margin:8px 0 4px;">Build + sign transaction</div>
+      <label for="nonEvmBtcInputs">Bitcoin inputs (JSON, bitcoin only)</label>
+      <textarea id="nonEvmBtcInputs" rows="2" placeholder='[{"txid":"…","vout":0,"amount_sats":100000,"script_pubkey_hex":"…"}]'></textarea>
+      <label for="nonEvmBtcOutputs">Bitcoin outputs (JSON, bitcoin only)</label>
+      <textarea id="nonEvmBtcOutputs" rows="2" placeholder='[{"address":"bc1…","amount_sats":90000}]'></textarea>
+      <label for="nonEvmCosmosDoc">Cosmos SignDoc (JSON, cosmos only)</label>
+      <textarea id="nonEvmCosmosDoc" rows="2" placeholder='{"account_number":"1","chain_id":"cosmoshub-4","fee":{"gas":"200000"},"memo":"","msgs":[],"sequence":"0"}'></textarea>
+      <button id="nonEvmSendBtn">Sign Transaction</button>
+      <div id="nonEvmSendResult" class="wallet-balance" style="word-break:break-all;"></div>
+      <div id="nonEvmStatus" class="wallet-balance"></div>
     </div>
 
     <div id="settingsTab" class="card hidden">

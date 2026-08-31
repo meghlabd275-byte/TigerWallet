@@ -12,10 +12,26 @@
  * Loaded before popup.js in popup.html. Exposes window.WalletConnectSocket.
  */
 (function (global) {
-  const API_BASE = 'http://localhost:8443/api/v1';
+  const DEFAULT_API_BASE = 'http://localhost:8443/api/v1';
+  let apiBase = DEFAULT_API_BASE;
+
+  // The popup reconfigures this from the user-configured backend
+  // (chrome.storage.local tw_api_base) via setApiBase(); in a bare context we
+  // also read storage directly so the socket never silently targets localhost.
+  function setApiBase(httpBase) {
+    if (typeof httpBase === 'string' && /^https?:\/\//.test(httpBase)) {
+      apiBase = httpBase.replace(/\/+$/, '');
+      if (!/\/api\/v1$/.test(apiBase)) apiBase += '/api/v1';
+    }
+  }
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get('tw_api_base', (res) => {
+      if (res && res.tw_api_base) setApiBase(res.tw_api_base);
+    });
+  }
 
   function wsBase() {
-    const httpBase = API_BASE.replace(/\/$/, '');
+    const httpBase = apiBase.replace(/\/$/, '');
     const wsBase = httpBase.replace(/^http/, httpBase.startsWith('https') ? 'wss' : 'ws');
     return wsBase + '/dapp/ws';
   }
@@ -54,5 +70,5 @@
     return id;
   }
 
-  global.WalletConnectSocket = { wsBase, topicUrl, connect, sendRequest };
+  global.WalletConnectSocket = { wsBase, topicUrl, connect, sendRequest, setApiBase };
 })(typeof window !== 'undefined' ? window : this);

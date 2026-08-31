@@ -14,6 +14,8 @@ function loadApiBase() {
       if (res.tw_api_base) {
         API_BASE = res.tw_api_base.replace(/\/+$/, '').replace(/\/api\/v1$/, '') + '/api/v1';
       }
+      // Keep the WalletConnect live socket pointed at the same backend.
+      if (typeof WalletConnectSocket !== 'undefined') WalletConnectSocket.setApiBase(apiOrigin());
       resolve(API_BASE);
     });
   });
@@ -138,6 +140,9 @@ function bindEvents() {
   if (securityScanBtn) securityScanBtn.addEventListener('click', handleSecurityScan);
   const terminalLoadBtn = document.getElementById('terminalLoadBtn');
   if (terminalLoadBtn) terminalLoadBtn.addEventListener('click', loadTerminal);
+  document.getElementById('nonEvmDeriveBtn')?.addEventListener('click', handleNonEvmDerive);
+  document.getElementById('nonEvmSignBtn')?.addEventListener('click', handleNonEvmSign);
+  document.getElementById('nonEvmSendBtn')?.addEventListener('click', handleNonEvmSend);
 
   // DAO / Launchpool / Token Sales / Trading / Prediction / Copy Trading handlers
   document.getElementById('daoCreateBtn')?.addEventListener('click', handleDaoCreate);
@@ -261,7 +266,7 @@ async function handleGuestStart() {
     await setToken(res.token);
     showWallets();
     // Switch to the wallets tab so the create/import UI is front-and-center.
-    const walletsTab = document.querySelector('[data-tab="wallet"]');
+    const walletsTab = document.querySelector('[data-tab="walletTab"]');
     if (walletsTab) walletsTab.click();
   } catch (err) {
     showError(err.message);
@@ -506,13 +511,15 @@ const WalletAPI = {
   // P2P adverts — GET /p2p/adverts.
   getP2PAdverts: () => api('/p2p/adverts'),
 
-  // Non-EVM address derivation + signing + sending.
-  nonEvmAddress: ({ seed, chainType, chainId, path }) =>
-    api('/non_evm/address', { method: 'POST', body: { seed, chain_type: chainType, chain_id: chainId, path } }),
-  nonEvmSign: ({ seed, chainType, chainId, messageHash, path }) =>
-    api('/non_evm/sign', { method: 'POST', body: { seed, chain_type: chainType, chain_id: chainId, message_hash: messageHash, path } }),
-  nonEvmSend: ({ seed, chainType, chainId, to, value, path }) =>
-    api('/non_evm/send', { method: 'POST', body: { seed, chain_type: chainType, chain_id: chainId, to, value, path } }),
+  // Non-EVM address derivation + signing + sending. The backend decrypts the
+  // stored seed with wallet_id + password — the raw seed NEVER leaves the
+  // server (POST /non_evm/{address,sign,send} in go/wallet_api).
+  nonEvmAddress: ({ walletId, password, chainType, prefix }) =>
+    api('/non_evm/address', { method: 'POST', body: { wallet_id: walletId, password, chain_type: chainType, prefix: prefix || undefined } }),
+  nonEvmSign: ({ walletId, password, chainType, message }) =>
+    api('/non_evm/sign', { method: 'POST', body: { wallet_id: walletId, password, chain_type: chainType, message } }),
+  nonEvmSend: ({ walletId, password, chainType, bitcoinInputs, bitcoinOutputs, cosmosSignDoc }) =>
+    api('/non_evm/send', { method: 'POST', body: { wallet_id: walletId, password, chain_type: chainType, bitcoin_inputs: bitcoinInputs, bitcoin_outputs: bitcoinOutputs, cosmos_sign_doc: cosmosSignDoc } }),
 
   // Address book.
   getAddressBookContacts: () => api('/address-book/contacts'),
@@ -775,7 +782,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'daoTab', 'launchpoolTab', 'tokenSalesTab', 'tradingTab', 'predictionTab', 'copyTradingTab', 'feesTab', 'settingsTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'daoTab', 'launchpoolTab', 'tokenSalesTab', 'tradingTab', 'predictionTab', 'copyTradingTab', 'feesTab', 'nonEvmTab', 'settingsTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -804,6 +811,7 @@ function switchTab(tab) {
   if (tab === 'prediction') loadPredictionMarkets();
   if (tab === 'copyTrading') loadCopyTraders();
   if (tab === 'fees') loadFees();
+  if (tab === 'nonEvm') loadNonEvm();
   if (tab === 'settings') loadSettings();
 }
 
@@ -824,6 +832,80 @@ function renderList(el, items, renderRow, emptyMsg) {
     renderRow(row, item);
     el.appendChild(row);
   });
+}
+
+// ---- Non-EVM tab (Solana / Bitcoin / Cosmos via POST /non_evm/*) ----
+
+function loadNonEvm() {
+  const sel = document.getElementById('nonEvmWallet');
+  if (!sel) return;
+  sel.innerHTML = '';
+  state.wallets.forEach((w) => {
+    const opt = document.createElement('option');
+    opt.value = w.id;
+    opt.textContent = `${w.label || 'Wallet'} (${(w.address || '').slice(0, 10)}…)`;
+    sel.appendChild(opt);
+  });
+  if (state.activeWallet) sel.value = state.activeWallet.id;
+}
+
+function nonEvmSelection() {
+  const walletId = document.getElementById('nonEvmWallet').value;
+  const chainType = document.getElementById('nonEvmChain').value;
+  const password = document.getElementById('nonEvmPassword').value;
+  const status = document.getElementById('nonEvmStatus');
+  if (!walletId || !password) {
+    status.textContent = 'Select a wallet and enter its password.';
+    return null;
+  }
+  status.textContent = '';
+  return { walletId, chainType, password, status };
+}
+
+async function handleNonEvmDerive() {
+  const sel = nonEvmSelection();
+  if (!sel) return;
+  const prefix = document.getElementById('nonEvmPrefix').value.trim();
+  sel.status.textContent = 'Deriving address…';
+  try {
+    const res = await WalletAPI.nonEvmAddress({ walletId: sel.walletId, password: sel.password, chainType: sel.chainType, prefix: prefix || undefined });
+    document.getElementById('nonEvmAddressResult').textContent = res.address || JSON.stringify(res);
+    sel.status.textContent = '✓ Address derived.';
+  } catch (e) { sel.status.textContent = e.message; }
+}
+
+async function handleNonEvmSign() {
+  const sel = nonEvmSelection();
+  if (!sel) return;
+  const message = document.getElementById('nonEvmMessage').value;
+  if (!message) { sel.status.textContent = 'Enter a message to sign.'; return; }
+  sel.status.textContent = 'Signing…';
+  try {
+    const res = await WalletAPI.nonEvmSign({ walletId: sel.walletId, password: sel.password, chainType: sel.chainType, message });
+    document.getElementById('nonEvmSigResult').textContent = res.signature || JSON.stringify(res);
+    sel.status.textContent = '✓ Message signed.';
+  } catch (e) { sel.status.textContent = e.message; }
+}
+
+async function handleNonEvmSend() {
+  const sel = nonEvmSelection();
+  if (!sel) return;
+  sel.status.textContent = 'Building + signing transaction…';
+  try {
+    let body = { walletId: sel.walletId, password: sel.password, chainType: sel.chainType };
+    if (sel.chainType === 'bitcoin') {
+      body.bitcoinInputs = JSON.parse(document.getElementById('nonEvmBtcInputs').value || '[]');
+      body.bitcoinOutputs = JSON.parse(document.getElementById('nonEvmBtcOutputs').value || '[]');
+    } else if (sel.chainType === 'cosmos') {
+      body.cosmosSignDoc = JSON.parse(document.getElementById('nonEvmCosmosDoc').value || '{}');
+    } else {
+      sel.status.textContent = 'Solana sends are built via /non_evm/sign on the transaction message; broadcast via the chain RPC.';
+      return;
+    }
+    const res = await WalletAPI.nonEvmSend(body);
+    document.getElementById('nonEvmSendResult').textContent = res.raw_tx || res.signature || JSON.stringify(res);
+    sel.status.textContent = '✓ Transaction signed — submitted to the blockchain network relay of the selected chain.';
+  } catch (e) { sel.status.textContent = e.message; }
 }
 
 // ---- Loaders/handlers for DAO / Launchpool / Token Sales / Trading / Prediction / Copy Trading / Fees tabs ----
@@ -1990,11 +2072,77 @@ async function loadDapps() {
       row.appendChild(disc);
       sessionsEl.appendChild(row);
     });
+    connectDappLiveSockets(sList);
   } catch (err) {
     pairingsEl.innerHTML = '';
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
   }
+}
+
+// Live WalletConnect event channel: one real WS per active session topic
+// through the wallet_api reverse proxy (/api/v1/dapp/ws/:topic). Incoming
+// session_request frames are rendered with Approve/Reject buttons that call
+// the canonical respond endpoint — nothing is fabricated client-side.
+const dappSockets = {};
+
+function connectDappLiveSockets(sessions) {
+  if (typeof WalletConnectSocket === 'undefined') return;
+  const liveTopics = new Set(sessions.map((s) => s.topic).filter(Boolean));
+  Object.keys(dappSockets).forEach((topic) => {
+    if (!liveTopics.has(topic)) {
+      try { dappSockets[topic].close(); } catch (_) { /* already closed */ }
+      delete dappSockets[topic];
+    }
+  });
+  sessions.forEach((s) => {
+    if (!s.topic || dappSockets[s.topic]) return;
+    try {
+      dappSockets[s.topic] = WalletConnectSocket.connect(
+        s.topic,
+        (frame) => renderDappLiveEvent(s.topic, frame),
+        () => { delete dappSockets[s.topic]; },
+        () => { delete dappSockets[s.topic]; },
+      );
+    } catch (_) { /* WS unavailable — REST polling above still works */ }
+  });
+}
+
+function renderDappLiveEvent(topic, frame) {
+  const el = document.getElementById('dappLiveEvents');
+  if (!el || !frame) return;
+  const method = frame.method || (frame.params && frame.params.request && frame.params.request.method);
+  if (!method) return;
+  const requestId = frame.id;
+  const row = document.createElement('div');
+  row.style.cssText = 'padding:6px 4px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:6px;';
+  const label = document.createElement('span');
+  label.textContent = `${method} (live)`;
+  label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  row.appendChild(label);
+  if (requestId !== undefined) {
+    const approve = document.createElement('button');
+    approve.textContent = 'Approve';
+    approve.style.cssText = 'padding:2px 8px;font-size:11px;';
+    approve.addEventListener('click', async () => {
+      try {
+        await WalletAPI.respondToDappRequest(topic, requestId, { approved: true });
+        row.remove();
+      } catch (e) { label.textContent = `${method} — ${e.message}`; }
+    });
+    const reject = document.createElement('button');
+    reject.textContent = 'Reject';
+    reject.style.cssText = 'padding:2px 8px;font-size:11px;background:var(--error);';
+    reject.addEventListener('click', async () => {
+      try {
+        await WalletAPI.respondToDappRequest(topic, requestId, { approved: false });
+        row.remove();
+      } catch (e) { label.textContent = `${method} — ${e.message}`; }
+    });
+    row.appendChild(approve);
+    row.appendChild(reject);
+  }
+  el.prepend(row);
 }
 
 async function handleDappPair() {

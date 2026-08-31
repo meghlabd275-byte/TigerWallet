@@ -763,30 +763,9 @@ final class UserWalletApiService {
     }
 
     // MARK: - Non-EVM (Solana / Bitcoin / Cosmos)
-
-    // POST /non_evm/address { seed, chain_type, chain_id, path? } -> { address }
-    func nonEvmAddress(seed: String, chainType: String, chainId: Int, path: String? = nil) async throws -> [String: Any] {
-        var body: [String: Any] = ["seed": seed, "chain_type": chainType, "chain_id": chainId]
-        if let p = path { body["path"] = p }
-        let data = try JSONSerialization.data(withJSONObject: body)
-        return try await requestRaw("/non_evm/address", method: "POST", body: data)
-    }
-
-    // POST /non_evm/sign { seed, chain_type, chain_id, message_hash, path? } -> { signature }
-    func nonEvmSign(seed: String, chainType: String, chainId: Int, messageHash: String, path: String? = nil) async throws -> [String: Any] {
-        var body: [String: Any] = ["seed": seed, "chain_type": chainType, "chain_id": chainId, "message_hash": messageHash]
-        if let p = path { body["path"] = p }
-        let data = try JSONSerialization.data(withJSONObject: body)
-        return try await requestRaw("/non_evm/sign", method: "POST", body: data)
-    }
-
-    // POST /non_evm/send { seed, chain_type, chain_id, to, value, path? } -> { signature, raw_tx?, tx_hash? }
-    func nonEvmSend(seed: String, chainType: String, chainId: Int, to: String, value: String, path: String? = nil) async throws -> [String: Any] {
-        var body: [String: Any] = ["seed": seed, "chain_type": chainType, "chain_id": chainId, "to": to, "value": value]
-        if let p = path { body["path"] = p }
-        let data = try JSONSerialization.data(withJSONObject: body)
-        return try await requestRaw("/non_evm/send", method: "POST", body: data)
-    }
+    // The wallet_id + password variants live in WalletFeatureApi.swift
+    // (deriveNonEvmAddress / nonEvmSignMessage). The backend decrypts the
+    // stored seed server-side; raw seeds are never sent over the wire.
 
     // MARK: - Address book
 

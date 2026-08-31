@@ -920,3 +920,40 @@
 - Verified: node --check on all desktop+extension JS, web tsc --noEmit clean,
   Swift/Kotlin brace + signature cross-checks, HTML div balance (131/131),
   extension 28/28 tab→content mapping.
+
+## Session 26 (2026-08-31) — UserWallet residual bug fixes (extension non-EVM, WC socket, iOS dead code, desktop hardware wallet)
+- EXTENSION BUG FIXED: popup.js nonEvmAddress/nonEvmSign/nonEvmSend sent a raw
+  seed + chain_id + path — wrong contract (backend binds wallet_id + password,
+  required => every call 400'd) and a seed-leak foot-gun. Rewritten to the
+  wallet_id+password contract; the raw seed NEVER leaves the backend.
+- EXTENSION FEATURE: new Non-EVM tab (29th tab) — derive address / sign
+  message / build+sign tx for solana|bitcoin|cosmos via POST /non_evm/*,
+  matching web/android/ios/desktop parity. Tab→content mapping 29/29.
+- EXTENSION BUG FIXED: guest quick-start clicked [data-tab="wallet"] but the
+  nav button is walletTab — the wallets tab was never focused. Fixed.
+- EXTENSION BUG FIXED: walletconnect.js hardcoded localhost:8443 (ignored the
+  user-configured tw_api_base) and WalletConnectSocket was never instantiated.
+  Now: setApiBase() reads chrome.storage tw_api_base itself + popup.js
+  reconfigures it in loadApiBase; loadDapps opens one live WS per active
+  session topic and renders incoming session_request frames with
+  Approve/Reject calling respondToDappRequest.
+- iOS: removed 3 dead seed-based non-EVM methods (nonEvmAddress/nonEvmSign/
+  nonEvmSend) from UserWalletApiService.swift — zero callers, wrong contract,
+  seed-leak foot-gun. The working wallet_id variants live in
+  WalletFeatureApi.swift (used by NonEvmView) and are unchanged.
+- DESKTOP HARDWARE WALLET (was detection-only, sign threw fail-closed):
+  hardwareWallet.js fully rewritten with REAL device protocols —
+  LedgerHidTransport (WebHID framing, channel 0x0101, seq'd 64B frames,
+  response reassembly, SW status handling) + LedgerEthApp (getPublicKey
+  address, EIP-191 signPersonalMessage, legacy EIP-155 + EIP-1559 type-2
+  signTransaction) + a complete RLP encoder + TrezorBridgeTransport (real
+  trezord HTTP protocol 127.0.0.1:21325, hand-encoded protobuf for
+  EthereumGetAddress/EthereumSignMessage/EthereumSignTx-legacy,
+  ButtonRequest/Ack flow, Failure decode). EVM chains only on-device; non-EVM
+  fails closed pointing at /non_evm. UNIT-TESTED: RLP matches official
+  Ethereum spec vectors, Ledger framing round-trips, protobuf parse round-
+  trips (node self-tests). New hw-tx-sign UI form on the hardware page.
+- Verified: node --check all 5 desktop JS + all 6 extension JS OK; Swift
+  braces 0; HTML div balance 0; extension 29/29 tab→content mapping.
+- NOT compile-verified (no SDKs): Kotlin/Swift unchanged except the iOS
+  dead-method removal (brace-balanced).
