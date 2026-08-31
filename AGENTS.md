@@ -1019,3 +1019,19 @@
   (session-local); `flutter analyze` = 0 issues; `flutter build web --release`
   PASS (32s compile). Build artifacts + local.properties not committed
   (.gitignore from flutter create).
+
+## Session 26 (2026-08-31) — blockchain_layer Rust SDK real-implementation fixes (commit 87136f6e, pushed)
+- All 10 Rust SDKs under blockchain_layer/: 0 compile errors, 0 failed suites
+  (algorand 2, aptos 3, cardano 3, injective 2, near 3, sei 2, solana_core 6,
+  starknet 4, substrate 4, zksync 8 tests passing).
+- REAL bugs fixed (not just test fixes): algorand address was fabricated
+  (SHA256(pk+"ID") hash) — now real spec (address = ed25519 pubkey, base32 of
+  key + 4-byte SHA-512/256 checksum); solana_core AMM swap math overflowed u64
+  on realistic reserves — now u128 intermediates; aptos from_short_hex now
+  pads odd-length hex (real "0x1" short-form); near AccountId now accepts
+  real '.'-segment rules and implicit accounts keep the full 64-hex (was
+  fabricated truncation); injective/sei test vectors corrected to 20 bytes;
+  substrate SS58 + base58 + zksync 5-module real impl from earlier in session.
+- Test hygiene: canonical vectors (Algorand zero-address AAA...Y5HFKQ,
+  Polkadot ...HC1) + fail-closed assertions on corrupted checksums/lengths.
+- Toolchain this session: Rust 1.85 at ~/.cargo/bin (rustup). No network in tests.
