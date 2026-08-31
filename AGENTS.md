@@ -957,3 +957,37 @@
   braces 0; HTML div balance 0; extension 29/29 tab→content mapping.
 - NOT compile-verified (no SDKs): Kotlin/Swift unchanged except the iOS
   dead-method removal (brace-balanced).
+
+## Session 27 (2026-08-31) — fake/mock purge round 2 (deep audit of remaining fabrication)
+- Re-audited the full tree for fabrication after Session 26. Removed:
+  - `frontend/desktop/` (DELETED): orphaned 394-line mock app — hardcoded
+    CryptoPunk/Bored Ape/Azuki NFTs, emoji icons, referenced by no build/deploy
+    (canonical desktop = repo-root `desktop_app/` Tauri).
+  - `white_label/cpp/` (DELETED): entirely hardcoded WalletCore — fabricated
+    BAYC/CryptoPunks collections (floor_price 30/50), fake tx hashes
+    ("0x"+timestamp+"swap"), hardcoded token logos, fake bridge quotes. No RPC
+    helpers existed; unreferenced by any CMake/Dockerfile/docs.
+  - `go/staking_service/` (DELETED): DB-free fabricated staking — hardcoded
+    APYs/TVL/delegators + "sample" validators with EMPTY addresses; its
+    stake/unstake/claim built in-memory positions and returned "staked" with NO
+    on-chain tx. Canonical staking is wallet_api /api/v1/staking/* (real
+    on-chain, fail-closed). Retargeted api_gateway StakingService default
+    :8001 -> :8443 and added forwardToPath/forwardStripSeg so gateway
+    /staking/{quote,stake,unstake,claim} map to wallet_api's real routes.
+  - `go/nft_prices/main.go` (DELETED): duplicate of the real go/nft_service
+    (:8085, which docker-compose already builds).
+  - `go/monitoring_service`: dropped deleted "staking_service" from the health
+    list; deployments/docker: removed staking-service block (dead build ctx).
+- FIXED (not deleted): `services/go/mev_protection_service` (unpackaged demo,
+  never compiled) — removed fabricated detectSandwichVulnerability (fake
+  SandwichAttack IDs/hashes/timestamps) + dead startSandwichDetector loop;
+  fail-closed (DEX txs flag private-relay routing, no fake detection). Fixed 3
+  compile errors (math/big unused, bundleJSON unused, ctx unused) — builds.
+- api_gateway NFT group now strips the /nft prefix (forwardStripSeg) to hit the
+  real :8085 nft_service flat routes instead of double-prefixing.
+- VERIFIED: api_gateway + wallet_api + monitoring_service go build PASS,
+  api_gateway go vet PASS; mev_protection_service builds in a temp module
+  (unpackaged demo by design); both docker-compose files `docker compose
+  config` PASS. Toolchain: Go 1.22.12 at /tmp/go (session-local).
+- Residual fake-data sweep: 0 hardcoded NFT/price/APY fabrications remain in
+  Go/JS/TS/Kotlin/Swift/C++ (non-test, non-md).

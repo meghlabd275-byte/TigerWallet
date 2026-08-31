@@ -353,7 +353,7 @@ func handleStakingAction(action string) gin.HandlerFunc {
 		// staking tx cannot be constructed (stake contracts are
 		// protocol-specific and cannot be fabricated). Return a 202 with an
 		// honest action_required so the client can resolve the protocol's
-		// staking contract (e.g. via the staking_service /quote) and resubmit
+		// staking contract from the protocol and resubmit
 		// via /api/v1/send — never fabricate a tx hash.
 		if req.StakingContract == "" || req.CallData == "" {
 			c.JSON(http.StatusAccepted, gin.H{

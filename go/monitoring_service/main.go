@@ -424,7 +424,6 @@ func (e *MonitoringEngine) checkAllServices() {
 	services := []string{
 		"wallet_service",
 		"swap_service",
-		"staking_service",
 		"nft_service",
 		"bridge_service",
 		"analytics_service",

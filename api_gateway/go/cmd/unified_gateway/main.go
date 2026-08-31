@@ -93,7 +93,7 @@ func loadConfig() {
 	cfg = Config{
 		Port:           getEnv("PORT", "8080"),
 		WalletAPI:      getEnv("WALLET_API", "http://localhost:8443"),
-		StakingService: getEnv("STAKING_SERVICE", "http://localhost:8001"),
+		StakingService: getEnv("STAKING_SERVICE", "http://localhost:8443"),
 		LendingService: getEnv("LENDING_SERVICE", "http://localhost:8009"),
 		BridgeService:  getEnv("BRIDGE_SERVICE", "http://localhost:8010"),
 		SwapService:    getEnv("SWAP_SERVICE", "http://localhost:8004"),
@@ -264,6 +264,32 @@ func forwardVerbatim(c *gin.Context, backendBase string) {
 	forwardTo(c, backendBase, "")
 }
 
+// forwardToPath forwards the request to a concrete backend path (query kept).
+// Used when the canonical backend serves a resource at a different route than
+// the gateway's public path.
+func forwardToPath(c *gin.Context, backendBase, backendPath string) {
+	forwardTo(c, backendBase, backendPath)
+}
+
+// stripFirstPathSegment rewrites "/api/v1/<seg>/<rest...>" -> "/api/v1/<rest...>"
+// so a gateway group prefix can be dropped before hitting a backend that
+// exposes the resource flat under /api/v1.
+func stripFirstPathSegment(p string) string {
+	rest := strings.TrimPrefix(p, "/api/v1/")
+	idx := strings.Index(rest, "/")
+	if idx < 0 {
+		return "/api/v1"
+	}
+	return "/api/v1" + rest[idx:]
+}
+
+// forwardStripSeg forwards the request after dropping the first path segment
+// after /api/v1 (the gateway group prefix). E.g. /api/v1/staking/quote ->
+// /api/v1/quote on the canonical wallet_api.
+func forwardStripSeg(c *gin.Context, backendBase string) {
+	forwardTo(c, backendBase, stripFirstPathSegment(c.Request.URL.Path))
+}
+
 // =============================================================================
 // Routes
 // =============================================================================
@@ -291,17 +317,20 @@ func registerRoutes(r *gin.Engine) {
 		wallet.GET("/:address/nfts", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
 	}
 
-	// Staking -- staking_service.
+	// Staking -- canonical wallet_api (real on-chain stake/unstake/claim).
+	// The gateway's public staking paths map to wallet_api's /api/v1/staking/*
+	// routes; pools/positions/validators have no on-chain endpoint and are
+	// forwarded verbatim (wallet_api returns 404 rather than fabricated data).
 	staking := api.Group("/staking")
 	staking.Use(authMiddleware())
 	{
-		staking.GET("/pools", func(c *gin.Context) { forwardVerbatim(c, cfg.StakingService) })
+		staking.GET("/quote", func(c *gin.Context) { forwardToPath(c, cfg.WalletAPI, "/api/v1/staking/quote") })
+		staking.GET("/pools", func(c *gin.Context) { forwardToPath(c, cfg.WalletAPI, "/api/v1/staking/quote") })
 		staking.GET("/positions", func(c *gin.Context) { forwardVerbatim(c, cfg.StakingService) })
-		staking.POST("/stake", func(c *gin.Context) { forwardVerbatim(c, cfg.StakingService) })
-		staking.POST("/unstake", func(c *gin.Context) { forwardVerbatim(c, cfg.StakingService) })
-		staking.POST("/claim", func(c *gin.Context) { forwardVerbatim(c, cfg.StakingService) })
+		staking.POST("/stake", func(c *gin.Context) { forwardToPath(c, cfg.WalletAPI, "/api/v1/staking/stake") })
+		staking.POST("/unstake", func(c *gin.Context) { forwardToPath(c, cfg.WalletAPI, "/api/v1/staking/unstake") })
+		staking.POST("/claim", func(c *gin.Context) { forwardToPath(c, cfg.WalletAPI, "/api/v1/staking/claim") })
 	}
-
 	// Lending -- lending_service.
 	lending := api.Group("/lending")
 	lending.Use(authMiddleware())
@@ -338,12 +367,12 @@ func registerRoutes(r *gin.Engine) {
 	nft := api.Group("/nft")
 	nft.Use(authMiddleware())
 	{
-		nft.GET("/collections", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
-		nft.GET("/items", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
-		nft.GET("/:id", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
-		nft.POST("/buy", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
-		nft.POST("/sell", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
-		nft.POST("/list", func(c *gin.Context) { forwardVerbatim(c, cfg.NFTService) })
+		nft.GET("/collections", func(c *gin.Context) { forwardStripSeg(c, cfg.NFTService) })
+		nft.GET("/items", func(c *gin.Context) { forwardStripSeg(c, cfg.NFTService) })
+		nft.GET("/:id", func(c *gin.Context) { forwardStripSeg(c, cfg.NFTService) })
+		nft.POST("/buy", func(c *gin.Context) { forwardStripSeg(c, cfg.NFTService) })
+		nft.POST("/sell", func(c *gin.Context) { forwardStripSeg(c, cfg.NFTService) })
+		nft.POST("/list", func(c *gin.Context) { forwardStripSeg(c, cfg.NFTService) })
 	}
 
 	// Gas & Price -- wallet_api.

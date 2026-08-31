@@ -148,25 +148,6 @@ services:
       - tigerwallet
     restart: unless-stopped
 
-  staking-service:
-    build:
-      context: ./go/staking_service
-      dockerfile: Dockerfile
-    container_name: tigerwallet-staking-service
-    ports:
-      - "8084:8080"
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=tigerwallet_staking
-    depends_on:
-      - postgres
-    networks:
-      - tigerwallet
-    restart: unless-stopped
-
   # ============================================
   # TRADING & BOTS
   # ============================================

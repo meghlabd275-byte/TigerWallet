@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -190,7 +189,6 @@ func NewMEVProtectionService(config *Config) *MEVProtectionService {
 	}
 
 	// Start background tasks
-	go service.startSandwichDetector()
 	go service.startBlocklistSync()
 
 	return service
@@ -274,12 +272,10 @@ func (s *MEVProtectionService) SimulateTransaction(ctx context.Context, tx *Priv
 		SandwichVulnerable: false,
 	}
 
-	// Check for sandwich attack vulnerability
-	sandwich, isVulnerable := s.detectSandwichVulnerability(ctx, tx)
-	if isVulnerable {
-		result.SandwichVulnerable = true
-		result.SandwichAttack = sandwich
-	}
+	// Sandwich vulnerability requires a live mempool/secret-mempool feed;
+	// none is configured here, so it is reported as not-vulnerable rather than
+	// fabricating a detection. DEX transactions are routed through the private
+	// relay (Flashbots) which prevents sandwiching at the source.
 
 	// Simulate state changes
 	result.StateChanges = []StateChange{
@@ -304,27 +300,13 @@ func (s *MEVProtectionService) SimulateTransaction(ctx context.Context, tx *Priv
 	return result, nil
 }
 
-// Detect if transaction is vulnerable to sandwich attack
+// detectSandwichVulnerability reports whether a DEX transaction is
+// sandwich-vulnerable. It is fail-closed: without a live mempool feed it never
+// fabricates a detection record (no fake IDs/hashes/timestamps); DEX
+// transactions are instead routed through the private relay, the real mitigation.
 func (s *MEVProtectionService) detectSandwichVulnerability(ctx context.Context, tx *PrivateTx) (*SandwichAttack, bool) {
-	// Check if transaction involves Uniswap/Sushiswap/Curve
-	if !s.isDEXTransaction(tx) {
-		return nil, false
-	}
-
-	// Check mempool for potential front-run transactions
-	// In production, this would check the secret mempool
-	sandwich := &SandwichAttack{
-		ID:            generateSandwichID(),
-		VictimTx:      tx.Hash,
-		BlockNumber:   0,
-		Timestamp:     time.Now().Unix(),
-		TokenIn:       s.extractTokenFromData(tx.Data, 0),
-		TokenOut:      s.extractTokenFromData(tx.Data, 1),
-		AmountIn:      tx.Value,
-		AmountOut:     "",
-	}
-
-	return sandwich, true
+	_ = ctx
+	return nil, s.isDEXTransaction(tx)
 }
 
 // Analyze MEV opportunities in transaction
@@ -433,7 +415,6 @@ func (s *MEVProtectionService) CancelBundle(ctx context.Context, bundleID string
 
 	if bundle, ok := s.bundles[bundleID]; ok {
 		bundle.Status = "cancelled"
-		bundleJSON, _ := json.Marshal(bundle)
 		s.redis.Del(ctx, fmt.Sprintf("mev:bundle:%s", bundleID))
 	}
 
@@ -578,16 +559,6 @@ func (s *MEVProtectionService) sendRawTransaction(ctx context.Context, rpcURL, r
 	return result.Result, nil
 }
 
-func (s *MEVProtectionService) startSandwichDetector() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		ctx := context.Background()
-		// In production, would scan mempool for sandwich opportunities
-		// This is a simplified implementation
-	}
-}
 
 func (s *MEVProtectionService) startBlocklistSync() {
 	ticker := time.NewTicker(5 * time.Minute)
@@ -726,11 +697,6 @@ func generateBundleID() string {
 	return hex.EncodeToString(hash[:16])
 }
 
-func generateSandwichID() string {
-	data := fmt.Sprintf("%d-%s", time.Now().UnixNano(), "sandwich")
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:8])
-}
 
 // ============================================================================
 // Main
