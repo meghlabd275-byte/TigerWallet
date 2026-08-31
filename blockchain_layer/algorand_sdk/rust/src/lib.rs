@@ -56,18 +56,34 @@ pub enum AlgorandError {
 pub struct Address(pub [u8; 32]);
 
 impl Address {
-    /// Create from base32 string
+    /// Create from base32 string (58 chars: 32-byte key + 4-byte checksum)
     pub fn from_string(addr: &str) -> Result<Self, AlgorandError> {
         let decoded = base32::decode(base32::Alphabet::Rfc4648 { padding: false }, addr)
             .ok_or_else(|| AlgorandError::InvalidAddress("Invalid base32".to_string()))?;
-        
-        if decoded.len() != 32 {
-            return Err(AlgorandError::InvalidAddress("Address must be 32 bytes".to_string()));
+
+        if decoded.len() != 36 {
+            return Err(AlgorandError::InvalidAddress(
+                "Algorand address must decode to 36 bytes".to_string(),
+            ));
         }
-        
-        let mut address = [0u8; 32];
-        address.copy_from_slice(&decoded);
-        Ok(Address(address))
+
+        let (key, checksum) = decoded.split_at(32);
+        let mut key_arr = [0u8; 32];
+        key_arr.copy_from_slice(key);
+        if Self::checksum_of(&key_arr) != checksum {
+            return Err(AlgorandError::InvalidAddress("Checksum mismatch".to_string()));
+        }
+
+        Ok(Address(key_arr))
+    }
+
+    /// Last 4 bytes of SHA-512/256(public key)
+    fn checksum_of(key: &[u8; 32]) -> [u8; 4] {
+        use sha2::Sha512_256;
+        let mut h = Sha512_256::new();
+        h.update(key);
+        let digest = h.finalize();
+        [digest[28], digest[29], digest[30], digest[31]]
     }
     
     /// Create from raw bytes
@@ -81,19 +97,18 @@ impl Address {
         Ok(Address(address))
     }
     
-    /// Get as base32 string
+    /// Get as 58-char base32 string (key + checksum)
     pub fn to_string(&self) -> String {
-        base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &self.0)
+        let checksum = Self::checksum_of(&self.0);
+        let mut buf = Vec::with_capacity(36);
+        buf.extend_from_slice(&self.0);
+        buf.extend_from_slice(&checksum);
+        base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &buf)
     }
-    
-    /// Get from public key
+
+    /// Algorand address = the ed25519 public key itself
     pub fn from_public_key(pk: &[u8]) -> Result<Self, AlgorandError> {
-        let mut hasher = Sha256::new();
-        hasher.update(pk);
-        hasher.update(b"ID");
-        
-        let hash = hasher.finalize();
-        Self::from_bytes(&hash)
+        Self::from_bytes(pk)
     }
 }
 
@@ -809,8 +824,20 @@ mod tests {
     
     #[test]
     fn test_address_creation() {
-        let addr = Address::from_string("XM7V75BG6S7Q6G6Z5F4E3D2C1B0A9Z8Y7X6W5V4U3T2S1R0").unwrap();
-        println!("Address: {}", addr);
+        // Known vector: all-zero key produces the canonical zero address
+        let zero = Address([0u8; 32]);
+        let s = zero.to_string();
+        assert_eq!(s, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ");
+        let back = Address::from_string(&s).unwrap();
+        assert_eq!(back, zero);
+
+        // Corrupted checksum must fail closed (flip a significant bit in the checksum chars)
+        let mut bad = s.clone();
+        bad.replace_range(52..53, "B");
+        assert!(Address::from_string(&bad).is_err());
+
+        // Wrong length must fail closed
+        assert!(Address::from_string("AAAA").is_err());
     }
     
     #[test]

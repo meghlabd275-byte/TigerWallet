@@ -511,7 +511,7 @@ mod tests {
     
     #[test]
     fn test_address() {
-        let addr = Address::from_hex("0123456789ABCDEF0123456789ABCDEF0123").unwrap();
+        let addr = Address::from_hex("0123456789ABCDEF0123456789ABCDEF01234567").unwrap();
         println!("Address: {}", addr);
     }
     

@@ -1,18 +1,11 @@
+#![allow(dead_code)]
+
 /**
  * TigerWallet Substrate/Polkadot SDK
  * 
  * Production-ready Substrate-based blockchain integration
- * Supports:
- * - Polkadot
- * - Kusama
- * - Asset Hub (Statemint)
- * - Custom Substrate chains
- * 
- * Substrate is a modular framework for building blockchains
- * with runtime upgrade capabilities.
+ * Supports: Polkadot, Kusama, Asset Hub (Statemint), Custom Substrate chains
  */
-
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::fmt;
@@ -37,55 +30,68 @@ fn base58_encode(data: &[u8]) -> String {
         }
     }
     
-    // Convert to big integer
-    let mut digits = Vec::new();
+    // Convert to base-58 digits, most significant first
+    let mut digits: Vec<u8> = Vec::new();
     for &b in data.iter() {
         let mut carry = b as usize;
-        for i in (0..digits.len()).rev() {
-            carry += (digits[i] as usize) * 256;
-            digits[i] = (carry % 58) as u8;
+        for d in digits.iter_mut().rev() {
+            carry += (*d as usize) << 8;
+            *d = (carry % 58) as u8;
             carry /= 58;
         }
         while carry > 0 {
-            digits.push((carry % 58) as u8);
+            digits.insert(0, (carry % 58) as u8);
             carry /= 58;
         }
     }
-    
-    // Build result
+
     let mut result = String::new();
     for _ in 0..zeros {
         result.push('1');
     }
-    for &d in digits.iter().rev() {
+    for &d in digits.iter() {
         result.push(BASE58_ALPHABET[d as usize] as char);
     }
-    
+
     result
 }
 
 fn base58_decode(s: &str) -> Result<Vec<u8>, &'static str> {
-    let mut result = Vec::new();
-    
-    for c in s.chars() {
+    let zeros = s.chars().take_while(|&c| c == '1').count();
+    let mut bytes: Vec<u8> = Vec::new(); // most significant first
+
+    for c in s.chars().skip(zeros) {
         let idx = BASE58_ALPHABET.iter().position(|&x| x == c as u8)
             .ok_or("Invalid base58 character")?;
-        
+
         let mut carry = idx;
-        for i in (0..result.len()).rev() {
-            carry += (result[i] as usize) * 58;
-            result[i] = (carry % 256) as u8;
+        for d in bytes.iter_mut().rev() {
+            carry += (*d as usize) * 58;
+            *d = (carry % 256) as u8;
             carry /= 256;
         }
-        
+
         while carry > 0 {
-            result.push((carry % 256) as u8);
+            bytes.insert(0, (carry % 256) as u8);
             carry /= 256;
         }
     }
-    
+
+    let mut result = vec![0u8; zeros];
+    result.extend_from_slice(&bytes);
     Ok(result)
 }
+
+/// SS58 checksum: first 2 bytes of Blake2b-512("SS58PRE" + payload)
+fn ss58_checksum(payload: &[u8]) -> [u8; 2] {
+    use blake2::{Blake2b512, Digest};
+    let mut hasher = Blake2b512::new();
+    hasher.update(b"SS58PRE");
+    hasher.update(payload);
+    let hash = hasher.finalize();
+    [hash[0], hash[1]]
+}
+
 
 // ============================================================================
 // Error Types
@@ -138,51 +144,47 @@ impl SubstrateAddress {
     
     /// Encode to SS58 string
     pub fn to_ss58(&self) -> String {
-        // SS58 encoding with network prefix
-        let prefix = self.network.ss58_prefix() as u16;
-        
-        // Proper SS58 encoding: version byte + payload + checksum
+        let prefix = self.network.ss58_prefix();
+
         let mut payload = vec![prefix];
         payload.extend_from_slice(&self.bytes);
-        
-        // Calculate checksum (Blake2 R 64 bytes of payload)
-        use sha2::{Sha256, Digest};
-        let mut hasher = Sha256::new();
-        hasher.update(&payload);
-        hasher.update(b"SS58PRE");
-        let hash = hasher.finalize();
-        
-        // Take first 2 bytes of hash for checksum
-        payload.extend_from_slice(&hash[..2]);
-        
-        // Base58 encode
+
+        // SS58 checksum: first 2 bytes of Blake2b-512 over "SS58PRE" + payload
+        let checksum = ss58_checksum(&payload);
+        payload.extend_from_slice(&checksum);
+
         base58_encode(&payload)
     }
-    
+
     /// Decode from SS58 string
     pub fn from_ss58(ss58: &str, network: NetworkId) -> Result<Self, SubstrateError> {
         let decoded = base58_decode(ss58).map_err(|e| SubstrateError::InvalidAddress(e.to_string()))?;
-        
+
         if decoded.len() < 3 {
             return Err(SubstrateError::InvalidAddress("SS58 string too short".to_string()));
         }
-        
-        // Extract version byte and check network
+
         let version = decoded[0];
         if version != network.ss58_prefix() {
             return Err(SubstrateError::InvalidAddress("Network mismatch".to_string()));
         }
-        
-        // Extract address bytes (remove version and checksum)
+
+        // Verify checksum before trusting the payload
+        let body = &decoded[..decoded.len() - 2];
+        let expected = ss58_checksum(body);
+        if decoded[decoded.len() - 2..] != expected {
+            return Err(SubstrateError::InvalidAddress("Checksum mismatch".to_string()));
+        }
+
         let address_bytes = &decoded[1..decoded.len() - 2];
-        
+
         if address_bytes.len() != 32 {
             return Err(SubstrateError::InvalidAddress("Invalid address length".to_string()));
         }
-        
+
         let mut bytes = [0u8; 32];
         bytes.copy_from_slice(address_bytes);
-        
+
         Ok(SubstrateAddress { bytes, network })
     }
     
@@ -203,7 +205,7 @@ impl fmt::Debug for SubstrateAddress {
 // ============================================================================
 
 /// Substrate network
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NetworkId {
     Polkadot,
     Kusama,
@@ -558,16 +560,27 @@ mod tests {
     
     #[test]
     fn test_address_from_pk() {
-        let pk = b"test_public_key_12345678901234567890";
-        let addr = SubstrateAddress::from_public_key(pk, NetworkId::Polkadot).unwrap();
+        let pk = [7u8; 32];
+        let addr = SubstrateAddress::from_public_key(&pk, NetworkId::Polkadot).unwrap();
         assert_eq!(addr.bytes.len(), 32);
+        assert_eq!(&addr.bytes, &pk);
     }
-    
+
     #[test]
     fn test_address_ss58() {
-        let pk = b"test_public_key_12345678901234567890";
-        let addr = SubstrateAddress::from_public_key(pk, NetworkId::Kusama).unwrap();
+        // Known vector: all-zero public key on Polkadot (prefix 0)
+        let pk = [0u8; 32];
+        let addr = SubstrateAddress::from_public_key(&pk, NetworkId::Polkadot).unwrap();
         let ss58 = addr.to_ss58();
-        assert!(ss58.contains(":"));
+        assert_eq!(ss58, "111111111111111111111111111111111HC1");
+
+        // Round-trip: encode then decode recovers the same bytes
+        let decoded = SubstrateAddress::from_ss58(&ss58, NetworkId::Polkadot).unwrap();
+        assert_eq!(decoded.bytes, pk);
+
+        // Corrupted checksum must fail closed
+        let mut bad = ss58.clone();
+        bad.replace_range(0..1, "2");
+        assert!(SubstrateAddress::from_ss58(&bad, NetworkId::Polkadot).is_err());
     }
 }

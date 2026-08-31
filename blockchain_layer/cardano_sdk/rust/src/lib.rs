@@ -1410,9 +1410,18 @@ mod tests {
     
     #[test]
     fn test_address_from_bech32() {
-        // Test address
-        let addr = Address::from_bech32("addr1q9u5vlrf4xhxvzajv82nr4qtej5ku8wv0k4q8yurlwacequp8xqsj7pk7uvpr2l2t5n4hxm3yd4k4a7t8q4w8xqsj7pk7uvpr2l2t5n4h").unwrap();
-        println!("Address: {:?}", addr);
+        // Round-trip: derive a real address, encode, decode
+        let pk = PublicKey::from_bytes(&[7u8; 32]).unwrap();
+        let addr = derive_address(&pk, NetworkId::Mainnet, AddressType::PaymentKeyHash);
+        let encoded = addr.to_bech32();
+        assert!(encoded.starts_with("addr1"));
+        let decoded = Address::from_bech32(&encoded).unwrap();
+        assert_eq!(decoded.to_bech32(), encoded);
+
+        // Invalid checksum must fail closed
+        let mut bad = encoded.clone();
+        bad.replace_range(10..11, "x");
+        assert!(Address::from_bech32(&bad).is_err());
     }
     
     #[test]
@@ -1425,11 +1434,10 @@ mod tests {
     
     #[test]
     fn test_transaction_builder() {
+        let pk = PublicKey::from_bytes(&[9u8; 32]).unwrap();
+        let recipient = derive_address(&pk, NetworkId::Mainnet, AddressType::PaymentKeyHash);
         let mut builder = TransactionBuilder::new(Network::Mainnet);
-        builder.add_output(
-            Address::from_bech32("addr1q9u5vlrf4xhxvzajv82nr4qtej5ku8wv0k4q8yurlwacequp8xqsj7pk7uvpr2l2t5n4hxm3yd4k4a7t8q4w8xqsj7pk7uvpr2l2t5n4h").unwrap(),
-            1000000
-        );
+        builder.add_output(recipient, 1000000);
         
         let body = builder.build();
         println!("Transaction built: {:?}", body);

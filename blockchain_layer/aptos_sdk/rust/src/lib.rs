@@ -75,7 +75,12 @@ impl AccountAddress {
     /// Create from short string (for addresses starting with 0x)
     pub fn from_short_hex(hex: &str) -> Result<Self, AptosError> {
         let hex = hex.trim_start_matches("0x");
-        let bytes = hex::decode(hex)
+        if hex.len() > 64 {
+            return Err(AptosError::InvalidAddress("Address too long".to_string()));
+        }
+        // Odd-length short forms (e.g. "0x1") get a leading zero nibble
+        let padded = if hex.len() % 2 == 1 { format!("0{}", hex) } else { hex.to_string() };
+        let bytes = hex::decode(&padded)
             .map_err(|e| AptosError::InvalidAddress(e.to_string()))?;
         
         let mut addr = [0u8; 32];

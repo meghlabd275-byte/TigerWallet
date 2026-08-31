@@ -63,19 +63,23 @@ impl AccountId {
         }
         
         // Check for valid characters
-        let valid_chars = id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        let valid_chars = id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.');
         if !valid_chars {
             return Err(NearError::InvalidAddress(
                 "Invalid characters in account ID".to_string()
             ));
         }
         
-        // .near or .testnet suffix
-        if id.contains('.') {
-            let parts: Vec<&str> = id.split('.').collect();
-            if parts.len() != 2 {
+        // Each '.'-separated segment must be non-empty and start alphanumeric
+        for seg in id.split('.') {
+            if seg.is_empty() {
                 return Err(NearError::InvalidAddress(
-                    "Invalid account ID format".to_string()
+                    "Empty account ID segment".to_string()
+                ));
+            }
+            if !seg.chars().next().unwrap().is_ascii_alphanumeric() {
+                return Err(NearError::InvalidAddress(
+                    "Segment must start with alphanumeric".to_string()
                 ));
             }
         }
@@ -98,7 +102,7 @@ impl AccountId {
             ));
         }
         
-        Ok(AccountId(format!("{}...", &hex[..8])))
+        Ok(AccountId(hex.to_lowercase()))
     }
     
     /// Get as string
@@ -903,7 +907,7 @@ mod tests {
     
     #[test]
     fn test_implicit_account() {
-        let id = AccountId::from_hex("abc123def456789012345678901234567890123456789012345678901234").unwrap();
+        let id = AccountId::from_hex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef").unwrap();
         println!("Implicit account: {}", id);
     }
     

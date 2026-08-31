@@ -576,11 +576,12 @@ impl TokenSwap {
             return 0;
         }
         
-        let source_amount_with_fee = source_amount * (10000 - self.fees.trade_fee_bps);
-        let numerator = source_amount_with_fee * target_reserve;
-        let denominator = source_reserve * 10000 + source_amount_with_fee;
-        
-        numerator / denominator
+        let source_amount_with_fee =
+            (source_amount as u128) * ((10000 - self.fees.trade_fee_bps) as u128);
+        let numerator = source_amount_with_fee * (target_reserve as u128);
+        let denominator = (source_reserve as u128) * 10000 + source_amount_with_fee;
+
+        u64::try_from(numerator / denominator).unwrap_or(u64::MAX)
     }
     
     /// Calculate price impact
