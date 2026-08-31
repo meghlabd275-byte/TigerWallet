@@ -4,7 +4,7 @@
 
 use crate::address::StarknetAddress;
 use crate::contract::*;
-use crate::types::*;
+use crate::provider::FunctionCall;
 
 /// ERC-20 Token
 pub struct Erc20 {
@@ -146,7 +146,7 @@ impl Erc721 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![format!("0x{:x}", token_id.0)],
+            calldata: vec![format!("0x{}", hex::encode(token_id.0))],
         }
     }
     
@@ -156,7 +156,7 @@ impl Erc721 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![format!("0x{:x}", token_id.0)],
+            calldata: vec![format!("0x{}", hex::encode(token_id.0))],
         }
     }
     
@@ -166,7 +166,7 @@ impl Erc721 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![from.to_hex(), to.to_hex(), format!("0x{:x}", token_id.0)],
+            calldata: vec![from.to_hex(), to.to_hex(), format!("0x{}", hex::encode(token_id.0))],
         }
     }
     
@@ -176,7 +176,7 @@ impl Erc721 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![from.to_hex(), to.to_hex(), format!("0x{:x}", token_id.0)],
+            calldata: vec![from.to_hex(), to.to_hex(), format!("0x{}", hex::encode(token_id.0))],
         }
     }
     
@@ -186,7 +186,7 @@ impl Erc721 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![to.to_hex(), format!("0x{:x}", token_id.0), uri.to_string()],
+            calldata: vec![to.to_hex(), format!("0x{}", hex::encode(token_id.0)), uri.to_string()],
         }
     }
 }
@@ -208,7 +208,7 @@ impl Erc1155 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![format!("0x{:x}", id.0)],
+            calldata: vec![format!("0x{}", hex::encode(id.0))],
         }
     }
     
@@ -218,7 +218,7 @@ impl Erc1155 {
         FunctionCall {
             contract_address: self.address.to_hex(),
             entry_point_selector: hex::encode(selector),
-            calldata: vec![owner.to_hex(), format!("0x{:x}", id.0)],
+            calldata: vec![owner.to_hex(), format!("0x{}", hex::encode(id.0))],
         }
     }
     
@@ -226,7 +226,7 @@ impl Erc1155 {
     pub fn balance_of_batch(&self, owners: &[StarknetAddress], ids: &[u256]) -> FunctionCall {
         let selector = compute_selector("balanceOfBatch");
         let owners_hex: Vec<String> = owners.iter().map(|o| o.to_hex()).collect();
-        let ids_hex: Vec<String> = ids.iter().map(|i| format!("0x{:x}", i.0)).collect();
+        let ids_hex: Vec<String> = ids.iter().map(|i| format!("0x{}", hex::encode(i.0))).collect();
         
         FunctionCall {
             contract_address: self.address.to_hex(),
@@ -251,7 +251,7 @@ impl Erc1155 {
             calldata: vec![
                 from.to_hex(),
                 to.to_hex(),
-                format!("0x{:x}", id.0),
+                format!("0x{}", hex::encode(id.0)),
                 format!("0x{:x}", amount),
                 hex::encode(data),
             ],

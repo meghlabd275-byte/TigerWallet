@@ -3,7 +3,7 @@
 //! Contract compilation and interaction utilities.
 
 use crate::address::StarknetAddress;
-use crate::types::*;
+use crate::provider::FunctionCall;
 
 /// Contract ABI type
 #[derive(Debug, Clone)]
@@ -88,7 +88,7 @@ impl ContractFactory {
         calldata.push(len_bytes);
         
         // Add constructor calldata
-        calldata.extend(constructor_calldata);
+        calldata.extend(constructor_calldata.clone());
         
         // Add deployer (0 for account)
         let deployer_felt = match &self.deployer {
@@ -145,7 +145,7 @@ impl Contract {
         
         Some(FunctionCallBuilder {
             contract: self.address.clone(),
-            selector: name,
+            selector: name.to_string(),
             calldata: vec![],
             inputs: func.inputs.clone(),
         })
@@ -196,7 +196,7 @@ pub fn compute_selector(name: &str) -> [u8; 32] {
 
 /// Common contract selectors
 pub mod selectors {
-    use super::*;
+    
     
     // ERC-20
     pub const TRANSFER: [u8; 32] = [

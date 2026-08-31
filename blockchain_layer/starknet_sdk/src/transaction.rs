@@ -15,6 +15,15 @@ pub enum InvokeType {
     Deploy(DeployTransaction),
 }
 
+/// Deploy transaction (legacy CONTRACT_DEPLOY variant)
+#[derive(Debug, Clone)]
+pub struct DeployTransaction {
+    /// Class hash being deployed
+    pub class_hash: [u8; 32],
+    /// Constructor calldata
+    pub constructor_calldata: Vec<[u8; 32]>,
+}
+
 /// Invoke function transaction
 #[derive(Debug, Clone)]
 pub struct InvokeFunction {
@@ -104,7 +113,15 @@ impl InvokeFunction {
     
     /// Encode to JSON for RPC
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_default()
+        serde_json::json!({
+            "contract_address": self.contract_address.to_hex(),
+            "entry_point_selector": hex::encode(self.entry_point_selector),
+            "calldata": self.calldata.iter().map(hex::encode).collect::<Vec<_>>(),
+            "max_fee": hex::encode(self.max_fee),
+            "version": hex::encode(self.version),
+            "nonce": hex::encode(self.nonce),
+        })
+        .to_string()
     }
 }
 
@@ -241,7 +258,7 @@ impl DeclareTransaction {
 }
 
 /// Transaction receipt
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransactionReceipt {
     /// Transaction hash
     pub transaction_hash: [u8; 32],
@@ -260,7 +277,7 @@ pub struct TransactionReceipt {
 }
 
 /// Transaction status
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum TransactionStatus {
     #[default]
     Unknown,
@@ -272,7 +289,7 @@ pub enum TransactionStatus {
 }
 
 /// Event from transaction
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     /// From address
     pub from_address: StarknetAddress,
@@ -283,7 +300,7 @@ pub struct Event {
 }
 
 /// L1 message
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct L1Message {
     /// From address
     pub from_address: [u8; 32],
@@ -292,16 +309,11 @@ pub struct L1Message {
 }
 
 /// Transaction type enum for RPC
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone)]
 pub enum Transaction {
-    #[serde(rename = "INVOKE_FUNCTION")]
     Invoke(InvokeTransaction),
-    #[serde(rename = "DECLARE")]
     Declare(DeclareTransaction),
-    #[serde(rename = "DEPLOY_ACCOUNT")]
     DeployAccount(DeployAccountTransaction),
-    #[serde(rename = "L1_HANDLER")]
     L1Handler(L1HandlerTransaction),
 }
 

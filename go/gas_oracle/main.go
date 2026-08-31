@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -64,7 +68,7 @@ type ChainConfig struct {
 	Symbol      string
 	RPCURLs     []string
 	ExplorerURL string
-	NativePrice float64
+	CoinGeckoID string
 }
 
 // ============================================================================
@@ -72,12 +76,13 @@ type ChainConfig struct {
 // ============================================================================
 
 type GasOracleService struct {
-	config    *Config
-	redis     *redis.Client
-	chainInfo map[uint64]ChainConfig
-	mu        sync.RWMutex
-	prices    map[uint64]*GasPrice
-	history   map[uint64][]GasPrice
+	config     *Config
+	redis      *redis.Client
+	chainInfo  map[uint64]ChainConfig
+	httpClient *http.Client
+	mu         sync.RWMutex
+	prices     map[uint64]*GasPrice
+	history    map[uint64][]GasPrice
 }
 
 func NewGasOracleService(config *Config) (*GasOracleService, error) {
@@ -89,24 +94,140 @@ func NewGasOracleService(config *Config) (*GasOracleService, error) {
 	defer cancel()
 	redisClient.Ping(ctx)
 
+	// Chain metadata only; gas prices come from each chain's live RPC and
+	// native prices from CoinGecko. RPC URLs are env-overridable
+	// (RPC_URL_<chainID>, comma-separated) and default to well-known public
+	// endpoints. Nothing here is hardcoded market data.
 	chainInfo := map[uint64]ChainConfig{
-		1:     {ID: 1, Name: "Ethereum", Symbol: "ETH", NativePrice: 2500.0},
-		137:   {ID: 137, Name: "Polygon", Symbol: "MATIC", NativePrice: 0.85},
-		42161: {ID: 42161, Name: "Arbitrum One", Symbol: "ETH", NativePrice: 2500.0},
-		10:    {ID: 10, Name: "Optimism", Symbol: "ETH", NativePrice: 2500.0},
-		43114: {ID: 43114, Name: "Avalanche", Symbol: "AVAX", NativePrice: 35.0},
-		56:    {ID: 56, Name: "BNB Chain", Symbol: "BNB", NativePrice: 300.0},
-		8453:  {ID: 8453, Name: "Base", Symbol: "ETH", NativePrice: 2500.0},
+		1:     {ID: 1, Name: "Ethereum", Symbol: "ETH", CoinGeckoID: "ethereum", RPCURLs: rpcURLsFor(1, "https://cloudflare-eth.com")},
+		137:   {ID: 137, Name: "Polygon", Symbol: "MATIC", CoinGeckoID: "matic-network", RPCURLs: rpcURLsFor(137, "https://polygon-rpc.com")},
+		42161: {ID: 42161, Name: "Arbitrum One", Symbol: "ETH", CoinGeckoID: "ethereum", RPCURLs: rpcURLsFor(42161, "https://arb1.arbitrum.io/rpc")},
+		10:    {ID: 10, Name: "Optimism", Symbol: "ETH", CoinGeckoID: "ethereum", RPCURLs: rpcURLsFor(10, "https://mainnet.optimism.io")},
+		43114: {ID: 43114, Name: "Avalanche", Symbol: "AVAX", CoinGeckoID: "avalanche-2", RPCURLs: rpcURLsFor(43114, "https://api.avax.network/ext/bc/C/rpc")},
+		56:    {ID: 56, Name: "BNB Chain", Symbol: "BNB", CoinGeckoID: "binancecoin", RPCURLs: rpcURLsFor(56, "https://bsc-dataseed.binance.org")},
+		8453:  {ID: 8453, Name: "Base", Symbol: "ETH", CoinGeckoID: "ethereum", RPCURLs: rpcURLsFor(8453, "https://mainnet.base.org")},
 	}
 
 	return &GasOracleService{
-		config:    config,
-		redis:     redisClient,
-		chainInfo: chainInfo,
-		prices:    make(map[uint64]*GasPrice),
-		history:   make(map[uint64][]GasPrice),
+		config:     config,
+		redis:      redisClient,
+		chainInfo:  chainInfo,
+		httpClient: &http.Client{Timeout: 8 * time.Second},
+		prices:     make(map[uint64]*GasPrice),
+		history:    make(map[uint64][]GasPrice),
 	}, nil
 }
+
+// rpcURLsFor returns the RPC endpoints for a chain: the RPC_URL_<chainID> env
+// var (comma-separated) if set, otherwise the given public default.
+func rpcURLsFor(chainID uint64, publicDefault string) []string {
+	if v := os.Getenv(fmt.Sprintf("RPC_URL_%d", chainID)); v != "" {
+		parts := strings.Split(v, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				out = append(out, t)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return []string{publicDefault}
+}
+
+type rpcRequest struct {
+	JSONRPC string        `json:"jsonrpc"`
+	Method  string        `json:"method"`
+	Params  []interface{} `json:"params"`
+	ID      int           `json:"id"`
+}
+
+type rpcResponse struct {
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// rpcCall performs a real JSON-RPC call against the chain's configured
+// endpoints, trying each in order. Fail-closed: returns an error when no
+// endpoint answers; the oracle never fabricates a result.
+func (s *GasOracleService) rpcCall(chain ChainConfig, method string, params []interface{}) (json.RawMessage, error) {
+	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", Method: method, Params: params, ID: 1})
+	if err != nil {
+		return nil, err
+	}
+	var lastErr error
+	for _, url := range chain.RPCURLs {
+		resp, err := s.httpClient.Post(url, "application/json", bytes.NewReader(body))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		var rr rpcResponse
+		derr := json.NewDecoder(resp.Body).Decode(&rr)
+		resp.Body.Close()
+		if derr != nil {
+			lastErr = derr
+			continue
+		}
+		if rr.Error != nil {
+			lastErr = fmt.Errorf("rpc error %d: %s", rr.Error.Code, rr.Error.Message)
+			continue
+		}
+		return rr.Result, nil
+	}
+	return nil, fmt.Errorf("all %d rpc endpoints failed for chain %d (%s): %v", len(chain.RPCURLs), chain.ID, chain.Name, lastErr)
+}
+
+// hexQuantityToBig decodes a 0x-prefixed JSON-RPC quantity.
+func hexQuantityToBig(h string) (*big.Int, error) {
+	h = strings.TrimPrefix(h, "0x")
+	if h == "" {
+		h = "0"
+	}
+	v, ok := new(big.Int).SetString(h, 16)
+	if !ok {
+		return nil, fmt.Errorf("invalid hex quantity")
+	}
+	return v, nil
+}
+
+// nativePriceUSD returns the chain's real native-token USD price from
+// CoinGecko, cached in Redis for 60s (shared across replicas). Fail-closed:
+// returns 0 when the upstream is unavailable; USD fields then reflect 0
+// rather than a fabricated price.
+func (s *GasOracleService) nativePriceUSD(coinID string) float64 {
+	if coinID == "" {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cacheKey := "gasoracle:nativeprice:" + coinID
+	if v, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+		if f, perr := strconv.ParseFloat(v, 64); perr == nil {
+			return f
+		}
+	}
+	url := fmt.Sprintf("https://api.coingecko.com/api/v3/simple/price?ids=%s&vs_currencies=usd", coinID)
+	resp, err := s.httpClient.Get(url)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	var payload map[string]map[string]float64
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0
+	}
+	price := payload[coinID]["usd"]
+	if price > 0 {
+		s.redis.Set(ctx, cacheKey, strconv.FormatFloat(price, 'f', -1, 64), 60*time.Second)
+	}
+	return price
+}
+
 
 func (s *GasOracleService) FetchGasPrice(chainID uint64) (*GasPrice, error) {
 	chain, ok := s.chainInfo[chainID]
@@ -114,31 +235,92 @@ func (s *GasOracleService) FetchGasPrice(chainID uint64) (*GasPrice, error) {
 		return nil, fmt.Errorf("unsupported chain: %d", chainID)
 	}
 
-	hardcodedPrices := map[uint64]map[string]string{
-		1:     {"slow": "20000000000", "standard": "25000000000", "fast": "40000000000"},
-		137:   {"slow": "30000000000", "standard": "40000000000", "fast": "60000000000"},
-		42161: {"slow": "100000", "standard": "150000", "fast": "200000"},
-		10:    {"slow": "1000000", "standard": "2000000", "fast": "5000000"},
-		43114: {"slow": "25000000000", "standard": "30000000000", "fast": "50000000000"},
-		56:    {"slow": "3000000000", "standard": "4000000000", "fast": "6000000000"},
-		8453:  {"slow": "100000", "standard": "150000", "fast": "200000"},
+	// Short-lived Redis cache (15s) so a fleet of callers shares one upstream
+	// fetch; on cache miss we query the chain's real RPC.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cacheKey := fmt.Sprintf("gasoracle:price:%d", chainID)
+	if v, err := s.redis.Get(ctx, cacheKey).Result(); err == nil {
+		var cached GasPrice
+		if json.Unmarshal([]byte(v), &cached) == nil {
+			return &cached, nil
+		}
 	}
 
-	prices, ok := hardcodedPrices[chainID]
-	if !ok {
-		prices = hardcodedPrices[1]
+	// Real gas price from the chain node. Fail-closed: if the chain's RPC is
+	// unreachable we return an error instead of a fabricated number.
+	raw, err := s.rpcCall(chain, "eth_gasPrice", []interface{}{})
+	if err != nil {
+		return nil, fmt.Errorf("gas price unavailable for chain %d: %w", chainID, err)
 	}
+	var gpHex string
+	if err := json.Unmarshal(raw, &gpHex); err != nil {
+		return nil, fmt.Errorf("invalid eth_gasPrice response for chain %d", chainID)
+	}
+	standard, err := hexQuantityToBig(gpHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// EIP-1559 data when available (best-effort; legacy chains just use
+	// eth_gasPrice for all tiers).
+	var baseFee, priorityFee *big.Int
+	if rawBF, err := s.rpcCall(chain, "eth_getBlockByNumber", []interface{}{"latest", false}); err == nil {
+		var blk struct {
+			BaseFeePerGas string `json:"baseFeePerGas"`
+		}
+		if json.Unmarshal(rawBF, &blk) == nil && blk.BaseFeePerGas != "" {
+			baseFee, _ = hexQuantityToBig(blk.BaseFeePerGas)
+		}
+	}
+	if rawPF, err := s.rpcCall(chain, "eth_maxPriorityFeePerGas", []interface{}{}); err == nil {
+		var pfHex string
+		if json.Unmarshal(rawPF, &pfHex) == nil {
+			priorityFee, _ = hexQuantityToBig(pfHex)
+		}
+	}
+
+	// Tiers derived from the real current price: slow = 90% of standard,
+	// fast = base+tip or 125% of standard on legacy chains.
+	slow := new(big.Int).Mul(standard, big.NewInt(90))
+	slow.Div(slow, big.NewInt(100))
+	fast := new(big.Int)
+	if priorityFee != nil && priorityFee.Sign() > 0 {
+		base := standard
+		if baseFee != nil && baseFee.Sign() > 0 {
+			base = new(big.Int).Add(baseFee, priorityFee)
+		}
+		fast.Add(base, priorityFee)
+	} else {
+		fast.Mul(standard, big.NewInt(125))
+		fast.Div(fast, big.NewInt(100))
+	}
+	if slow.Sign() == 0 {
+		slow.Set(standard)
+	}
+
+	nativePrice := s.nativePriceUSD(chain.CoinGeckoID)
 
 	gasPrice := &GasPrice{
 		ChainID:     chainID,
 		ChainName:   chain.Name,
-		Slow:        prices["slow"],
-		Standard:    prices["standard"],
-		Fast:        prices["fast"],
-		SlowUSD:     s.convertToUSD(prices["slow"], chain.NativePrice),
-		StandardUSD: s.convertToUSD(prices["standard"], chain.NativePrice),
-		FastUSD:     s.convertToUSD(prices["fast"], chain.NativePrice),
+		Slow:        slow.String(),
+		Standard:    standard.String(),
+		Fast:        fast.String(),
+		SlowUSD:     s.convertToUSD(slow.String(), nativePrice),
+		StandardUSD: s.convertToUSD(standard.String(), nativePrice),
+		FastUSD:     s.convertToUSD(fast.String(), nativePrice),
 		LastUpdated: time.Now().Unix(),
+	}
+	if baseFee != nil {
+		gasPrice.BaseFee = baseFee.String()
+	}
+	if priorityFee != nil {
+		gasPrice.PriorityFee = priorityFee.String()
+	}
+
+	if b, err := json.Marshal(gasPrice); err == nil {
+		s.redis.Set(ctx, cacheKey, b, 15*time.Second)
 	}
 
 	s.mu.Lock()
@@ -151,6 +333,7 @@ func (s *GasOracleService) FetchGasPrice(chainID uint64) (*GasPrice, error) {
 
 	return gasPrice, nil
 }
+
 
 func (s *GasOracleService) convertToUSD(gasPriceWei string, nativePrice float64) float64 {
 	gasPrice, err := strconv.ParseFloat(gasPriceWei, 64)
@@ -180,12 +363,20 @@ func (s *GasOracleService) GetRecommendation(chainID uint64) (map[string]GasPric
 		return nil, err
 	}
 
+	slow := *price
+	slow.Standard = price.Slow
+	slow.StandardUSD = price.SlowUSD
+	fast := *price
+	fast.Standard = price.Fast
+	fast.StandardUSD = price.FastUSD
+
 	return map[string]GasPrice{
-		"urgent": *price,
+		"urgent": fast,
 		"normal": *price,
-		"slow":   *price,
+		"slow":   slow,
 	}, nil
 }
+
 
 type CostEstimate struct {
 	ChainID      uint64  `json:"chainId"`
@@ -214,18 +405,29 @@ func (s *GasOracleService) EstimateCost(chainID uint64, operation string, gasLim
 		}
 	}
 
-	gasPriceWei, _ := strconv.ParseInt(price.Standard, 10, 64)
-	totalWei := gasPriceWei * int64(gasLimit)
+	gasPriceWei, ok := new(big.Int).SetString(price.Standard, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid gas price for chain %d", chainID)
+	}
+	totalWei := new(big.Int).Mul(gasPriceWei, new(big.Int).SetUint64(gasLimit))
+
+	chain := s.chainInfo[chainID]
+	nativePrice := s.nativePriceUSD(chain.CoinGeckoID)
+	totalNative, _ := new(big.Float).Quo(
+		new(big.Float).SetInt(totalWei),
+		big.NewFloat(1e18),
+	).Float64()
 
 	return &CostEstimate{
 		ChainID:      chainID,
 		Operation:    operation,
 		GasLimit:     gasLimit,
 		GasPrice:     price.Standard,
-		TotalCost:    strconv.FormatInt(totalWei, 10),
-		TotalCostUSD: math.Round(float64(totalWei)/1e18*2500*100) / 100,
+		TotalCost:    totalWei.String(),
+		TotalCostUSD: math.Round(totalNative*nativePrice*100) / 100,
 	}, nil
 }
+
 
 func (s *GasOracleService) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) {

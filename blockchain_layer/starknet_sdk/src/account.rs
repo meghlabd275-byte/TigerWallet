@@ -2,12 +2,11 @@
 //! 
 //! Account abstraction for Starknet (OpenZeppelin Account, etc.)
 
-use std::error::Error;
+use std::fmt;
 use crate::address::StarknetAddress;
 use crate::crypto::{KeyPair, Signature};
-use crate::provider::Provider;
-use crate::transaction::*;
-use crate::types::*;
+use crate::provider::{Provider, FunctionCall, InvokeResult, DeployResult, FeeEstimate};
+use crate::transaction::{InvokeTransaction, DeployAccountTransaction};
 
 /// Account type
 #[derive(Debug, Clone)]
@@ -43,20 +42,21 @@ impl Account {
         account_type: AccountType,
         class_hash: [u8; 32],
     ) -> Result<Self, AccountError> {
-        let key_pair = KeyPair::from_private_key(private_key)?;
+        let key_pair = KeyPair::from_private_key(private_key)
+            .map_err(|e| AccountError::Signing(e.to_string()))?;
         
         // Derive address from public key based on account type
         let address = match account_type {
             AccountType::OpenZeppelin | AccountType::Generic => {
-                StarknetAddress::from_public_key(key_pair.public_key())
+                StarknetAddress::from_public_key(&key_pair.public_key())
             }
             AccountType::ArgentX => {
                 // Argent X uses different address derivation
-                StarknetAddress::from_public_key(key_pair.public_key())
+                StarknetAddress::from_public_key(&key_pair.public_key())
             }
             AccountType::Braavos => {
                 // Braavos uses proxy pattern
-                StarknetAddress::from_public_key(key_pair.public_key())
+                StarknetAddress::from_public_key(&key_pair.public_key())
             }
         };
         
@@ -81,18 +81,18 @@ impl Account {
     }
     
     /// Get public key
-    public fn public_key(&self) -> [u8; 32] {
-        *self.key_pair.public_key()
+    pub fn public_key(&self) -> [u8; 32] {
+        self.key_pair.public_key()
     }
     
     /// Get private key reference
-    pub fn private_key(&self) -> &[u8; 32] {
+    pub fn private_key(&self) -> [u8; 32] {
         self.key_pair.private_key()
     }
     
     /// Sign a message
     pub fn sign(&self, message: &[u8]) -> Result<Signature, AccountError> {
-        Ok(self.key_pair.sign(message)?)
+        self.key_pair.sign(message).map_err(|e| AccountError::Signing(e.to_string()))
     }
     
     /// Verify signature
@@ -117,21 +117,16 @@ impl Account {
         let provider = self.provider.as_ref()
             .ok_or(AccountError::NoProvider)?;
         
-        // Get nonce
         let nonce = self.get_nonce().await?;
-        
-        // Build invoke transaction
-        let mut invoke = InvokeFunction::new(
-            calls[0].contract_address.clone(),
-            calls[0].entry_point_selector,
-            calls[0].calldata.clone(),
-        );
-        invoke.nonce = nonce;
-        
-        // Sign
-        invoke.sign(&self.key_pair);
-        
-        // Send
+        let invoke = InvokeTransaction {
+            contract_address: calls[0].contract_address.clone(),
+            entry_point_selector: calls[0].entry_point_selector.clone(),
+            calldata: calls[0].calldata.clone(),
+            max_fee: "0x0".to_string(),
+            version: "0x0".to_string(),
+            nonce: hex::encode(nonce),
+            signature: None,
+        };
         provider.add_invoke_transaction(invoke)
             .await
             .map_err(|e| AccountError::Provider(e.to_string()))

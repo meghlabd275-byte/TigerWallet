@@ -77,7 +77,7 @@ pub struct EntryPoint {
 
 /// Felt252 (31-byte integer)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Felt252(#[serde(with = "hex")] pub Vec<u8>);
+pub struct Felt252(pub Vec<u8>);
 
 impl Felt252 {
     pub fn from_hex(hex: &str) -> Option<Self> {

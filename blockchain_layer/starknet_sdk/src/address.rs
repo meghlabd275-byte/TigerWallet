@@ -6,7 +6,7 @@ use std::fmt;
 use hex;
 
 /// Starknet Address (Felt252)
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct StarknetAddress {
     /// The 252-bit felt value
     value: [u8; 32],
