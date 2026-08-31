@@ -1,0 +1,25 @@
+name: tigerwallet_user
+description: "TigerWallet UserWallet (Flutter) — thin REST/WS client over the canonical go/wallet_api backend (port 8443). Key material, BIP-39/44 derivation, and all signing happen server-side; the client never fabricates data and only talks to wallet_api. Separation rule honored - no MasterWallet or Admin backend is contacted."
+publish_to: "none"
+version: 1.0.0
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  crypto: ^3.0.3
+  shared_preferences: ^2.2.0
+  web_socket_channel: ^2.4.0
+  provider: ^6.1.0
+  qr_flutter: ^4.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

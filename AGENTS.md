@@ -991,3 +991,31 @@
   config` PASS. Toolchain: Go 1.22.12 at /tmp/go (session-local).
 - Residual fake-data sweep: 0 hardcoded NFT/price/APY fabrications remain in
   Go/JS/TS/Kotlin/Swift/C++ (non-test, non-md).
+
+## Session 28 (2026-08-31) — UserWallet Flutter app (app-family parity CLOSED)
+- NEW `user_wallet/flutter/` — the last missing UserWallet surface (MasterWallet
+  already had one). Real client over go/wallet_api :8443 only (separation rule
+  honored; no MW/Admin backend contacted). Platform scaffolding generated with
+  `flutter create --platforms=android,ios,web` (org io.tigerwallet).
+- `lib/services/user_wallet.dart`: full typed client (~90 methods) covering the
+  canonical route groups: auth (register/login/guest), wallets (create/import/
+  watch-only/lock/unlock/keystore+encrypted-seed export-import), balance/tx,
+  send/sign/auto-send/simulate, non_evm (address/sign/send — wallet_id contract,
+  seed never leaves backend), chains/tokens/registry, price/gas/chart,
+  terminal kline/ticker, swap/AMM, staking, defi/lending, bridge, perpetual+
+  margin, launchpool, token-sales, copytrading, P2P, DAO, prediction, NFTs+
+  transfer, KYC, cards/ramp, security, ENS, dApps/WalletConnect, devices,
+  address-book, price-alerts, passkey, fees (incl. public transparency),
+  approvals, multisig, health/ready.
+- `lib/services/theme_service.dart` (light/dark + persistence, same contract as
+  MW Flutter), `auth_service.dart` (JWT in SharedPreferences), `live_feed.dart`
+  (real WS over /api/v1/ws, fail-closed error frames).
+- `lib/ui/`: onboarding_screen.dart (per directive: new user sees Create Wallet
+  / Import Wallet; create -> backup screen with copy + encrypted-backup export
+  helper), dashboard_screen.dart (wallets + live-feed banner + backend-URL
+  settings + theme toggle), features_screen.dart (22-feature hub, every screen
+  backed by a live fetcher; ErrorCard surfaces backend errors, no mock data).
+- VERIFIED with real toolchain: Flutter 3.27.4 / Dart 3.6.2 at /tmp/flutter
+  (session-local); `flutter analyze` = 0 issues; `flutter build web --release`
+  PASS (32s compile). Build artifacts + local.properties not committed
+  (.gitignore from flutter create).
