@@ -176,6 +176,9 @@
                     <button class="nav-item" data-page="dao">
                         <span class="icon">🗳️</span> DAO
                     </button>
+                    <button class="nav-item" data-page="fees">
+                        <span class="icon">💸</span> Fees
+                    </button>
                     <button class="nav-item" data-page="ens">
                         <span class="icon">🔤</span> ENS
                     </button>
@@ -410,6 +413,26 @@
                         </div>
                         <div class="swap-rate">Rate: —</div>
                         <button id="swap-btn" class="btn-primary swap-btn">Swap</button>
+                    </div>
+                    <div class="swap-container" style="margin-top:16px">
+                        <h4>On-chain AMM (Uniswap V2-style pools)</h4>
+                        <div class="send-form">
+                            <div class="input-group">
+                                <label>Token In (0x address)</label>
+                                <input type="text" id="amm-token-in" placeholder="0x…">
+                            </div>
+                            <div class="input-group">
+                                <label>Token Out (0x address)</label>
+                                <input type="text" id="amm-token-out" placeholder="0x…">
+                            </div>
+                            <div class="input-group">
+                                <label>Amount In (human units)</label>
+                                <input type="text" id="amm-amount-in" placeholder="0.0">
+                            </div>
+                            <button id="amm-quote-btn" class="btn-primary">AMM Quote</button>
+                            <button id="amm-swap-btn" class="btn-primary" style="margin-top:8px">AMM Swap</button>
+                            <div id="amm-quote-result" class="bridge-info" style="margin-top:8px"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -699,6 +722,8 @@
                     </div>
                     <div id="terminal-ticker" class="bridge-info" style="margin-top:12px"></div>
                     <canvas id="terminal-canvas" style="width:100%;max-width:100%;margin-top:12px"></canvas>
+                    <h4 style="margin-top:16px">Price History</h4>
+                    <canvas id="chart-history-canvas" style="width:100%;max-width:100%;margin-top:12px"></canvas>
                 </div>
 
                 <!-- Fiat Ramp Page -->
@@ -712,9 +737,20 @@
                 <!-- dApps Page -->
                 <div id="dapps-page" class="page hidden">
                     <h4>dApp Browser</h4>
+                    <div id="dapp-categories" class="category-chips" style="margin-bottom:12px"></div>
                     <div id="dapp-list" class="nft-grid">
                         <div class="no-transactions">Loading dApps…</div>
                     </div>
+                    <h4 style="margin-top:16px">WalletConnect</h4>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>WalletConnect URI</label>
+                            <input type="text" id="wc-uri" placeholder="wc:…">
+                        </div>
+                        <button id="wc-pair-btn" class="btn-primary">Pair</button>
+                    </div>
+                    <div id="wc-pairings" class="assets-list" style="margin-top:12px"></div>
+                    <div id="wc-sessions" class="assets-list" style="margin-top:12px"></div>
                 </div>
 
                 <!-- Approvals Page -->
@@ -789,6 +825,14 @@
                             <input type="file" id="kyc-doc-file">
                         </div>
                         <button id="kyc-upload-btn" class="btn-primary">Upload document</button>
+                    </div>
+                    <div class="send-form">
+                        <h4>Session detail</h4>
+                        <div class="input-group">
+                            <label>Session ID</label>
+                            <input type="text" id="kyc-session-id" placeholder="session id">
+                        </div>
+                        <button id="kyc-session-btn" class="btn-primary">Refresh session</button>
                     </div>
                     <div id="kyc-result" class="assets-list"></div>
                 </div>
@@ -1007,6 +1051,19 @@
                 </div>
 
                 <!-- Settings Page -->
+                <!-- Fees Page (public fee transparency) -->
+                <div id="fees-page" class="page hidden">
+                    <h4>Fee Schedule</h4>
+                    <div class="bridge-info" style="margin-bottom:8px">Public fee transparency — the exact tiers applied to your transactions.</div>
+                    <div id="fees-tiers" class="assets-list">
+                        <div class="no-transactions">Loading fee schedule…</div>
+                    </div>
+                    <h4 style="margin-top:16px">Recent Settled Fees</h4>
+                    <div id="fees-transactions" class="assets-list">
+                        <div class="no-transactions">Loading…</div>
+                    </div>
+                </div>
+
                 <div id="settings-page" class="page hidden">
                     <div class="settings-section">
                         <h4>Appearance</h4>
@@ -1037,6 +1094,24 @@
                                 <option value="30">30 minutes</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="settings-section">
+                        <h4>Network Status</h4>
+                        <div id="network-status" class="assets-list">
+                            <div class="no-transactions">Checking…</div>
+                        </div>
+                        <div class="setting-item" style="margin-top:8px">
+                            <label>Backend readiness</label>
+                            <span id="backend-readiness" class="badge">checking…</span>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h4>Passkey</h4>
+                        <div class="setting-item">
+                            <label>Register a passkey wallet (WebAuthn)</label>
+                            <button id="passkey-register-btn" class="btn-primary">Register Passkey</button>
+                        </div>
+                        <div id="passkey-result" class="assets-list"></div>
                     </div>
                     <div class="settings-section">
                         <h4>Backend Server</h4>

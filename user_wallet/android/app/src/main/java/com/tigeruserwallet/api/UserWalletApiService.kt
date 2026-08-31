@@ -1684,4 +1684,51 @@ object UserWalletApiService {
         val body = JSONObject().put("password", password)
         return execute(requestBuilder("/wallets/" + URLEncoder.encode(walletId, "UTF-8") + "/export-encrypted-seed").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
+
+    /** POST /wallets/import-encrypted-seed — restore a wallet from an encrypted seed blob. */
+    fun importEncryptedSeed(encryptedSeed: String, password: String, label: String? = null): JSONObject {
+        val body = JSONObject()
+            .put("encrypted_seed", encryptedSeed)
+            .put("password", password)
+        if (label != null) body.put("label", label)
+        return execute(requestBuilder("/wallets/import-encrypted-seed").post(body.toString().toRequestBody(jsonMediaType)).build())
+    }
+
+    // ==================== dApp Catalog (public, read-only) ====================
+
+    /** GET /dapps — public dApp directory catalog. */
+    fun getDappCatalog(): JSONObject =
+        execute(requestBuilder("/dapps").get().build())
+
+    /** GET /dapps/:id — single dApp detail from the catalog. */
+    fun getDappCatalogEntry(id: String): JSONObject =
+        execute(requestBuilder("/dapps/" + URLEncoder.encode(id, "UTF-8")).get().build())
+
+    /** GET /dapps/categories — dApp category list. */
+    fun getDappCategories(): JSONObject =
+        execute(requestBuilder("/dapps/categories").get().build())
+
+    // ==================== DeFi / DAO ====================
+
+    /** GET /defi/protocols — supported DeFi protocol list (public). */
+    fun getDefiProtocols(): JSONObject =
+        execute(requestBuilder("/defi/protocols").get().build())
+
+    /** GET /dao/delegates — DAO delegate list. */
+    fun getDaoDelegates(): JSONObject =
+        execute(requestBuilder("/dao/delegates").get().build())
+
+    // ==================== Fee Transparency ====================
+
+    /** GET /fees — fee tiers applicable to the authenticated user. */
+    fun getFees(): JSONObject =
+        execute(requestBuilder("/fees").get().build())
+
+    /** GET /public/fees — public fee tier list (active only, no auth needed). */
+    fun getPublicFees(): JSONObject =
+        execute(requestBuilder("/public/fees").get().build())
+
+    /** GET /public/fees/transactions — recent settled fee transactions (public). */
+    fun getPublicFeeTransactions(): JSONObject =
+        execute(requestBuilder("/public/fees/transactions").get().build())
 }

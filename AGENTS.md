@@ -877,3 +877,46 @@
 - Separation rule holds: only seam is wallet_api -> :8450 multisig via service-token proxy.
 - VERIFIED: desktop node --check OK, extension node --check OK, web tsc --noEmit 0 errors,
   iOS Swift brace balance 0, Android Kotlin methods added (no SDK to compile-verify).
+
+## Session 25 (2026-08-30) — UserWallet residual gap closure → 91/91 routes on all 6 surfaces
+- AUDIT: route-coverage script over go/wallet_api main.go (wallet+r+auth+signLimited
+  groups = 91 unique user-facing literal routes; admin.* group excluded by design).
+  Result: web 91/91, desktop 91/91, extension 91/91, android 91/91, ios 91/91,
+  rust 91/91.
+- ANDROID: 7 new fragments wired into FeaturesFragment hub — Trading (perp+margin
+  open/close), Prediction (markets+bet), CopyTrading (traders/follow/stop), Fees
+  (public tiers + settled txs), Launchpool (stake/unstake), DAO (proposals+vote),
+  TokenSales (list+participate). 7 new layouts. UserWalletApiService gained
+  importEncryptedSeed, dApp catalog (getDappCatalog/getDappCatalogEntry/
+  getDappCategories), getDefiProtocols, getDaoDelegates, getFees/getPublicFees/
+  getPublicFeeTransactions. DAppsFragment gained dApp catalog section;
+  KeystoreFragment gained encrypted-seed restore (importEncryptedSeed).
+  All fragment→service call signatures cross-checked (no Android SDK in sandbox;
+  brace-balance + XML parse verified).
+- DESKTOP (Tauri): fees page (public fee tiers + settled fee transactions);
+  WalletConnect pairing wired; terminal load button refreshes both charts;
+  on-chain AMM section on swap page (GET /amm/quote real getAmountsOut eth_call,
+  POST /amm/swap calldata → real /send broadcast, no fabricated hash);
+  .badge CSS. All getElementById references resolve in index.html.
+- EXTENSION (MV3): 21 → 28 tabs. New: DAO, Launchpool, Token Sales, Trading,
+  Prediction, Copy, Fees. WalletAPI gained 24 methods (dao CRUD+vote, launchpool,
+  token-sales, perp/margin open+close, prediction, copytrading follow/stop,
+  public fees). switchTab hide-list + loaders updated; renderList reused;
+  createElement-based rendering only (no innerHTML injection). All referenced
+  DOM ids exist; node --check OK.
+- iOS: 6 new views — TradingView (perp+margin), PredictionView, CopyTradingView,
+  TokenSalesView (+ DAOView, LaunchpoolView pre-existing this session); all wired
+  into FeaturesView hub (new "Trade" + extended "Earn" sections). SettingsView
+  gained /health/ready readiness probe (no-auth, like /health). All service
+  method signatures cross-checked verbatim. Brace balance OK (no Xcode in sandbox).
+- RUST SDK: list/create/update/delete price alerts, simulate_transaction,
+  create_watch_only_wallet, get_fees + get_public_fees +
+  get_public_fee_transactions (uses existing get/post/put/delete helpers).
+- SANDBOX NOTE: mid-session rollback lost a few earlier edits (web standalone
+  Simulate page, keystore import-password split). Verified on re-audit: web
+  Send.tsx already wires simulateTransaction (no gap); keystore export/import
+  handlers are coherent fail-closed by design (password verified by real
+  decrypt before release). Not re-applied.
+- Verified: node --check on all desktop+extension JS, web tsc --noEmit clean,
+  Swift/Kotlin brace + signature cross-checks, HTML div balance (131/131),
+  extension 28/28 tab→content mapping.

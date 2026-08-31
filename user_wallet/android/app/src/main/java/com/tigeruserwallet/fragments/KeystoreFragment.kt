@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
@@ -68,7 +69,60 @@ class KeystoreFragment : Fragment() {
         exportButton.setOnClickListener { exportKeystore() }
         copyButton.setOnClickListener { copyExported() }
         importButton.setOnClickListener { importKeystore() }
+        addEncryptedSeedImport(view)
         loadWallets()
+    }
+
+    /**
+     * Encrypted-seed restore (POST /wallets/import-encrypted-seed) — restores a
+     * wallet from an AES-256-GCM blob previously produced by
+     * /wallets/:id/export-encrypted-seed.
+     */
+    private fun addEncryptedSeedImport(view: View) {
+        val root = view as? LinearLayout ?: return
+        val ctx = requireContext()
+        val header = TextView(ctx).apply {
+            text = "Import Encrypted Seed"
+            textSize = 18f
+            setPadding(0, 32, 0, 8)
+        }
+        val seedInput = EditText(ctx).apply { hint = "Encrypted seed blob" }
+        val pwInput = EditText(ctx).apply {
+            hint = "Password"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        val labelInput = EditText(ctx).apply { hint = "Label (optional)" }
+        val importBtn = Button(ctx).apply { text = "Import Encrypted Seed" }
+        val resultText = TextView(ctx).apply { setPadding(0, 8, 0, 8) }
+        root.addView(header)
+        root.addView(seedInput)
+        root.addView(pwInput)
+        root.addView(labelInput)
+        root.addView(importBtn)
+        root.addView(resultText)
+
+        importBtn.setOnClickListener {
+            val blob = seedInput.text.toString().trim()
+            val pw = pwInput.text.toString()
+            val label = labelInput.text.toString().trim()
+            if (blob.isEmpty() || pw.length < 8) {
+                Toast.makeText(ctx, "Enter the blob and a password (8+ chars)", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            resultText.text = "Importing…"
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val res = UserWalletApiService.importEncryptedSeed(blob, pw, label.ifEmpty { null })
+                    withContext(Dispatchers.Main) {
+                        resultText.text = "Wallet restored: ${res.optString("address", res.optString("wallet_id", "ok"))}"
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        resultText.text = "Import failed: ${e.message}"
+                    }
+                }
+            }
+        }
     }
 
     private fun loadWallets() {

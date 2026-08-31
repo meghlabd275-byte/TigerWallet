@@ -17,6 +17,14 @@ struct FeaturesView: View {
                 Section("Earn") {
                     NavigationLink("Staking") { StakingView() }
                     NavigationLink("DeFi Hub") { DeFiView() }
+                    NavigationLink("Launchpool") { LaunchpoolView() }
+                    NavigationLink("Token Sales") { TokenSalesView() }
+                }
+                Section("Trade") {
+                    NavigationLink("Trading") { TradingView() }
+                    NavigationLink("Prediction Markets") { PredictionView() }
+                    NavigationLink("Copy Trading") { CopyTradingView() }
+                    NavigationLink("DAO Governance") { DAOView() }
                 }
                 Section("Services") {
                     NavigationLink("Fiat Ramp") { RampView() }

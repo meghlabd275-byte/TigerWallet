@@ -1802,6 +1802,106 @@ impl UserWalletClient {
         );
         self.post(&path, &body).await
     }
+
+    // ------------------------------------------------------------------
+    // Price alerts (authenticated): POST/GET/PUT/DELETE /price-alerts
+    // ------------------------------------------------------------------
+
+    pub async fn list_price_alerts(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/price-alerts").await
+    }
+
+    pub async fn create_price_alert(
+        &self,
+        symbol: &str,
+        target_price: &str,
+        direction: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post(
+            "/price-alerts",
+            &serde_json::json!({
+                "symbol": symbol,
+                "target_price": target_price,
+                "direction": direction,
+            }),
+        )
+        .await
+    }
+
+    pub async fn update_price_alert(
+        &self,
+        id: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.put(&format!("/price-alerts/{}", url_encode(id)), &body).await
+    }
+
+    pub async fn delete_price_alert(&self, id: &str) -> Result<serde_json::Value, WalletError> {
+        self.delete(&format!("/price-alerts/{}", url_encode(id))).await
+    }
+
+    // ------------------------------------------------------------------
+    // Transaction simulation (public): POST /simulate
+    // ------------------------------------------------------------------
+
+    pub async fn simulate_transaction(
+        &self,
+        chain_id: i64,
+        from: &str,
+        to: &str,
+        value: Option<&str>,
+        data: Option<&str>,
+    ) -> Result<serde_json::Value, WalletError> {
+        let mut body = serde_json::json!({
+            "chain_id": chain_id,
+            "from": from,
+            "to": to,
+        });
+        if let Some(v) = value {
+            body["value"] = serde_json::json!(v);
+        }
+        if let Some(d) = data {
+            body["data"] = serde_json::json!(d);
+        }
+        self.post("/simulate", &body).await
+    }
+
+    // ------------------------------------------------------------------
+    // Watch-only wallets (authenticated): POST /wallets/watch-only
+    // ------------------------------------------------------------------
+
+    pub async fn create_watch_only_wallet(
+        &self,
+        address: &str,
+        chain_id: i64,
+        label: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post(
+            "/wallets/watch-only",
+            &serde_json::json!({
+                "address": address,
+                "chain_id": chain_id,
+                "label": label,
+            }),
+        )
+        .await
+    }
+
+    // ------------------------------------------------------------------
+    // Fee transparency: GET /fees (authenticated) + GET /public/fees{,/transactions} (public)
+    // ------------------------------------------------------------------
+
+    pub async fn get_fees(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/fees").await
+    }
+
+    pub async fn get_public_fees(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/public/fees").await
+    }
+
+    pub async fn get_public_fee_transactions(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/public/fees/transactions").await
+    }
 }
 
 // ---------------------------------------------------------------------------

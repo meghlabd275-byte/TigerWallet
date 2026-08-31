@@ -138,6 +138,21 @@ function bindEvents() {
   if (securityScanBtn) securityScanBtn.addEventListener('click', handleSecurityScan);
   const terminalLoadBtn = document.getElementById('terminalLoadBtn');
   if (terminalLoadBtn) terminalLoadBtn.addEventListener('click', loadTerminal);
+
+  // DAO / Launchpool / Token Sales / Trading / Prediction / Copy Trading handlers
+  document.getElementById('daoCreateBtn')?.addEventListener('click', handleDaoCreate);
+  document.getElementById('daoYesBtn')?.addEventListener('click', () => handleDaoVote(true));
+  document.getElementById('daoNoBtn')?.addEventListener('click', () => handleDaoVote(false));
+  document.getElementById('lpStakeBtn')?.addEventListener('click', () => handleLaunchpool(true));
+  document.getElementById('lpUnstakeBtn')?.addEventListener('click', () => handleLaunchpool(false));
+  document.getElementById('tsParticipateBtn')?.addEventListener('click', handleTokenSaleParticipate);
+  document.getElementById('tradeOpenPerpBtn')?.addEventListener('click', () => handleTradeOpen(true));
+  document.getElementById('tradeOpenMarginBtn')?.addEventListener('click', () => handleTradeOpen(false));
+  document.getElementById('tradeClosePerpBtn')?.addEventListener('click', () => handleTradeClose(true));
+  document.getElementById('tradeCloseMarginBtn')?.addEventListener('click', () => handleTradeClose(false));
+  document.getElementById('predBetBtn')?.addEventListener('click', handlePredictionBet);
+  document.getElementById('copyFollowBtn')?.addEventListener('click', handleCopyFollow);
+  document.getElementById('copyStopBtn')?.addEventListener('click', handleCopyStop);
   const qrSendBtn = document.getElementById('qrSendBtn');
   if (qrSendBtn) qrSendBtn.addEventListener('click', async () => {
     const w = activeWallet();
@@ -641,6 +656,43 @@ const WalletAPI = {
   createWatchOnlyWallet: ({ address, chain_id, label }) =>
     api('/wallets/watch-only', { method: 'POST', body: { address, chain_id, label } }),
 
+  // ---- DAO / Launchpool / Token Sales / Trading / Prediction / Copy Trading / Fees ----
+  getDaoProposals: () => api('/dao/proposals'),
+  createDaoProposal: (title, description) =>
+    api('/dao/proposals', { method: 'POST', body: { title, description } }),
+  voteDaoProposal: (proposalId, support) =>
+    api(`/dao/proposals/${encodeURIComponent(proposalId)}/vote`, { method: 'POST', body: { support } }),
+  getDaoDelegates: () => api('/dao/delegates'),
+  getLaunchpool: () => api('/launchpool'),
+  getLaunchpoolStakes: () => api('/launchpool/stakes'),
+  launchpoolStake: (walletId, password, amount) =>
+    api('/launchpool/stake', { method: 'POST', body: { wallet_id: walletId, password, amount } }),
+  launchpoolUnstake: (walletId, password, amount) =>
+    api('/launchpool/unstake', { method: 'POST', body: { wallet_id: walletId, password, amount } }),
+  getTokenSales: () => api('/token-sales'),
+  participateTokenSale: (saleId, amount) =>
+    api(`/token-sales/${encodeURIComponent(saleId)}/participate`, { method: 'POST', body: { amount } }),
+  getPerpetualPositions: () => api('/perpetual/positions'),
+  createPerpetualPosition: (pair, side, size, leverage, chainId = 1) =>
+    api('/perpetual/positions', { method: 'POST', body: { pair, side, size, leverage, chain_id: chainId } }),
+  closePerpetualPosition: (positionId) =>
+    api(`/perpetual/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST', body: {} }),
+  getMarginPositions: () => api('/margin/positions'),
+  createMarginPosition: (pair, side, size, leverage, chainId = 1) =>
+    api('/margin/positions', { method: 'POST', body: { pair, side, size, leverage, chain_id: chainId } }),
+  closeMarginPosition: (positionId) =>
+    api(`/margin/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST', body: {} }),
+  getPredictionMarkets: () => api('/prediction/markets'),
+  placePredictionBet: (marketId, side, amount) =>
+    api(`/prediction/markets/${encodeURIComponent(marketId)}/bet`, { method: 'POST', body: { side, amount } }),
+  getCopyTraders: () => api('/copytrading/traders'),
+  followTrader: (traderId, allocation) =>
+    api('/copytrading/follow', { method: 'POST', body: { trader_id: traderId, allocation: allocation || undefined } }),
+  stopCopyTrader: (copierId) =>
+    api(`/copytrading/copiers/${encodeURIComponent(copierId)}/stop`, { method: 'POST', body: {} }),
+  getPublicFees: () => api('/public/fees'),
+  getPublicFeeTransactions: () => api('/public/fees/transactions'),
+
   // ---- Token registry + trading terminal (public) ----
   getTokenRegistry: (chainId) =>
     api(chainId ? `/tokens/registry?chain_id=${chainId}` : '/tokens/registry'),
@@ -723,7 +775,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'settingsTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'daoTab', 'launchpoolTab', 'tokenSalesTab', 'tradingTab', 'predictionTab', 'copyTradingTab', 'feesTab', 'settingsTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -745,6 +797,13 @@ function switchTab(tab) {
   if (tab === 'terminal') loadTerminal();
   if (tab === 'cards') loadCards();
   if (tab === 'multisig') loadMultisigWallets();
+  if (tab === 'dao') loadDao();
+  if (tab === 'launchpool') loadLaunchpool();
+  if (tab === 'tokenSales') loadTokenSales();
+  if (tab === 'trading') loadTradingPositions();
+  if (tab === 'prediction') loadPredictionMarkets();
+  if (tab === 'copyTrading') loadCopyTraders();
+  if (tab === 'fees') loadFees();
   if (tab === 'settings') loadSettings();
 }
 
@@ -765,6 +824,265 @@ function renderList(el, items, renderRow, emptyMsg) {
     renderRow(row, item);
     el.appendChild(row);
   });
+}
+
+// ---- Loaders/handlers for DAO / Launchpool / Token Sales / Trading / Prediction / Copy Trading / Fees tabs ----
+
+function setStatus(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = msg;
+}
+
+async function loadDao() {
+  const el = document.getElementById('daoProposals');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getDaoProposals();
+    const list = Array.isArray(res) ? res : (res.data || res.proposals || []);
+    renderList(el, list, (row, p) => {
+      row.textContent = `• ${p.id || '?'}: ${p.title || '?'} — yes:${p.votes_for ?? p.yes ?? 0} no:${p.votes_against ?? p.no ?? 0}`;
+    }, 'No active proposals.');
+  } catch (e) {
+    renderList(el, [], null, 'DAO data unavailable.');
+  }
+}
+
+async function handleDaoCreate() {
+  const title = (document.getElementById('daoTitle')?.value || '').trim();
+  const description = (document.getElementById('daoDesc')?.value || '').trim();
+  if (!title || !description) { setStatus('daoStatus', 'Enter title and description.'); return; }
+  setStatus('daoStatus', 'Submitting…');
+  try {
+    const res = await WalletAPI.createDaoProposal(title, description);
+    setStatus('daoStatus', `Proposal created: ${res.id || res.proposal_id || 'ok'}`);
+    loadDao();
+  } catch (e) {
+    setStatus('daoStatus', `Create failed: ${e.message}`);
+  }
+}
+
+async function handleDaoVote(support) {
+  const id = (document.getElementById('daoVoteId')?.value || '').trim();
+  if (!id) { setStatus('daoStatus', 'Enter a proposal ID.'); return; }
+  setStatus('daoStatus', 'Voting…');
+  try {
+    await WalletAPI.voteDaoProposal(id, support);
+    setStatus('daoStatus', 'Vote submitted to the blockchain network.');
+    loadDao();
+  } catch (e) {
+    setStatus('daoStatus', `Vote failed: ${e.message}`);
+  }
+}
+
+async function loadLaunchpool() {
+  const info = document.getElementById('launchpoolInfo');
+  const stakesEl = document.getElementById('launchpoolStakes');
+  try {
+    const pool = await WalletAPI.getLaunchpool();
+    if (info) info.textContent = `Pool: ${pool.token || pool.asset || '?'} | APY: ${pool.apy ?? '?'}% | TVL: ${pool.tvl ?? pool.total_staked ?? '?'}`;
+  } catch (e) {
+    if (info) info.textContent = 'Launchpool data unavailable.';
+  }
+  try {
+    const res = await WalletAPI.getLaunchpoolStakes();
+    const list = Array.isArray(res) ? res : (res.data || res.stakes || []);
+    if (stakesEl) renderList(stakesEl, list, (row, s) => {
+      row.textContent = `• ${s.id || '?'}: ${s.amount || '?'} ${s.token || ''} (${s.status || '?'})`;
+    }, 'No active stakes.');
+  } catch (e) {
+    if (stakesEl) renderList(stakesEl, [], null, 'No active stakes.');
+  }
+}
+
+async function handleLaunchpool(stake) {
+  const amount = (document.getElementById('lpAmount')?.value || '').trim();
+  const password = document.getElementById('lpPassword')?.value || '';
+  if (!amount || !password) { setStatus('lpStatus', 'Enter amount and wallet password.'); return; }
+  const w = activeWallet();
+  if (!w) { setStatus('lpStatus', 'No wallet available.'); return; }
+  setStatus('lpStatus', 'Submitting…');
+  try {
+    const res = stake
+      ? await WalletAPI.launchpoolStake(w.id, password, amount)
+      : await WalletAPI.launchpoolUnstake(w.id, password, amount);
+    const tx = res.tx_hash || '';
+    setStatus('lpStatus', tx ? `Transaction submitted to the blockchain network: ${tx}` : `${stake ? 'Stake' : 'Unstake'} submitted.`);
+    loadLaunchpool();
+  } catch (e) {
+    setStatus('lpStatus', `Failed: ${e.message}`);
+  }
+}
+
+async function loadTokenSales() {
+  const el = document.getElementById('tokenSalesList');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getTokenSales();
+    const list = Array.isArray(res) ? res : (res.sales || res.data || []);
+    renderList(el, list, (row, s) => {
+      row.textContent = `• ${s.id || '?'}: ${s.name || s.token || '?'} @ ${s.price ?? '?'} (${s.status || '?'})`;
+    }, 'No active token sales.');
+  } catch (e) {
+    renderList(el, [], null, 'Token sales unavailable.');
+  }
+}
+
+async function handleTokenSaleParticipate() {
+  const saleId = (document.getElementById('tsSaleId')?.value || '').trim();
+  const amount = (document.getElementById('tsAmount')?.value || '').trim();
+  if (!saleId || !amount) { setStatus('tsStatus', 'Enter sale ID and amount.'); return; }
+  setStatus('tsStatus', 'Submitting…');
+  try {
+    const res = await WalletAPI.participateTokenSale(saleId, amount);
+    const tx = res.tx_hash || '';
+    setStatus('tsStatus', tx ? `Transaction submitted to the blockchain network: ${tx}` : 'Participation submitted.');
+    loadTokenSales();
+  } catch (e) {
+    setStatus('tsStatus', `Failed: ${e.message}`);
+  }
+}
+
+async function loadTradingPositions() {
+  const el = document.getElementById('tradingPositions');
+  if (!el) return;
+  try {
+    const perps = await WalletAPI.getPerpetualPositions();
+    const margins = await WalletAPI.getMarginPositions();
+    const perpList = Array.isArray(perps) ? perps : (perps.positions || perps.data || []);
+    const marginList = Array.isArray(margins) ? margins : (margins.positions || margins.data || []);
+    const all = perpList.map(p => ({ ...p, _m: 'perp' })).concat(marginList.map(p => ({ ...p, _m: 'margin' })));
+    renderList(el, all, (row, p) => {
+      row.textContent = `• [${p._m}] ${p.id || '?'}: ${p.pair || '?'} ${p.side || '?'} size:${p.size ?? '?'} ${p.leverage ?? '?'}x pnl:${p.pnl ?? p.unrealized_pnl ?? '?'}`;
+    }, 'No open positions.');
+  } catch (e) {
+    renderList(el, [], null, 'Positions unavailable.');
+  }
+}
+
+async function handleTradeOpen(perp) {
+  const pair = (document.getElementById('tradePair')?.value || '').trim();
+  const side = (document.getElementById('tradeSide')?.value || '').trim();
+  const size = (document.getElementById('tradeSize')?.value || '').trim();
+  const leverage = parseInt((document.getElementById('tradeLeverage')?.value || '1').trim(), 10) || 1;
+  if (!pair || !side || !size) { setStatus('tradeStatus', 'Enter pair, side and size.'); return; }
+  setStatus('tradeStatus', 'Opening position…');
+  try {
+    const res = perp
+      ? await WalletAPI.createPerpetualPosition(pair, side, size, leverage)
+      : await WalletAPI.createMarginPosition(pair, side, size, leverage);
+    const tx = res.tx_hash || '';
+    setStatus('tradeStatus', tx ? `Transaction submitted to the blockchain network: ${tx}` : `Position opened: ${res.id || 'ok'}`);
+    loadTradingPositions();
+  } catch (e) {
+    setStatus('tradeStatus', `Open failed: ${e.message}`);
+  }
+}
+
+async function handleTradeClose(perp) {
+  const id = (document.getElementById('tradeCloseId')?.value || '').trim();
+  if (!id) { setStatus('tradeStatus', 'Enter a position ID.'); return; }
+  setStatus('tradeStatus', 'Closing position…');
+  try {
+    if (perp) await WalletAPI.closePerpetualPosition(id);
+    else await WalletAPI.closeMarginPosition(id);
+    setStatus('tradeStatus', 'Position close submitted.');
+    loadTradingPositions();
+  } catch (e) {
+    setStatus('tradeStatus', `Close failed: ${e.message}`);
+  }
+}
+
+async function loadPredictionMarkets() {
+  const el = document.getElementById('predictionMarkets');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getPredictionMarkets();
+    const list = Array.isArray(res) ? res : (res.markets || res.data || []);
+    renderList(el, list, (row, m) => {
+      row.textContent = `• ${m.id || '?'}: ${m.question || m.title || '?'} (${m.status || '?'})`;
+    }, 'No active markets.');
+  } catch (e) {
+    renderList(el, [], null, 'Markets unavailable.');
+  }
+}
+
+async function handlePredictionBet() {
+  const marketId = (document.getElementById('predMarketId')?.value || '').trim();
+  const side = (document.getElementById('predSide')?.value || '').trim();
+  const amount = (document.getElementById('predAmount')?.value || '').trim();
+  if (!marketId || !side || !amount) { setStatus('predStatus', 'Enter market ID, side and amount.'); return; }
+  setStatus('predStatus', 'Placing bet…');
+  try {
+    await WalletAPI.placePredictionBet(marketId, side, amount);
+    setStatus('predStatus', 'Bet submitted.');
+    loadPredictionMarkets();
+  } catch (e) {
+    setStatus('predStatus', `Bet failed: ${e.message}`);
+  }
+}
+
+async function loadCopyTraders() {
+  const el = document.getElementById('copyTraders');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getCopyTraders();
+    const list = Array.isArray(res) ? res : (res.traders || res.data || []);
+    renderList(el, list, (row, t) => {
+      row.textContent = `• ${t.id || t.trader_id || '?'}: ${t.name || t.address || '?'} roi:${t.roi ?? '?'}%`;
+    }, 'No traders available.');
+  } catch (e) {
+    renderList(el, [], null, 'Traders unavailable.');
+  }
+}
+
+async function handleCopyFollow() {
+  const traderId = (document.getElementById('copyTraderId')?.value || '').trim();
+  const allocation = (document.getElementById('copyAllocation')?.value || '').trim();
+  if (!traderId) { setStatus('copyStatus', 'Enter a trader ID.'); return; }
+  setStatus('copyStatus', 'Following…');
+  try {
+    await WalletAPI.followTrader(traderId, allocation || null);
+    setStatus('copyStatus', `Now copying trader ${traderId}.`);
+    loadCopyTraders();
+  } catch (e) {
+    setStatus('copyStatus', `Follow failed: ${e.message}`);
+  }
+}
+
+async function handleCopyStop() {
+  const copierId = (document.getElementById('copyCopierId')?.value || '').trim();
+  if (!copierId) { setStatus('copyStatus', 'Enter a copier ID.'); return; }
+  setStatus('copyStatus', 'Stopping…');
+  try {
+    await WalletAPI.stopCopyTrader(copierId);
+    setStatus('copyStatus', 'Stopped copying.');
+    loadCopyTraders();
+  } catch (e) {
+    setStatus('copyStatus', `Stop failed: ${e.message}`);
+  }
+}
+
+async function loadFees() {
+  const tiersEl = document.getElementById('feesTiers');
+  const txEl = document.getElementById('feesTransactions');
+  try {
+    const res = await WalletAPI.getPublicFees();
+    const tiers = Array.isArray(res) ? res : (res.fees || res.data || []);
+    if (tiersEl) renderList(tiersEl, tiers, (row, t) => {
+      row.textContent = `• ${t.name || t.tier || '?'}: ${t.rate_bps ?? t.rate ?? '?'} bps`;
+    }, 'No fee tiers configured.');
+  } catch (e) {
+    if (tiersEl) renderList(tiersEl, [], null, 'Fee schedule unavailable.');
+  }
+  try {
+    const res = await WalletAPI.getPublicFeeTransactions();
+    const txs = Array.isArray(res) ? res : (res.transactions || res.data || []);
+    if (txEl) renderList(txEl, txs.slice(0, 25), (row, t) => {
+      row.textContent = `• ${String(t.tx_hash || '').slice(0, 14)}… ${t.fee_amount ?? t.amount ?? '?'} ${t.token || ''}`;
+    }, 'No settled fee transactions.');
+  } catch (e) {
+    if (txEl) renderList(txEl, [], null, 'No settled fee transactions.');
+  }
 }
 
 async function loadNfts() {

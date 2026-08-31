@@ -49,6 +49,8 @@ class DAppsFragment : Fragment() {
         val pairingsBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; tag = "pairings" }
         val sessionsHeader = TextView(ctx).apply { text = "Sessions"; textSize = 18f; setPadding(0, 24, 0, 8) }
         val sessionsBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; tag = "sessions" }
+        val catalogHeader = TextView(ctx).apply { text = "dApp Catalog"; textSize = 18f; setPadding(0, 24, 0, 8) }
+        val catalogBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; tag = "catalog" }
         val refreshBtn = Button(ctx).apply { text = "Refresh" }
 
         container.addView(uriInput)
@@ -57,6 +59,8 @@ class DAppsFragment : Fragment() {
         container.addView(pairingsBox)
         container.addView(sessionsHeader)
         container.addView(sessionsBox)
+        container.addView(catalogHeader)
+        container.addView(catalogBox)
         container.addView(refreshBtn)
 
         pairBtn.setOnClickListener {
@@ -86,6 +90,35 @@ class DAppsFragment : Fragment() {
     private fun refresh() {
         loadPairings()
         loadSessions()
+        loadCatalog()
+    }
+
+    private fun loadCatalog() {
+        val box = container.findViewWithTag<LinearLayout>("catalog") ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val json = UserWalletApiService.getDappCatalog()
+                val list = json.optJSONArray("dapps") ?: json.optJSONArray("data") ?: JSONArray()
+                withContext(Dispatchers.Main) {
+                    box.removeAllViews()
+                    if (list.length() == 0) {
+                        box.addView(TextView(requireContext()).apply { text = "No dApps in catalog" })
+                    }
+                    for (i in 0 until list.length()) {
+                        val d = list.getJSONObject(i)
+                        box.addView(TextView(requireContext()).apply {
+                            text = "${d.optString("name", "?")} · ${d.optString("category", "?")} · ${d.optString("url", "")}"
+                            setPadding(0, 12, 0, 12)
+                        })
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    box.removeAllViews()
+                    box.addView(TextView(requireContext()).apply { text = "Catalog unavailable: ${e.message}" })
+                }
+            }
+        }
     }
 
     private fun loadPairings() {

@@ -153,6 +153,8 @@ class TigerWalletApp {
             el?.addEventListener('change', () => this.fetchSwapQuote());
         });
         swapBtn?.addEventListener('click', () => this.executeSwap());
+        document.getElementById('amm-quote-btn')?.addEventListener('click', () => this.fetchAmmQuote());
+        document.getElementById('amm-swap-btn')?.addEventListener('click', () => this.executeAmmSwap());
 
         // Staking actions (real backend /staking/{stake,unstake,claim})
         document.getElementById('stake-btn')?.addEventListener('click', () => this.stakingAction('stake'));
@@ -182,7 +184,7 @@ class TigerWalletApp {
         document.getElementById('nft-transfer-btn')?.addEventListener('click', () => this.transferNFT());
         document.getElementById('security-check-btn')?.addEventListener('click', () => this.securityCheck());
         document.getElementById('security-scan-btn')?.addEventListener('click', () => this.securityScan());
-        document.getElementById('terminal-load-btn')?.addEventListener('click', () => this.loadTerminalChart());
+        document.getElementById('terminal-load-btn')?.addEventListener('click', () => { this.loadTerminalChart(); this.loadChartHistory(); });
 
         // QR Scanner
         document.getElementById('qr-scan-btn')?.addEventListener('click', () => this.showQRModal());
@@ -238,6 +240,15 @@ class TigerWalletApp {
 
         // Watch-only wallet
         document.getElementById('watch-only-add-btn')?.addEventListener('click', () => this.addWatchOnlyWallet());
+
+        // WalletConnect pairing (dApps page)
+        document.getElementById('wc-pair-btn')?.addEventListener('click', () => this.pairWalletConnect());
+
+        // KYC session detail refresh
+        document.getElementById('kyc-session-btn')?.addEventListener('click', () => this.loadKycSession());
+
+        // Passkey wallet registration (WebAuthn)
+        document.getElementById('passkey-register-btn')?.addEventListener('click', () => this.registerPasskeyWallet());
 
         // Health badge: poll backend health every 30s
         this.updateHealthBadge();
@@ -353,6 +364,7 @@ class TigerWalletApp {
             keystore: 'Keystore',
             'hardware-wallet': 'Hardware Wallet',
             transactions: 'Transactions',
+            fees: 'Fees',
             settings: 'Settings'
         };
         document.getElementById('page-title').textContent = titles[page] || 'TigerWallet';
@@ -374,12 +386,18 @@ class TigerWalletApp {
             // ENS resolve is input-driven; no auto-load.
         } else if (page === 'terminal') {
             this.loadTerminalChart();
+            this.loadChartHistory();
         } else if (page === 'kyc') {
             this.loadKYCStatus();
         } else if (page === 'ramp') {
             this.loadFiatProviders();
         } else if (page === 'dapps') {
+            this.loadDappCategories();
             this.loadDApps();
+            this.loadWcPairings();
+            this.loadWcSessions();
+        } else if (page === 'fees') {
+            this.loadFees();
         } else if (page === 'defi') {
             this.loadDefiProtocols();
         } else if (page === 'trading') {
@@ -415,6 +433,8 @@ class TigerWalletApp {
         } else if (page === 'settings') {
             const input = document.getElementById('settings-api-base');
             if (input) input.value = twApiOrigin();
+            this.loadNetworkStatus();
+            this.checkReadiness();
         }
     }
     
@@ -852,10 +872,87 @@ class TigerWalletApp {
         }
     }
     
-    // Swap — fetch a real indicative quote from the backend swap engine
-    // (GET /api/v1/swap/quote), which uses live CoinGecko prices. Never a
-    // hardcoded rate. Updates the on-screen rate + receive amount live.
+    // ---- On-chain AMM (Uniswap V2-style routers, /amm/quote + /amm/swap) ----
+    // Quote is a real eth_call getAmountsOut; swap returns calldata that is
+    // broadcast via the real /send endpoint. No fabricated tx hash.
+    async fetchAmmQuote() {
+        const tokenIn = document.getElementById('amm-token-in')?.value?.trim();
+        const tokenOut = document.getElementById('amm-token-out')?.value?.trim();
+        const amountIn = document.getElementById('amm-amount-in')?.value?.trim();
+        const out = document.getElementById('amm-quote-result');
+        if (!tokenIn || !tokenOut || !amountIn) {
+            if (out) out.textContent = 'Enter token in/out addresses and amount';
+            return;
+        }
+        try {
+            const res = await twFetch(`${twApiBase()}/amm/quote?chain_id=${this.currentNetwork}&token_in=${encodeURIComponent(tokenIn)}&token_out=${encodeURIComponent(tokenOut)}&amount_in=${encodeURIComponent(amountIn)}`);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                if (out) out.textContent = 'Quote unavailable: ' + (err.error || `HTTP ${res.status}`);
+                return;
+            }
+            const q = await res.json();
+            this._lastAmmQuote = q;
+            if (out) out.textContent = `${amountIn} in → ${q.amount_out || '?'} out (router ${q.router || '?'})`;
+        } catch (e) {
+            if (out) out.textContent = 'Quote unavailable: ' + e.message;
+        }
+    }
+
+    async executeAmmSwap() {
+        const tokenIn = document.getElementById('amm-token-in')?.value?.trim();
+        const tokenOut = document.getElementById('amm-token-out')?.value?.trim();
+        const amountIn = document.getElementById('amm-amount-in')?.value?.trim();
+        if (!tokenIn || !tokenOut || !amountIn) { alert('Enter token in/out addresses and amount'); return; }
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const wallet = this.wallets[0];
+        const from = wallet.address;
+        const password = prompt('Enter wallet password to sign the AMM swap:');
+        if (!password) { alert('Password is required'); return; }
+        try {
+            const exRes = await twFetch(`${twApiBase()}/amm/swap`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from, chain_id: this.currentNetwork,
+                    token_in: tokenIn, token_out: tokenOut,
+                    amount_in: amountIn, amount_out_min: ''
+                })
+            });
+            if (!exRes.ok) {
+                const err = await exRes.json().catch(() => ({}));
+                alert('AMM swap construction failed: ' + (err.error || `HTTP ${exRes.status}`));
+                return;
+            }
+            const action = await exRes.json();
+            const tx = action.tx || {};
+            const sendRes = await twFetch(`${twApiBase()}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    wallet_id: wallet.wallet_id ?? wallet.id,
+                    password,
+                    to: tx.to || action.router || '',
+                    value: tx.value || '0',
+                    chain_id: this.currentNetwork,
+                    data: tx.data || ''
+                })
+            });
+            if (!sendRes.ok) {
+                const err = await sendRes.json().catch(() => ({}));
+                alert('Broadcast failed: ' + (err.error || `HTTP ${sendRes.status}`));
+                return;
+            }
+            const sent = await sendRes.json();
+            alert('AMM swap submitted to the blockchain network: ' + (sent.tx_hash || ''));
+        } catch (e) {
+            alert('AMM swap failed: ' + e.message);
+        }
+    }
+
     async fetchSwapQuote() {
+        // GET /api/v1/swap/quote — real indicative quote (live CoinGecko
+        // prices server-side). Never a hardcoded rate.
         const fromAmt = document.getElementById('swap-from-amount')?.value;
         const fromTok = document.getElementById('swap-from-token')?.value;
         const toTok = document.getElementById('swap-to-token')?.value;
@@ -1224,11 +1321,13 @@ class TigerWalletApp {
     }
 
     // ---- dApp catalog + WalletConnect (canonical dapp_browser :8083 via /api/v1/dapps) ----
-    async loadDApps() {
+    async loadDApps(category) {
         const box = document.getElementById('dapp-list');
         if (!box) return;
+        if (category !== undefined) this._dappCategory = category;
         try {
-            const res = await twFetch(`${twApiBase()}/dapps`);
+            const qs = this._dappCategory ? `?category=${encodeURIComponent(this._dappCategory)}` : '';
+            const res = await twFetch(`${twApiBase()}/dapps${qs}`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>'; return; }
             const data = await res.json();
             const dapps = Array.isArray(data.dapps) ? data.dapps : (Array.isArray(data) ? data : []);
@@ -1243,6 +1342,307 @@ class TigerWalletApp {
         } catch (e) {
             box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>';
         }
+    }
+
+    // ---- dApp categories (GET /api/v1/dapps/categories) — filter chips ----
+    async loadDappCategories() {
+        const box = document.getElementById('dapp-categories');
+        if (!box) return;
+        try {
+            const res = await twFetch(`${twApiBase()}/dapps/categories`);
+            if (!res.ok) { box.innerHTML = ''; return; }
+            const data = await res.json();
+            const cats = Array.isArray(data.categories) ? data.categories : (Array.isArray(data) ? data : []);
+            const all = [''].concat(cats);
+            box.innerHTML = all.map(c =>
+                `<button class="category-chip" data-cat="${this.escapeHtml(c)}" style="margin-right:6px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:${(this._dappCategory || '') === c ? 'var(--accent)' : 'transparent'};color:var(--text);cursor:pointer">${c === '' ? 'All' : this.escapeHtml(c)}</button>`
+            ).join('');
+            box.querySelectorAll('.category-chip').forEach(chip => {
+                chip.addEventListener('click', () => this.loadDApps(chip.dataset.cat || ''));
+            });
+        } catch (e) {
+            box.innerHTML = '';
+        }
+    }
+
+    // ---- WalletConnect pairing (/dapp/* proxied to dapp_browser :8083) ----
+    async pairWalletConnect() {
+        const input = document.getElementById('wc-uri');
+        const uri = (input?.value || '').trim();
+        if (!uri) { alert('Paste a WalletConnect URI (wc:…)'); return; }
+        try {
+            const res = await twFetch(`${twApiBase()}/dapp/pairings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uri })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            input.value = '';
+            this.loadWcPairings();
+        } catch (e) {
+            alert('Pairing failed: ' + e.message);
+        }
+    }
+
+    async loadWcPairings() {
+        const box = document.getElementById('wc-pairings');
+        if (!box) return;
+        try {
+            const res = await twFetch(`${twApiBase()}/dapp/pairings`);
+            if (!res.ok) { box.innerHTML = ''; return; }
+            const data = await res.json();
+            const list = data.pairings || data.data || [];
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No pending pairings</div>'; return; }
+            box.innerHTML = list.map(p => {
+                const topic = this.escapeHtml(p.topic || '');
+                const name = this.escapeHtml(p.peer_name || p.name || topic);
+                const status = this.escapeHtml(p.status || 'pending');
+                return `<div class="asset-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+                    <span>${name} · ${status}</span>
+                    <span>
+                        <button class="btn-primary wc-approve" data-topic="${topic}" style="margin-right:6px">Approve</button>
+                        <button class="btn-secondary wc-reject" data-topic="${topic}">Reject</button>
+                    </span>
+                </div>`;
+            }).join('');
+            box.querySelectorAll('.wc-approve').forEach(b => b.addEventListener('click', () => this.wcPairingAction(b.dataset.topic, true)));
+            box.querySelectorAll('.wc-reject').forEach(b => b.addEventListener('click', () => this.wcPairingAction(b.dataset.topic, false)));
+        } catch (e) {
+            box.innerHTML = '';
+        }
+    }
+
+    async loadWcSessions() {
+        const box = document.getElementById('wc-sessions');
+        if (!box) return;
+        try {
+            const res = await twFetch(`${twApiBase()}/dapp/sessions`);
+            if (!res.ok) { box.innerHTML = ''; return; }
+            const data = await res.json();
+            const list = data.sessions || data.data || [];
+            if (!list.length) { box.innerHTML = '<div class="empty-state">No active sessions</div>'; return; }
+            box.innerHTML = list.map(s =>
+                `<div class="asset-item" style="padding:8px 0">${this.escapeHtml(s.peer_name || s.name || '')} · ${this.escapeHtml(s.topic || '')}</div>`
+            ).join('');
+        } catch (e) {
+            box.innerHTML = '';
+        }
+    }
+
+    async wcPairingAction(topic, approve) {
+        try {
+            const res = await twFetch(`${twApiBase()}/dapp/pairings/${encodeURIComponent(topic)}/${approve ? 'approve' : 'reject'}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}'
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            this.loadWcPairings();
+            this.loadWcSessions();
+        } catch (e) {
+            alert('Action failed: ' + e.message);
+        }
+    }
+
+    // ---- Fees (public fee transparency) ----
+    async loadFees() {
+        const tiersBox = document.getElementById('fees-tiers');
+        const txBox = document.getElementById('fees-transactions');
+        try {
+            const res = await twFetch(`${twApiBase()}/public/fees`);
+            if (tiersBox) {
+                if (!res.ok) { tiersBox.innerHTML = '<div class="empty-state">Fee schedule unavailable</div>'; }
+                else {
+                    const data = await res.json();
+                    const tiers = data.fees || data.data || [];
+                    tiersBox.innerHTML = tiers.length
+                        ? tiers.map(t => `<div class="asset-item" style="padding:8px 0">${this.escapeHtml(t.name || t.tier || '')} — ${this.escapeHtml(String(t.rate_bps ?? t.rate ?? ''))} bps</div>`).join('')
+                        : '<div class="empty-state">No fee tiers configured</div>';
+                }
+            }
+        } catch (e) {
+            if (tiersBox) tiersBox.innerHTML = '<div class="empty-state">Fee schedule unavailable</div>';
+        }
+        try {
+            const res = await twFetch(`${twApiBase()}/public/fees/transactions`);
+            if (txBox) {
+                if (!res.ok) { txBox.innerHTML = '<div class="empty-state">No settled fee transactions</div>'; }
+                else {
+                    const data = await res.json();
+                    const txs = data.transactions || data.data || [];
+                    txBox.innerHTML = txs.length
+                        ? txs.slice(0, 25).map(t => `<div class="asset-item" style="padding:8px 0">${this.escapeHtml(String(t.tx_hash || '')).slice(0, 18)}… ${this.escapeHtml(String(t.fee_amount ?? t.amount ?? ''))} ${this.escapeHtml(t.token || '')}</div>`).join('')
+                        : '<div class="empty-state">No settled fee transactions</div>';
+                }
+            }
+        } catch (e) {
+            if (txBox) txBox.innerHTML = '<div class="empty-state">No settled fee transactions</div>';
+        }
+    }
+
+    // ---- Network status (GET /api/v1/network-status) + readiness probe ----
+    async loadNetworkStatus() {
+        const box = document.getElementById('network-status');
+        if (!box) return;
+        try {
+            const res = await twFetch(`${twApiBase()}/network-status`);
+            if (!res.ok) { box.innerHTML = '<div class="empty-state">Network status unavailable</div>'; return; }
+            const data = await res.json();
+            const bn = data.block_number != null ? String(data.block_number) : (data.note || '?');
+            box.innerHTML = `<div class="asset-item" style="padding:8px 0">Chain ${this.escapeHtml(String(data.chain_id ?? ''))} — latest block: ${this.escapeHtml(bn)}${data.latency_ms != null ? ' · ' + this.escapeHtml(String(data.latency_ms)) + 'ms' : ''}</div>`;
+        } catch (e) {
+            box.innerHTML = '<div class="empty-state">Network status unavailable</div>';
+        }
+    }
+
+    async checkReadiness() {
+        const el = document.getElementById('backend-readiness');
+        if (!el) return;
+        try {
+            const res = await fetch(`${twApiBase()}/health/ready`);
+            const ok = res.ok;
+            el.textContent = ok ? 'ready' : 'degraded';
+            el.style.background = ok ? 'var(--success, #16a34a)' : 'var(--danger, #dc2626)';
+        } catch (e) {
+            el.textContent = 'unreachable';
+            el.style.background = 'var(--danger, #dc2626)';
+        }
+    }
+
+    // ---- KYC session detail (GET /kyc/session/:id) ----
+    async loadKycSession() {
+        const idInput = document.getElementById('kyc-session-id');
+        const out = document.getElementById('kyc-result');
+        const id = (idInput?.value || '').trim();
+        if (!id) { alert('Enter a KYC session ID'); return; }
+        try {
+            const res = await twFetch(`${twApiBase()}/kyc/session/${encodeURIComponent(id)}`);
+            if (!out) return;
+            if (!res.ok) { out.innerHTML = '<div class="empty-state">Session not found</div>'; return; }
+            const data = await res.json();
+            out.innerHTML = `<div class="kyc-card"><strong>Session ${this.escapeHtml(id)}</strong><br>Status: ${this.escapeHtml(data.status || 'unknown')}${data.reviewed_at ? '<br>Reviewed: ' + this.escapeHtml(data.reviewed_at) : ''}</div>`;
+        } catch (e) {
+            if (out) out.innerHTML = '<div class="empty-state">Session unavailable</div>';
+        }
+    }
+
+    // ---- Passkey wallet registration (POST /passkey/wallet via WebAuthn) ----
+    async registerPasskeyWallet() {
+        const out = document.getElementById('passkey-result');
+        if (!window.PublicKeyCredential || !navigator.credentials) {
+            if (out) out.innerHTML = '<div class="empty-state">Passkeys are not supported in this environment</div>';
+            return;
+        }
+        try {
+            const challenge = new Uint8Array(32);
+            crypto.getRandomValues(challenge);
+            const credential = await navigator.credentials.create({
+                publicKey: {
+                    challenge,
+                    rp: { name: 'TigerWallet' },
+                    user: {
+                        id: new Uint8Array(16),
+                        name: 'tigerwallet-user',
+                        displayName: 'TigerWallet User'
+                    },
+                    pubKeyCredParams: [
+                        { type: 'public-key', alg: -7 },
+                        { type: 'public-key', alg: -257 }
+                    ],
+                    authenticatorSelection: {
+                        authenticatorAttachment: 'platform',
+                        residentKey: 'preferred',
+                        userVerification: 'preferred'
+                    },
+                    timeout: 60000,
+                    attestation: 'none'
+                }
+            });
+            if (!credential || credential.type !== 'public-key') throw new Error('passkey creation failed');
+            const b64u = (buf) => {
+                const bytes = new Uint8Array(buf);
+                let s = '';
+                for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+                return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            };
+            let publicKey = '';
+            if (typeof credential.response.getPublicKey === 'function') {
+                const spki = credential.response.getPublicKey();
+                if (spki) publicKey = b64u(spki);
+            }
+            const res = await twFetch(`${twApiBase()}/passkey/wallet`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    label: 'Passkey Wallet',
+                    chain_id: 1,
+                    credential_id: b64u(credential.rawId),
+                    public_key: publicKey,
+                    sign_count: 0
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            if (out) out.innerHTML = `<div class="success-banner">Passkey wallet created: ${this.escapeHtml(data.address || data.wallet_id || '')}</div>`;
+            this.loadWalletData();
+        } catch (e) {
+            if (out) out.innerHTML = `<div class="empty-state">Passkey registration failed: ${this.escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    // ---- Price history (GET /api/v1/chart/history?coin=&days=) — line chart ----
+    async loadChartHistory() {
+        const canvas = document.getElementById('chart-history-canvas');
+        if (!canvas) return;
+        const symbolInput = document.getElementById('terminal-symbol');
+        const daysInput = document.getElementById('terminal-days');
+        const symbol = ((symbolInput?.value || 'ETH').trim() || 'ETH').toLowerCase();
+        const coinMap = { btc: 'bitcoin', eth: 'ethereum', bnb: 'binancecoin', sol: 'solana', matic: 'matic-network', avax: 'avalanche-2', usdt: 'tether', usdc: 'usd-coin' };
+        const coin = coinMap[symbol] || symbol;
+        const days = daysInput?.value || '30';
+        try {
+            const res = await twFetch(`${twApiBase()}/chart/history?coin=${encodeURIComponent(coin)}&days=${encodeURIComponent(days)}`);
+            if (!res.ok) { this.drawLineChart(canvas, []); return; }
+            const data = await res.json();
+            const candles = data.candles || [];
+            const points = candles.map(c => Array.isArray(c) ? +c[1] : +(c.price ?? c.close ?? c.c)).filter(v => isFinite(v));
+            this.drawLineChart(canvas, points);
+        } catch (e) {
+            this.drawLineChart(canvas, []);
+        }
+    }
+
+    drawLineChart(canvas, points) {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const w = (canvas.width = canvas.offsetWidth || 800);
+        const h = (canvas.height = 200);
+        const muted = getComputedStyle(canvas).getPropertyValue('--text-secondary') || '#8b949e';
+        ctx.clearRect(0, 0, w, h);
+        if (!points.length) {
+            ctx.fillStyle = muted;
+            ctx.font = '13px sans-serif';
+            ctx.fillText('No price history for this asset/range.', 16, 30);
+            return;
+        }
+        const padX = 50;
+        let min = Infinity, max = -Infinity;
+        for (const v of points) { if (v < min) min = v; if (v > max) max = v; }
+        const span = max - min || 1;
+        const x = (i) => padX + (i / (points.length - 1 || 1)) * (w - padX - 10);
+        const y = (v) => h - ((v - min) / span) * (h - 24) - 12;
+        ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue('--accent') || '#4f8cff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        points.forEach((v, i) => { if (i === 0) ctx.moveTo(x(i), y(v)); else ctx.lineTo(x(i), y(v)); });
+        ctx.stroke();
+        ctx.fillStyle = muted;
+        ctx.font = '11px sans-serif';
+        ctx.fillText(max.toFixed(2), 4, y(max) + 4);
+        ctx.fillText(min.toFixed(2), 4, y(min) + 4);
     }
 
     // ---- DeFi protocols (/api/v1/defi/protocols) ----

@@ -1082,3 +1082,12 @@ body {
     background: #6b7280;
     box-shadow: 0 0 4px #6b7280;
 }
+
+.badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    color: #fff;
+    background: var(--accent);
+}

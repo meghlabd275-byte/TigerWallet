@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject var onboardingManager: OnboardingManager
     @State private var showLogoutAlert = false
     @State private var backendURL = ""
+    @State private var readinessLabel = "unchecked"
 
     var body: some View {
         NavigationView {
@@ -28,6 +29,13 @@ struct SettingsView: View {
                     Text("API base URL of the UserWallet backend. Change this for a self-hosted deployment.")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    HStack {
+                        Text("Backend readiness")
+                        Spacer()
+                        Text(readinessLabel)
+                            .foregroundColor(readinessLabel == "ready" ? .green : .red)
+                    }
+                    Button("Check readiness") { checkReadiness() }
                 }
                 Section("Self-custody session") {
                     HStack {
@@ -61,6 +69,29 @@ struct SettingsView: View {
                 Button("Reset", role: .destructive) { onboardingManager.reset() }
             } message: {
                 Text("This clears the on-device wallet ids and the transparent session. Your funds remain on-chain — re-import a wallet with its recovery phrase to regain access. Your keys, your crypto.")
+            }
+        }
+    }
+
+    /// Probes GET /api/v1/health/ready on the configured backend and surfaces
+    /// the result. Readiness is a no-auth probe (like /health).
+    private func checkReadiness() {
+        let base = UserWalletApiService.shared.baseURL
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: base + "/health/ready") else {
+            readinessLabel = "invalid URL"
+            return
+        }
+        readinessLabel = "checking…"
+        Task {
+            do {
+                let (_, response) = try await URLSession.shared.data(from: url)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                await MainActor.run {
+                    self.readinessLabel = (200...299).contains(code) ? "ready" : "degraded (\(code))"
+                }
+            } catch {
+                await MainActor.run { self.readinessLabel = "unreachable" }
             }
         }
     }
