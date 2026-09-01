@@ -1035,3 +1035,50 @@
 - Test hygiene: canonical vectors (Algorand zero-address AAA...Y5HFKQ,
   Polkadot ...HC1) + fail-closed assertions on corrupted checksums/lengths.
 - Toolchain this session: Rust 1.85 at ~/.cargo/bin (rustup). No network in tests.
+
+
+## Session 29 (2026-09-01) — UserWallet app-family audit (read-only, on request)
+- Re-ran the route-coverage audit over go/wallet_api main.go: 93 unique
+  user-facing route paths (admin.* group excluded by design). Coverage:
+  web 93/93, desktop 93/93, extension 93/93, android 93/93, ios 93/93,
+  flutter 93/93, rust 93/93.
+- Surface sizes: web 36 pages; desktop_app (Tauri) 33 pages; extension 29
+  tabs; android 39 fragments (56 kt); ios 36 views (48 swift); flutter 3
+  screens + 22-feature hub (~90 service methods); rust SDK ~139 fns.
+- Separation rule re-verified: zero :8450/:9093/:8082 references in any UW
+  client; multisig reaches :8450 only via wallet_api service-token proxy.
+- Only residual client-side gap: extension googleDriveBackup.js Google OAuth
+  client_id is deployment config (TODO). Kotlin/Swift not compile-verified
+  (no SDKs in sandbox). Backend-side limits (unchanged): non-EVM broadcast
+  solana/bitcoin/cosmos only; EVM tx history needs Etherscan V2 key
+  (Blockscout keyless fallback); FCM google-services.json deployment config.
+
+
+## Session 30 (2026-09-01) - go/wallet_api 66-chain non-EVM SDK layer COMPLETE
+- All 66 seeded non-EVM chains resolve to a real SDK family with zero missing
+  SDKs; TestNonEvmResolveAllSeededChains enforces len(nonEVMMainnet)==66.
+- New non_evm_sdk_test.go: full address-format matrix (canonical prefixes per
+  family - BTC "1"/LTC "L"/DOGE "D"/DASH "X"/ZEC "t1"/GRS "F", cosmos bech32
+  HRPs incl. inj1/osmo1, nano nano_, tezos tz1, elrond erd1, stellar/pi "G"
+  strkey, tron "T", vechain 0x, ripple "r", icp/zilliqa 0x, aptos/sui 0x,
+  near implicit, algorand 58ch, waves 3P, multiversx erd1, kaspa "kaspa:",
+  nervos ckb1, filecoin f1, cardano addr1, polkadot 1) + resolver fail-closed
+  + not-feasible fail-closed tests. All green with existing signing tests.
+- COMPLETENESS FIXES found by the new matrix and fixed this session:
+  - strkey: version byte must be shifted <<3 (0x06->0x30=G); encoder now
+    RFC-4648 uppercase + emits trailing partial group; decoder uppercase.
+  - cardano: REWRITTEN with real BIP32-Ed25519 incl. SOFT derivation
+    (CIP-1852 paths m/1852'/1815'/a'/role/index need soft levels): kL/kR
+    little-endian add/mul8le without mod reduction; chain code updates per
+    level; canonical signatures (r=SHA512(kR||M) via edwards25519
+    SetUniformBytes, R=[r]B; S=r+H(R||A||M)*kL via MultiplyAdd). Previous
+    implementation rejected soft paths and signed with NewKeyFromSeed (wrong).
+  - kaspa: canonical HRP includes the trailing colon "kaspa:" (was "kaspa").
+  - zcash: ZIP-243 personalization via dchest/blake2b (added dep).
+- Fail-closed (not fabricated): TON address (wallet v4r2 BoC state-init needs
+  the compiled wallet-code blob, so only ed25519 message sign works),
+  Aleo/Hedera/Flow (address/sign fail closed), Pi RPC endpoint empty by design
+  (operator config), CKB tx build (hand-rolled), APT/SUI broadcast needs
+  node, Solana/Tron sends abort on simulated-exec failure.
+- Toolchain: Go 1.22.12 at /tmp/go122 (session-local); go mod tidy ok;
+  go build/vet/test all PASS.
