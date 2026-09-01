@@ -1084,6 +1084,27 @@
   go build/vet/test all PASS.
 
 
+
+## Session 31 (2026-09-01) - Wallet & finance plane COMPLETE on all 7 UserWallet surfaces (commit b7622933, pushed)
+- BACKEND go/wallet_api finance modules (finance_ledger/addresses/withdraw/
+  convert/p2p/payment_data/roles + finance_test.go): double-entry ledger
+  (ledger_account/journal/entry), deterministic per-user deposit addresses
+  (HKDF from WALLET_MASTER_SEED) + QR PNG endpoint, HMAC-signed risk-scored
+  withdrawals (WITHDRAW_HMAC_SECRET, WITHDRAW_AUTO_THRESHOLD), instant
+  convert at admin rate book, KYC-gated internal transfers, P2P escrow
+  (open/accept/paid/release/dispute/cancel), 881-method/238-country payment
+  catalog, per-token switches, admin roles + finance audit log.
+- WEB (Finance.tsx), DESKTOP (finance page), EXTENSION (financeTab), ANDROID
+  (FinanceFragment + fragment_finance.xml + hub entry), iOS (FinanceView +
+  13 UserWalletApiService methods + FeaturesView link), FLUTTER
+  (finance_screen.dart + service methods + hub entry), RUST SDK (13 methods).
+- LIVE-VERIFIED end-to-end: fresh PostgreSQL 17 + Redis started in sandbox;
+  catalog 238 countries/881 methods, 8 deposit addresses (BTC/ETH/BNB/...
+  USDT+USDC share ETH address), QR PNG valid, withdraw queued, convert
+  fail-closed without rate, KYC gates enforced (403 kyc_required).
+- Toolchain: Go 1.22.12 at /tmp/go (session-local); PG 17 + Redis installed
+  via apt (session-local). go build/vet/test all PASS.
+
 ## STANDING OWNER ORDER (2026-09-01) - ALWAYS PUSH TO MAIN
 - The owner has ordered: every change must ALWAYS be committed and pushed
   directly to the GitHub repo main branch (origin/main). Do not ask, do not
