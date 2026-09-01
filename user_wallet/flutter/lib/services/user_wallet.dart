@@ -105,6 +105,14 @@ class UserWalletService {
   Future<Map<String, dynamic>?> lock(String id) => post('/api/v1/wallets/$id/lock');
   Future<Map<String, dynamic>?> exportEncryptedSeed(String id, String password) =>
       post('/api/v1/wallets/$id/export-encrypted-seed', {'password': password});
+  Future<Map<String, dynamic>?> importEncryptedSeed(String encryptedSeed, String password,
+          {String? label, int? chainId}) =>
+      post('/api/v1/wallets/import-encrypted-seed', {
+        'encrypted_seed': encryptedSeed,
+        'password': password,
+        'label': label ?? '',
+        if (chainId != null) 'chain_id': chainId,
+      });
   Future<Map<String, dynamic>?> exportKeystore(String id, String password, String exportPassword) =>
       post('/api/v1/keystore/export', {'wallet_id': id, 'password': password, 'export_password': exportPassword});
   Future<Map<String, dynamic>?> importKeystore(String keystoreJson, String password, String? label) =>
@@ -115,8 +123,8 @@ class UserWalletService {
       get('/api/v1/balance?address=$address&chain_id=$chainId');
   Future<Map<String, dynamic>?> getTransactions(String address, int chainId) =>
       get('/api/v1/transactions?address=$address&chain_id=$chainId');
-  Future<Map<String, dynamic>?> getTransactionHistory(String address, int chainId) =>
-      get('/api/v1/tx-history?address=$address&chain_id=$chainId');
+  Future<Map<String, dynamic>?> getTransactionReceipt(String txHash, int chainId) =>
+      get('/api/v1/transactions/$txHash?chain_id=$chainId');
   Future<Map<String, dynamic>?> simulate(Map<String, dynamic> tx) =>
       post('/api/v1/simulate', tx);
 
@@ -271,9 +279,11 @@ class UserWalletService {
   Future<Map<String, dynamic>?> getDevices() => get('/api/v1/devices');
   Future<Map<String, dynamic>?> addDevice(Map<String, dynamic> req) => post('/api/v1/devices', req);
   Future<Map<String, dynamic>?> removeDevice(String id) => delete('/api/v1/devices/$id');
-  Future<Map<String, dynamic>?> getAddressBook() => get('/api/v1/address-book');
-  Future<Map<String, dynamic>?> addContact(Map<String, dynamic> req) => post('/api/v1/address-book', req);
-  Future<Map<String, dynamic>?> removeContact(String id) => delete('/api/v1/address-book/$id');
+  Future<Map<String, dynamic>?> getAddressBook() => get('/api/v1/address-book/contacts');
+  Future<Map<String, dynamic>?> addContact(Map<String, dynamic> req) => post('/api/v1/address-book/contacts', req);
+  Future<Map<String, dynamic>?> updateContact(String id, Map<String, dynamic> req) =>
+      put('/api/v1/address-book/contacts/$id', req);
+  Future<Map<String, dynamic>?> removeContact(String id) => delete('/api/v1/address-book/contacts/$id');
   Future<Map<String, dynamic>?> getPriceAlerts() => get('/api/v1/price-alerts');
   Future<Map<String, dynamic>?> createPriceAlert(Map<String, dynamic> req) => post('/api/v1/price-alerts', req);
   Future<Map<String, dynamic>?> updatePriceAlert(String id, Map<String, dynamic> req) =>

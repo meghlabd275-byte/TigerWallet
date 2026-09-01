@@ -1099,11 +1099,12 @@ class TigerWalletApp {
         }
         
         list.innerHTML = this.transactions.map(tx => `
-            <div class="asset-item">
+            <div class="asset-item tx-row" data-txhash="${this.escapeHtml(tx.hash || '')}" style="cursor: pointer" title="Tap to check on-chain status">
                 <div class="asset-icon">${tx.value > 0 ? '📤' : '📥'}</div>
                 <div class="asset-info">
                     <div class="asset-name">${tx.token} Transfer</div>
                     <div class="asset-address">${this.formatAddress(tx.from)} → ${this.formatAddress(tx.to)}</div>
+                    <div class="asset-address tx-receipt-status" data-txreceipt="${this.escapeHtml(tx.hash || '')}"></div>
                 </div>
                 <div class="asset-balance">
                     <div class="balance" style="color: ${tx.value > 0 ? 'var(--danger)' : 'var(--success)'}">
@@ -1113,6 +1114,41 @@ class TigerWalletApp {
                 </div>
             </div>
         `).join('');
+
+        list.querySelectorAll('.tx-row').forEach(row => {
+            row.addEventListener('click', () => this.showTransactionReceipt(row.dataset.txhash));
+        });
+    }
+
+    // GET /transactions/:txHash?chain_id=N -> real on-chain receipt via the
+    // chain explorer (status / block / confirmations). Fail-closed.
+    async showTransactionReceipt(txHash) {
+        if (!txHash) return;
+        const slot = document.querySelector(`[data-txreceipt="${txHash}"]`);
+        if (!slot) return;
+        slot.textContent = 'Checking on-chain status…';
+        try {
+            const res = await twFetch(`${twApiBase()}/transactions/${encodeURIComponent(txHash)}?chain_id=${this.currentNetwork || 1}`);
+            if (!res.ok) {
+                slot.textContent = 'Receipt unavailable';
+                return;
+            }
+            const data = await res.json();
+            const info = data.result || data;
+            const status = info.status || info.txreceipt_status || info.result?.status;
+            const block = info.blockNumber || info.block_number;
+            if (status === '0x1' || status === '1') {
+                slot.textContent = `Confirmed on-chain${block ? ` in block ${parseInt(block, 16) || block}` : ''}`;
+                slot.style.color = 'var(--success)';
+            } else if (status === '0x0' || status === '0') {
+                slot.textContent = 'Failed on-chain';
+                slot.style.color = 'var(--danger)';
+            } else {
+                slot.textContent = 'Pending confirmation';
+            }
+        } catch (e) {
+            slot.textContent = 'Receipt unavailable';
+        }
     }
     
     copyAddress() {

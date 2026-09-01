@@ -94,6 +94,45 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.toString())));
   }
 
+  Future<void> _restoreEncrypted(BuildContext ctx) async {
+    final blobCtl = TextEditingController();
+    final passwordCtl = TextEditingController();
+    final labelCtl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Restore Encrypted Backup'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+              controller: blobCtl,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Encrypted backup blob')),
+          TextField(
+              controller: passwordCtl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Backup password')),
+          TextField(controller: labelCtl, decoration: const InputDecoration(labelText: 'Label (optional)')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(dctx, true), child: const Text('Restore')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    final api = ctx.read<UserWalletService>();
+    try {
+      await api.importEncryptedSeed(blobCtl.text.trim(), passwordCtl.text,
+          label: labelCtl.text.trim().isEmpty ? null : labelCtl.text.trim());
+      if (!mounted) return;
+      widget.onDone();
+    } catch (e) {
+      setState(() => _busy = false);
+      _showError(ctx, e);
+    }
+  }
+
   Future<void> _exportEncryptedBackup() async {
     // Server-side AES-256-GCM blob ready for Google Drive upload (same
     // mechanism as the web/googleDriveBackup helper: upload via Drive API v3
@@ -218,6 +257,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     OutlinedButton(
                       onPressed: () => _import(context),
                       child: const Text('Import Wallet'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => _restoreEncrypted(context),
+                      child: const Text('Restore encrypted backup'),
                     ),
                   ]),
           ]),

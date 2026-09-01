@@ -31,6 +31,7 @@ class FeaturesScreen extends StatelessWidget {
       _Feature('Terminal', Icons.terminal, (_) => TerminalScreen(api: api)),
       _Feature('Fees', Icons.percent, (_) => FeesScreen(api: api)),
       _Feature('Organization', Icons.folder_shared, (_) => OrgScreen(api: api)),
+      _Feature('Address Book', Icons.contacts, (_) => AddressBookScreen(api: api)),
       _Feature('Non-EVM', Icons.link, (_) => NonEvmScreen(api: api)),
       _Feature('Approvals', Icons.verified, (_) => ApprovalsScreen(api: api)),
       _Feature('Multisig', Icons.groups_2, (_) => MultisigScreen(api: api)),
@@ -464,6 +465,18 @@ class OrgScreen extends StatelessWidget {
         title: 'Organization',
         api: api,
         fetch: (a) => a.getDevices(),
+        itemBuilder: (i) => i.toString(),
+      );
+}
+
+class AddressBookScreen extends StatelessWidget {
+  final UserWalletService api;
+  const AddressBookScreen({super.key, required this.api});
+  @override
+  Widget build(BuildContext context) => ListScreen(
+        title: 'Address Book',
+        api: api,
+        fetch: (a) => a.getAddressBook(),
         itemBuilder: (i) => i.toString(),
       );
 }
