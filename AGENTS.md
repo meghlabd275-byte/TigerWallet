@@ -1082,3 +1082,12 @@
   node, Solana/Tron sends abort on simulated-exec failure.
 - Toolchain: Go 1.22.12 at /tmp/go122 (session-local); go mod tidy ok;
   go build/vet/test all PASS.
+
+
+## STANDING OWNER ORDER (2026-09-01) - ALWAYS PUSH TO MAIN
+- The owner has ordered: every change must ALWAYS be committed and pushed
+  directly to the GitHub repo main branch (origin/main). Do not ask, do not
+  hold commits, do not use PR branches unless explicitly requested otherwise.
+- Remote: https://github.com/meghlabd275-byte/TigerWallet.git - if the stored
+  token in the remote URL prompts for a password, refresh it with
+  git remote set-url origin https://${GITHUB_TOKEN}@github.com/meghlabd275-byte/TigerWallet.git
