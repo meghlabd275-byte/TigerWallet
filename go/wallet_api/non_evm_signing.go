@@ -634,8 +634,9 @@ func bech32HrpExpand(hrp string) []byte {
 }
 
 func bech32CreateChecksum(values []byte) []byte {
-	mod := append(bech32HrpExpand(""), values...)
-	mod = append(mod, 0, 0, 0, 0, 0, 0)
+	// BIP-173: polymod(hrp_expand(hrp) || data || six zeroes) ^ 1.
+	// Callers pass values = hrpExpand(hrp) || data, so nothing is prepended here.
+	mod := append(append([]byte{}, values...), 0, 0, 0, 0, 0, 0)
 	chk := bech32Polymod(mod) ^ 1
 	out := make([]byte, 6)
 	for i := 0; i < 6; i++ {

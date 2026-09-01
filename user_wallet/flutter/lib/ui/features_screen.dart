@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/user_wallet.dart';
+import 'finance_screen.dart';
 
 class FeaturesScreen extends StatelessWidget {
   final UserWalletService api;
@@ -29,6 +30,7 @@ class FeaturesScreen extends StatelessWidget {
       _Feature('Payments', Icons.credit_card, (_) => PaymentsScreen(api: api)),
       _Feature('Security', Icons.shield, (_) => SecurityScreen(api: api)),
       _Feature('Terminal', Icons.terminal, (_) => TerminalScreen(api: api)),
+      _Feature('Wallet & Finance', Icons.account_balance, (_) => FinanceScreen(api: api)),
       _Feature('Fees', Icons.percent, (_) => FeesScreen(api: api)),
       _Feature('Organization', Icons.folder_shared, (_) => OrgScreen(api: api)),
       _Feature('Address Book', Icons.contacts, (_) => AddressBookScreen(api: api)),

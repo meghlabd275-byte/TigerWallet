@@ -162,6 +162,7 @@
       <button class="tab-btn" data-tab="predictionTab">Prediction</button>
       <button class="tab-btn" data-tab="copyTradingTab">Copy</button>
       <button class="tab-btn" data-tab="feesTab">Fees</button>
+      <button class="tab-btn" data-tab="financeTab">Finance</button>
       <button class="tab-btn" data-tab="nonEvmTab">Non-EVM</button>
       <button class="tab-btn" data-tab="settingsTab">Settings</button>
     </div>
@@ -551,6 +552,45 @@
       <div id="feesTiers" style="max-height:120px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;">Recent Settled Fees</div>
       <div id="feesTransactions" style="max-height:120px;overflow-y:auto;font-size:12px;"></div>
+    </div>
+
+
+    <!-- Finance tab (Wallet & finance plane) -->
+    <div id="financeTab" class="card hidden">
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Wallet &amp; Finance</div>
+      <div id="financeAccounts" style="max-height:110px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
+
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Deposit addresses (QR + copy)</div>
+      <div id="financeDeposits" style="max-height:150px;overflow-y:auto;font-size:11px;margin-bottom:8px;"></div>
+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+        <select id="finCurrency" style="flex:1;">
+          <option>BTC</option><option>ETH</option><option>USDT</option><option>USDC</option>
+          <option>BNB</option><option>SOL</option><option>TRX</option><option>MATIC</option>
+          <option>LTC</option><option>DOGE</option>
+        </select>
+      </div>
+
+      <input id="finTo" placeholder="Recipient email (internal transfer)" style="margin-bottom:4px;">
+      <input id="finAmount" placeholder="Amount" style="margin-bottom:4px;">
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button id="finTransferBtn" class="secondary-btn">Transfer (KYC)</button>
+      </div>
+
+      <input id="finWAddress" placeholder="Withdrawal destination address" style="margin-bottom:4px;">
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button id="finWithdrawBtn" class="secondary-btn">Withdraw</button>
+        <button id="finConvertBtn" class="secondary-btn" title="Convert to USDC at admin rate">Convert → USDC</button>
+      </div>
+
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Convert rates</div>
+      <div id="financeRates" style="max-height:80px;overflow-y:auto;font-size:11px;margin-bottom:8px;"></div>
+
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">P2P escrow market</div>
+      <div id="financeEscrow" style="max-height:130px;overflow-y:auto;font-size:11px;margin-bottom:8px;"></div>
+
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">Ledger history</div>
+      <div id="financeHistory" style="max-height:100px;overflow-y:auto;font-size:11px;"></div>
     </div>
 
     <!-- Non-EVM tab (Solana / Bitcoin / Cosmos) -->

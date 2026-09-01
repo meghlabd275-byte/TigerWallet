@@ -29,6 +29,7 @@ export default function Layout() {
     { path: '/cards', label: 'Cards' },
     { path: '/price-alerts', label: 'Price Alerts' },
     { path: '/dapps', label: 'dApps' },
+    { path: '/finance', label: 'Finance' },
     { path: '/fees', label: 'Fees' },
     { path: '/dao', label: 'DAO' },
     { path: '/ramp', label: 'Fiat Ramp' },

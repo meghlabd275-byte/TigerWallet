@@ -179,6 +179,9 @@
                     <button class="nav-item" data-page="fees">
                         <span class="icon">💸</span> Fees
                     </button>
+                    <button class="nav-item" data-page="finance">
+                        <span class="icon">🏦</span> Finance
+                    </button>
                     <button class="nav-item" data-page="ens">
                         <span class="icon">🔤</span> ENS
                     </button>
@@ -1089,6 +1092,73 @@
                     <div id="transactions-list" class="transactions-list">
                         <div class="no-transactions">No transactions yet</div>
                     </div>
+                </div>
+
+
+                <!-- Finance Page (Wallet & finance plane) -->
+                <div id="finance-page" class="page hidden">
+                    <div class="finance-tabs">
+                        <button class="secondary-btn fin-subtab active" data-fin="accounts">Accounts</button>
+                        <button class="secondary-btn fin-subtab" data-fin="deposit">Deposit</button>
+                        <button class="secondary-btn fin-subtab" data-fin="withdraw">Withdraw</button>
+                        <button class="secondary-btn fin-subtab" data-fin="convert">Convert</button>
+                        <button class="secondary-btn fin-subtab" data-fin="transfer">Transfer</button>
+                        <button class="secondary-btn fin-subtab" data-fin="p2p">P2P Market</button>
+                        <button class="secondary-btn fin-subtab" data-fin="history">History</button>
+                    </div>
+                    <div id="fin-message" class="success-banner hidden"></div>
+
+                    <div id="fin-accounts" class="fin-section assets-list"><div class="no-transactions">Loading accounts…</div></div>
+
+                    <div id="fin-deposit" class="fin-section assets-list hidden"><div class="no-transactions">Loading deposit addresses…</div></div>
+
+                    <div id="fin-withdraw" class="fin-section hidden">
+                        <div class="send-form">
+                            <div class="input-group"><label>Currency</label>
+                                <select id="fin-w-currency"></select></div>
+                            <div class="input-group"><label>Amount</label><input id="fin-w-amount" type="text" placeholder="0.0"></div>
+                            <div class="input-group"><label>Destination address</label><input id="fin-w-address" type="text" placeholder="bc1q… / 0x… / T…"></div>
+                            <button id="fin-w-submit" class="btn-primary">Request withdrawal</button>
+                            <p class="muted">Requests are risk-scored and HMAC-signed. Sub-threshold requests auto-approve in &lt;1s; larger ones queue for superadmin sign-off. Rejections auto-refund.</p>
+                        </div>
+                        <div id="fin-w-list" class="transactions-list" style="margin-top:16px"></div>
+                    </div>
+
+                    <div id="fin-convert" class="fin-section hidden">
+                        <div class="send-form">
+                            <div class="input-group"><label>From</label><select id="fin-c-from"></select></div>
+                            <div class="input-group"><label>To</label><select id="fin-c-to"></select></div>
+                            <div class="input-group"><label>Amount</label><input id="fin-c-amount" type="text" placeholder="0.0"></div>
+                            <button id="fin-c-submit" class="btn-primary">Convert instantly</button>
+                        </div>
+                        <h4 style="margin-top:16px">Admin-managed rates</h4>
+                        <div id="fin-c-rates" class="assets-list"></div>
+                    </div>
+
+                    <div id="fin-transfer" class="fin-section hidden">
+                        <div class="send-form">
+                            <div class="input-group"><label>Recipient email</label><input id="fin-t-to" type="text" placeholder="user@example.com"></div>
+                            <div class="input-group"><label>Currency</label><select id="fin-t-currency"></select></div>
+                            <div class="input-group"><label>Amount</label><input id="fin-t-amount" type="text" placeholder="0.0"></div>
+                            <button id="fin-t-submit" class="btn-primary">Send (KYC-gated)</button>
+                        </div>
+                    </div>
+
+                    <div id="fin-p2p" class="fin-section hidden">
+                        <p class="muted" id="fin-p2p-catalog">…</p>
+                        <div class="send-form">
+                            <div class="input-group"><label>Sell currency</label><select id="fin-p-currency"></select></div>
+                            <div class="input-group"><label>Amount</label><input id="fin-p-amount" type="text" placeholder="0.0"></div>
+                            <div class="input-group"><label>Fiat currency</label><input id="fin-p-fiat" type="text" placeholder="USD"></div>
+                            <div class="input-group"><label>Fiat amount</label><input id="fin-p-fiatamt" type="text" placeholder="100.00"></div>
+                            <div class="input-group"><label>Country</label><input id="fin-p-country" type="text" maxlength="2" placeholder="US"></div>
+                            <div class="input-group"><label>Payment method</label><select id="fin-p-method"><option value="">Select…</option></select></div>
+                            <button id="fin-p-open" class="btn-primary">Open escrow order</button>
+                        </div>
+                        <div id="fin-p-list" class="assets-list" style="margin-top:16px"></div>
+                    </div>
+
+                    <div id="fin-history" class="fin-section transactions-list hidden"><div class="no-transactions">No ledger history yet</div></div>
                 </div>
 
                 <!-- Settings Page -->

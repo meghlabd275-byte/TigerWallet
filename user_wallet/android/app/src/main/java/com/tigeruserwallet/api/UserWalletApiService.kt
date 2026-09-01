@@ -1728,6 +1728,84 @@ object UserWalletApiService {
     fun getPublicFees(): JSONObject =
         execute(requestBuilder("/public/fees").get().build())
 
+    // ==================== Wallet & finance plane ====================
+
+    /** GET /finance/accounts — multi-chain ledger accounts. */
+    fun getFinanceAccounts(): JSONObject =
+        execute(requestBuilder("/finance/accounts").get().build())
+
+    /** GET /finance/history — full double-entry ledger history. */
+    fun getFinanceHistory(currency: String? = null): JSONObject =
+        execute(requestBuilder("/finance/history" + (currency?.let { "?currency=$it" } ?: "")).get().build())
+
+    /** GET /finance/switches — per-token feature switches. */
+    fun getFinanceSwitches(): JSONObject =
+        execute(requestBuilder("/finance/switches").get().build())
+
+    /** GET /finance/deposit-addresses — deterministic per-user deposit addresses. */
+    fun getDepositAddresses(): JSONObject =
+        execute(requestBuilder("/finance/deposit-addresses").get().build())
+
+    /** Authenticated QR PNG bytes for a deposit address (server-rendered). */
+    fun getDepositQr(asset: String): ByteArray {
+        val resp = client.newCall(requestBuilder("/finance/deposit-addresses/$asset/qr?size=256").get().build()).execute()
+        resp.use { return if (it.isSuccessful) it.body?.bytes() ?: ByteArray(0) else ByteArray(0) }
+    }
+
+    /** POST /finance/withdrawals — risk-scored, HMAC-signed withdrawal request. */
+    fun createWithdrawal(currency: String, amount: String, toAddress: String): JSONObject {
+        val body = JSONObject().put("currency", currency).put("amount", amount).put("to_address", toAddress).toString()
+        return execute(requestBuilder("/finance/withdrawals").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    /** GET /finance/withdrawals — the caller's withdrawal requests. */
+    fun getWithdrawals(): JSONObject =
+        execute(requestBuilder("/finance/withdrawals").get().build())
+
+    /** GET /finance/convert/rates — admin-managed rate book. */
+    fun getConvertRates(): JSONObject =
+        execute(requestBuilder("/finance/convert/rates").get().build())
+
+    /** POST /finance/convert — instant conversion at the admin rate. */
+    fun financeConvert(fromCurrency: String, toCurrency: String, amount: String): JSONObject {
+        val body = JSONObject().put("from_currency", fromCurrency).put("to_currency", toCurrency).put("amount", amount).toString()
+        return execute(requestBuilder("/finance/convert").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    /** POST /finance/transfer — atomic KYC-gated internal transfer. */
+    fun financeTransfer(toEmail: String, currency: String, amount: String): JSONObject {
+        val body = JSONObject().put("to_email", toEmail).put("currency", currency).put("amount", amount).toString()
+        return execute(requestBuilder("/finance/transfer").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    /** GET /finance/payment-methods — 881-method / 238-country catalog. */
+    fun getPaymentMethods(country: String? = null, kind: String? = null): JSONObject {
+        val q = mutableListOf<String>()
+        country?.let { q.add("country=$it") }
+        kind?.let { q.add("kind=$it") }
+        val suffix = if (q.isEmpty()) "" else "?" + q.joinToString("&")
+        return execute(requestBuilder("/finance/payment-methods$suffix").get().build())
+    }
+
+    /** GET /finance/p2p/escrow — escrow marketplace (or the caller's orders). */
+    fun getEscrowOrders(mine: Boolean = false): JSONObject =
+        execute(requestBuilder("/finance/p2p/escrow" + (if (mine) "?mine=true" else "")).get().build())
+
+    /** POST /finance/p2p/escrow — open a sell order (funds locked, KYC-gated). */
+    fun openEscrow(currency: String, amount: String, fiatCurrency: String, fiatAmount: String, paymentMethodCode: String, countryCode: String): JSONObject {
+        val body = JSONObject().put("currency", currency).put("amount", amount)
+            .put("fiat_currency", fiatCurrency).put("fiat_amount", fiatAmount)
+            .put("payment_method_code", paymentMethodCode).put("country_code", countryCode).toString()
+        return execute(requestBuilder("/finance/p2p/escrow").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    /** POST /finance/p2p/escrow/:id/:action — accept/paid/release/dispute/cancel. */
+    fun escrowAction(id: String, action: String, reason: String? = null): JSONObject {
+        val body = (if (reason != null) JSONObject().put("reason", reason) else JSONObject()).toString()
+        return execute(requestBuilder("/finance/p2p/escrow/$id/$action").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+
     /** GET /public/fees/transactions — recent settled fee transactions (public). */
     fun getPublicFeeTransactions(): JSONObject =
         execute(requestBuilder("/public/fees/transactions").get().build())

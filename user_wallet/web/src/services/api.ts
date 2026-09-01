@@ -1500,6 +1500,93 @@ class ApiService {
     const { data } = await this.client.post(`/dapp/sessions/${topic}/request/${requestId}/respond`, body);
     return data;
   }
+
+  // ==================== WALLET & FINANCE PLANE ====================
+  // Double-entry ledger accounts, HKDF deposit addresses (+ server-rendered
+  // QR), signed/risk-scored withdrawals, instant convert, KYC-gated internal
+  // transfers, escrowed P2P marketplace, full ledger history.
+
+  async getFinanceAccounts(): Promise<{ accounts: Array<{ currency: string; balance: string; locked: string; available: string; usd_value?: number }> }> {
+    const { data } = await this.client.get('/finance/accounts');
+    return data;
+  }
+
+  async getFinanceHistory(currency?: string): Promise<{ history: Array<{ id: number; journal_id: string; kind: string; reference: string; memo: string; currency: string; amount: string; direction: string; balance_after: string; created_at: string }>; count: number }> {
+    const { data } = await this.client.get('/finance/history' + (currency ? `?currency=${encodeURIComponent(currency)}` : ''));
+    return data;
+  }
+
+  async getFinanceSwitches(): Promise<{ switches: Array<{ currency: string; deposit_enabled: boolean; withdraw_enabled: boolean; p2p_enabled: boolean; convert_enabled: boolean }> }> {
+    const { data } = await this.client.get('/finance/switches');
+    return data;
+  }
+
+  async getDepositAddresses(): Promise<{ addresses: Array<{ asset: string; network: string; address: string; uri: string; assets: string[]; deposit_enabled: boolean }> }> {
+    const { data } = await this.client.get('/finance/deposit-addresses');
+    return data;
+  }
+
+  // Server-rendered QR PNG for a deposit address (same on every client).
+  depositQrUrl(asset: string, size = 256): string {
+    return `${API_BASE_URL}/finance/deposit-addresses/${encodeURIComponent(asset)}/qr?size=${size}`;
+  }
+
+  async createWithdrawal(req: { currency: string; amount: string; to_address: string }): Promise<any> {
+    const { data } = await this.client.post('/finance/withdrawals', req);
+    return data;
+  }
+
+  async getWithdrawals(): Promise<{ withdrawals: any[]; count: number }> {
+    const { data } = await this.client.get('/finance/withdrawals');
+    return data;
+  }
+
+  async getConvertRates(): Promise<{ rates: Array<{ from_currency: string; to_currency: string; rate: string; updated_at: string }>; count: number }> {
+    const { data } = await this.client.get('/finance/convert/rates');
+    return data;
+  }
+
+  async convert(req: { from_currency: string; to_currency: string; amount: string }): Promise<any> {
+    const { data } = await this.client.post('/finance/convert', req);
+    return data;
+  }
+
+  async getConvertHistory(): Promise<{ conversions: any[]; count: number }> {
+    const { data } = await this.client.get('/finance/convert/history');
+    return data;
+  }
+
+  async financeTransfer(req: { to_user_id?: string; to_email?: string; currency: string; amount: string; memo?: string }): Promise<any> {
+    const { data } = await this.client.post('/finance/transfer', req);
+    return data;
+  }
+
+  async getPaymentMethods(params?: { country?: string; kind?: string }): Promise<{ methods: Array<{ code: string; name: string; kind: string; countries?: string[] }>; count: number; total_methods: number; total_countries: number }> {
+    const q = new URLSearchParams();
+    if (params?.country) q.set('country', params.country);
+    if (params?.kind) q.set('kind', params.kind);
+    const { data } = await this.client.get('/finance/payment-methods' + (q.toString() ? `?${q}` : ''));
+    return data;
+  }
+
+  async getEscrowOrders(params?: { mine?: boolean; currency?: string; country?: string }): Promise<{ orders: any[]; count: number }> {
+    const q = new URLSearchParams();
+    if (params?.mine) q.set('mine', 'true');
+    if (params?.currency) q.set('currency', params.currency);
+    if (params?.country) q.set('country', params.country);
+    const { data } = await this.client.get('/finance/p2p/escrow' + (q.toString() ? `?${q}` : ''));
+    return data;
+  }
+
+  async openEscrow(req: { currency: string; amount: string; fiat_currency: string; fiat_amount: string; payment_method_code: string; country_code: string }): Promise<any> {
+    const { data } = await this.client.post('/finance/p2p/escrow', req);
+    return data;
+  }
+
+  async escrowAction(id: string, action: 'accept' | 'paid' | 'release' | 'dispute' | 'cancel', body?: any): Promise<any> {
+    const { data } = await this.client.post(`/finance/p2p/escrow/${encodeURIComponent(id)}/${action}`, body || {});
+    return data;
+  }
 }
 
 // parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:

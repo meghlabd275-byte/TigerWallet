@@ -36,6 +36,7 @@ import Cards from './pages/Cards';
 import PriceAlerts from './pages/PriceAlerts';
 import DApps from './pages/DApps';
 import Fees from './pages/Fees';
+import Finance from './pages/Finance';
 import DAO from './pages/DAO';
 import Ramp from './pages/Ramp';
 import CopyTrading from './pages/CopyTrading';
@@ -86,6 +87,7 @@ function AppRoutes() {
           <Route path="price-alerts" element={<PriceAlerts />} />
           <Route path="dapps" element={<DApps />} />
           <Route path="fees" element={<Fees />} />
+          <Route path="finance" element={<Finance />} />
           <Route path="dao" element={<DAO />} />
           <Route path="ramp" element={<Ramp />} />
           <Route path="copy-trading" element={<CopyTrading />} />

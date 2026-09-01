@@ -1902,6 +1902,148 @@ impl UserWalletClient {
     pub async fn get_public_fee_transactions(&self) -> Result<serde_json::Value, WalletError> {
         self.get("/public/fees/transactions").await
     }
+
+    // ---------------- Wallet & finance plane ----------------
+
+    /// GET /finance/accounts — multi-chain ledger accounts.
+    pub async fn get_finance_accounts(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/finance/accounts").await
+    }
+
+    /// GET /finance/history — full double-entry ledger history.
+    pub async fn get_finance_history(&self, currency: Option<&str>) -> Result<serde_json::Value, WalletError> {
+        let path = match currency {
+            Some(c) => format!("/finance/history?currency={c}"),
+            None => "/finance/history".to_string(),
+        };
+        self.get(&path).await
+    }
+
+    /// GET /finance/switches — per-token feature switches.
+    pub async fn get_finance_switches(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/finance/switches").await
+    }
+
+    /// GET /finance/deposit-addresses — deterministic per-user deposit addresses.
+    pub async fn get_deposit_addresses(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/finance/deposit-addresses").await
+    }
+
+    /// POST /finance/withdrawals — risk-scored, HMAC-signed withdrawal request.
+    pub async fn create_withdrawal(
+        &self,
+        currency: &str,
+        amount: &str,
+        to_address: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post(
+            "/finance/withdrawals",
+            &serde_json::json!({"currency": currency, "amount": amount, "to_address": to_address}),
+        )
+        .await
+    }
+
+    /// GET /finance/withdrawals — the caller's withdrawal requests.
+    pub async fn get_withdrawals(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/finance/withdrawals").await
+    }
+
+    /// GET /finance/convert/rates — admin-managed rate book.
+    pub async fn get_convert_rates(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/finance/convert/rates").await
+    }
+
+    /// POST /finance/convert — instant conversion at the admin rate.
+    pub async fn finance_convert(
+        &self,
+        from_currency: &str,
+        to_currency: &str,
+        amount: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post(
+            "/finance/convert",
+            &serde_json::json!({"from_currency": from_currency, "to_currency": to_currency, "amount": amount}),
+        )
+        .await
+    }
+
+    /// POST /finance/transfer — atomic KYC-gated internal transfer.
+    pub async fn finance_transfer(
+        &self,
+        to_email: &str,
+        currency: &str,
+        amount: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post(
+            "/finance/transfer",
+            &serde_json::json!({"to_email": to_email, "currency": currency, "amount": amount}),
+        )
+        .await
+    }
+
+    /// GET /finance/payment-methods — 881-method / 238-country catalog.
+    pub async fn get_payment_methods(
+        &self,
+        country: Option<&str>,
+        kind: Option<&str>,
+    ) -> Result<serde_json::Value, WalletError> {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(c) = country {
+            parts.push(format!("country={c}"));
+        }
+        if let Some(k) = kind {
+            parts.push(format!("kind={k}"));
+        }
+        let path = if parts.is_empty() {
+            "/finance/payment-methods".to_string()
+        } else {
+            format!("/finance/payment-methods?{}", parts.join("&"))
+        };
+        self.get(&path).await
+    }
+
+    /// GET /finance/p2p/escrow — escrow marketplace (or the caller's orders).
+    pub async fn get_escrow_orders(&self, mine: bool) -> Result<serde_json::Value, WalletError> {
+        self.get(if mine { "/finance/p2p/escrow?mine=true" } else { "/finance/p2p/escrow" }).await
+    }
+
+    /// POST /finance/p2p/escrow — open a sell order (funds locked, KYC-gated).
+    pub async fn open_escrow(
+        &self,
+        currency: &str,
+        amount: &str,
+        fiat_currency: &str,
+        fiat_amount: &str,
+        payment_method_code: &str,
+        country_code: &str,
+    ) -> Result<serde_json::Value, WalletError> {
+        self.post(
+            "/finance/p2p/escrow",
+            &serde_json::json!({
+                "currency": currency,
+                "amount": amount,
+                "fiat_currency": fiat_currency,
+                "fiat_amount": fiat_amount,
+                "payment_method_code": payment_method_code,
+                "country_code": country_code,
+            }),
+        )
+        .await
+    }
+
+    /// POST /finance/p2p/escrow/:id/:action — accept/paid/release/dispute/cancel.
+    pub async fn escrow_action(
+        &self,
+        id: &str,
+        action: &str,
+        reason: Option<&str>,
+    ) -> Result<serde_json::Value, WalletError> {
+        let body = match reason {
+            Some(r) => serde_json::json!({"reason": r}),
+            None => serde_json::json!({}),
+        };
+        self.post(&format!("/finance/p2p/escrow/{id}/{action}"), &body).await
+    }
 }
 
 // ---------------------------------------------------------------------------

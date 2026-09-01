@@ -82,8 +82,9 @@ func bech32mEncode(hrp string, data []byte) (string, error) {
 }
 
 func craftChecksum(values []byte) []byte {
-	mod := append(bech32HrpExpand(""), values...)
-	mod = append(mod, 0, 0, 0, 0, 0, 0)
+	// BIP-350 bech32m: polymod(hrp_expand(hrp) || data || six zeroes) ^ 0x2bc830a3.
+	// Callers pass values = hrpExpand(hrp) || data.
+	mod := append(append([]byte{}, values...), 0, 0, 0, 0, 0, 0)
 	chk := bech32Polymod(mod) ^ 0x2bc830a3 // bech32m constant for ckb
 	out := make([]byte, 6)
 	for i := 0; i < 6; i++ {

@@ -178,6 +178,18 @@ class TigerWalletApp {
         document.getElementById('launchpool-stake-btn')?.addEventListener('click', () => this.launchpoolAction('stake'));
         document.getElementById('launchpool-unstake-btn')?.addEventListener('click', () => this.launchpoolAction('unstake'));
         document.getElementById('p2p-order-btn')?.addEventListener('click', () => this.createP2POrder());
+
+        // Finance sub-tab switching + actions
+        document.querySelectorAll('.fin-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.fin-subtab').forEach(b => b.classList.toggle('active', b === btn));
+                document.querySelectorAll('.fin-section').forEach(s => s.classList.toggle('hidden', s.id !== 'fin-' + btn.dataset.fin));
+            });
+        });
+        document.getElementById('fin-w-submit')?.addEventListener('click', () => this.financeWithdraw());
+        document.getElementById('fin-c-submit')?.addEventListener('click', () => this.financeConvert());
+        document.getElementById('fin-t-submit')?.addEventListener('click', () => this.financeTransfer());
+        document.getElementById('fin-p-open')?.addEventListener('click', () => this.financeOpenEscrow());
         document.getElementById('alert-create-btn')?.addEventListener('click', () => this.createPriceAlert());
         document.getElementById('contact-add-btn')?.addEventListener('click', () => this.addContact());
         document.getElementById('ens-resolve-btn')?.addEventListener('click', () => this.resolveENS());
@@ -366,6 +378,7 @@ class TigerWalletApp {
             'hardware-wallet': 'Hardware Wallet',
             transactions: 'Transactions',
             fees: 'Fees',
+            finance: 'Wallet & Finance',
             settings: 'Settings'
         };
         document.getElementById('page-title').textContent = titles[page] || 'TigerWallet';
@@ -399,6 +412,8 @@ class TigerWalletApp {
             this.loadWcSessions();
         } else if (page === 'fees') {
             this.loadFees();
+        } else if (page === 'finance') {
+            this.loadFinance();
         } else if (page === 'defi') {
             this.loadDefiProtocols();
         } else if (page === 'trading') {
@@ -1889,6 +1904,216 @@ class TigerWalletApp {
         } catch (e) {
             box.innerHTML = '<div class="empty-state">P2P adverts unavailable</div>';
         }
+    }
+
+
+    // ==================== Wallet & finance plane ====================
+
+    async finApi(path, opts = {}) {
+        const res = await twFetch(twApiBase() + path, opts);
+        if (!res.ok) {
+            const txt = await res.text();
+            let msg = txt;
+            try { const j = JSON.parse(txt); msg = j.error || txt; } catch (e) {}
+            throw new Error(msg);
+        }
+        return res.json();
+    }
+
+    FIN_ASSETS = ['BTC','ETH','USDT','USDC','BNB','SOL','TRX','MATIC','LTC','DOGE'];
+
+    finMsg(text) {
+        const el = document.getElementById('fin-message');
+        if (!el) return;
+        el.textContent = text;
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.add('hidden'), 6000);
+    }
+
+    finPopulateSelects() {
+        ['fin-w-currency','fin-c-from','fin-c-to','fin-t-currency','fin-p-currency'].forEach(id => {
+            const sel = document.getElementById(id);
+            if (sel && sel.options.length === 0) {
+                this.FIN_ASSETS.forEach(a => sel.add(new Option(a, a)));
+            }
+        });
+    }
+
+    async loadFinance() {
+        this.finPopulateSelects();
+        this.loadFinanceAccounts();
+        this.loadFinanceDeposits();
+        this.loadFinanceWithdrawals();
+        this.loadFinanceRates();
+        this.loadFinanceEscrow();
+        this.loadFinanceHistory();
+        this.loadPaymentMethods();
+    }
+
+    async loadFinanceAccounts() {
+        const el = document.getElementById('fin-accounts');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/accounts');
+            const accounts = data.accounts || [];
+            if (accounts.length === 0) { el.innerHTML = '<div class="no-transactions">No accounts yet</div>'; return; }
+            el.innerHTML = accounts.map(a => `<div class="asset-item"><div class="asset-info"><h4>${this.escapeHtml(a.currency)}</h4><p>Balance ${this.escapeHtml(a.balance)} · Locked ${this.escapeHtml(a.locked)} · Available ${this.escapeHtml(a.available)}</p></div>${a.usd_value !== undefined ? `<span class="asset-balance">$${Number(a.usd_value).toFixed(2)}</span>` : ''}</div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+    }
+
+    async loadFinanceDeposits() {
+        const el = document.getElementById('fin-deposit');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/deposit-addresses');
+            const addrs = data.addresses || [];
+            if (addrs.length === 0) { el.innerHTML = '<div class="no-transactions">Deposit addresses unavailable on this node</div>'; return; }
+            el.innerHTML = addrs.map(d => `<div class="asset-item"><div class="asset-info"><h4>${this.escapeHtml(d.asset)} <span style="font-weight:normal">(${this.escapeHtml(d.network)})</span></h4><p style="word-break:break-all;font-family:monospace">${this.escapeHtml(d.address)}</p></div><button class="btn-secondary fin-copy" data-addr="${this.escapeHtml(d.address)}">Copy</button><img class="fin-qr" data-asset="${this.escapeHtml(d.asset)}" alt="QR" width="96" height="96"></div>`).join('');
+            el.querySelectorAll('.fin-copy').forEach(b => b.addEventListener('click', () => {
+                navigator.clipboard.writeText(b.dataset.addr);
+                this.finMsg('Address copied');
+            }));
+            el.querySelectorAll('.fin-qr').forEach(img => this.loadFinanceQr(img));
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+    }
+
+    // Server-rendered QR fetched with the Bearer token (an <img> cannot
+    // send Authorization), rendered as an object URL.
+    async loadFinanceQr(img) {
+        try {
+            const res = await fetch(twApiBase() + '/finance/deposit-addresses/' + encodeURIComponent(img.dataset.asset) + '/qr?size=192', {
+                headers: { Authorization: 'Bearer ' + twAuthToken() }
+            });
+            if (!res.ok) { img.remove(); return; }
+            img.src = URL.createObjectURL(await res.blob());
+        } catch { img.remove(); }
+    }
+
+    async financeWithdraw() {
+        const currency = document.getElementById('fin-w-currency').value;
+        const amount = document.getElementById('fin-w-amount').value.trim();
+        const to = document.getElementById('fin-w-address').value.trim();
+        if (!amount || !to) { this.showNotification('Enter amount and destination', 'error'); return; }
+        try {
+            const res = await this.finApi('/finance/withdrawals', { method: 'POST', body: JSON.stringify({ currency, amount, to_address: to }) });
+            this.finMsg(res.status === 'auto_approved' ? 'Withdrawal auto-approved' : 'Queued for superadmin sign-off');
+            document.getElementById('fin-w-amount').value = '';
+            document.getElementById('fin-w-address').value = '';
+            this.loadFinanceWithdrawals();
+        } catch (e) { this.showNotification(e.message, 'error'); }
+    }
+
+    async loadFinanceWithdrawals() {
+        const el = document.getElementById('fin-w-list');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/withdrawals');
+            const list = data.withdrawals || [];
+            el.innerHTML = list.length === 0 ? '<div class="no-transactions">No withdrawals</div>'
+                : list.map(w => `<div class="transaction-item"><div><strong>${this.escapeHtml(w.amount)} ${this.escapeHtml(w.currency)}</strong> → ${this.escapeHtml(w.to_address)}<p class="muted">risk ${w.risk_score} · ${this.escapeHtml(w.status)}</p></div></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+    }
+
+    async financeConvert() {
+        const from = document.getElementById('fin-c-from').value;
+        const to = document.getElementById('fin-c-to').value;
+        const amount = document.getElementById('fin-c-amount').value.trim();
+        if (!amount) { this.showNotification('Enter an amount', 'error'); return; }
+        try {
+            const res = await this.finApi('/finance/convert', { method: 'POST', body: JSON.stringify({ from_currency: from, to_currency: to, amount }) });
+            this.finMsg(`Converted ${res.from_amount} ${res.from_currency} -> ${res.to_amount} ${res.to_currency}`);
+            document.getElementById('fin-c-amount').value = '';
+            this.loadFinanceAccounts();
+        } catch (e) { this.showNotification(e.message, 'error'); }
+    }
+
+    async loadFinanceRates() {
+        const el = document.getElementById('fin-c-rates');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/convert/rates');
+            const rates = data.rates || [];
+            el.innerHTML = rates.length === 0 ? '<div class="no-transactions">No rates configured</div>'
+                : rates.map(r => `<div class="asset-item"><h4>${this.escapeHtml(r.from_currency)}/${this.escapeHtml(r.to_currency)}</h4><span class="asset-balance">${this.escapeHtml(r.rate)}</span></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+    }
+
+    async financeTransfer() {
+        const to = document.getElementById('fin-t-to').value.trim();
+        const currency = document.getElementById('fin-t-currency').value;
+        const amount = document.getElementById('fin-t-amount').value.trim();
+        if (!to || !amount) { this.showNotification('Enter recipient and amount', 'error'); return; }
+        try {
+            await this.finApi('/finance/transfer', { method: 'POST', body: JSON.stringify({ to_email: to, currency, amount }) });
+            this.finMsg('Transfer completed (atomic, KYC-gated)');
+            document.getElementById('fin-t-to').value = '';
+            document.getElementById('fin-t-amount').value = '';
+            this.loadFinanceAccounts();
+        } catch (e) { this.showNotification(e.message, 'error'); }
+    }
+
+    async loadPaymentMethods() {
+        try {
+            const data = await this.finApi('/finance/payment-methods');
+            const cat = document.getElementById('fin-p2p-catalog');
+            if (cat) cat.textContent = `Escrowed marketplace — ${data.total_methods} local payment methods across ${data.total_countries} countries (bank + mobile).`;
+            const sel = document.getElementById('fin-p-method');
+            if (sel) {
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">Select…</option>';
+                (data.methods || []).forEach(m => sel.add(new Option(`${m.name} (${m.kind})`, m.code)));
+                sel.value = cur;
+            }
+        } catch { /* catalog caption stays */ }
+    }
+
+    async financeOpenEscrow() {
+        const body = {
+            currency: document.getElementById('fin-p-currency').value,
+            amount: document.getElementById('fin-p-amount').value.trim(),
+            fiat_currency: document.getElementById('fin-p-fiat').value.trim().toUpperCase(),
+            fiat_amount: document.getElementById('fin-p-fiatamt').value.trim(),
+            country_code: document.getElementById('fin-p-country').value.trim().toUpperCase(),
+            payment_method_code: document.getElementById('fin-p-method').value
+        };
+        if (!body.amount || !body.fiat_amount || !body.payment_method_code) { this.showNotification('Complete the escrow form', 'error'); return; }
+        try {
+            await this.finApi('/finance/p2p/escrow', { method: 'POST', body: JSON.stringify(body) });
+            this.finMsg('Escrow order opened — funds locked');
+            this.loadFinanceEscrow();
+        } catch (e) { this.showNotification(e.message, 'error'); }
+    }
+
+    async financeEscrowAction(id, action) {
+        try {
+            const extra = action === 'dispute' ? { reason: 'disputed by party' } : {};
+            await this.finApi('/finance/p2p/escrow/' + encodeURIComponent(id) + '/' + action, { method: 'POST', body: JSON.stringify(extra) });
+            this.finMsg('Escrow ' + action + ' successful');
+            this.loadFinanceEscrow();
+        } catch (e) { this.showNotification(e.message, 'error'); }
+    }
+
+    async loadFinanceEscrow() {
+        const el = document.getElementById('fin-p-list');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/p2p/escrow');
+            const orders = data.orders || [];
+            if (orders.length === 0) { el.innerHTML = '<div class="no-transactions">No open orders</div>'; return; }
+            el.innerHTML = orders.map(o => `<div class="asset-item"><div class="asset-info"><h4>${this.escapeHtml(o.amount)} ${this.escapeHtml(o.currency)} for ${this.escapeHtml(o.fiat_amount)} ${this.escapeHtml(o.fiat_currency)}</h4><p>${this.escapeHtml(o.payment_method_name || o.payment_method_code)} · ${this.escapeHtml(o.country_code)} · ${this.escapeHtml(o.status)}</p></div><div class="asset-actions">${o.status === 'open' ? `<button class="btn-secondary fin-ea" data-id="${o.id}" data-act="accept">Buy</button><button class="btn-secondary fin-ea" data-id="${o.id}" data-act="cancel">Cancel</button>` : ''}${o.status === 'escrowed' ? `<button class="btn-secondary fin-ea" data-id="${o.id}" data-act="paid">Mark paid</button><button class="btn-secondary fin-ea" data-id="${o.id}" data-act="dispute">Dispute</button>` : ''}${o.status === 'paid' ? `<button class="btn-secondary fin-ea" data-id="${o.id}" data-act="release">Release</button><button class="btn-secondary fin-ea" data-id="${o.id}" data-act="dispute">Dispute</button>` : ''}</div></div>`).join('');
+            el.querySelectorAll('.fin-ea').forEach(b => b.addEventListener('click', () => this.financeEscrowAction(b.dataset.id, b.dataset.act)));
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+    }
+
+    async loadFinanceHistory() {
+        const el = document.getElementById('fin-history');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/history');
+            const list = data.history || [];
+            el.innerHTML = list.length === 0 ? '<div class="no-transactions">No ledger history yet</div>'
+                : list.map(h => `<div class="transaction-item"><div><strong>${this.escapeHtml(h.kind)}</strong> ${h.direction === 'debit' ? '−' : '+'}${this.escapeHtml(h.amount)} ${this.escapeHtml(h.currency)}<p class="muted">balance after ${this.escapeHtml(h.balance_after)}${h.memo ? ' · ' + this.escapeHtml(h.memo) : ''}</p></div></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
     }
 
     async createP2POrder() {

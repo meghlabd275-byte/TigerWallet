@@ -30,6 +30,7 @@ func main() {
 	if appConfig.JWTSecret == "" {
 		log.Fatalf("JWT_SECRET environment variable must be set")
 	}
+	loadFinanceConfig()
 
 	// Connect to PostgreSQL + Redis (best-effort; service still boots for
 	// read-only/public endpoints if DB is temporarily unavailable).
@@ -58,6 +59,11 @@ func main() {
 		// pre-existing admin (the first user to register with that email is
 		// promoted). Subsequent role changes go through the admin API.
 		bootstrapAdminRole(bgCtx, appConfig.AdminBootstrapEmail)
+		// Wallet & finance plane schema (double-entry ledger, withdrawals,
+		// convert rates, P2P escrow, token switches, dynamic roles, audit).
+		if err := migrateFinance(bgCtx); err != nil {
+			log.Printf("WARNING: finance plane migration failed: %v", err)
+		}
 		cancel2()
 	}
 
@@ -187,6 +193,30 @@ func main() {
 		signLimited.POST("/p2p/orders", handleP2PCreateOrder)
 		signLimited.POST("/non_evm/send", handleNonEvmSend)
 		wallet.POST("/non_evm/address", handleNonEvmAddress)
+
+		// ---- Wallet & finance plane (double-entry ledger, deposits, withdrawals,
+		// convert, escrowed P2P marketplace) — see finance_*.go ----
+		wallet.GET("/finance/accounts", handleFinanceAccounts)
+		wallet.GET("/finance/history", handleFinanceHistory)
+		wallet.GET("/finance/switches", handleFinanceSwitches)
+		wallet.GET("/finance/deposit-addresses", handleDepositAddresses)
+		wallet.GET("/finance/deposit-addresses/:asset", handleDepositAddress)
+		wallet.GET("/finance/deposit-addresses/:asset/qr", handleDepositAddressQR)
+		wallet.GET("/finance/withdrawals", handleListWithdrawals)
+		wallet.GET("/finance/convert/rates", handleListConvertRates)
+		wallet.GET("/finance/convert/history", handleListConverts)
+		wallet.GET("/finance/payment-methods", handlePaymentMethods)
+		wallet.GET("/finance/p2p/escrow", handleP2PListEscrow)
+		wallet.POST("/finance/p2p/escrow/:id/paid", handleP2PMarkPaid)
+		wallet.POST("/finance/p2p/escrow/:id/dispute", handleP2PDispute)
+		wallet.POST("/finance/p2p/escrow/:id/cancel", handleP2PCancel)
+		// Funds movement — signing rate limit applies.
+		signLimited.POST("/finance/transfer", handleFinanceTransfer)
+		signLimited.POST("/finance/withdrawals", handleCreateWithdrawal)
+		signLimited.POST("/finance/convert", handleConvert)
+		signLimited.POST("/finance/p2p/escrow", handleP2POpenEscrow)
+		signLimited.POST("/finance/p2p/escrow/:id/accept", handleP2PAcceptEscrow)
+		signLimited.POST("/finance/p2p/escrow/:id/release", handleP2PRelease)
 
 		// ---- Web3 Secret Storage V3 keystore import/export (geth/MetaMask interop) ----
 		wallet.POST("/keystore/export", handleExportKeystore)
@@ -328,6 +358,22 @@ func main() {
 			admin.GET("/tokens", handleAdminListTokens)
 			admin.POST("/tokens", handleAdminCreateToken)
 			admin.DELETE("/tokens/:chain_id/:symbol", handleAdminDeleteToken)
+
+			// ---- Wallet & finance plane administration (dynamic-role gated) ----
+			admin.GET("/finance/withdrawals", handleAdminListWithdrawals)
+			admin.POST("/finance/withdrawals/:id/approve", handleAdminApproveWithdrawal)
+			admin.POST("/finance/withdrawals/:id/reject", handleAdminRejectWithdrawal)
+			admin.POST("/finance/convert/rates", handleAdminSetConvertRate)
+			admin.DELETE("/finance/convert/rates", handleAdminDeleteConvertRate)
+			admin.PUT("/finance/switches/:currency", handleAdminSetSwitch)
+			admin.GET("/finance/p2p/disputes", handleAdminP2PDisputes)
+			admin.POST("/finance/p2p/escrow/:id/resolve", handleAdminP2PResolve)
+			admin.GET("/finance/roles", handleAdminListRoles)
+			admin.POST("/finance/roles", handleAdminCreateRole)
+			admin.DELETE("/finance/roles/:name", handleAdminDeleteRole)
+			admin.POST("/finance/roles/:name/grant", handleAdminGrantRole)
+			admin.POST("/finance/roles/:name/revoke", handleAdminRevokeRole)
+			admin.GET("/finance/audit", handleAdminAuditLog)
 		}
 	}
 

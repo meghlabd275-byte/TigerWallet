@@ -44,6 +44,7 @@ class FeaturesFragment : Fragment() {
             "Token Sales" to ::TokenSalesFragment,
             "Prediction Markets" to ::PredictionFragment,
             "Copy Trading" to ::CopyTradingFragment,
+            "Wallet & Finance" to ::FinanceFragment,
             "Fees" to ::FeesFragment,
             "ENS" to ::ENSFragment,
             "Security Center" to ::SecurityFragment,

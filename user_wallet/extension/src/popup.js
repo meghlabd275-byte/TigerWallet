@@ -700,6 +700,35 @@ const WalletAPI = {
   getPublicFees: () => api('/public/fees'),
   getPublicFeeTransactions: () => api('/public/fees/transactions'),
 
+  // ---- Wallet & finance plane ----
+  getFinanceAccounts: () => api('/finance/accounts'),
+  getFinanceHistory: (currency) => api('/finance/history' + (currency ? '?currency=' + encodeURIComponent(currency) : '')),
+  getFinanceSwitches: () => api('/finance/switches'),
+  getDepositAddresses: () => api('/finance/deposit-addresses'),
+  createWithdrawal: (body) => api('/finance/withdrawals', { method: 'POST', body }),
+  getWithdrawals: () => api('/finance/withdrawals'),
+  getConvertRates: () => api('/finance/convert/rates'),
+  financeConvert: (body) => api('/finance/convert', { method: 'POST', body }),
+  getConvertHistory: () => api('/finance/convert/history'),
+  financeTransfer: (body) => api('/finance/transfer', { method: 'POST', body }),
+  getPaymentMethods: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.country) q.set('country', params.country);
+    if (params.kind) q.set('kind', params.kind);
+    const s = q.toString();
+    return api('/finance/payment-methods' + (s ? '?' + s : ''));
+  },
+  getEscrowOrders: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.mine) q.set('mine', 'true');
+    if (params.currency) q.set('currency', params.currency);
+    if (params.country) q.set('country', params.country);
+    const s = q.toString();
+    return api('/finance/p2p/escrow' + (s ? '?' + s : ''));
+  },
+  openEscrow: (body) => api('/finance/p2p/escrow', { method: 'POST', body }),
+  escrowAction: (id, action, body) => api('/finance/p2p/escrow/' + encodeURIComponent(id) + '/' + action, { method: 'POST', body: body || {} }),
+
   // ---- Token registry + trading terminal (public) ----
   getTokenRegistry: (chainId) =>
     api(chainId ? `/tokens/registry?chain_id=${chainId}` : '/tokens/registry'),
@@ -782,7 +811,7 @@ const WalletAPI = {
 const state = { wallets: [], activeWallet: null };
 
 function switchTab(tab) {
-  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'daoTab', 'launchpoolTab', 'tokenSalesTab', 'tradingTab', 'predictionTab', 'copyTradingTab', 'feesTab', 'nonEvmTab', 'settingsTab'].forEach((t) => {
+  ['walletTab', 'sendTab', 'convertTab', 'stakingTab', 'fiatTab', 'qrTab', 'kycTab', 'defiTab', 'dappsTab', 'nftsTab', 'bridgeTab', 'txTab', 'approvalsTab', 'contactsTab', 'devicesTab', 'alertsTab', 'securityTab', 'terminalTab', 'cardsTab', 'multisigTab', 'daoTab', 'launchpoolTab', 'tokenSalesTab', 'tradingTab', 'predictionTab', 'copyTradingTab', 'feesTab', 'nonEvmTab', 'financeTab', 'settingsTab'].forEach((t) => {
     const el = document.getElementById(t);
     if (el) el.classList.add('hidden');
   });
@@ -811,8 +840,158 @@ function switchTab(tab) {
   if (tab === 'prediction') loadPredictionMarkets();
   if (tab === 'copyTrading') loadCopyTraders();
   if (tab === 'fees') loadFees();
+  if (tab === 'finance') loadFinance();
   if (tab === 'nonEvm') loadNonEvm();
   if (tab === 'settings') loadSettings();
+}
+
+
+// ---- Wallet & finance plane ----
+async function loadFinance() {
+  loadFinanceAccounts();
+  loadFinanceDeposits();
+  loadFinanceRates();
+  loadFinanceEscrow();
+  loadFinanceHistory();
+  ['finTransferBtn','finWithdrawBtn','finConvertBtn'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.bound) {
+      el.dataset.bound = '1';
+      el.addEventListener('click', financeActionHandler(id));
+    }
+  });
+}
+
+function financeActionHandler(id) {
+  return async () => {
+    try {
+      const currency = document.getElementById('finCurrency').value;
+      const amount = document.getElementById('finAmount').value.trim();
+      const to = document.getElementById('finTo').value.trim();
+      const wAddr = document.getElementById('finWAddress').value.trim();
+      if (id === 'finTransferBtn') {
+        if (!to || !amount) return;
+        await WalletAPI.financeTransfer({ to_email: to, currency, amount });
+        document.getElementById('finTo').value = '';
+      } else if (id === 'finWithdrawBtn') {
+        if (!wAddr || !amount) return;
+        await WalletAPI.createWithdrawal({ currency, amount, to_address: wAddr });
+        document.getElementById('finWAddress').value = '';
+      } else {
+        if (!amount) return;
+        await WalletAPI.financeConvert({ from_currency: currency, to_currency: 'USDC', amount });
+      }
+      document.getElementById('finAmount').value = '';
+      loadFinanceAccounts();
+      loadFinanceHistory();
+    } catch (e) { /* error surfaced on next load */ }
+  };
+}
+
+async function loadFinanceAccounts() {
+  const el = document.getElementById('financeAccounts');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getFinanceAccounts();
+    renderList(el, res.accounts || [], (row, a) => {
+      row.textContent = `${a.currency}: ${a.balance} (available ${a.available})`;
+    }, 'No accounts yet');
+  } catch (e) { renderList(el, [], null, 'Accounts unavailable'); }
+}
+
+async function loadFinanceDeposits() {
+  const el = document.getElementById('financeDeposits');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getDepositAddresses();
+    const items = res.addresses || [];
+    el.innerHTML = '';
+    if (!items.length) { renderList(el, [], null, 'Deposits unavailable on this node'); return; }
+    items.forEach((d) => {
+      const row = document.createElement('div');
+      row.style.marginBottom = '4px';
+      const label = document.createElement('span');
+      label.textContent = d.asset + ': ';
+      const addr = document.createElement('code');
+      addr.textContent = d.address;
+      addr.style.fontSize = '10px';
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = 'Copy';
+      copyBtn.style.fontSize = '10px';
+      copyBtn.addEventListener('click', () => navigator.clipboard.writeText(d.address));
+      const qr = document.createElement('img');
+      qr.width = 48;
+      qr.style.marginLeft = '4px';
+      row.appendChild(label); row.appendChild(addr); row.appendChild(copyBtn); row.appendChild(qr);
+      el.appendChild(row);
+      (async () => {
+        try {
+          const r = await fetch(`${API_BASE}/finance/deposit-addresses/${encodeURIComponent(d.asset)}/qr?size=96`, {
+            headers: { Authorization: 'Bearer ' + (await getToken()) },
+          });
+          if (r.ok) qr.src = URL.createObjectURL(await r.blob());
+        } catch { /* QR optional */ }
+      })();
+    });
+  } catch (e) { renderList(el, [], null, 'Deposits unavailable'); }
+}
+
+async function loadFinanceRates() {
+  const el = document.getElementById('financeRates');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getConvertRates();
+    renderList(el, res.rates || [], (row, r) => {
+      row.textContent = `${r.from_currency}/${r.to_currency}: ${r.rate}`;
+    }, 'No rates configured');
+  } catch (e) { renderList(el, [], null, 'Rates unavailable'); }
+}
+
+async function loadFinanceEscrow() {
+  const el = document.getElementById('financeEscrow');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getEscrowOrders();
+    const items = res.orders || [];
+    el.innerHTML = '';
+    if (!items.length) { renderList(el, [], null, 'No open orders'); return; }
+    items.forEach((o) => {
+      const row = document.createElement('div');
+      row.style.marginBottom = '4px';
+      const txt = document.createElement('span');
+      txt.textContent = `${o.amount} ${o.currency} @ ${o.fiat_amount} ${o.fiat_currency} (${o.payment_method_name || o.payment_method_code}, ${o.status})`;
+      row.appendChild(txt);
+      const actions = [];
+      if (o.status === 'open') actions.push(['accept', 'Buy'], ['cancel', 'Cancel']);
+      if (o.status === 'escrowed') actions.push(['paid', 'Paid'], ['dispute', 'Dispute']);
+      if (o.status === 'paid') actions.push(['release', 'Release'], ['dispute', 'Dispute']);
+      actions.forEach(([act, lbl]) => {
+        const b = document.createElement('button');
+        b.textContent = lbl;
+        b.style.fontSize = '10px';
+        b.style.marginLeft = '4px';
+        b.addEventListener('click', async () => {
+          try {
+            await WalletAPI.escrowAction(o.id, act, act === 'dispute' ? { reason: 'disputed' } : undefined);
+            loadFinanceEscrow();
+          } catch (e) { /* surfaced on next load */ }
+        });
+        row.appendChild(b);
+      });
+      el.appendChild(row);
+    });
+  } catch (e) { renderList(el, [], null, 'Escrow marketplace unavailable'); }
+}
+
+async function loadFinanceHistory() {
+  const el = document.getElementById('financeHistory');
+  if (!el) return;
+  try {
+    const res = await WalletAPI.getFinanceHistory();
+    renderList(el, res.history || [], (row, h) => {
+      row.textContent = `${h.kind} ${h.direction === 'debit' ? '−' : '+'}${h.amount} ${h.currency}`;
+    }, 'No ledger history yet');
+  } catch (e) { renderList(el, [], null, 'History unavailable'); }
 }
 
 // ---- Loaders for the NFT / History / Approvals / Contacts / Devices / Alerts tabs ----

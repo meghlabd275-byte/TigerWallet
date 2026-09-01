@@ -296,6 +296,73 @@ class UserWalletService {
   Future<Map<String, dynamic>?> getPublicFees() => get('/api/v1/public/fees');
   Future<Map<String, dynamic>?> getPublicFeeTransactions() => get('/api/v1/public/fees/transactions');
 
+  // ============ Wallet & finance plane ============
+
+  /// GET /finance/accounts — multi-chain ledger accounts.
+  Future<Map<String, dynamic>?> getFinanceAccounts() => get('/api/v1/finance/accounts');
+
+  /// GET /finance/history — full double-entry ledger history.
+  Future<Map<String, dynamic>?> getFinanceHistory({String? currency}) =>
+      get('/api/v1/finance/history' + (currency != null ? '?currency=$currency' : ''));
+
+  /// GET /finance/switches — per-token feature switches.
+  Future<Map<String, dynamic>?> getFinanceSwitches() => get('/api/v1/finance/switches');
+
+  /// GET /finance/deposit-addresses — deterministic per-user deposit addresses.
+  Future<Map<String, dynamic>?> getDepositAddresses() => get('/api/v1/finance/deposit-addresses');
+
+  /// POST /finance/withdrawals — risk-scored, HMAC-signed withdrawal request.
+  Future<Map<String, dynamic>?> createWithdrawal(
+          String currency, String amount, String toAddress) =>
+      post('/api/v1/finance/withdrawals',
+          {'currency': currency, 'amount': amount, 'to_address': toAddress});
+
+  /// GET /finance/withdrawals — the caller's withdrawal requests.
+  Future<Map<String, dynamic>?> getWithdrawals() => get('/api/v1/finance/withdrawals');
+
+  /// GET /finance/convert/rates — admin-managed rate book.
+  Future<Map<String, dynamic>?> getConvertRates() => get('/api/v1/finance/convert/rates');
+
+  /// POST /finance/convert — instant conversion at the admin rate.
+  Future<Map<String, dynamic>?> financeConvert(String from, String to, String amount) =>
+      post('/api/v1/finance/convert',
+          {'from_currency': from, 'to_currency': to, 'amount': amount});
+
+  /// POST /finance/transfer — atomic KYC-gated internal transfer.
+  Future<Map<String, dynamic>?> financeTransfer(String toEmail, String currency, String amount) =>
+      post('/api/v1/finance/transfer',
+          {'to_email': toEmail, 'currency': currency, 'amount': amount});
+
+  /// GET /finance/payment-methods — 881-method / 238-country catalog.
+  Future<Map<String, dynamic>?> getPaymentMethods({String? country, String? kind}) {
+    final parts = <String>[];
+    if (country != null) parts.add('country=$country');
+    if (kind != null) parts.add('kind=$kind');
+    return get('/api/v1/finance/payment-methods' + (parts.isEmpty ? '' : '?' + parts.join('&')));
+  }
+
+  /// GET /finance/p2p/escrow — escrow marketplace (or the caller's orders).
+  Future<Map<String, dynamic>?> getEscrowOrders({bool mine = false}) =>
+      get('/api/v1/finance/p2p/escrow' + (mine ? '?mine=true' : ''));
+
+  /// POST /finance/p2p/escrow — open a sell order (funds locked, KYC-gated).
+  Future<Map<String, dynamic>?> openEscrow(
+          String currency, String amount, String fiatCurrency, String fiatAmount,
+          String paymentMethodCode, String countryCode) =>
+      post('/api/v1/finance/p2p/escrow', {
+        'currency': currency,
+        'amount': amount,
+        'fiat_currency': fiatCurrency,
+        'fiat_amount': fiatAmount,
+        'payment_method_code': paymentMethodCode,
+        'country_code': countryCode,
+      });
+
+  /// POST /finance/p2p/escrow/:id/:action — accept/paid/release/dispute/cancel.
+  Future<Map<String, dynamic>?> escrowAction(String id, String action, {String? reason}) =>
+      post('/api/v1/finance/p2p/escrow/$id/$action', reason != null ? {'reason': reason} : {});
+
+
   // ==================== APPROVALS / MULTISIG ====================
   Future<Map<String, dynamic>?> getApprovals(String address, int chainId) =>
       get('/api/v1/approvals?address=$address&chain_id=$chainId');

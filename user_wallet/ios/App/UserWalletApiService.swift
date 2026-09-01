@@ -1376,6 +1376,97 @@ final class UserWalletApiService {
         let jsonData = try JSONSerialization.data(withJSONObject: txArray)
         return try JSONDecoder().decode([FeeTx].self, from: jsonData)
     }
+
+    // ==================== Wallet & finance plane ====================
+
+    /// GET /finance/accounts -> multi-chain ledger accounts.
+    func getFinanceAccounts() async throws -> [String: Any] {
+        try await requestRaw("/finance/accounts")
+    }
+
+    /// GET /finance/history -> full double-entry ledger history.
+    func getFinanceHistory(currency: String? = nil) async throws -> [String: Any] {
+        var path = "/finance/history"
+        if let currency = currency {
+            path += "?currency=" + (currency.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? currency)
+        }
+        return try await requestRaw(path)
+    }
+
+    /// GET /finance/switches -> per-token feature switches.
+    func getFinanceSwitches() async throws -> [String: Any] {
+        try await requestRaw("/finance/switches")
+    }
+
+    /// GET /finance/deposit-addresses -> deterministic per-user deposit addresses.
+    func getDepositAddresses() async throws -> [String: Any] {
+        try await requestRaw("/finance/deposit-addresses")
+    }
+
+    /// POST /finance/withdrawals -> risk-scored, HMAC-signed withdrawal request.
+    func createWithdrawal(currency: String, amount: String, toAddress: String) async throws -> [String: Any] {
+        let body: [String: Any] = ["currency": currency, "amount": amount, "to_address": toAddress]
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/finance/withdrawals", method: "POST", body: payload)
+    }
+
+    /// GET /finance/withdrawals -> the caller's withdrawal requests.
+    func getWithdrawals() async throws -> [String: Any] {
+        try await requestRaw("/finance/withdrawals")
+    }
+
+    /// GET /finance/convert/rates -> admin-managed rate book.
+    func getConvertRates() async throws -> [String: Any] {
+        try await requestRaw("/finance/convert/rates")
+    }
+
+    /// POST /finance/convert -> instant conversion at the admin rate.
+    func financeConvert(fromCurrency: String, toCurrency: String, amount: String) async throws -> [String: Any] {
+        let body: [String: Any] = ["from_currency": fromCurrency, "to_currency": toCurrency, "amount": amount]
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/finance/convert", method: "POST", body: payload)
+    }
+
+    /// POST /finance/transfer -> atomic KYC-gated internal transfer.
+    func financeTransfer(toEmail: String, currency: String, amount: String) async throws -> [String: Any] {
+        let body: [String: Any] = ["to_email": toEmail, "currency": currency, "amount": amount]
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/finance/transfer", method: "POST", body: payload)
+    }
+
+    /// GET /finance/payment-methods -> 881-method / 238-country catalog.
+    func getPaymentMethods(country: String? = nil, kind: String? = nil) async throws -> [String: Any] {
+        var parts: [String] = []
+        if let country = country { parts.append("country=" + country) }
+        if let kind = kind { parts.append("kind=" + kind) }
+        let path = "/finance/payment-methods" + (parts.isEmpty ? "" : "?" + parts.joined(separator: "&"))
+        return try await requestRaw(path)
+    }
+
+    /// GET /finance/p2p/escrow -> escrow marketplace (or the caller's orders).
+    func getEscrowOrders(mine: Bool = false) async throws -> [String: Any] {
+        try await requestRaw("/finance/p2p/escrow" + (mine ? "?mine=true" : ""))
+    }
+
+    /// POST /finance/p2p/escrow -> open a sell order (funds locked, KYC-gated).
+    func openEscrow(currency: String, amount: String, fiatCurrency: String, fiatAmount: String, paymentMethodCode: String, countryCode: String) async throws -> [String: Any] {
+        let body: [String: Any] = [
+            "currency": currency, "amount": amount,
+            "fiat_currency": fiatCurrency, "fiat_amount": fiatAmount,
+            "payment_method_code": paymentMethodCode, "country_code": countryCode,
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/finance/p2p/escrow", method: "POST", body: payload)
+    }
+
+    /// POST /finance/p2p/escrow/:id/:action -> accept/paid/release/dispute/cancel.
+    func escrowAction(id: String, action: String, reason: String? = nil) async throws -> [String: Any] {
+        let safeId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        var body: [String: Any] = [:]
+        if let reason = reason { body["reason"] = reason }
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        return try await requestRaw("/finance/p2p/escrow/\(safeId)/\(action)", method: "POST", body: payload)
+    }
 }
 
 // parsePaymentUri — decodes a scanned QR string (bare 0x address, ethereum:

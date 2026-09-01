@@ -34,6 +34,7 @@ struct FeaturesView: View {
                     NavigationLink("ENS") { ENSView() }
                     NavigationLink("Security") { SecurityView() }
                     NavigationLink("Terminal") { TerminalView() }
+                    NavigationLink("Wallet & Finance") { FinanceView() }
                     NavigationLink("Fees") { FeesView() }
                 }
                 Section("Security & Account") {
