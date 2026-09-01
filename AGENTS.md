@@ -1105,6 +1105,32 @@
 - Toolchain: Go 1.22.12 at /tmp/go (session-local); PG 17 + Redis installed
   via apt (session-local). go build/vet/test all PASS.
 
+## Session 32 (2026-09-01) — builtin trading control-plane across all admin tiers + MasterWallet (commit a175a580, pushed to main)
+- OWNER POLICY implemented: SuperAdmin, White-label client, and RBAC Admin can
+  create/add/stop/resume/remove trading contracts, liquidity pools, trading
+  pairs, and margin markets, plus whole-vertical halt/resume over the builtin
+  DEX swap / futures / margin / copy / options engines. All builtin
+  TigerWallet — NO external broker/exchange dependency. Status flips publish
+  to the shared Redis control namespace (tigerwallet:feature:<name>) the
+  wallet engines enforce on; every handler is real PostgreSQL/Redis-backed
+  (no stubs/mocks).
+- BACKEND (Go, all build+vet clean, wallet_api tests pass):
+  go/wallet_api trading_control.go (enforcement registries + status gates +
+  audit); master_wallet/backend trading_management.go (pgx + JWT actor/role,
+  co-sign policy untouched); super_admin/go trading_control.go + migrations
+  (global governance, never moves funds, feature-flag Redis fan-out);
+  white_label_admin/go internal/handlers/trading_control.go + migrations
+  (tenant-scoped white_label_id, RequireScope-gated); admin/go
+  internal/handlers/trading_control_handler.go (GORM + go-redis,
+  DomainScopeMiddleware("trading_control")).
+- ADMIN UIs (all tsc --noEmit clean, per-surface theme inherited):
+  super_admin/web, white_label_admin/web, admin/web, master_wallet/web each
+  gained a TradingControl page (contracts/pools/pairs/margin/verticals/audit
+  tabs) + API methods/facade + route + nav item.
+- VERIFIED: 5 Go modules build+vet; wallet_api go test pass (incl. 66-chain
+  non-EVM matrix); 4 webs tsc clean. Rebased onto concurrent Session 31
+  (finance plane) before push.
+
 ## STANDING OWNER ORDER (2026-09-01) - ALWAYS PUSH TO MAIN
 - The owner has ordered: every change must ALWAYS be committed and pushed
   directly to the GitHub repo main branch (origin/main). Do not ask, do not
