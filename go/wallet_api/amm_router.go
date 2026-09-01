@@ -31,12 +31,12 @@ import (
 // router is preferred (PancakeSwap, SushiSwap, QuickSwap, etc. are all
 // getAmountsOut/swapExactTokensForTokens compatible).
 var v2Routers = map[int64]string{
-	1:       "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf", // Ethereum mainnet
-	56:      "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap (BSC)
-	137:     "0xa5E0829CaCED8fFCEEdC5d972f14341d1C2C4F6F", // QuickSwap (Polygon)
-	42161:   "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4", // SushiSwap (Arbitrum)
-	10:      "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47992406", // SushiSwap (Optimism)
-	8453:    "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4", // Uniswap V2 (Base)
+	1:        "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf", // Ethereum mainnet
+	56:       "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap (BSC)
+	137:      "0xa5E0829CaCED8fFCEEdC5d972f14341d1C2C4F6F", // QuickSwap (Polygon)
+	42161:    "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4", // SushiSwap (Arbitrum)
+	10:       "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47992406", // SushiSwap (Optimism)
+	8453:     "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4", // Uniswap V2 (Base)
 	11155111: "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf", // Sepolia
 }
 
@@ -132,6 +132,15 @@ func handleAmmQuote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chain_id"})
 		return
 	}
+	// Trading control-plane: liquidity vertical halt + explicit pool stop.
+	if !tradingGuard(c, "liquidity", "", "") {
+		return
+	}
+	if tradingEntityStoppedRedis(c.Request.Context(), "pool", poolRedisKey(chainID, tokenIn, tokenOut)) ||
+		tradingEntityStoppedRedis(c.Request.Context(), "pool", poolRedisKey(chainID, tokenOut, tokenIn)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "liquidity pool is stopped by the platform operator"})
+		return
+	}
 	chain := evmChainByChainID(chainID)
 	if chain == nil || chain.RPCEndpoint == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "unsupported chain_id"})
@@ -193,20 +202,20 @@ func handleAmmQuote(c *gin.Context) {
 	outHuman, _ := weiToHuman(amountOutWei, decOut)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
-		"quote_type":   "on-chain",
-		"chain_id":     chainID,
-		"router":       router.Hex(),
-		"token_in":     addrIn.Hex(),
-		"token_out":    addrOut.Hex(),
-		"amount_in":    amountIn,
-		"amount_out":   outHuman,
+		"success":        true,
+		"quote_type":     "on-chain",
+		"chain_id":       chainID,
+		"router":         router.Hex(),
+		"token_in":       addrIn.Hex(),
+		"token_out":      addrOut.Hex(),
+		"amount_in":      amountIn,
+		"amount_out":     outHuman,
 		"amount_out_wei": amountOutWei.String(),
 		"amount_in_wei":  amountInWei.String(),
-		"decimals_in":  decIn,
-		"decimals_out": decOut,
-		"path":         []string{addrIn.Hex(), addrOut.Hex()},
-		"raw_return":   "0x" + hex.EncodeToString(ret),
+		"decimals_in":    decIn,
+		"decimals_out":   decOut,
+		"path":           []string{addrIn.Hex(), addrOut.Hex()},
+		"raw_return":     "0x" + hex.EncodeToString(ret),
 	})
 }
 
@@ -218,14 +227,14 @@ func handleAmmSwap(c *gin.Context) {
 		return
 	}
 	var req struct {
-		From        string `json:"from"`
-		ChainID     int64  `json:"chain_id"`
-		TokenIn     string `json:"token_in"`
-		TokenOut    string `json:"token_out"`
-		AmountIn    string `json:"amount_in"`
+		From         string `json:"from"`
+		ChainID      int64  `json:"chain_id"`
+		TokenIn      string `json:"token_in"`
+		TokenOut     string `json:"token_out"`
+		AmountIn     string `json:"amount_in"`
 		AmountOutMin string `json:"amount_out_min"` // human units
-		Recipient   string `json:"recipient"`        // optional; defaults to From
-		DeadlineSec int64  `json:"deadline_sec"`     // optional; default 20 min
+		Recipient    string `json:"recipient"`      // optional; defaults to From
+		DeadlineSec  int64  `json:"deadline_sec"`   // optional; default 20 min
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -233,6 +242,15 @@ func handleAmmSwap(c *gin.Context) {
 	}
 	if req.From == "" || req.ChainID == 0 || req.TokenIn == "" || req.TokenOut == "" || req.AmountIn == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from, chain_id, token_in, token_out, amount_in are required"})
+		return
+	}
+	// Trading control-plane: liquidity vertical halt + explicit pool stop.
+	if !tradingGuard(c, "liquidity", "", "") {
+		return
+	}
+	if tradingEntityStoppedRedis(c.Request.Context(), "pool", poolRedisKey(req.ChainID, req.TokenIn, req.TokenOut)) ||
+		tradingEntityStoppedRedis(c.Request.Context(), "pool", poolRedisKey(req.ChainID, req.TokenOut, req.TokenIn)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "liquidity pool is stopped by the platform operator"})
 		return
 	}
 	chain := evmChainByChainID(req.ChainID)
@@ -333,10 +351,10 @@ func handleAmmSwap(c *gin.Context) {
 			"chain_id": req.ChainID,
 			"value":    "0",
 		},
-		"amount_in_wei":     amountInWei.String(),
+		"amount_in_wei":      amountInWei.String(),
 		"amount_out_min_wei": amountOutMinWei.String(),
-		"deadline":          deadline.String(),
-		"note":              "Approve the router to spend token_in (ERC-20 approve) first, then broadcast this via POST /api/v1/send.",
+		"deadline":           deadline.String(),
+		"note":               "Approve the router to spend token_in (ERC-20 approve) first, then broadcast this via POST /api/v1/send.",
 	})
 }
 

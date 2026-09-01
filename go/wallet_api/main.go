@@ -255,6 +255,12 @@ func main() {
 		wallet.GET("/margin/positions", handleListMarginPositions)
 		wallet.POST("/margin/positions", handleCreateMarginPosition)
 		wallet.POST("/margin/positions/:id/close", handleCloseMarginPosition)
+		// ---- Builtin options engine (live-priced, operator-governed series) ----
+		wallet.GET("/options/series", handleListOptionsSeries)
+		wallet.GET("/options/quote", handleOptionsQuote)
+		wallet.GET("/options/positions", handleListOptionsPositions)
+		wallet.POST("/options/positions", handleOpenOptionsPosition)
+		wallet.POST("/options/positions/:id/close", handleCloseOptionsPosition)
 		wallet.GET("/token-sales", handleListTokenSales)
 		wallet.POST("/token-sales/:id/participate", handleParticipateTokenSale)
 		wallet.GET("/dao/proposals", handleListDAOProposals)
@@ -276,7 +282,7 @@ func main() {
 		//   governance_service   :8454  (/api/v1/governance/*)
 		//   prediction_service   :8455  (/api/v1/prediction/*)
 		wallet.Any("/lending/*path", deFiProxy("LENDING_SERVICE_URL", "http://localhost:8009", "lending"))
-		wallet.Any("/copytrading/*path", deFiProxy("COPYTRADING_SERVICE_URL", "http://localhost:8006", "copytrading"))
+		wallet.Any("/copytrading/*path", tradingVerticalGuard("copy"), deFiProxy("COPYTRADING_SERVICE_URL", "http://localhost:8006", "copytrading"))
 		wallet.Any("/governance/*path", deFiProxy("GOVERNANCE_SERVICE_URL", "http://localhost:8454", "governance"))
 		wallet.Any("/prediction/*path", deFiProxy("PREDICTION_SERVICE_URL", "http://localhost:8455", "prediction"))
 		// Bridge: the canonical go/bridge_service (:8007) exposes
@@ -353,6 +359,52 @@ func main() {
 			admin.DELETE("/fees/:id", handleAdminDeleteFee)
 			admin.GET("/fees/transactions", handleAdminFeeTransactions)
 			admin.GET("/fees/revenue", handleAdminFeeRevenue)
+
+			// ---- Trading control-plane (builtin; RBAC admin + operator) ----
+			// Full lifecycle: create/add/update/stop/resume/remove for trading
+			// contracts, liquidity pools, trading pairs, margin markets, options
+			// series, copy-trading traders + whole-vertical halt/resume.
+			admin.GET("/trading/overview", handleAdminTradingOverview)
+			admin.GET("/trading/audit", handleAdminTradingAudit)
+			admin.POST("/trading/halt/:vertical", handleAdminHaltVertical)
+			admin.POST("/trading/resume/:vertical", handleAdminResumeVertical)
+
+			admin.GET("/trading/contracts", handleAdminListTradingContracts)
+			admin.POST("/trading/contracts", handleAdminCreateTradingContract)
+			admin.PUT("/trading/contracts/:id", handleAdminUpdateTradingContract)
+			admin.POST("/trading/contracts/:id/stop", handleAdminStopTradingContract)
+			admin.POST("/trading/contracts/:id/resume", handleAdminResumeTradingContract)
+			admin.DELETE("/trading/contracts/:id", handleAdminDeleteTradingContract)
+
+			admin.GET("/trading/pools", handleAdminListLiquidityPools)
+			admin.POST("/trading/pools", handleAdminCreateLiquidityPool)
+			admin.POST("/trading/pools/:id/stop", handleAdminStopLiquidityPool)
+			admin.POST("/trading/pools/:id/resume", handleAdminResumeLiquidityPool)
+			admin.DELETE("/trading/pools/:id", handleAdminDeleteLiquidityPool)
+
+			admin.GET("/trading/pairs", handleAdminListManagedPairs)
+			admin.POST("/trading/pairs", handleAdminCreateManagedPair)
+			admin.POST("/trading/pairs/:id/stop", handleAdminStopManagedPair)
+			admin.POST("/trading/pairs/:id/resume", handleAdminResumeManagedPair)
+			admin.DELETE("/trading/pairs/:id", handleAdminDeleteManagedPair)
+
+			admin.GET("/trading/margin-markets", handleAdminListMarginMarkets)
+			admin.POST("/trading/margin-markets", handleAdminCreateMarginMarket)
+			admin.POST("/trading/margin-markets/:id/stop", handleAdminStopMarginMarket)
+			admin.POST("/trading/margin-markets/:id/resume", handleAdminResumeMarginMarket)
+			admin.DELETE("/trading/margin-markets/:id", handleAdminDeleteMarginMarket)
+
+			admin.GET("/trading/options-series", handleAdminListOptionsSeries)
+			admin.POST("/trading/options-series", handleAdminCreateOptionsSeries)
+			admin.POST("/trading/options-series/:id/stop", handleAdminStopOptionsSeries)
+			admin.POST("/trading/options-series/:id/resume", handleAdminResumeOptionsSeries)
+			admin.DELETE("/trading/options-series/:id", handleAdminDeleteOptionsSeries)
+
+			admin.GET("/trading/copy-traders", handleAdminListCopyTraders)
+			admin.POST("/trading/copy-traders", handleAdminCreateCopyTrader)
+			admin.POST("/trading/copy-traders/:id/stop", handleAdminStopCopyTrader)
+			admin.POST("/trading/copy-traders/:id/resume", handleAdminResumeCopyTrader)
+			admin.DELETE("/trading/copy-traders/:id", handleAdminDeleteCopyTrader)
 
 			// ---- Token registry (MasterWallet owner / ProjectParty approval) ----
 			admin.GET("/tokens", handleAdminListTokens)

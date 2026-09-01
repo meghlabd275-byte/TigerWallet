@@ -118,6 +118,7 @@ func main() {
 	futuresHandler := handlers.NewFuturesHandler(db.DB)
 	optionsHandler := handlers.NewOptionsHandler(db.DB)
 	copyTradingHandler := handlers.NewCopyTradingHandler(db.DB)
+	tradingControlHandler := handlers.NewTradingControlHandler(db.DB, redisClient.Client)
 	convertHandler := handlers.NewConvertHandler(db.DB)
 	onrampHandler := handlers.NewOnRampHandler(db.DB)
 	offrampHandler := handlers.NewOffRampHandler(db.DB)
@@ -617,6 +618,44 @@ func main() {
 				copyTrading.PUT("/:id", copyTradingHandler.Update)
 				copyTrading.DELETE("/:id", copyTradingHandler.Delete)
 				copyTrading.PUT("/:id/status", copyTradingHandler.UpdateStatus)
+			}
+
+			// ---- Trading control-plane (owner policy: full lifecycle over the
+			// builtin trading engines; publishes to the shared Redis control
+			// namespace the wallet engines enforce on) ----
+			tradingControl := protected.Group("/trading")
+			tradingControl.Use(middleware.DomainScopeMiddleware("trading_control"))
+			{
+				tradingControl.GET("/overview", tradingControlHandler.Overview)
+				tradingControl.GET("/audit", tradingControlHandler.Audit)
+				tradingControl.POST("/halt/:vertical", tradingControlHandler.HaltVertical)
+				tradingControl.POST("/resume/:vertical", tradingControlHandler.ResumeVertical)
+
+				tradingControl.GET("/contracts", tradingControlHandler.ListContracts)
+				tradingControl.POST("/contracts", tradingControlHandler.CreateContract)
+				tradingControl.POST("/contracts/:id/stop", tradingControlHandler.StopContract)
+				tradingControl.POST("/contracts/:id/resume", tradingControlHandler.ResumeContract)
+				tradingControl.DELETE("/contracts/:id", tradingControlHandler.DeleteContract)
+
+				tradingControl.POST("/pools/:id/stop", tradingControlHandler.StopPool)
+				tradingControl.POST("/pools/:id/resume", tradingControlHandler.ResumePool)
+				tradingControl.DELETE("/pools/:id", tradingControlHandler.DeletePool)
+
+				tradingControl.POST("/pairs/:id/stop", tradingControlHandler.StopPair)
+				tradingControl.POST("/pairs/:id/resume", tradingControlHandler.ResumePair)
+				tradingControl.DELETE("/pairs/:id", tradingControlHandler.DeletePair)
+
+				tradingControl.GET("/margin-markets", tradingControlHandler.ListMarginMarkets)
+				tradingControl.POST("/margin-markets", tradingControlHandler.CreateMarginMarket)
+				tradingControl.POST("/margin-markets/:id/stop", tradingControlHandler.StopMarginMarket)
+				tradingControl.POST("/margin-markets/:id/resume", tradingControlHandler.ResumeMarginMarket)
+				tradingControl.DELETE("/margin-markets/:id", tradingControlHandler.DeleteMarginMarket)
+
+				tradingControl.POST("/options/:id/stop", tradingControlHandler.StopOption)
+				tradingControl.POST("/options/:id/resume", tradingControlHandler.ResumeOption)
+
+				tradingControl.POST("/copy-trading/:id/stop", tradingControlHandler.StopCopyConfig)
+				tradingControl.POST("/copy-trading/:id/resume", tradingControlHandler.ResumeCopyConfig)
 			}
 
 			// Convert (governance records only)

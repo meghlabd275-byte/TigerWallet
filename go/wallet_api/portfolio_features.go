@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -195,22 +196,22 @@ CREATE INDEX IF NOT EXISTS idx_lp_stakes_user ON launchpool_stakes(user_id);
 // ---- Token Approvals ----
 
 type TokenApproval struct {
-	ID            uuid.UUID `json:"id"`
-	UserID        uuid.UUID `json:"user_id"`
-	WalletID      *uuid.UUID `json:"wallet_id,omitempty"`
-	Token         string    `json:"token"`
-	TokenSymbol   string    `json:"token_symbol"`
-	Spender       string    `json:"spender"`
-	SpenderName   string    `json:"spender_name"`
-	ChainID       int64     `json:"chain_id"`
-	ChainName     string    `json:"chain_name"`
-	Amount        string    `json:"amount"`
-	Allowance     string    `json:"allowance"`
-	IsUnlimited   bool      `json:"is_unlimited"`
-	Risk          string    `json:"risk"`
-	Verified      bool      `json:"verified"`
-	DateApproved  int64     `json:"date_approved"`
-	Revoked       bool      `json:"revoked"`
+	ID           uuid.UUID  `json:"id"`
+	UserID       uuid.UUID  `json:"user_id"`
+	WalletID     *uuid.UUID `json:"wallet_id,omitempty"`
+	Token        string     `json:"token"`
+	TokenSymbol  string     `json:"token_symbol"`
+	Spender      string     `json:"spender"`
+	SpenderName  string     `json:"spender_name"`
+	ChainID      int64      `json:"chain_id"`
+	ChainName    string     `json:"chain_name"`
+	Amount       string     `json:"amount"`
+	Allowance    string     `json:"allowance"`
+	IsUnlimited  bool       `json:"is_unlimited"`
+	Risk         string     `json:"risk"`
+	Verified     bool       `json:"verified"`
+	DateApproved int64      `json:"date_approved"`
+	Revoked      bool       `json:"revoked"`
 }
 
 func handleListApprovals(c *gin.Context) {
@@ -278,22 +279,22 @@ func handleRevokeApproval(c *gin.Context) {
 // ---- Perpetual Positions ----
 
 type PerpetualPosition struct {
-	ID             uuid.UUID `json:"id"`
-	UserID         uuid.UUID `json:"user_id"`
-	WalletID       *uuid.UUID `json:"wallet_id,omitempty"`
-	Symbol         string    `json:"symbol"`
-	Side           string    `json:"side"`
-	Size           string    `json:"size"`
-	EntryPrice     string    `json:"entry_price"`
-	MarkPrice      string    `json:"mark_price"`
-	Leverage       string    `json:"leverage"`
-	Margin         string    `json:"margin"`
-	LiqPrice       string    `json:"liq_price"`
-	UnrealizedPnL  string    `json:"unrealized_pnl"`
-	Status         string    `json:"status"`
-	ChainID        int64     `json:"chain_id"`
-	OpenedAt       int64     `json:"opened_at"`
-	ClosedAt       *int64    `json:"closed_at,omitempty"`
+	ID            uuid.UUID  `json:"id"`
+	UserID        uuid.UUID  `json:"user_id"`
+	WalletID      *uuid.UUID `json:"wallet_id,omitempty"`
+	Symbol        string     `json:"symbol"`
+	Side          string     `json:"side"`
+	Size          string     `json:"size"`
+	EntryPrice    string     `json:"entry_price"`
+	MarkPrice     string     `json:"mark_price"`
+	Leverage      string     `json:"leverage"`
+	Margin        string     `json:"margin"`
+	LiqPrice      string     `json:"liq_price"`
+	UnrealizedPnL string     `json:"unrealized_pnl"`
+	Status        string     `json:"status"`
+	ChainID       int64      `json:"chain_id"`
+	OpenedAt      int64      `json:"opened_at"`
+	ClosedAt      *int64     `json:"closed_at,omitempty"`
 }
 
 func handleListPerpetualPositions(c *gin.Context) {
@@ -355,6 +356,21 @@ func handleCreatePerpetualPosition(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Trading control-plane: perpetual/futures vertical halt + contract stop
+	// + operator leverage cap. Builtin enforcement, no external dependency.
+	if !tradingGuard(c, "perpetual", "contract", req.Symbol) {
+		return
+	}
+	if maxLev, status, found := tradingContractFor(c.Request.Context(), "perpetual", req.Symbol); found {
+		if status != "active" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "contract is stopped by the platform operator"})
+			return
+		}
+		if lev, err := strconv.Atoi(req.Leverage); err == nil && maxLev > 0 && lev > maxLev {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "leverage exceeds contract max_leverage"})
+			return
+		}
+	}
 	id := uuid.New()
 	now := time.Now().Unix()
 	if _, err := store.PG.Exec(c.Request.Context(),
@@ -400,23 +416,23 @@ func handleClosePerpetualPosition(c *gin.Context) {
 // ---- Margin Positions ----
 
 type MarginPosition struct {
-	ID            uuid.UUID `json:"id"`
-	UserID        uuid.UUID `json:"user_id"`
+	ID            uuid.UUID  `json:"id"`
+	UserID        uuid.UUID  `json:"user_id"`
 	WalletID      *uuid.UUID `json:"wallet_id,omitempty"`
-	PairID        string    `json:"pair_id"`
-	PairSymbol    string    `json:"pair_symbol"`
-	Side          string    `json:"side"`
-	Borrowed      string    `json:"borrowed"`
-	Collateral    string    `json:"collateral"`
-	Leverage      string    `json:"leverage"`
-	EntryPrice    string    `json:"entry_price"`
-	LiqPrice      string    `json:"liq_price"`
-	InterestRate  string    `json:"interest_rate"`
-	UnrealizedPnL string    `json:"unrealized_pnl"`
-	Status        string    `json:"status"`
-	ChainID       int64     `json:"chain_id"`
-	OpenedAt      int64     `json:"opened_at"`
-	ClosedAt      *int64    `json:"closed_at,omitempty"`
+	PairID        string     `json:"pair_id"`
+	PairSymbol    string     `json:"pair_symbol"`
+	Side          string     `json:"side"`
+	Borrowed      string     `json:"borrowed"`
+	Collateral    string     `json:"collateral"`
+	Leverage      string     `json:"leverage"`
+	EntryPrice    string     `json:"entry_price"`
+	LiqPrice      string     `json:"liq_price"`
+	InterestRate  string     `json:"interest_rate"`
+	UnrealizedPnL string     `json:"unrealized_pnl"`
+	Status        string     `json:"status"`
+	ChainID       int64      `json:"chain_id"`
+	OpenedAt      int64      `json:"opened_at"`
+	ClosedAt      *int64     `json:"closed_at,omitempty"`
 }
 
 func handleListMarginPositions(c *gin.Context) {
@@ -478,6 +494,20 @@ func handleCreateMarginPosition(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Trading control-plane: margin vertical halt + market stop + leverage cap.
+	if !tradingGuard(c, "margin", "margin_market", req.PairSymbol) {
+		return
+	}
+	if maxLev, status, found := marginMarketFor(c.Request.Context(), req.PairSymbol); found {
+		if status != "active" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "margin market is stopped by the platform operator"})
+			return
+		}
+		if lev, err := strconv.Atoi(req.Leverage); err == nil && maxLev > 0 && lev > maxLev {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "leverage exceeds margin market max_leverage"})
+			return
+		}
+	}
 	id := uuid.New()
 	now := time.Now().Unix()
 	if _, err := store.PG.Exec(c.Request.Context(),
@@ -523,22 +553,22 @@ func handleCloseMarginPosition(c *gin.Context) {
 // ---- Token Sales ----
 
 type TokenSale struct {
-	ID              uuid.UUID `json:"id"`
+	ID              uuid.UUID  `json:"id"`
 	CreatorID       *uuid.UUID `json:"creator_id,omitempty"`
-	TokenName      string    `json:"token_name"`
-	TokenSymbol    string    `json:"token_symbol"`
-	ContractAddress string   `json:"contract_address"`
-	ChainID        int64     `json:"chain_id"`
-	PricePerToken  string    `json:"price_per_token"`
-	TotalSupply    string    `json:"total_supply"`
-	SoldAmount     string    `json:"sold_amount"`
-	MinAllocation  string    `json:"min_allocation"`
-	MaxAllocation  string    `json:"max_allocation"`
-	StartTime      int64     `json:"start_time"`
-	EndTime        int64     `json:"end_time"`
-	Status         string    `json:"status"`
-	Description    string    `json:"description,omitempty"`
-	Website        string    `json:"website,omitempty"`
+	TokenName       string     `json:"token_name"`
+	TokenSymbol     string     `json:"token_symbol"`
+	ContractAddress string     `json:"contract_address"`
+	ChainID         int64      `json:"chain_id"`
+	PricePerToken   string     `json:"price_per_token"`
+	TotalSupply     string     `json:"total_supply"`
+	SoldAmount      string     `json:"sold_amount"`
+	MinAllocation   string     `json:"min_allocation"`
+	MaxAllocation   string     `json:"max_allocation"`
+	StartTime       int64      `json:"start_time"`
+	EndTime         int64      `json:"end_time"`
+	Status          string     `json:"status"`
+	Description     string     `json:"description,omitempty"`
+	Website         string     `json:"website,omitempty"`
 }
 
 func handleListTokenSales(c *gin.Context) {
@@ -681,11 +711,11 @@ func handleCreateDAOProposal(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title       string `json:"title" binding:"required"`
-		Description string `json:"description" binding:"required"`
-		Proposer    string `json:"proposer" binding:"required"`
+		Title        string `json:"title" binding:"required"`
+		Description  string `json:"description" binding:"required"`
+		Proposer     string `json:"proposer" binding:"required"`
 		ProposerName string `json:"proposer_name" binding:"required"`
-		DurationSec int64  `json:"duration_sec"`
+		DurationSec  int64  `json:"duration_sec"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -721,8 +751,8 @@ func handleVoteDAOProposal(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Choice       string `json:"choice" binding:"required"`
-		VotingPower  string `json:"voting_power"`
+		Choice      string `json:"choice" binding:"required"`
+		VotingPower string `json:"voting_power"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -785,17 +815,17 @@ func handleListDAODelegates(c *gin.Context) {
 
 type LaunchpoolProject struct {
 	ID                 uuid.UUID `json:"id"`
-	TokenName         string    `json:"token_name"`
-	TokenSymbol       string    `json:"token_symbol"`
-	ContractAddress   string    `json:"contract_address"`
-	ChainID           int64     `json:"chain_id"`
-	TotalRewards      string    `json:"total_rewards"`
-	DistributedRewards string   `json:"distributed_rewards"`
-	APY               string    `json:"apy"`
-	StartTime         int64     `json:"start_time"`
-	EndTime           int64     `json:"end_time"`
-	Status            string    `json:"status"`
-	Description       string    `json:"description,omitempty"`
+	TokenName          string    `json:"token_name"`
+	TokenSymbol        string    `json:"token_symbol"`
+	ContractAddress    string    `json:"contract_address"`
+	ChainID            int64     `json:"chain_id"`
+	TotalRewards       string    `json:"total_rewards"`
+	DistributedRewards string    `json:"distributed_rewards"`
+	APY                string    `json:"apy"`
+	StartTime          int64     `json:"start_time"`
+	EndTime            int64     `json:"end_time"`
+	Status             string    `json:"status"`
+	Description        string    `json:"description,omitempty"`
 }
 
 func handleListLaunchpool(c *gin.Context) {

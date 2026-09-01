@@ -123,6 +123,13 @@ func runMigrations(ctx context.Context) error {
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_futures_positions_white_label ON futures_positions(white_label_id)`,
+		// ---- WL trading control-plane (tenant-scoped; published to shared
+		// Redis under the tenant's namespace) ----
+		`CREATE TABLE IF NOT EXISTS wl_trading_contracts (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), kind VARCHAR(20) NOT NULL, symbol VARCHAR(60) NOT NULL, base_asset VARCHAR(30) NOT NULL, quote_asset VARCHAR(30) NOT NULL, chain_id BIGINT DEFAULT 0, max_leverage INT DEFAULT 1, min_size TEXT DEFAULT '0', tick_size TEXT DEFAULT '0', status VARCHAR(20) DEFAULT 'active', white_label_id UUID NOT NULL, created_by UUID, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE (kind, symbol, white_label_id))`,
+		`CREATE TABLE IF NOT EXISTS wl_liquidity_pools (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), chain_id BIGINT NOT NULL, dex VARCHAR(60) NOT NULL, pool_address VARCHAR(255), token0 VARCHAR(80) NOT NULL, token1 VARCHAR(80) NOT NULL, fee_bps INT DEFAULT 30, status VARCHAR(20) DEFAULT 'active', white_label_id UUID NOT NULL, created_by UUID, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE (chain_id, dex, token0, token1, white_label_id))`,
+		`CREATE TABLE IF NOT EXISTS wl_trading_pairs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), symbol VARCHAR(60) NOT NULL, base_asset VARCHAR(30) NOT NULL, quote_asset VARCHAR(30) NOT NULL, chain_id BIGINT DEFAULT 0, market VARCHAR(20) DEFAULT 'spot', status VARCHAR(20) DEFAULT 'active', white_label_id UUID NOT NULL, created_by UUID, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE (symbol, market, white_label_id))`,
+		`CREATE TABLE IF NOT EXISTS wl_margin_markets (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), symbol VARCHAR(60) NOT NULL, base_asset VARCHAR(30) NOT NULL, quote_asset VARCHAR(30) NOT NULL, max_leverage INT DEFAULT 3, borrow_cap TEXT DEFAULT '0', status VARCHAR(20) DEFAULT 'active', white_label_id UUID NOT NULL, created_by UUID, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE (symbol, white_label_id))`,
+		`CREATE TABLE IF NOT EXISTS wl_trading_control_audit (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor UUID, action VARCHAR(30) NOT NULL, kind VARCHAR(30) NOT NULL, entity VARCHAR(255) NOT NULL, detail TEXT, white_label_id UUID, created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS options_contracts (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			user_id UUID,

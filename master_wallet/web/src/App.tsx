@@ -32,6 +32,7 @@ import {
   TokensPage,
   FeatureFlagsPage,
   PasskeysPage,
+  TradingControlPage,
 } from './pages';
 
 type Page =
@@ -52,6 +53,7 @@ type Page =
   | 'tokens'
   | 'feature-flags'
   | 'passkeys'
+  | 'trading-control'
   | 'settings';
 
 interface AuthForm {
@@ -203,6 +205,7 @@ const Sidebar = ({ currentPage, setCurrentPage, isDark, masterAddress, onLogout 
     { id: 'tokens', label: 'Tokens', icon: '🪙' },
     { id: 'feature-flags', label: 'Feature Flags', icon: '🏁' },
     { id: 'passkeys', label: 'Passkeys', icon: '🔐' },
+    { id: 'trading-control', label: 'Trading Control', icon: '🎛️' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -1516,6 +1519,7 @@ const App = () => {
           {currentPage === 'passkeys' && (
             <PasskeysPage isDark={isDark} masterId={masterId} />
           )}
+          {currentPage === 'trading-control' && <TradingControlPage isDark={isDark} />}
           {currentPage === 'settings' && <SettingsPage isDark={isDark} />}
         </main>
       </div>

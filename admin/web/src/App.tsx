@@ -29,6 +29,7 @@ import LiquidityPage from './pages/Liquidity';
 import P2PMerchantPage from './pages/P2PMerchant';
 import FeaturesPage from './pages/Features';
 import FuturesPage from './pages/Futures';
+import TradingControlPage from './pages/TradingControl';
 import OptionsPage from './pages/Options';
 import CopyTradingPage from './pages/CopyTrading';
 import ConvertPage from './pages/Convert';
@@ -68,6 +69,7 @@ const Sidebar: React.FC<{
     { id: 'admin-roles', label: 'Roles & RBAC', icon: '🔐' },
     { id: 'margin-trading', label: 'Margin Trading', icon: '📈' },
     { id: 'futures', label: 'Futures', icon: '🔥' },
+    { id: 'trading-control', label: 'Trading Control', icon: '🎛️' },
     { id: 'options', label: 'Options', icon: '🎯' },
     { id: 'copy-trading', label: 'Copy Trading', icon: '📋' },
     { id: 'convert', label: 'Convert', icon: '💱' },
@@ -219,6 +221,8 @@ const PageRouter: React.FC<{ currentPage: string }> = ({ currentPage }) => {
       return <MarginTradingPage />;
     case 'futures':
       return <FuturesPage />;
+    case 'trading-control':
+      return <TradingControlPage />;
     case 'options':
       return <OptionsPage />;
     case 'copy-trading':

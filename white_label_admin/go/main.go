@@ -215,6 +215,38 @@ func main() {
 			admin.DELETE("/copy-trading/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteCopyTradingConfig)
 			admin.PUT("/copy-trading/:id/status", middleware.RequireScope(roles.TradingAdmin), svc.UpdateCopyTradingConfigStatus)
 
+			// ---- WL trading control-plane (tenant-scoped; owner policy) ----
+			// trading_admin scope: contracts + margin markets + vertical halt.
+			// liquidity_admin scope: pools. listing_admin scope: pairs.
+			admin.GET("/trading/overview", middleware.RequireScope(roles.TradingAdmin, roles.ListingAdmin, roles.LiquidityAdmin), svc.TradingOverview)
+			admin.GET("/trading/audit", middleware.RequireScope(roles.TradingAdmin, roles.ComplianceAdmin), svc.TradingControlAudit)
+			admin.POST("/trading/halt/:vertical", middleware.RequireScope(roles.TradingAdmin), svc.HaltTradingVertical)
+			admin.POST("/trading/resume/:vertical", middleware.RequireScope(roles.TradingAdmin), svc.ResumeTradingVertical)
+
+			admin.GET("/trading/contracts", middleware.RequireScope(roles.TradingAdmin), svc.ListTradingContracts)
+			admin.POST("/trading/contracts", middleware.RequireScope(roles.TradingAdmin), svc.CreateTradingContract)
+			admin.POST("/trading/contracts/:id/stop", middleware.RequireScope(roles.TradingAdmin), svc.StopTradingContract)
+			admin.POST("/trading/contracts/:id/resume", middleware.RequireScope(roles.TradingAdmin), svc.ResumeTradingContract)
+			admin.DELETE("/trading/contracts/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteTradingContract)
+
+			admin.GET("/trading/pools", middleware.RequireScope(roles.LiquidityAdmin, roles.TradingAdmin), svc.ListTradingPools)
+			admin.POST("/trading/pools", middleware.RequireScope(roles.LiquidityAdmin), svc.CreateTradingPool)
+			admin.POST("/trading/pools/:id/stop", middleware.RequireScope(roles.LiquidityAdmin), svc.StopTradingPool)
+			admin.POST("/trading/pools/:id/resume", middleware.RequireScope(roles.LiquidityAdmin), svc.ResumeTradingPool)
+			admin.DELETE("/trading/pools/:id", middleware.RequireScope(roles.LiquidityAdmin), svc.DeleteTradingPool)
+
+			admin.GET("/trading/pairs", middleware.RequireScope(roles.ListingAdmin, roles.TradingAdmin), svc.ListTradingPairs)
+			admin.POST("/trading/pairs", middleware.RequireScope(roles.ListingAdmin), svc.CreateTradingPair)
+			admin.POST("/trading/pairs/:id/stop", middleware.RequireScope(roles.ListingAdmin), svc.StopTradingPair)
+			admin.POST("/trading/pairs/:id/resume", middleware.RequireScope(roles.ListingAdmin), svc.ResumeTradingPair)
+			admin.DELETE("/trading/pairs/:id", middleware.RequireScope(roles.ListingAdmin), svc.DeleteTradingPair)
+
+			admin.GET("/trading/margin-markets", middleware.RequireScope(roles.TradingAdmin), svc.ListMarginMarkets)
+			admin.POST("/trading/margin-markets", middleware.RequireScope(roles.TradingAdmin), svc.CreateMarginMarket)
+			admin.POST("/trading/margin-markets/:id/stop", middleware.RequireScope(roles.TradingAdmin), svc.StopMarginMarket)
+			admin.POST("/trading/margin-markets/:id/resume", middleware.RequireScope(roles.TradingAdmin), svc.ResumeMarginMarket)
+			admin.DELETE("/trading/margin-markets/:id", middleware.RequireScope(roles.TradingAdmin), svc.DeleteMarginMarket)
+
 			// Convert orders
 			admin.GET("/convert", middleware.RequireScope(roles.TradingAdmin), svc.ListConvertOrders)
 			admin.GET("/convert/:id", middleware.RequireScope(roles.TradingAdmin), svc.GetConvertOrder)

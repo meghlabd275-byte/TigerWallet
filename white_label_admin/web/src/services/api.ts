@@ -469,6 +469,36 @@ class WhiteLabelAdminApiService {
       return true;
     } catch { return false; }
   }
+
+  // ---- Trading control-plane (/api/v1/admin/trading/*, tenant-scoped) ----
+  async getTradingOverview(): Promise<any> { return this.request('/api/v1/admin/trading/overview'); }
+  async getTradingAudit(): Promise<any> { return this.request('/api/v1/admin/trading/audit'); }
+  async haltTradingVertical(vertical: string): Promise<any> { return this.request(`/api/v1/admin/trading/halt/${vertical}`, { method: 'POST' }); }
+  async resumeTradingVertical(vertical: string): Promise<any> { return this.request(`/api/v1/admin/trading/resume/${vertical}`, { method: 'POST' }); }
+
+  async getTradingContracts(): Promise<any> { return this.request('/api/v1/admin/trading/contracts'); }
+  async createTradingContract(data: any): Promise<any> { return this.request('/api/v1/admin/trading/contracts', { method: 'POST', body: JSON.stringify(data) }); }
+  async stopTradingContract(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/contracts/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }); }
+  async resumeTradingContract(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/contracts/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }); }
+  async deleteTradingContract(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/contracts/${id}`, { method: 'DELETE' }); }
+
+  async getTradingPools(): Promise<any> { return this.request('/api/v1/admin/trading/pools'); }
+  async createTradingPool(data: any): Promise<any> { return this.request('/api/v1/admin/trading/pools', { method: 'POST', body: JSON.stringify(data) }); }
+  async stopTradingPool(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/pools/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }); }
+  async resumeTradingPool(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/pools/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }); }
+  async deleteTradingPool(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/pools/${id}`, { method: 'DELETE' }); }
+
+  async getTradingPairsList(): Promise<any> { return this.request('/api/v1/admin/trading/pairs'); }
+  async createTradingPair(data: any): Promise<any> { return this.request('/api/v1/admin/trading/pairs', { method: 'POST', body: JSON.stringify(data) }); }
+  async stopTradingPair(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/pairs/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }); }
+  async resumeTradingPair(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/pairs/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }); }
+  async deleteTradingPair(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/pairs/${id}`, { method: 'DELETE' }); }
+
+  async getTradingMarginMarkets(): Promise<any> { return this.request('/api/v1/admin/trading/margin-markets'); }
+  async createTradingMarginMarket(data: any): Promise<any> { return this.request('/api/v1/admin/trading/margin-markets', { method: 'POST', body: JSON.stringify(data) }); }
+  async stopTradingMarginMarket(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/margin-markets/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }); }
+  async resumeTradingMarginMarket(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/margin-markets/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }); }
+  async deleteTradingMarginMarket(id: string): Promise<any> { return this.request(`/api/v1/admin/trading/margin-markets/${id}`, { method: 'DELETE' }); }
 }
 
 export const whiteLabelAdminApi = new WhiteLabelAdminApiService();

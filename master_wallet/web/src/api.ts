@@ -1294,6 +1294,79 @@ class MasterWalletAPI {
       { method: 'POST', body: JSON.stringify(req) }
     );
   }
+  // ---- Trading control-plane (/api/v1/trading/* on master_wallet/backend :8450) ----
+  async getTradingOverview(): Promise<any> {
+    return this.request('/api/v1/trading/overview');
+  }
+  async getTradingAudit(): Promise<{ audit: any[] }> {
+    return this.request('/api/v1/trading/audit');
+  }
+  async haltTradingVertical(vertical: string): Promise<any> {
+    return this.request(`/api/v1/trading/halt/${vertical}`, { method: 'POST' });
+  }
+  async resumeTradingVertical(vertical: string): Promise<any> {
+    return this.request(`/api/v1/trading/resume/${vertical}`, { method: 'POST' });
+  }
+  async getTradingContracts(): Promise<{ contracts: any[] }> {
+    return this.request('/api/v1/trading/contracts');
+  }
+  async createTradingContract(data: any): Promise<any> {
+    return this.request('/api/v1/trading/contracts', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingContract(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/contracts/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingContract(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/contracts/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingContract(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/contracts/${id}`, { method: 'DELETE' });
+  }
+  async getTradingPools(): Promise<{ pools: any[] }> {
+    return this.request('/api/v1/trading/pools');
+  }
+  async createTradingPool(data: any): Promise<any> {
+    return this.request('/api/v1/trading/pools', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingPool(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/pools/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingPool(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/pools/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingPool(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/pools/${id}`, { method: 'DELETE' });
+  }
+  async getTradingPairsList(): Promise<{ pairs: any[] }> {
+    return this.request('/api/v1/trading/pairs');
+  }
+  async createTradingPair(data: any): Promise<any> {
+    return this.request('/api/v1/trading/pairs', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingPairLifecycle(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/pairs/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingPairLifecycle(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/pairs/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingPairLifecycle(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/pairs/${id}`, { method: 'DELETE' });
+  }
+  async getTradingMarginMarkets(): Promise<{ margin_markets: any[] }> {
+    return this.request('/api/v1/trading/margin-markets');
+  }
+  async createTradingMarginMarket(data: any): Promise<any> {
+    return this.request('/api/v1/trading/margin-markets', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingMarginMarket(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/margin-markets/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingMarginMarket(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/margin-markets/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingMarginMarket(id: string): Promise<any> {
+    return this.request(`/api/v1/trading/margin-markets/${id}`, { method: 'DELETE' });
+  }
 }
 
 export interface PasskeyCredential {
@@ -1307,4 +1380,41 @@ export interface PasskeyCredential {
 }
 
 export const masterWalletAPI = new MasterWalletAPI();
+
+export const tradingControlAPI = {
+  overview: () => masterWalletAPI.getTradingOverview(),
+  audit: () => masterWalletAPI.getTradingAudit(),
+  haltVertical: (vertical: string) => masterWalletAPI.haltTradingVertical(vertical),
+  resumeVertical: (vertical: string) => masterWalletAPI.resumeTradingVertical(vertical),
+  contracts: {
+    list: () => masterWalletAPI.getTradingContracts(),
+    create: (data: any) => masterWalletAPI.createTradingContract(data),
+    stop: (id: string) => masterWalletAPI.stopTradingContract(id),
+    resume: (id: string) => masterWalletAPI.resumeTradingContract(id),
+    remove: (id: string) => masterWalletAPI.deleteTradingContract(id),
+  },
+  pools: {
+    list: () => masterWalletAPI.getTradingPools(),
+    create: (data: any) => masterWalletAPI.createTradingPool(data),
+    stop: (id: string) => masterWalletAPI.stopTradingPool(id),
+    resume: (id: string) => masterWalletAPI.resumeTradingPool(id),
+    remove: (id: string) => masterWalletAPI.deleteTradingPool(id),
+  },
+  pairs: {
+    list: () => masterWalletAPI.getTradingPairsList(),
+    create: (data: any) => masterWalletAPI.createTradingPair(data),
+    stop: (id: string) => masterWalletAPI.stopTradingPairLifecycle(id),
+    resume: (id: string) => masterWalletAPI.resumeTradingPairLifecycle(id),
+    remove: (id: string) => masterWalletAPI.deleteTradingPairLifecycle(id),
+  },
+  marginMarkets: {
+    list: () => masterWalletAPI.getTradingMarginMarkets(),
+    create: (data: any) => masterWalletAPI.createTradingMarginMarket(data),
+    stop: (id: string) => masterWalletAPI.stopTradingMarginMarket(id),
+    resume: (id: string) => masterWalletAPI.resumeTradingMarginMarket(id),
+    remove: (id: string) => masterWalletAPI.deleteTradingMarginMarket(id),
+  },
+};
+
+
 export default masterWalletAPI;

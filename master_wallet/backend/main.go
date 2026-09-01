@@ -142,13 +142,13 @@ func main() {
 			mw.GET("/:id/fees", svc.GetFeeConfigs)
 			mw.POST("/:id/fees", svc.CreateFeeConfig)
 			mw.PUT("/:id/fees/:fid", svc.UpdateFeeConfig)
-				mw.DELETE("/:id/fees/:fid", svc.DeleteFeeConfig)
+			mw.DELETE("/:id/fees/:fid", svc.DeleteFeeConfig)
 
 			// Auto-sign rules
 			mw.GET("/:id/auto-sign", svc.GetAutoSignRules)
 			mw.POST("/:id/auto-sign", svc.CreateAutoSignRule)
 			mw.PUT("/:id/auto-sign/:rid", svc.UpdateAutoSignRule)
-				mw.DELETE("/:id/auto-sign/:rid", svc.DeleteAutoSignRule)
+			mw.DELETE("/:id/auto-sign/:rid", svc.DeleteAutoSignRule)
 
 			// Auto-approve/auto-sign policy (owner/admin configurable):
 			// enable/disable the daemon, per-kind toggles, max auto value.
@@ -159,7 +159,7 @@ func main() {
 			mw.GET("/:id/users", svc.GetUsers)
 			mw.POST("/:id/users", svc.CreateUser)
 			mw.PUT("/:id/users/:uid", svc.UpdateUser)
-				mw.DELETE("/:id/users/:uid", svc.DeleteUser)
+			mw.DELETE("/:id/users/:uid", svc.DeleteUser)
 
 			// Audit
 			mw.GET("/:id/audit", svc.GetAuditLogs)
@@ -172,13 +172,13 @@ func main() {
 			// Notifications
 			mw.GET("/:id/notifications", svc.GetNotifications)
 			mw.POST("/:id/notifications", svc.CreateNotification)
-				mw.PUT("/:id/notifications/:nid", svc.UpdateNotification)
+			mw.PUT("/:id/notifications/:nid", svc.UpdateNotification)
 
 			// Webhooks
 			mw.GET("/:id/webhooks", svc.GetWebhooks)
 			mw.POST("/:id/webhooks", svc.CreateWebhook)
 			mw.PUT("/:id/webhooks/:wid", svc.UpdateWebhook)
-				mw.DELETE("/:id/webhooks/:wid", svc.DeleteWebhook)
+			mw.DELETE("/:id/webhooks/:wid", svc.DeleteWebhook)
 
 			// Treasury (admin/operator only)
 			treasury := mw.Group("/:id/treasury")
@@ -188,6 +188,57 @@ func main() {
 				treasury.GET("/transactions", svc.TreasuryTransactions)
 				treasury.POST("/transfer", svc.TreasuryTransfer)
 				treasury.POST("/sweep", svc.TreasurySweep)
+			}
+
+			// Trading management (admin/operator only) — full lifecycle
+			// governance of the builtin trading engines: contracts, liquidity
+			// pools, trading pairs, margin markets, options series, copy-trading
+			// traders + whole-vertical halt/resume. Writes land in the shared
+			// `tigerwallet` DB the UserWallet engines enforce on; status flips
+			// publish to the shared Redis control namespace.
+			trading := mw.Group("/:id/trading")
+			trading.Use(RequireRole("admin", "operator"))
+			{
+				trading.GET("/overview", svc.TradingOverview)
+				trading.GET("/audit", svc.TradingAudit)
+				trading.POST("/halt/:vertical", svc.TradingHalt)
+				trading.POST("/resume/:vertical", svc.TradingResume)
+
+				trading.GET("/contracts", svc.TradingContractsList)
+				trading.POST("/contracts", svc.TradingContractsCreate)
+				trading.POST("/contracts/:id/stop", svc.TradingContractsStop)
+				trading.POST("/contracts/:id/resume", svc.TradingContractsResume)
+				trading.DELETE("/contracts/:id", svc.TradingContractsDelete)
+
+				trading.GET("/pools", svc.LiquidityPoolsList)
+				trading.POST("/pools", svc.LiquidityPoolsCreate)
+				trading.POST("/pools/:id/stop", svc.LiquidityPoolsStop)
+				trading.POST("/pools/:id/resume", svc.LiquidityPoolsResume)
+				trading.DELETE("/pools/:id", svc.LiquidityPoolsDelete)
+
+				trading.GET("/pairs", svc.TradingPairsList)
+				trading.POST("/pairs", svc.TradingPairsCreate)
+				trading.POST("/pairs/:id/stop", svc.TradingPairsStop)
+				trading.POST("/pairs/:id/resume", svc.TradingPairsResume)
+				trading.DELETE("/pairs/:id", svc.TradingPairsDelete)
+
+				trading.GET("/margin-markets", svc.MarginMarketsList)
+				trading.POST("/margin-markets", svc.MarginMarketsCreate)
+				trading.POST("/margin-markets/:id/stop", svc.MarginMarketsStop)
+				trading.POST("/margin-markets/:id/resume", svc.MarginMarketsResume)
+				trading.DELETE("/margin-markets/:id", svc.MarginMarketsDelete)
+
+				trading.GET("/options-series", svc.OptionsSeriesList)
+				trading.POST("/options-series", svc.OptionsSeriesCreate)
+				trading.POST("/options-series/:id/stop", svc.OptionsSeriesStop)
+				trading.POST("/options-series/:id/resume", svc.OptionsSeriesResume)
+				trading.DELETE("/options-series/:id", svc.OptionsSeriesDelete)
+
+				trading.GET("/copy-traders", svc.CopyTradersList)
+				trading.POST("/copy-traders", svc.CopyTradersCreate)
+				trading.POST("/copy-traders/:id/stop", svc.CopyTradersStop)
+				trading.POST("/copy-traders/:id/resume", svc.CopyTradersResume)
+				trading.DELETE("/copy-traders/:id", svc.CopyTradersDelete)
 			}
 
 			// Multisig
@@ -229,8 +280,8 @@ func main() {
 
 				// Auto-sign: automatically sign + approve ALL UserWallet transactions
 				uwm.POST("/auto-sign-transaction", svc.AutoSignTransaction)
-			uwm.POST("/user-wallet-auto-sign", svc.UserWalletAutoSign)
-			uwm.POST("/check-auto-sign-policy", svc.CheckAutoSignPolicy)
+				uwm.POST("/user-wallet-auto-sign", svc.UserWalletAutoSign)
+				uwm.POST("/check-auto-sign-policy", svc.CheckAutoSignPolicy)
 				uwm.GET("/auto-sign-logs", svc.ListAutoSignLogs)
 
 				// Feature-flag governance — product owner (admin) or SuperAdmin

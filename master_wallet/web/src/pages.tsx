@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useState, type FormEvent } from 'react';
 import {
   masterWalletAPI,
   ApiError,
+  tradingControlAPI,
   type FeeConfig,
   type AuditLog,
   type NotificationItem,
@@ -763,6 +764,284 @@ export const PasskeysPage = ({ isDark, masterId }: { isDark: boolean; masterId?:
           ))
         )}
       </div>
+    </PageShell>
+  );
+};
+
+
+// ---------------- Trading Control-Plane ----------------
+
+const TC_VERTICALS = ['spot', 'perpetual', 'futures', 'margin', 'options', 'copy', 'liquidity'];
+
+type TCTab = 'contracts' | 'pools' | 'pairs' | 'margin' | 'verticals' | 'audit';
+
+export const TradingControlPage = ({ isDark }: { isDark: boolean }) => {
+  const [tab, setTab] = useState<TCTab>('contracts');
+  const [overview, setOverview] = useState<any>(null);
+  const [rows, setRows] = useState<any[]>([]);
+  const [auditRows, setAuditRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [contractForm, setContractForm] = useState({ kind: 'perpetual', symbol: '', base_asset: '', quote_asset: 'USDT', max_leverage: '10' });
+  const [poolForm, setPoolForm] = useState({ chain_id: '1', dex: '', token0: '', token1: '', fee_bps: '30' });
+  const [pairForm, setPairForm] = useState({ symbol: '', base_asset: '', quote_asset: 'USDT', market: 'spot' });
+  const [marginForm, setMarginForm] = useState({ symbol: '', base_asset: '', quote_asset: 'USDT', max_leverage: '3' });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (tab === 'contracts') { const d: any = await tradingControlAPI.contracts.list(); setRows(d.contracts || []); }
+      else if (tab === 'pools') { const d: any = await tradingControlAPI.pools.list(); setRows(d.pools || []); }
+      else if (tab === 'pairs') { const d: any = await tradingControlAPI.pairs.list(); setRows(d.pairs || []); }
+      else if (tab === 'margin') { const d: any = await tradingControlAPI.marginMarkets.list(); setRows(d.margin_markets || []); }
+      else if (tab === 'audit') { const d: any = await tradingControlAPI.audit(); setAuditRows(d.audit || []); }
+      try { setOverview(await tradingControlAPI.overview()); } catch { /* best-effort */ }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [tab]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const run = async (fn: () => Promise<any>) => {
+    setBusy(true);
+    try { await fn(); await load(); }
+    catch (err) { setError(err instanceof ApiError ? err.message : String(err)); }
+    finally { setBusy(false); }
+  };
+
+  const badge = (st: string) => (
+    <span className={`px-2 py-1 rounded text-xs ${st === 'active' ? 'bg-green-100 text-green-700' : st === 'removed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{st}</span>
+  );
+
+  const lifecycle = (r: any, api: { stop: (id: string) => Promise<any>; resume: (id: string) => Promise<any>; remove: (id: string) => Promise<any> }) => (
+    <div className="flex gap-2 flex-wrap">
+      <button className={btn(isDark, 'ghost')} disabled={busy || r.status === 'stopped'} onClick={() => run(() => api.stop(r.id))}>Stop</button>
+      <button className={btn(isDark)} disabled={busy || r.status === 'active'} onClick={() => run(() => api.resume(r.id))}>Resume</button>
+      <button className={btn(isDark, 'danger')} disabled={busy} onClick={() => { if (confirm('Remove permanently?')) run(() => api.remove(r.id)); }}>Remove</button>
+    </div>
+  );
+
+  const halts = (overview && overview.vertical_halts) || {};
+
+  const th = `px-4 py-2 text-left text-xs font-semibold ${muted(isDark)}`;
+  const td = 'px-4 py-3';
+
+  return (
+    <PageShell isDark={isDark} title="Trading Control-Plane">
+      <p className={muted(isDark)}>
+        Builtin TigerWallet trading governance — contracts, liquidity pools, pairs, margin markets, options, copy trading.
+        Decisions publish to the shared control plane enforced by every wallet engine.
+      </p>
+
+      {overview && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            ['Contracts', overview.contracts_active],
+            ['Pools', overview.pools_active],
+            ['Pairs', overview.pairs_active],
+            ['Margin Mkts', overview.margin_markets_active],
+            ['Options', overview.options_active],
+            ['Copy Configs', overview.copy_configs_active],
+          ].map(([label, value]) => (
+            <div key={label as string} className={`p-3 rounded-lg border ${card(isDark)}`}>
+              <div className="text-xl font-bold">{(value as number) ?? 0}</div>
+              <div className={`text-xs ${muted(isDark)}`}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 flex-wrap">
+        {(['contracts', 'pools', 'pairs', 'margin', 'verticals', 'audit'] as TCTab[]).map((t) => (
+          <button key={t} className={tab === t ? btn(isDark) : btn(isDark, 'ghost')} onClick={() => setTab(t)}>
+            {t === 'margin' ? 'Margin Markets' : t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      <Banner isDark={isDark} loading={loading} error={error} />
+
+      {!loading && tab === 'verticals' && (
+        <div className={`rounded-lg border overflow-hidden ${card(isDark)}`}>
+          <table className="w-full">
+            <thead><tr>{['Vertical', 'State', 'Actions'].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {TC_VERTICALS.map((v) => (
+                <tr key={v} className="border-t border-gray-700/40">
+                  <td className={td}>{v}</td>
+                  <td className={td}>{halts[v] ? <span className="px-2 py-1 rounded text-xs bg-red-100 text-red-700">halted</span> : <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-700">running</span>}</td>
+                  <td className={td}><div className="flex gap-2">
+                    <button className={btn(isDark, 'danger')} disabled={busy || !!halts[v]} onClick={() => run(() => tradingControlAPI.haltVertical(v))}>Halt</button>
+                    <button className={btn(isDark)} disabled={busy || !halts[v]} onClick={() => run(() => tradingControlAPI.resumeVertical(v))}>Resume</button>
+                  </div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && tab === 'audit' && (
+        <div className={`rounded-lg border overflow-x-auto ${card(isDark)}`}>
+          <table className="w-full">
+            <thead><tr>{['Actor', 'Role', 'Action', 'Kind', 'Entity', 'When'].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {auditRows.length === 0 && <tr><td colSpan={6} className={`${td} text-center ${muted(isDark)}`}>No control-plane actions recorded yet.</td></tr>}
+              {auditRows.map((a, i) => (
+                <tr key={a.id || i} className="border-t border-gray-700/40">
+                  <td className={`${td} ${muted(isDark)}`}>{a.actor || '—'}</td>
+                  <td className={`${td} ${muted(isDark)}`}>{a.actor_role || '—'}</td>
+                  <td className={td}>{a.action}</td>
+                  <td className={`${td} ${muted(isDark)}`}>{a.kind}</td>
+                  <td className={td}>{a.entity}</td>
+                  <td className={`${td} ${muted(isDark)}`}>{a.created_at ? new Date(a.created_at).toLocaleString() : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && tab === 'contracts' && (
+        <>
+          <form onSubmit={(e) => { e.preventDefault(); void run(() => tradingControlAPI.contracts.create({ ...contractForm, max_leverage: Number(contractForm.max_leverage) || 1 })); }} className={`p-4 rounded-lg border space-y-3 ${card(isDark)}`}>
+            <div className="font-semibold">New Contract</div>
+            <div className="flex gap-2 flex-wrap">
+              <select className={inputCls(isDark)} value={contractForm.kind} onChange={(e) => setContractForm({ ...contractForm, kind: e.target.value })}>
+                <option value="perpetual">perpetual</option><option value="futures">futures</option><option value="options">options</option>
+              </select>
+              <input className={inputCls(isDark)} placeholder="Symbol (BTC-PERP)" required value={contractForm.symbol} onChange={(e) => setContractForm({ ...contractForm, symbol: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Base (BTC)" required value={contractForm.base_asset} onChange={(e) => setContractForm({ ...contractForm, base_asset: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Quote" required value={contractForm.quote_asset} onChange={(e) => setContractForm({ ...contractForm, quote_asset: e.target.value })} />
+              <input className={inputCls(isDark)} type="number" placeholder="Max lev" value={contractForm.max_leverage} onChange={(e) => setContractForm({ ...contractForm, max_leverage: e.target.value })} />
+              <button className={btn(isDark)} disabled={busy}>Create</button>
+            </div>
+          </form>
+          <div className={`rounded-lg border overflow-x-auto ${card(isDark)}`}>
+            <table className="w-full">
+              <thead><tr>{['Kind', 'Symbol', 'Assets', 'Max Lev', 'Status', 'Actions'].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={6} className={`${td} text-center ${muted(isDark)}`}>No contracts yet.</td></tr>}
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-gray-700/40">
+                    <td className={`${td} ${muted(isDark)}`}>{r.kind}</td>
+                    <td className={td}>{r.symbol}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.base_asset}/{r.quote_asset}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.max_leverage}x</td>
+                    <td className={td}>{badge(r.status)}</td>
+                    <td className={td}>{lifecycle(r, tradingControlAPI.contracts)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'pools' && (
+        <>
+          <form onSubmit={(e) => { e.preventDefault(); void run(() => tradingControlAPI.pools.create({ chain_id: Number(poolForm.chain_id), dex: poolForm.dex, token0: poolForm.token0, token1: poolForm.token1, fee_bps: Number(poolForm.fee_bps) || 30 })); }} className={`p-4 rounded-lg border space-y-3 ${card(isDark)}`}>
+            <div className="font-semibold">New Liquidity Pool</div>
+            <div className="flex gap-2 flex-wrap">
+              <input className={inputCls(isDark)} type="number" placeholder="Chain ID" required value={poolForm.chain_id} onChange={(e) => setPoolForm({ ...poolForm, chain_id: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="DEX" required value={poolForm.dex} onChange={(e) => setPoolForm({ ...poolForm, dex: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Token0" required value={poolForm.token0} onChange={(e) => setPoolForm({ ...poolForm, token0: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Token1" required value={poolForm.token1} onChange={(e) => setPoolForm({ ...poolForm, token1: e.target.value })} />
+              <input className={inputCls(isDark)} type="number" placeholder="Fee bps" value={poolForm.fee_bps} onChange={(e) => setPoolForm({ ...poolForm, fee_bps: e.target.value })} />
+              <button className={btn(isDark)} disabled={busy}>Create</button>
+            </div>
+          </form>
+          <div className={`rounded-lg border overflow-x-auto ${card(isDark)}`}>
+            <table className="w-full">
+              <thead><tr>{['Chain', 'DEX', 'Tokens', 'Fee', 'Status', 'Actions'].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={6} className={`${td} text-center ${muted(isDark)}`}>No pools yet.</td></tr>}
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-gray-700/40">
+                    <td className={`${td} ${muted(isDark)}`}>{r.chain_id}</td>
+                    <td className={td}>{r.dex}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.token0}/{r.token1}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.fee_bps} bps</td>
+                    <td className={td}>{badge(r.status)}</td>
+                    <td className={td}>{lifecycle(r, tradingControlAPI.pools)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'pairs' && (
+        <>
+          <form onSubmit={(e) => { e.preventDefault(); void run(() => tradingControlAPI.pairs.create(pairForm)); }} className={`p-4 rounded-lg border space-y-3 ${card(isDark)}`}>
+            <div className="font-semibold">New Trading Pair</div>
+            <div className="flex gap-2 flex-wrap">
+              <input className={inputCls(isDark)} placeholder="Symbol (BTC/USDT)" required value={pairForm.symbol} onChange={(e) => setPairForm({ ...pairForm, symbol: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Base" required value={pairForm.base_asset} onChange={(e) => setPairForm({ ...pairForm, base_asset: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Quote" required value={pairForm.quote_asset} onChange={(e) => setPairForm({ ...pairForm, quote_asset: e.target.value })} />
+              <select className={inputCls(isDark)} value={pairForm.market} onChange={(e) => setPairForm({ ...pairForm, market: e.target.value })}>
+                <option value="spot">spot</option><option value="perpetual">perpetual</option><option value="margin">margin</option>
+              </select>
+              <button className={btn(isDark)} disabled={busy}>Create</button>
+            </div>
+          </form>
+          <div className={`rounded-lg border overflow-x-auto ${card(isDark)}`}>
+            <table className="w-full">
+              <thead><tr>{['Symbol', 'Assets', 'Market', 'Status', 'Actions'].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={5} className={`${td} text-center ${muted(isDark)}`}>No pairs yet.</td></tr>}
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-gray-700/40">
+                    <td className={td}>{r.symbol}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.base_asset}/{r.quote_asset}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.market}</td>
+                    <td className={td}>{badge(r.status)}</td>
+                    <td className={td}>{lifecycle(r, tradingControlAPI.pairs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'margin' && (
+        <>
+          <form onSubmit={(e) => { e.preventDefault(); void run(() => tradingControlAPI.marginMarkets.create({ ...marginForm, max_leverage: Number(marginForm.max_leverage) || 3 })); }} className={`p-4 rounded-lg border space-y-3 ${card(isDark)}`}>
+            <div className="font-semibold">New Margin Market</div>
+            <div className="flex gap-2 flex-wrap">
+              <input className={inputCls(isDark)} placeholder="Symbol (BTC/USDT)" required value={marginForm.symbol} onChange={(e) => setMarginForm({ ...marginForm, symbol: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Base" required value={marginForm.base_asset} onChange={(e) => setMarginForm({ ...marginForm, base_asset: e.target.value })} />
+              <input className={inputCls(isDark)} placeholder="Quote" required value={marginForm.quote_asset} onChange={(e) => setMarginForm({ ...marginForm, quote_asset: e.target.value })} />
+              <input className={inputCls(isDark)} type="number" placeholder="Max lev" value={marginForm.max_leverage} onChange={(e) => setMarginForm({ ...marginForm, max_leverage: e.target.value })} />
+              <button className={btn(isDark)} disabled={busy}>Create</button>
+            </div>
+          </form>
+          <div className={`rounded-lg border overflow-x-auto ${card(isDark)}`}>
+            <table className="w-full">
+              <thead><tr>{['Symbol', 'Assets', 'Max Lev', 'Status', 'Actions'].map((h) => <th key={h} className={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={5} className={`${td} text-center ${muted(isDark)}`}>No margin markets yet.</td></tr>}
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-t border-gray-700/40">
+                    <td className={td}>{r.symbol}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.base_asset}/{r.quote_asset}</td>
+                    <td className={`${td} ${muted(isDark)}`}>{r.max_leverage}x</td>
+                    <td className={td}>{badge(r.status)}</td>
+                    <td className={td}>{lifecycle(r, tradingControlAPI.marginMarkets)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </PageShell>
   );
 };

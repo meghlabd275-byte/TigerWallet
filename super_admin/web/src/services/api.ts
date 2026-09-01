@@ -2554,6 +2554,78 @@ class SuperAdminApiService {
   async updateCryptoCardStatus(id: string, status: string): Promise<{ message: string; status?: string }> {
     return this.request(`/api/v1/admin/crypto-cards/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
   }
+
+  // ---- Trading control-plane (/api/v1/admin/trading/*) ----
+  async getTradingOverview(): Promise<any> {
+    return this.request('/api/v1/admin/trading/overview');
+  }
+  async getTradingAudit(): Promise<{ audit: any[] }> {
+    return this.request('/api/v1/admin/trading/audit');
+  }
+  async haltTradingVertical(vertical: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/halt/${vertical}`, { method: 'POST' });
+  }
+  async resumeTradingVertical(vertical: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/resume/${vertical}`, { method: 'POST' });
+  }
+  async getTradingContracts(): Promise<{ contracts: any[] }> {
+    return this.request('/api/v1/admin/trading/contracts');
+  }
+  async createTradingContract(data: {
+    kind: string; symbol: string; base_asset: string; quote_asset: string;
+    chain_id?: number; max_leverage?: number; min_size?: string; tick_size?: string;
+  }): Promise<any> {
+    return this.request('/api/v1/admin/trading/contracts', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingContract(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/contracts/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingContract(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/contracts/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingContract(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/contracts/${id}`, { method: 'DELETE' });
+  }
+  async getTradingPools(): Promise<{ pools: any[] }> {
+    return this.request('/api/v1/admin/trading/pools');
+  }
+  async createTradingPool(data: {
+    chain_id: number; dex: string; pool_address?: string; token0: string; token1: string; fee_bps?: number;
+  }): Promise<any> {
+    return this.request('/api/v1/admin/trading/pools', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingPool(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/pools/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingPool(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/pools/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingPool(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/pools/${id}`, { method: 'DELETE' });
+  }
+  async stopTradingPairLifecycle(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/pairs/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingPairLifecycle(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/pairs/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async getTradingMarginMarkets(): Promise<{ margin_markets: any[] }> {
+    return this.request('/api/v1/admin/trading/margin-markets');
+  }
+  async createTradingMarginMarket(data: {
+    symbol: string; base_asset: string; quote_asset: string; max_leverage?: number; borrow_cap?: string;
+  }): Promise<any> {
+    return this.request('/api/v1/admin/trading/margin-markets', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingMarginMarket(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/margin-markets/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  }
+  async resumeTradingMarginMarket(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/margin-markets/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  }
+  async deleteTradingMarginMarket(id: string): Promise<any> {
+    return this.request(`/api/v1/admin/trading/margin-markets/${id}`, { method: 'DELETE' });
+  }
 }
 
 export const superAdminApi = new SuperAdminApiService();

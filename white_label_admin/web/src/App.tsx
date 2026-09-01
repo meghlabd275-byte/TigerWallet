@@ -29,6 +29,7 @@ import Rewards from './pages/Rewards';
 import Security from './pages/Security';
 import CryptoCard from './pages/CryptoCard';
 import Futures from './pages/Futures';
+import TradingControl from './pages/TradingControl';
 import Options from './pages/Options';
 import CopyTrading from './pages/CopyTrading';
 import Convert from './pages/Convert';
@@ -43,7 +44,7 @@ type Page =
   | 'customer-service' | 'marketing' | 'compliance' | 'rewards'
   | 'security' | 'crypto-card'
   | 'futures' | 'options' | 'copy-trading' | 'convert'
-  | 'onramp' | 'offramp' | 'partners';
+  | 'onramp' | 'offramp' | 'partners' | 'trading-control';
 
 interface NavSection { title: string; items: { id: Page; label: string }[]; }
 
@@ -88,6 +89,7 @@ function AppContent() {
       case 'onramp': return <Onramp />;
       case 'offramp': return <Offramp />;
       case 'partners': return <Partners />;
+      case 'trading-control': return <TradingControl />;
       default: return <Dashboard />;
     }
   };
@@ -115,6 +117,7 @@ function AppContent() {
       title: 'Products',
       items: [
         { id: 'trading', label: 'Trading' },
+        { id: 'trading-control', label: 'Trading Control' },
         { id: 'futures', label: 'Futures' },
         { id: 'options', label: 'Options' },
         { id: 'copy-trading', label: 'Copy Trading' },

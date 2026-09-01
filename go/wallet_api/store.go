@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS token_registry (
 );
 CREATE INDEX IF NOT EXISTS idx_token_registry_chain ON token_registry(chain_id);
 CREATE INDEX IF NOT EXISTS idx_token_registry_symbol ON token_registry(symbol);
-` + portfolioSchemaSQL
+` + portfolioSchemaSQL + tradingControlSchemaSQL
 
 // ---- User operations ----
 

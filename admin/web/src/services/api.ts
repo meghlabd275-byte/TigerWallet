@@ -969,3 +969,39 @@ export const liquiditySourcesAPI = {
   healthCheck: (id: string, data: any) => adminApi.request(`/api/v1/liquidity-sources/${id}/health-check`, { method: 'POST', body: JSON.stringify(data) }),
   getStats: async () => ({ data: await adminApi.request<any>('/api/v1/liquidity-sources/stats') }),
 };
+
+
+// Trading control-plane facade (real /api/v1/trading/* endpoints on admin/go :9093)
+export const tradingControlAPI = {
+  overview: () => adminApi.request<any>('/api/v1/trading/overview'),
+  audit: () => adminApi.request<any>('/api/v1/trading/audit'),
+  haltVertical: (vertical: string) => adminApi.request(`/api/v1/trading/halt/${vertical}`, { method: 'POST' }),
+  resumeVertical: (vertical: string) => adminApi.request(`/api/v1/trading/resume/${vertical}`, { method: 'POST' }),
+  contracts: {
+    list: () => adminApi.request<any>('/api/v1/trading/contracts'),
+    create: (data: any) => adminApi.request('/api/v1/trading/contracts', { method: 'POST', body: JSON.stringify(data) }),
+    stop: (id: string) => adminApi.request(`/api/v1/trading/contracts/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }),
+    resume: (id: string) => adminApi.request(`/api/v1/trading/contracts/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }),
+    remove: (id: string) => adminApi.request(`/api/v1/trading/contracts/${id}`, { method: 'DELETE' }),
+  },
+  pools: {
+    list: () => adminApi.request<any>('/api/v1/trading/pools'),
+    create: (data: any) => adminApi.request('/api/v1/trading/pools', { method: 'POST', body: JSON.stringify(data) }),
+    stop: (id: string) => adminApi.request(`/api/v1/trading/pools/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }),
+    resume: (id: string) => adminApi.request(`/api/v1/trading/pools/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }),
+    remove: (id: string) => adminApi.request(`/api/v1/trading/pools/${id}`, { method: 'DELETE' }),
+  },
+  pairs: {
+    list: () => adminApi.request<any>('/api/v1/trading/pairs'),
+    stop: (id: string) => adminApi.request(`/api/v1/trading/pairs/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }),
+    resume: (id: string) => adminApi.request(`/api/v1/trading/pairs/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }),
+    remove: (id: string) => adminApi.request(`/api/v1/trading/pairs/${id}`, { method: 'DELETE' }),
+  },
+  marginMarkets: {
+    list: () => adminApi.request<any>('/api/v1/trading/margin-markets'),
+    create: (data: any) => adminApi.request('/api/v1/trading/margin-markets', { method: 'POST', body: JSON.stringify(data) }),
+    stop: (id: string) => adminApi.request(`/api/v1/trading/margin-markets/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) }),
+    resume: (id: string) => adminApi.request(`/api/v1/trading/margin-markets/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) }),
+    remove: (id: string) => adminApi.request(`/api/v1/trading/margin-markets/${id}`, { method: 'DELETE' }),
+  },
+};

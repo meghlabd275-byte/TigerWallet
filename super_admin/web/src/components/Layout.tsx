@@ -49,6 +49,7 @@ const menuItems = [
   { path: '/marketing', icon: '📣', label: 'Marketing' },
   { path: '/admin-roles', icon: '🛡️', label: 'Admin Roles' },
   { path: '/crypto-cards', icon: '💳', label: 'Crypto Cards' },
+  { path: '/trading-control', icon: '🎛️', label: 'Trading Control' },
 ];
 
 export default function Layout() {

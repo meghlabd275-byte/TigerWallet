@@ -275,6 +275,42 @@ func main() {
 			admin.DELETE("/copy-trading/:id", handleDeleteCopyTradingConfig)
 			admin.PUT("/copy-trading/:id/status", handleUpdateCopyTradingConfigStatus)
 
+			// ---- Trading control-plane (SuperAdmin global governance) ----
+			// Full lifecycle over the builtin trading engines; status flips
+			// publish to the shared Redis control namespace that the wallet
+			// engines enforce on.
+			admin.GET("/trading/overview", handleTradingOverview)
+			admin.GET("/trading/audit", handleTradingControlAudit)
+			admin.POST("/trading/halt/:vertical", handleHaltTradingVertical)
+			admin.POST("/trading/resume/:vertical", handleResumeTradingVertical)
+
+			admin.GET("/trading/contracts", handleListTradingContracts)
+			admin.POST("/trading/contracts", handleCreateTradingContract)
+			admin.POST("/trading/contracts/:id/stop", handleStopTradingContract)
+			admin.POST("/trading/contracts/:id/resume", handleResumeTradingContract)
+			admin.DELETE("/trading/contracts/:id", handleDeleteTradingContract)
+
+			admin.GET("/trading/pools", handleListLiquidityPools)
+			admin.POST("/trading/pools", handleCreateLiquidityPool)
+			admin.POST("/trading/pools/:id/stop", handleStopLiquidityPool)
+			admin.POST("/trading/pools/:id/resume", handleResumeLiquidityPool)
+			admin.DELETE("/trading/pools/:id", handleDeleteLiquidityPool)
+
+			admin.POST("/trading/pairs/:id/stop", handleStopTradingPair)
+			admin.POST("/trading/pairs/:id/resume", handleResumeTradingPair)
+
+			admin.GET("/trading/margin-markets", handleListMarginMarkets)
+			admin.POST("/trading/margin-markets", handleCreateMarginMarket)
+			admin.POST("/trading/margin-markets/:id/stop", handleStopMarginMarket)
+			admin.POST("/trading/margin-markets/:id/resume", handleResumeMarginMarket)
+			admin.DELETE("/trading/margin-markets/:id", handleDeleteMarginMarket)
+
+			admin.POST("/trading/options/:id/stop", handleStopOptionsContract)
+			admin.POST("/trading/options/:id/resume", handleResumeOptionsContract)
+
+			admin.POST("/trading/copy-trading/:id/stop", handleStopCopyTrading)
+			admin.POST("/trading/copy-trading/:id/resume", handleResumeCopyTrading)
+
 			admin.GET("/convert", handleGetConvertOrders)
 			admin.GET("/convert/:id", handleGetConvertOrder)
 			admin.POST("/convert", handleCreateConvertOrder)
@@ -336,7 +372,6 @@ func main() {
 			admin.PUT("/marketing/:id", handleUpdateMarketingCampaign)
 			admin.DELETE("/marketing/:id", handleDeleteMarketingCampaign)
 			admin.PUT("/marketing/:id/status", handleUpdateMarketingCampaignStatus)
-
 
 			// MasterWallet Management
 			admin.GET("/master-wallets", handleGetMasterWallets)
@@ -490,7 +525,6 @@ func main() {
 	log.Println("Server exited properly")
 }
 
-
 // ============== Real PostgreSQL-backed handlers ==============
 // All handlers query database.Pool (the global pgxpool). No stubs/mocks.
 
@@ -543,9 +577,9 @@ func rowsToMaps(rows pgx.Rows) []map[string]interface{} {
 
 func handleLogin(c *gin.Context) {
 	var req struct {
-		Email          string `json:"email" binding:"required"`
-		Password       string `json:"password" binding:"required"`
-		TwoFactorCode  string `json:"two_factor_code"`
+		Email         string `json:"email" binding:"required"`
+		Password      string `json:"password" binding:"required"`
+		TwoFactorCode string `json:"two_factor_code"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -731,11 +765,11 @@ func handleEnable2FA(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"secret":     key.Secret(),
-		"otpauth":    key.URL(),
-		"qr_data":    key.URL(),
-		"message":    "Scan the QR with your authenticator, then POST /2fa/verify with a 6-digit code to enable",
-		"enabled":    false,
+		"secret":  key.Secret(),
+		"otpauth": key.URL(),
+		"qr_data": key.URL(),
+		"message": "Scan the QR with your authenticator, then POST /2fa/verify with a 6-digit code to enable",
+		"enabled": false,
 	})
 }
 
@@ -1130,15 +1164,15 @@ func handleGetFees(c *gin.Context) {
 
 func handleCreateFee(c *gin.Context) {
 	var req struct {
-		FeeType   string  `json:"fee_type" binding:"required"`
-		Asset     string  `json:"asset"`
+		FeeType    string  `json:"fee_type" binding:"required"`
+		Asset      string  `json:"asset"`
 		FeePercent float64 `json:"fee_percent"`
-		FeeFixed  float64 `json:"fee_fixed"`
-		MinFee    float64 `json:"min_fee"`
-		MaxFee    float64 `json:"max_fee"`
-		Tier      string  `json:"tier"`
-		IsActive  bool    `json:"is_active"`
-		ChainID   int64   `json:"chain_id"`
+		FeeFixed   float64 `json:"fee_fixed"`
+		MinFee     float64 `json:"min_fee"`
+		MaxFee     float64 `json:"max_fee"`
+		Tier       string  `json:"tier"`
+		IsActive   bool    `json:"is_active"`
+		ChainID    int64   `json:"chain_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1689,10 +1723,10 @@ func handleGetStats(c *gin.Context) {
 	database.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM transactions`).Scan(&totalTx)
 	database.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM withdrawals WHERE status='pending'`).Scan(&totalWithdrawals)
 	c.JSON(http.StatusOK, gin.H{"stats": gin.H{
-		"total_users":          totalUsers,
-		"active_users":         activeUsers,
-		"total_transactions":   totalTx,
-		"pending_withdrawals":  totalWithdrawals,
+		"total_users":         totalUsers,
+		"active_users":        activeUsers,
+		"total_transactions":  totalTx,
+		"pending_withdrawals": totalWithdrawals,
 	}})
 }
 
@@ -1777,11 +1811,11 @@ func handleGetWorkflows(c *gin.Context) {
 
 func handleCreateWorkflow(c *gin.Context) {
 	var req struct {
-		Name             string   `json:"name" binding:"required"`
-		WorkflowType     string   `json:"workflow_type"`
-		ThresholdAmount  float64  `json:"threshold_amount"`
+		Name              string   `json:"name" binding:"required"`
+		WorkflowType      string   `json:"workflow_type"`
+		ThresholdAmount   float64  `json:"threshold_amount"`
 		RequiredApprovals int      `json:"required_approvals"`
-		Approvers        []string `json:"approvers"`
+		Approvers         []string `json:"approvers"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1796,9 +1830,9 @@ func handleCreateWorkflow(c *gin.Context) {
 
 func handleUpdateWorkflow(c *gin.Context) {
 	var req struct {
-		Name             string `json:"name"`
+		Name              string `json:"name"`
 		RequiredApprovals int    `json:"required_approvals"`
-		IsActive         *bool  `json:"is_active"`
+		IsActive          *bool  `json:"is_active"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1923,10 +1957,10 @@ func handleGetKnowledgeArticle(c *gin.Context) {
 
 func handleCreateKnowledgeArticle(c *gin.Context) {
 	var req struct {
-		Title      string   `json:"title" binding:"required"`
-		Content    string   `json:"content" binding:"required"`
-		Category   string   `json:"category"`
-		Tags       []string `json:"tags"`
+		Title       string   `json:"title" binding:"required"`
+		Content     string   `json:"content" binding:"required"`
+		Category    string   `json:"category"`
+		Tags        []string `json:"tags"`
 		IsPublished bool     `json:"is_published"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1983,10 +2017,10 @@ func handleGetArchivePolicies(c *gin.Context) {
 
 func handleCreateArchivePolicy(c *gin.Context) {
 	var req struct {
-		Name            string `json:"name" binding:"required"`
-		TableName       string `json:"table_name" binding:"required"`
-		RetentionDays   int    `json:"retention_days"`
-		ArchiveAfterDays int   `json:"archive_after_days"`
+		Name             string `json:"name" binding:"required"`
+		TableName        string `json:"table_name" binding:"required"`
+		RetentionDays    int    `json:"retention_days"`
+		ArchiveAfterDays int    `json:"archive_after_days"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -2108,10 +2142,10 @@ func handleGetSLAPolicies(c *gin.Context) {
 
 func handleCreateSLAPolicy(c *gin.Context) {
 	var req struct {
-		Name              string `json:"name" binding:"required"`
-		Priority          string `json:"priority"`
-		ResponseTimeSLA   int    `json:"response_time_sla"`
-		ResolutionTimeSLA int    `json:"resolution_time_sla"`
+		Name              string  `json:"name" binding:"required"`
+		Priority          string  `json:"priority"`
+		ResponseTimeSLA   int     `json:"response_time_sla"`
+		ResolutionTimeSLA int     `json:"resolution_time_sla"`
 		UptimeSLA         float64 `json:"uptime_sla"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -2181,10 +2215,10 @@ func handleGetIntegrations(c *gin.Context) {
 func handleCreateIntegration(c *gin.Context) {
 	var req struct {
 		Integration string `json:"integration" binding:"required"`
-		Name         string `json:"name" binding:"required"`
-		APIKey       string `json:"api_key"`
-		APISecret    string `json:"api_secret"`
-		WebhookURL   string `json:"webhook_url"`
+		Name        string `json:"name" binding:"required"`
+		APIKey      string `json:"api_key"`
+		APISecret   string `json:"api_secret"`
+		WebhookURL  string `json:"webhook_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -2746,7 +2780,6 @@ func handleUpdateUserWalletStatus(c *gin.Context) {
 
 // ptrBool returns a pointer to b (helper for optional bool binding).
 func ptrBool(b bool) *bool { return &b }
-
 
 // ---- WL MasterWallets (reuse master_wallets table with status filter) ----
 
@@ -4349,7 +4382,6 @@ func handleUpdateMarketingCampaignStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "marketing campaign status updated"})
 }
 
-
 // ---- Structured RBAC handlers (SuperAdmin-managed custom roles + permissions) ----
 
 func handleListAdminRoles(c *gin.Context) {
@@ -4712,4 +4744,3 @@ func handleUpdateCryptoCardStatus(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "status updated", "status": req.Status})
 }
-
