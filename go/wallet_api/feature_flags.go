@@ -9,14 +9,16 @@
 //	Value: "enabled" | "disabled" | "paused"   (string)
 //	TTL:   none (persistent; admin-controlled)
 //
-// Enforcement is fail-closed: any missing/unknown/erroring state is treated as
-// disabled, so an admin toggling a feature off (or Redis being unreachable)
-// halts the gated behavior rather than letting it through.
+// Enforcement is default-ENABLED (blacklist semantics): builtin features run
+// continuously with no bootstrap step; only an explicit operator
+// "disabled"/"paused" decision gates a feature. A Redis outage fails open so
+// an infra blip never halts trading by itself.
 package main
 
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,8 +79,9 @@ func redisClientForFlags() *redis.Client {
 }
 
 // FeatureState returns the raw live state string ("enabled" | "disabled" |
-// "paused") for the named feature, as read from Redis. Fail-closed: returns
-// "disabled" for missing/unknown/erroring keys.
+// "paused") for the named feature, as read from Redis. Default-enabled:
+// missing/unknown/erroring keys resolve to "enabled" (seamless continuous
+// trading); only an explicit operator stop/pause is enforced.
 func FeatureState(featureName string) string {
 	if featureName == "" {
 		return featureStateDisabled
@@ -100,31 +103,36 @@ func FeatureState(featureName string) string {
 	return state
 }
 
-// fetchFeatureState reads the live state from Redis. Fail-closed: any error or
-// missing key resolves to "disabled".
+// fetchFeatureState reads the live state from Redis. Default-ENABLED: a
+// missing key or Redis outage resolves to "enabled" — owner policy is that
+// every user can perform all swap and trading continuously with no bootstrap
+// step; an infra blip never halts trading by itself. Only an explicit
+// operator decision ("disabled"/"paused") gates a feature.
 func fetchFeatureState(featureName string) string {
 	rdb := redisClientForFlags()
 	if rdb == nil {
-		return featureStateDisabled
+		return featureStateEnabled
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	val, err := rdb.Get(ctx, featureKey(featureName)).Result()
 	if err != nil {
-		// redis.Nil (missing), network error, etc. -> fail-closed disabled.
-		return featureStateDisabled
+		// redis.Nil (never explicitly set) or network error -> default-on.
+		return featureStateEnabled
 	}
-	switch val {
+	switch strings.ToLower(val) {
 	case featureStateEnabled, featureStateDisabled, featureStatePaused:
-		return val
+		return strings.ToLower(val)
 	default:
-		// Unknown value -> fail-closed disabled.
-		return featureStateDisabled
+		// Unknown value -> default-on (continuity); only the three
+		// explicit operator states are enforced.
+		return featureStateEnabled
 	}
 }
 
-// IsFeatureEnabled returns true ONLY when the feature's live state is exactly
-// "enabled". disabled / paused / missing / unknown all return false (fail-closed).
+// IsFeatureEnabled returns true unless the feature was explicitly disabled or
+// paused by an operator. Missing/unknown/unset flags default to enabled so
+// builtin swap/trading is seamless and continuous for every user.
 func IsFeatureEnabled(featureName string) bool {
 	return FeatureState(featureName) == featureStateEnabled
 }
@@ -145,8 +153,8 @@ func clearFeatureCacheForTests() {
 }
 
 // enforceFeature returns false and writes the HTTP 423 Locked response when the
-// feature is disabled/paused/missing. Returns true when the feature is enabled
-// (caller may proceed). Designed to sit at the top of gated handlers:
+// feature was explicitly disabled/paused by an operator. Returns true when the
+// feature is enabled — including the default-on unset state (caller may proceed). Designed to sit at the top of gated handlers:
 //
 //	if !enforceFeature(c, FeatureSwapTrading) { return }
 func enforceFeature(c *gin.Context, featureName string) bool {

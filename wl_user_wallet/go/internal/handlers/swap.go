@@ -33,6 +33,12 @@ func (s *Svc) SwapQuote(c *gin.Context) {
 		return
 	}
 
+	// Trading control-plane: spot/liquidity vertical halt + explicit pair stop
+	// (SuperAdmin global + this WL client's tenant scope).
+	if s.tradingStopped(c, "spot", "", "") || s.tradingStopped(c, "liquidity", "", "") || s.tradingPairStopped(c, from, to) {
+		return
+	}
+
 	// If both legs are EVM contract addresses on this chain, route on-chain via
 	// the V2 router. Otherwise fall back to a CoinGecko cross-rate quote.
 	if common.IsHexAddress(from) && common.IsHexAddress(to) {
@@ -157,6 +163,10 @@ func (s *Svc) SwapExecute(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Trading control-plane: spot/liquidity vertical halt + explicit pair stop.
+	if s.tradingStopped(c, "spot", "", "") || s.tradingStopped(c, "liquidity", "", "") || s.tradingPairStopped(c, req.From, req.To) {
 		return
 	}
 	routerAddr := onchain.RouterForChain(req.ChainID)

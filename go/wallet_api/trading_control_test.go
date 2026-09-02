@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"math"
 	"testing"
 )
@@ -98,5 +99,30 @@ func TestNormCDF(t *testing.T) {
 	}
 	if got := normCDF(1.96); math.Abs(got-0.975) > 1e-3 {
 		t.Fatalf("N(1.96) should ~= 0.975, got %v", got)
+	}
+}
+
+// Default-enabled feature flags (owner policy: seamless continuous trading).
+// With no Redis reachable (store == nil in unit tests) every builtin feature
+// resolves to "enabled"; only an explicit operator stop/pause gates it.
+func TestFeatureFlagsDefaultEnabled(t *testing.T) {
+	if got := FeatureState("swap_trading"); got != featureStateEnabled {
+		t.Fatalf("unset feature must default to enabled, got %s", got)
+	}
+	if !IsFeatureEnabled("swap_trading") {
+		t.Fatal("unset feature must be enabled by default")
+	}
+	if got := FeatureState(""); got != featureStateDisabled {
+		t.Fatalf("empty feature name must stay disabled, got %s", got)
+	}
+}
+
+// Pair-stop blacklist semantics: unmanaged pairs (or no Redis) never block.
+func TestTradingPairStoppedBlacklist(t *testing.T) {
+	if tradingPairStopped(context.Background(), "BTC", "USDT") {
+		t.Fatal("unmanaged pair must trade freely")
+	}
+	if tradingPairStopped(context.Background(), "", "USDT") {
+		t.Fatal("empty leg must never block")
 	}
 }

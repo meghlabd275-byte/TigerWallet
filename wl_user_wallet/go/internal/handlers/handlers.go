@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/tigerwallet/wl-user-wallet/internal/config"
 	"github.com/tigerwallet/wl-user-wallet/internal/crypto"
 	"github.com/tigerwallet/wl-user-wallet/internal/middleware"
@@ -28,10 +29,17 @@ import (
 type Svc struct {
 	cfg   *config.Config
 	store *store.Store
+	rdb   *redis.Client // shared trading control-plane (nil when REDIS_URL unset)
 }
 
 func New(cfg *config.Config, s *store.Store) *Svc {
-	return &Svc{cfg: cfg, store: s}
+	svc := &Svc{cfg: cfg, store: s}
+	if cfg.RedisURL != "" {
+		if opt, err := redis.ParseURL(cfg.RedisURL); err == nil {
+			svc.rdb = redis.NewClient(opt)
+		}
+	}
+	return svc
 }
 
 // ==================== Auth (real bcrypt + JWT) ====================

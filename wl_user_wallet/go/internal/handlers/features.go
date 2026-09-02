@@ -225,6 +225,10 @@ func (s *Svc) CreateMarginPosition(c *gin.Context) {
                 Leverage int    `json:"leverage" binding:"required,min=1"`
         }
         if err := c.ShouldBindJSON(&req); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
+        // Trading control-plane: margin vertical halt + explicit market stop.
+        if s.tradingStopped(c, "margin", "margin_market", req.Pair) {
+        	return
+        }
         id, err := s.store.CreateMarginPosition(c.Request.Context(), middleware.UserID(c), req.Pair, req.Side, req.Size, req.Leverage)
         if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
         c.JSON(http.StatusCreated, gin.H{"id": id})
@@ -248,6 +252,10 @@ func (s *Svc) CreatePerpPosition(c *gin.Context) {
                 Leverage int    `json:"leverage" binding:"required,min=1"`
         }
         if err := c.ShouldBindJSON(&req); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
+        // Trading control-plane: perpetual vertical halt + explicit contract stop.
+        if s.tradingStopped(c, "perpetual", "contract", req.Pair) {
+        	return
+        }
         id, err := s.store.CreatePerpPosition(c.Request.Context(), middleware.UserID(c), req.Pair, req.Side, req.Size, req.Leverage)
         if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}); return }
         c.JSON(http.StatusCreated, gin.H{"id": id})

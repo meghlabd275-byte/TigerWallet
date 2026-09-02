@@ -1131,7 +1131,6 @@
   non-EVM matrix); 4 webs tsc clean. Rebased onto concurrent Session 31
   (finance plane) before push.
 
-
 ## Session 32 (2026-09-01, commit 4f98ea3f, pushed) - Flutter transaction-history + receipt gap CLOSED
 - Audit re-run on the 6 items from the pasted Session-29 audit: items 1-3
   (Flutter /address-book -> /address-book/contacts 404, Flutter
@@ -1147,6 +1146,34 @@
   finance + transactions.
 - Remote had a concurrent session push (trading control-plane, de52eb0d);
   rebased onto it before pushing. GITHUB_TOKEN in remote URL was refreshed.
+
+## Session 33 (2026-09-01) — seamless continuous trading + WL tenant enforcement (pushed to main)
+- SEAMLESS CONTINUOUS TRADING (owner policy "each user can seamlessly perform
+  all swap and all trading continuously, never depends on other services"):
+  go/wallet_api/feature_flags.go is now DEFAULT-ENABLED (blacklist semantics) —
+  missing/unknown/unset flag = enabled, Redis outage fails OPEN, only an
+  explicit operator "disabled"/"paused" gates a feature. Previously fail-closed
+  meant a fresh deployment 423-blocked swap/send/staking/nft until SuperAdmin
+  manually enabled each flag (bootstrap step = external dependency; now gone).
+  New tests: TestFeatureFlagsDefaultEnabled (unset->enabled, empty->disabled),
+  TestTradingPairStoppedBlacklist.
+- /swap/quote + /swap/execute now gated on the trading control-plane: spot
+  vertical halt + explicit pair stop (new tradingPairStopped helper checks both
+  symbol orderings). Blacklist semantics — unmanaged pairs trade freely.
+- WL TENANT ENFORCEMENT CLOSED: wl_user_wallet previously never read the
+  "trading:control:<tenant>:*" keys white_label_admin published (WL stop/halt
+  did not gate WL users). Added cfg.RedisURL (REDIS_URL env) + go-redis v9.3.1
+  (same pin as white_label_admin, no toolchain bump) + Svc.rdb +
+  internal/handlers/trading_guard.go (tradingStopped checks BOTH
+  trading:control:global:* (SuperAdmin) AND trading:control:<WLClientID>:*
+  (tenant); fail-open on Redis outage, 403 on explicit stop). Wired into
+  SwapQuote/SwapExecute (spot+liquidity verticals + pair), CreateMarginPosition
+  (margin_market), CreatePerpPosition (contract). Position CLOSES never gated —
+  a halt must never trap user funds.
+- VERIFIED: wallet_api full go test PASS (3.06s); wl_user_wallet build+vet+test
+  PASS; master_wallet/backend, super_admin/go, white_label_admin/go, admin/go
+  regression builds PASS. Toolchain: Go 1.22.12 reinstalled at /tmp/go122
+  (sandbox reset had wiped it).
 
 ## STANDING OWNER ORDER (2026-09-01) - ALWAYS PUSH TO MAIN
 - The owner has ordered: every change must ALWAYS be committed and pushed

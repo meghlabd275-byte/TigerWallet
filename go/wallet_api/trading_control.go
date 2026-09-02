@@ -293,6 +293,18 @@ func auditTradingControl(c *gin.Context, action, kind, entity, detail string) {
 
 // ---- Status machine ----
 
+// tradingPairStopped reports whether a managed trading pair was explicitly
+// stopped/removed by an operator, checking both symbol orderings. Blacklist
+// semantics: unmanaged pairs trade freely.
+func tradingPairStopped(ctx context.Context, a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	A, B := strings.ToUpper(a), strings.ToUpper(b)
+	return tradingEntityStoppedRedis(ctx, "pair", A+"/"+B) ||
+		tradingEntityStoppedRedis(ctx, "pair", B+"/"+A)
+}
+
 func validTradingStatus(s string) bool {
 	switch s {
 	case "active", "stopped", "removed", "suspended":

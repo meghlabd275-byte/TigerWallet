@@ -91,6 +91,14 @@ func handleSwapQuote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from, to and amount are required"})
 		return
 	}
+	// Trading control-plane: spot vertical halt + explicit pair stop.
+	if !tradingGuard(c, "spot", "", "") {
+		return
+	}
+	if tradingPairStopped(c.Request.Context(), fromToken, toToken) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "trading pair is stopped by the platform operator"})
+		return
+	}
 	fromID := coinGeckoIDForSymbol(fromToken)
 	toID := coinGeckoIDForSymbol(toToken)
 
@@ -176,6 +184,14 @@ func handleSwapExecute(c *gin.Context) {
 	toToken := firstNonEmpty(req.ToToken, req.To)
 	if req.From == "" || req.Amount == "" || req.ChainID == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "from, amount and chain_id are required"})
+		return
+	}
+	// Trading control-plane: spot vertical halt + explicit pair stop.
+	if !tradingGuard(c, "spot", "", "") {
+		return
+	}
+	if tradingPairStopped(c.Request.Context(), req.FromToken, toToken) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "trading pair is stopped by the platform operator"})
 		return
 	}
 	// If the client supplied the router + calldata, return the action verbatim.
