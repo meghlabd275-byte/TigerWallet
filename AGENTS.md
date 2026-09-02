@@ -1131,6 +1131,23 @@
   non-EVM matrix); 4 webs tsc clean. Rebased onto concurrent Session 31
   (finance plane) before push.
 
+
+## Session 32 (2026-09-01, commit 4f98ea3f, pushed) - Flutter transaction-history + receipt gap CLOSED
+- Audit re-run on the 6 items from the pasted Session-29 audit: items 1-3
+  (Flutter /address-book -> /address-book/contacts 404, Flutter
+  import-encrypted-seed, desktop tx receipt) were ALREADY fixed in tree;
+  verified and left alone. Items 5-6 are by-design/backend-config.
+- REAL remaining gap found + fixed: Flutter had getTransactions +
+  getTransactionReceipt service methods but NO UI consumed them (no tx list
+  at all). NEW lib/ui/transactions_screen.dart: wallet picker, real
+  GET /transactions?address=&chain_id= list, tap-through live receipt dialog
+  (GET /transactions/:txHash?chain_id=N) with copy-hash, RefreshIndicator,
+  fail-closed errors. Wired as FeaturesScreen hub feature #23.
+- Flutter surfaces now: onboarding + dashboard + 23-feature hub incl.
+  finance + transactions.
+- Remote had a concurrent session push (trading control-plane, de52eb0d);
+  rebased onto it before pushing. GITHUB_TOKEN in remote URL was refreshed.
+
 ## STANDING OWNER ORDER (2026-09-01) - ALWAYS PUSH TO MAIN
 - The owner has ordered: every change must ALWAYS be committed and pushed
   directly to the GitHub repo main branch (origin/main). Do not ask, do not
