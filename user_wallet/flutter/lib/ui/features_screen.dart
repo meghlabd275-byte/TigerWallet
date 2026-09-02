@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../services/user_wallet.dart';
 import 'finance_screen.dart';
+import 'transactions_screen.dart';
 
 class FeaturesScreen extends StatelessWidget {
   final UserWalletService api;
@@ -18,6 +19,7 @@ class FeaturesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final features = <_Feature>[
       _Feature('Send / Receive', Icons.send, (_) => SendScreen(api: api)),
+      _Feature('Transactions', Icons.receipt_long, (_) => const TransactionsScreen()),
       _Feature('Swap', Icons.swap_horiz, (_) => SwapScreen(api: api)),
       _Feature('Staking', Icons.savings, (_) => StakingScreen(api: api)),
       _Feature('Bridge', Icons.account_tree, (_) => BridgeScreen(api: api)),
