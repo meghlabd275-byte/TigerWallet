@@ -1182,3 +1182,26 @@
 - Remote: https://github.com/meghlabd275-byte/TigerWallet.git - if the stored
   token in the remote URL prompts for a password, refresh it with
   git remote set-url origin https://${GITHUB_TOKEN}@github.com/meghlabd275-byte/TigerWallet.git
+
+## Session 34 (2026-09-03) — MasterWallet app-family audit (read-only, on request)
+- Backend master_wallet/backend (:8450) = 129 literal routes (94 pre-existing +
+  34 trading control-plane added in Session 32 + /readyz). Route-coverage audit
+  (literal-segment matcher, tolerates per-language URL building):
+  web 118/129, android 94/129, ios 94/129, desktop-gui 94/129, extension 94/129,
+  flutter 94/129, rust 93/129.
+- VERIFIED GAPS: (1) trading control-plane UI (34 routes: contracts/pools/pairs/
+  margin-markets/options-series/copy-traders CRUD+stop/resume, halt/resume
+  vertical, overview, audit) exists ONLY on web, and even web lacks the
+  copy-traders + options-series tabs (10 routes) — android/ios/desktop/
+  extension/flutter/rust have NO trading management surface at all;
+  (2) rust SDK missing kill-switch/status; (3) /readyz consumed by no client
+  (ops probe, k8s-only by design).
+- Separation rule re-verified: zero :8443/:9093/:8082 references in any MW
+  client source (only hits were a keccak constant + a bip39 wordlist word).
+- Fetcher inventory confirmed real: fetchers.go (EVM RPC balance/nonce/gas+
+  EIP-1559/chainID, ERC-20 balance+metadata eth_call, CoinGecko price,
+  Etherscan V2 + Blockscout keyless tx history), price_fetcher.go (L1+L2
+  Redis singleflight cache), utxo_chains.go (BTC+LTC esplora broadcast),
+  solana/cosmos broadcasters, cluster.go (SKIP LOCKED auto-sign claiming +
+  WS Redis fanout + /readyz), auto_signer daemon, kill_switch gate,
+  license_gate two-party co-sign.
