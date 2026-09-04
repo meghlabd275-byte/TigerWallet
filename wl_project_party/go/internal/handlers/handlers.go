@@ -112,7 +112,7 @@ func (h *Handlers) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "token issue failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": tok, "user_id": u.ID, "email": u.Email, "wl_client_id": h.cfg.WLClientID})
+	c.JSON(http.StatusOK, gin.H{"token": tok, "user_id": u.ID, "email": u.Email, "wl_client_id": h.cfg.WLClientID, "role": u.Role, "scopes": scopes})
 }
 
 // ==================== Tokens ====================
@@ -1222,6 +1222,28 @@ func (h *Handlers) UpdateMMOrderStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": id, "status": req.Status})
 }
 
+// ListFeePayments lists fee payments (admin), filterable by status —
+// the queue admins work through for on-chain verification.
+func (h *Handlers) ListFeePayments(c *gin.Context) {
+	status := c.Query("status")
+	ps, err := h.store.ListFeePayments(c.Request.Context(), status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(ps))
+	for i := range ps {
+		p := &ps[i]
+		out = append(out, gin.H{
+			"id": p.ID, "token_id": p.TokenID, "user_id": p.UserID,
+			"amount": p.Amount, "currency": p.Currency,
+			"payment_method": p.PaymentMethod, "tx_hash": p.TxHash,
+			"status": p.Status, "created_at": p.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"fee_payments": out, "total": len(out)})
+}
+
 // VerifyFeePayment performs REAL on-chain receipt verification of a fee
 // payment's tx_hash (admin gate) and only then marks it completed.
 // Fail-closed: no RPC configured / no receipt / failed tx => not completed.
@@ -1816,6 +1838,7 @@ func tokenToJSON(t *store.Token) gin.H {
 		"contract_address": t.ContractAddress, "chain_id": t.ChainID,
 		"decimals": t.Decimals, "logo_url": t.LogoURL, "description": t.Description,
 		"website": t.Website, "status": t.Status, "listing_type": t.ListingType,
+		"contract_verified": t.ContractVerified, "is_featured": t.IsFeatured,
 		"created_at": t.CreatedAt,
 	}
 }

@@ -26,8 +26,8 @@ use tigerswap_bot_core::cex::{CexClient, CexCredentials, CexExchange, CexOrderRe
 use tigerswap_bot_core::dex::{self, DexSwapRequest};
 use tigerswap_bot_core::store::{PgPool, TradeRecord};
 use tigerswap_bot_core::strategies::{
-    ArbitrageRunner, DcaRunner, GridRunner, MarketMakerRunner, MeanReversionRunner,
-    MomentumRunner, ScalpingRunner, SniperRunner,
+    ArbitrageRunner, DcaRunner, GridRunner, LiquidityProviderRunner, MarketMakerRunner,
+    MeanReversionRunner, MomentumRunner, PerpHedgeRunner, ScalpingRunner, SniperRunner,
 };
 
 const PORT: u16 = 8472;
@@ -50,6 +50,8 @@ enum BotKind {
     Momentum,
     MeanReversion,
     Scalping,
+    PerpHedge,
+    LiquidityProvider,
 }
 
 #[derive(Default)]
@@ -247,6 +249,24 @@ struct StartScalping {
 }
 
 #[derive(Debug, Deserialize)]
+struct StartPerpHedge {
+    #[serde(flatten)]
+    base: StartCexBase,
+    spot_notional_usd: Option<f64>,
+    hedge_ratio: Option<f64>,
+    rebalance_threshold_pct: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartLiquidityProvider {
+    bot_id: String,
+    liq_req: crate::dex::DexAddLiquidityRequest,
+    add_interval_hours: Option<i64>,
+    max_adds: Option<usize>,
+    poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum StartReq {
     MarketMaker(StartMarketMaker),
@@ -257,6 +277,10 @@ enum StartReq {
     Momentum(StartMomentum),
     MeanReversion(StartMeanReversion),
     Scalping(StartScalping),
+    #[serde(rename = "perp_hedge")]
+    PerpHedge(StartPerpHedge),
+    #[serde(rename = "liquidity_provider")]
+    LiquidityProvider(StartLiquidityProvider),
 }
 
 #[derive(Debug, Deserialize)]
@@ -417,6 +441,36 @@ async fn dispatch_start(
             let p = Arc::clone(&pool);
             let task = tokio::spawn(async move { runner.run(run_rx, p).await });
             (sc.base.bot_id, BotKind::Scalping, task, run_tx)
+        }
+        StartReq::PerpHedge(h) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = PerpHedgeRunner {
+                bot_id: h.base.bot_id.clone(),
+                exchange: h.base.exchange,
+                creds: h.base.creds,
+                base_url: h.base.base_url,
+                symbol: h.base.symbol,
+                spot_notional_usd: h.spot_notional_usd.unwrap_or(1000.0),
+                hedge_ratio: h.hedge_ratio.unwrap_or(1.0),
+                rebalance_threshold_pct: h.rebalance_threshold_pct.unwrap_or(0.05),
+                poll_interval_ms: h.base.poll_interval_ms.unwrap_or(10_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (h.base.bot_id, BotKind::PerpHedge, task, run_tx)
+        }
+        StartReq::LiquidityProvider(l) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = LiquidityProviderRunner {
+                bot_id: l.bot_id.clone(),
+                req: l.liq_req,
+                add_interval_hours: l.add_interval_hours.unwrap_or(24),
+                max_adds: l.max_adds.unwrap_or(30),
+                poll_interval_ms: l.poll_interval_ms.unwrap_or(60_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (l.bot_id, BotKind::LiquidityProvider, task, run_tx)
         }
     };
 

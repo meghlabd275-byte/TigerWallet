@@ -748,8 +748,8 @@ func (s *service) dispatchBotCore(c *gin.Context, botID, action string) {
 // (bot_core serde tags).
 //
 // Bot types without a real execution runner in bot_core (ai_trading/signal/
-// cross_chain/perp_hedge/flash_loan/sandwich/front_run/mev/liquidity_provider/
-// custom) return the errSignalOnlyStrategy sentinel so startBot fails closed
+// cross_chain/flash_loan/sandwich/front_run/mev/custom) return the
+// errSignalOnlyStrategy sentinel so startBot fails closed
 // with a 400 — the DB status is never flipped to "running" for a bot that
 // cannot actually execute. No fake execution, ever.
 func (s *service) buildStartPayload(ctx context.Context, botID, userID string) ([]byte, error) {
@@ -906,11 +906,77 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 		}
 		return json.Marshal(payload)
 
+	case "perp_hedge":
+		cexCreds, err := s.fetchCEXCreds(ctx, userID, exchange)
+		if err != nil {
+			return nil, fmt.Errorf("cex creds: %w", err)
+		}
+		payload := map[string]any{
+			"kind":                    "perp_hedge",
+			"bot_id":                  botID,
+			"exchange":                cexCreds.exchange,
+			"api_key":                 cexCreds.apiKey,
+			"secret_key":              cexCreds.apiSecret,
+			"symbol":                  pair,
+			"spot_notional_usd":       cfgFloat(cfg, "spot_notional_usd", 1000),
+			"hedge_ratio":             cfgFloat(cfg, "hedge_ratio", 1.0),
+			"rebalance_threshold_pct": cfgFloat(cfg, "rebalance_threshold_pct", 0.05),
+		}
+		if baseURL, ok := cfg["base_url"].(string); ok && baseURL != "" {
+			payload["base_url"] = baseURL
+		}
+		if pp, ok := cfg["passphrase"].(string); ok && pp != "" {
+			payload["passphrase"] = pp
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "liquidity_provider":
+		// Reuses the per-user DEX connection (rpc_url + decrypted wallet seed);
+		// the flattened payload matches bot_core DexAddLiquidityRequest exactly.
+		dexReq, err := s.buildDexReq(ctx, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
+		}
+		tokenA := cfgString(cfg, "token_a", cfgString(cfg, "token_in", ""))
+		tokenB := cfgString(cfg, "token_b", cfgString(cfg, "token_out", ""))
+		if tokenA == "" || tokenB == "" {
+			return nil, errors.New("liquidity_provider requires token_a and token_b in config")
+		}
+		payload := map[string]any{
+			"kind":   "liquidity_provider",
+			"bot_id": botID,
+			"liq_req": map[string]any{
+				"rpc_url":      dexReq["rpc_url"],
+				"chain_id":     dexReq["chain_id"],
+				"private_key":  dexReq["private_key"],
+				"router":       cfgString(cfg, "router", ""),
+				"token_a":      tokenA,
+				"token_b":      tokenB,
+				"amount_a":     cfgFloat(cfg, "amount_a", cfgFloat(cfg, "amount_in", 0)),
+				"amount_b":     cfgFloat(cfg, "amount_b", 0),
+				"amount_a_min": cfgFloat(cfg, "amount_a_min", 0),
+				"amount_b_min": cfgFloat(cfg, "amount_b_min", 0),
+			},
+		}
+		if ai, ok := cfg["add_interval_hours"].(float64); ok {
+			payload["add_interval_hours"] = int64(ai)
+		}
+		if ma, ok := cfg["max_adds"].(float64); ok {
+			payload["max_adds"] = int64(ma)
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
 	default:
 		// Bot types without a real execution runner in bot_core
-		// (ai_trading/signal/cross_chain/perp_hedge/flash_loan/sandwich/
-		// front_run/mev/liquidity_provider/custom). Return a sentinel so
-		// the caller fails closed (start rejected, never faked).
+		// (ai_trading/signal/cross_chain/flash_loan/sandwich/front_run/mev/
+		// custom). Return a sentinel so the caller fails closed (start
+		// rejected, never faked).
 		return nil, errSignalOnlyStrategy
 	}
 }
@@ -918,7 +984,7 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 // executableBotTypes lists the bot types with a real execution runner in
 // bot_core (Rust). All other types fail closed at start time.
 func executableBotTypes() []string {
-	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping"}
+	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping", "perp_hedge", "liquidity_provider"}
 }
 
 // errSignalOnlyStrategy is a sentinel indicating the bot type is a

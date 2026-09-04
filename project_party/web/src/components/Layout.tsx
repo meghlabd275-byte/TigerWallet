@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
-  const { email, logout } = useAuth();
+  const { email, isAdmin, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -18,6 +18,7 @@ export default function Layout() {
     { path: '/launchpad', label: 'Launchpad' },
     { path: '/market-making', label: 'Market Making' },
     { path: '/fees', label: 'Fees' },
+    ...(isAdmin ? [{ path: '/admin', label: 'Admin' }] : []),
     { path: '/favorites', label: 'Favorites' },
     { path: '/settings', label: 'Settings' }
   ];

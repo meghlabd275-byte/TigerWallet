@@ -13,6 +13,7 @@ import Listings from './pages/Listings';
 import Launchpad from './pages/Launchpad';
 import MarketMaking from './pages/MarketMaking';
 import Fees from './pages/Fees';
+import Admin from './pages/Admin';
 import Favorites from './pages/Favorites';
 import Settings from './pages/Settings';
 
@@ -39,6 +40,7 @@ function App() {
               <Route path="launchpad" element={<Launchpad />} />
               <Route path="market-making" element={<MarketMaking />} />
               <Route path="fees" element={<Fees />} />
+              <Route path="admin" element={<Admin />} />
               <Route path="favorites" element={<Favorites />} />
               <Route path="settings" element={<Settings />} />
             </Route>

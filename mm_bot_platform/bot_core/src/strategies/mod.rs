@@ -619,7 +619,7 @@ impl TradingStrategy for CustomStrategy {
 // ============================================================================
 
 use crate::cex::{CexClient, CexCredentials, CexExchange, CexOrderRequest};
-use crate::dex::DexSwapRequest;
+use crate::dex::{execute_add_liquidity, DexAddLiquidityRequest, DexSwapRequest};
 use crate::store::{ExecutionRecord, PgPool};
 use std::sync::Arc;
 use chrono::Utc;
@@ -1335,5 +1335,158 @@ impl ScalpingRunner {
             run_flag, store,
         )
         .await;
+    }
+}
+
+/// Perpetual hedge: maintains a short (or long) hedge on a perp symbol whose
+/// notional tracks `hedge_ratio * spot_notional_usd`. Every tick fetches the
+/// real mid price and rebalances with a real market order whenever the hedge
+/// drifts beyond `rebalance_threshold_pct` of target. The tracked position is
+/// updated ONLY from successful exchange order responses — never assumed.
+pub struct PerpHedgeRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    /// Perp symbol to hedge with (e.g. "BTCUSDT" on a perp market).
+    pub symbol: String,
+    /// Notional USD of the spot exposure being hedged.
+    pub spot_notional_usd: f64,
+    /// Fraction of the spot exposure to hedge (1.0 = fully hedged).
+    pub hedge_ratio: f64,
+    /// Rebalance when |position - target| / target exceeds this fraction.
+    pub rebalance_threshold_pct: f64,
+    pub poll_interval_ms: u64,
+}
+
+impl PerpHedgeRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let client = CexClient::new(self.exchange, self.creds.clone(), self.base_url.clone());
+        let bot_id = self.bot_id.clone();
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(1000)));
+        // Negative = net short hedge; updated only from real order responses.
+        let mut position_qty: f64 = 0.0;
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    let outcome = self.rebalance(&client, &mut position_qty).await;
+                    record(&store, &bot_id, "perp_hedge", "rebalance", &outcome).await;
+                }
+            }
+        }
+    }
+
+    async fn rebalance(&self, client: &CexClient, position_qty: &mut f64) -> StrategyOutcome {
+        let start = std::time::Instant::now();
+        let mid = match fetch_mid_price(self.exchange, &self.symbol, client.http()).await {
+            Ok(m) => m,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("fetch_mid: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                }
+            }
+        };
+        if mid <= 0.0 {
+            return StrategyOutcome {
+                success: false,
+                detail: "fetch_mid: non-positive price".to_string(),
+                latency_us: start.elapsed().as_micros() as u64,
+            };
+        }
+        // Target is a SHORT hedge against long spot exposure.
+        let target_qty = -(self.hedge_ratio.clamp(0.0, 1.0)) * self.spot_notional_usd / mid;
+        let delta = target_qty - *position_qty;
+        let drift = if target_qty.abs() > f64::EPSILON {
+            delta.abs() / target_qty.abs()
+        } else {
+            delta.abs()
+        };
+        if drift < self.rebalance_threshold_pct.max(0.001) {
+            return StrategyOutcome {
+                success: true,
+                detail: format!(
+                    "hedge stable mid={mid} pos={position_qty} target={target_qty:.8}"
+                ),
+                latency_us: start.elapsed().as_micros() as u64,
+            };
+        }
+        let (side, qty) = if delta > 0.0 {
+            ("buy", delta)
+        } else {
+            ("sell", -delta)
+        };
+        let outcome = market_order(client, &self.symbol, side, qty).await;
+        if outcome.success {
+            *position_qty += delta;
+        }
+        outcome
+    }
+}
+
+/// Liquidity provider: adds real on-chain liquidity to a Uniswap-V2-compatible
+/// pool on a fixed cadence via `addLiquidity` (real EIP-155-signed tx, both
+/// token approvals fail-closed, receipt-confirmed). Stops adding after
+/// `max_adds` successful deposits. Never fabricates a hash.
+pub struct LiquidityProviderRunner {
+    pub bot_id: String,
+    pub req: DexAddLiquidityRequest,
+    pub add_interval_hours: i64,
+    pub max_adds: usize,
+    pub poll_interval_ms: u64,
+}
+
+impl LiquidityProviderRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let bot_id = self.bot_id.clone();
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(5000)));
+        let mut adds_done: usize = 0;
+        let mut last_add: Option<std::time::Instant> = None;
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    if adds_done >= self.max_adds {
+                        continue;
+                    }
+                    let due = match last_add {
+                        None => true,
+                        Some(t) => t.elapsed() >= Duration::from_secs((self.add_interval_hours.max(1) as u64) * 3600),
+                    };
+                    if !due {
+                        continue;
+                    }
+                    let start = std::time::Instant::now();
+                    let outcome = match execute_add_liquidity(&self.req).await {
+                        Ok(r) => {
+                            adds_done += 1;
+                            last_add = Some(std::time::Instant::now());
+                            StrategyOutcome {
+                                success: true,
+                                detail: format!(
+                                    "add_liquidity tx={} gas={} block={} adds={}/{}",
+                                    r.tx_hash, r.gas_used, r.block_number, adds_done, self.max_adds
+                                ),
+                                latency_us: start.elapsed().as_micros() as u64,
+                            }
+                        }
+                        Err(e) => StrategyOutcome {
+                            success: false,
+                            detail: format!("add_liquidity error: {e}"),
+                            latency_us: start.elapsed().as_micros() as u64,
+                        },
+                    };
+                    record(&store, &bot_id, "liquidity_provider", "add_liquidity", &outcome).await;
+                }
+            }
+        }
     }
 }

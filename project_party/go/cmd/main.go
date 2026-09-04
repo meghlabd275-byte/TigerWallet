@@ -39,6 +39,9 @@ func main() {
 	defer db.Close()
 	propagationDBPool = db
 
+	// Continuous real matching engine for market_maker_orders (background).
+	startOrderMatcher(db)
+
 	// Initialize Redis cache
 	rdb := initRedis(cfg)
 
@@ -141,6 +144,7 @@ func main() {
 		mm := api.Group("/market-making")
 		{
 			mm.GET("/orders", getMakerOrdersHandler(db))
+			mm.GET("/trades", getMakerTradesHandler(db))
 			mm.GET("/status/:token_id", getMarketMakerStatusHandler(db))
 			// Config routes: link a listed token to a bot market-maker.
 			// List is public (so bot_api can read configs); create/delete need auth.
@@ -2877,6 +2881,17 @@ CREATE TABLE IF NOT EXISTS market_maker_orders (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mm_orders_token ON market_maker_orders(token_id);
+
+CREATE TABLE IF NOT EXISTS market_maker_trades (
+      id UUID PRIMARY KEY,
+      token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
+      buy_order_id UUID NOT NULL REFERENCES market_maker_orders(id) ON DELETE CASCADE,
+      sell_order_id UUID NOT NULL REFERENCES market_maker_orders(id) ON DELETE CASCADE,
+      price TEXT,
+      quantity TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mm_trades_token ON market_maker_trades(token_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS token_prices (
 	id UUID PRIMARY KEY,

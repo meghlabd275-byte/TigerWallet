@@ -80,7 +80,7 @@ class ApiService {
   }
 
   async login(email: string, password: string) {
-    return this.request<{ token: string; user_id: string; email: string; wl_client_id: string }>('/auth/login', {
+    return this.request<{ token: string; user_id: string; email: string; wl_client_id: string; role?: string; scopes?: string[] }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
     });
@@ -171,6 +171,21 @@ class ApiService {
     return this.request(`/market-making/configs/${id}`, { method: 'DELETE' });
   }
 
+  // ==================== Market-making orders + settled trades ====================
+  async listMakerOrders(tokenId?: string) {
+    const q = tokenId ? `?token_id=${encodeURIComponent(tokenId)}` : '';
+    return this.request<{ orders: any[] }>(`/market-making/orders${q}`);
+  }
+
+  async createMakerOrder(data: { token_id: string; side: 'buy' | 'sell'; price: string; quantity: string }) {
+    return this.request<{ order: any }>('/market-making/orders', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async listMakerTrades(tokenId?: string) {
+    const q = tokenId ? `?token_id=${encodeURIComponent(tokenId)}` : '';
+    return this.request<{ trades: any[] }>(`/market-making/trades${q}`);
+  }
+
   // ==================== Fee configs ====================
   async createFeeConfig(data: {
     token_id: string; fee_type?: string; fee_percentage?: string;
@@ -196,6 +211,24 @@ class ApiService {
     return this.request<{ message: string; contract_verified: boolean; on_chain_name: string; on_chain_symbol: string; on_chain_decimals: number; on_chain_supply: string; match: boolean }>(
       `/tokens/${tokenId}/verify-contract`, { method: 'POST' }
     );
+  }
+
+  // ==================== Admin ====================
+  async approveToken(id: string) {
+    return this.request(`/tokens/${id}/approve`, { method: 'POST' });
+  }
+
+  async rejectToken(id: string, reason?: string) {
+    return this.request(`/tokens/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  async toggleFeatured(id: string) {
+    return this.request(`/tokens/${id}/featured`, { method: 'POST' });
+  }
+
+  async listFeePayments(status?: string) {
+    const q = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request<{ fee_payments: any[]; total: number }>(`/fees/payments${q}`);
   }
 
   // ==================== Favorites ====================

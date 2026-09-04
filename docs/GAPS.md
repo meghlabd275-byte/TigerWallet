@@ -359,3 +359,62 @@ All build/vet/test-verified. Session-35 audit items marked RESOLVED:
 - go build+vet: bot_api, wl_bots, canonical project_party, wl_project_party.
 - go test: wl_project_party PASS. cargo build bot_core: 0 warnings, tests PASS.
 - docker compose config --quiet PASS.
+
+
+## 13. Resolved 2026-09-04 (Session 37 — Bots execution plane round 2 + ProjectParty admin UI + order matching engine)
+
+### Bots backend (bot_core + bot_api + wl_bots)
+- RESOLVED: perp_hedge and liquidity_provider were fail-closed signal-only
+  types. bot_core gained two REAL execution runners:
+  - `PerpHedgeRunner` (CEX): maintains a hedge on a perp symbol tracking
+    hedge_ratio x spot_notional_usd; rebalances with real market orders when
+    drift exceeds threshold; position updated ONLY from real exchange order
+    responses.
+  - `LiquidityProviderRunner` (DEX): real on-chain Uniswap-V2 `addLiquidity`
+    — new `execute_add_liquidity` in dex/mod.rs (abigen addLiquidity,
+    fail-closed approvals for BOTH tokens, real EIP-155 sign + broadcast +
+    receipt wait; never fabricates a hash).
+  - bot_api + wl_bots `buildStartPayload` map both kinds; executable types
+    are now 10 (market_maker, arbitrage, sniper, grid, dca, momentum,
+    mean_reversion, scalping, perp_hedge, liquidity_provider). The remaining
+    fail-closed signal-only types: ai_trading, signal, cross_chain,
+    flash_loan, sandwich, front_run, mev, custom (8).
+- cargo build bot_core: 0 errors 0 warnings; go build+vet: bot_api, wl_bots.
+
+### ProjectParty web admin console (project_party/web)
+- RESOLVED: wl PP admin backend endpoints (approve/reject/verify-contract/
+  fees-verify, Session 36) had NO frontend. New Admin.tsx page (token review:
+  approve/reject/verify on-chain contract; fee-payment verification queue),
+  /admin route, admin-only nav item, login() now returns role/scopes and
+  AuthContext exposes isAdmin (persisted). Backend: Login returns
+  role/scopes; ListFeePayments store method + fee_payments.verified_at;
+  token queries expose contract_verified/is_featured. wl PP build+vet+test
+  PASS; tsc=0; vite build PASS.
+
+### ProjectParty canonical backend (:8106) — order matching engine
+- RESOLVED: market_maker_orders were inserted but NEVER matched (no
+  matching engine — orders stayed 'pending' forever). New
+  cmd/order_matcher.go: continuous background matcher (PP_MATCH_INTERVAL_MS,
+  default 5s) settling crossing buy/sell orders atomically per cycle in one
+  PostgreSQL transaction — FOR UPDATE row locks, SQL-numeric qty/price math
+  (never float), partial fills decrement remaining, zero-remaining orders
+  marked filled with real filled_at, expired orders cancelled, every
+  settlement recorded in the new market_maker_trades table (schema
+  auto-created). New public GET /market-making/trades (optional token_id
+  filter). Web MarketMaking page now shows Open Orders + Settled Trades
+  tables (api.ts listMakerOrders/createMakerOrder/listMakerTrades).
+- PP build+vet PASS; web tsc=0.
+
+### Remaining (documented, not blocking)
+- 8 bot types remain fail-closed signal-only (listed above) — each needs a
+  real runner (cross_chain needs bridge SDK integration; mev/sandwich/
+  front_run/flash_loan need mempool bundle infra like Flashbots; ai_trading/
+  custom need a model/script sandbox).
+- wl_project_party market-making order book delegates execution to licensed
+  bots (wl_bots) by design; the canonical PP matcher above is the internal
+  matching engine.
+- bots android/ios are orphaned SDK shells; bots desktop+extension and
+  PP android/ios/desktop/extension are UserWallet copies awaiting retarget.
+- wl PP Admin UI on the white_label_admin surface (WL clients operate tokens
+  through white_label_admin tenant scope); canonical PP has no web frontend
+  (wl web + super_admin are its UIs).

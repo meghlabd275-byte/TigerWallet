@@ -347,7 +347,7 @@ func (s *Svc) StartBot(c *gin.Context) {
 // executableBotTypes lists the bot types with a real execution runner in
 // bot_core. All other types fail closed at start time.
 func executableBotTypes() []string {
-	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping"}
+	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping", "perp_hedge", "liquidity_provider"}
 }
 
 func (s *Svc) StopBot(c *gin.Context) {
@@ -569,11 +569,75 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 		}
 		return json.Marshal(payload)
 
+	case "perp_hedge":
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		payload := map[string]any{
+			"kind":                    "perp_hedge",
+			"bot_id":                  b.ID.String(),
+			"exchange":                cexCreds.exchange,
+			"api_key":                 cexCreds.apiKey,
+			"secret_key":              cexCreds.apiSecret,
+			"symbol":                  b.Pair,
+			"spot_notional_usd":       cfgFloat(cfg, "spot_notional_usd", 1000),
+			"hedge_ratio":             cfgFloat(cfg, "hedge_ratio", 1.0),
+			"rebalance_threshold_pct": cfgFloat(cfg, "rebalance_threshold_pct", 0.05),
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if v, ok := cfg["passphrase"].(string); ok && v != "" {
+			payload["passphrase"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "liquidity_provider":
+		dexReq, err := s.buildDexReq(c, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
+		}
+		tokenA := cfgString(cfg, "token_a", cfgString(cfg, "token_in", ""))
+		tokenB := cfgString(cfg, "token_b", cfgString(cfg, "token_out", ""))
+		if tokenA == "" || tokenB == "" {
+			return nil, errors.New("liquidity_provider requires 'token_a' and 'token_b' in bot config")
+		}
+		payload := map[string]any{
+			"kind":   "liquidity_provider",
+			"bot_id": b.ID.String(),
+			"liq_req": map[string]any{
+				"rpc_url":      dexReq["rpc_url"],
+				"chain_id":     dexReq["chain_id"],
+				"private_key":  dexReq["private_key"],
+				"router":       cfgString(cfg, "router", ""),
+				"token_a":      tokenA,
+				"token_b":      tokenB,
+				"amount_a":     cfgFloat(cfg, "amount_a", cfgFloat(cfg, "amount_in", 0)),
+				"amount_b":     cfgFloat(cfg, "amount_b", 0),
+				"amount_a_min": cfgFloat(cfg, "amount_a_min", 0),
+				"amount_b_min": cfgFloat(cfg, "amount_b_min", 0),
+			},
+		}
+		if ai, ok := cfg["add_interval_hours"].(float64); ok {
+			payload["add_interval_hours"] = int64(ai)
+		}
+		if ma, ok := cfg["max_adds"].(float64); ok {
+			payload["max_adds"] = int64(ma)
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
 	default:
 		// Bot types without a real execution runner in bot_core (mev,
-		// sandwich, front_run, flash_loan, cross_chain, perp_hedge,
-		// liquidity_provider, ai_trading, signal, custom) fail closed:
-		// the start is rejected with 400, never faked as "running".
+		// sandwich, front_run, flash_loan, cross_chain, ai_trading, signal,
+		// custom) fail closed: the start is rejected with 400, never faked
+		// as "running".
 		return nil, errStopDispatch
 	}
 }

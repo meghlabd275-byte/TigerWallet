@@ -182,19 +182,21 @@ func (s *Store) UpdateUserScopes(ctx context.Context, id uuid.UUID, scopes []str
 // ==================== Tokens ====================
 
 type Token struct {
-	ID              uuid.UUID
-	OwnerID         *uuid.UUID
-	Name            string
-	Symbol          string
-	ContractAddress string
-	ChainID         int64
-	Decimals        int
-	LogoURL         string
-	Description     string
-	Website         string
-	Status          string
-	ListingType     string
-	CreatedAt       time.Time
+	ID               uuid.UUID
+	OwnerID          *uuid.UUID
+	Name             string
+	Symbol           string
+	ContractAddress  string
+	ChainID          int64
+	Decimals         int
+	LogoURL          string
+	Description      string
+	Website          string
+	Status           string
+	ListingType      string
+	ContractVerified bool
+	IsFeatured       bool
+	CreatedAt        time.Time
 }
 
 func (s *Store) CreateToken(ctx context.Context, t *Token) (*Token, error) {
@@ -211,9 +213,9 @@ func (s *Store) CreateToken(ctx context.Context, t *Token) (*Token, error) {
 	err := s.db.QueryRow(ctx,
 		`INSERT INTO tokens (name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, owner_id)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		 RETURNING id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at`,
+		 RETURNING id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, contract_verified, is_featured, created_at`,
 		t.Name, t.Symbol, t.ContractAddress, t.ChainID, t.Decimals, t.LogoURL, t.Description, t.Website, t.Status, t.ListingType, t.OwnerID).
-		Scan(&out.ID, &out.Name, &out.Symbol, &out.ContractAddress, &out.ChainID, &out.Decimals, &out.LogoURL, &out.Description, &out.Website, &out.Status, &out.ListingType, &out.CreatedAt)
+		Scan(&out.ID, &out.Name, &out.Symbol, &out.ContractAddress, &out.ChainID, &out.Decimals, &out.LogoURL, &out.Description, &out.Website, &out.Status, &out.ListingType, &out.ContractVerified, &out.IsFeatured, &out.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +223,7 @@ func (s *Store) CreateToken(ctx context.Context, t *Token) (*Token, error) {
 }
 
 func (s *Store) ListTokens(ctx context.Context, status string) ([]Token, error) {
-	q := `SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at FROM tokens`
+	q := `SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, contract_verified, is_featured, created_at FROM tokens`
 	args := []any{}
 	if status != "" {
 		q += ` WHERE status=$1`
@@ -236,7 +238,7 @@ func (s *Store) ListTokens(ctx context.Context, status string) ([]Token, error) 
 	out := []Token{}
 	for rows.Next() {
 		var t Token
-		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.ContractVerified, &t.IsFeatured, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -247,8 +249,8 @@ func (s *Store) ListTokens(ctx context.Context, status string) ([]Token, error) 
 func (s *Store) GetToken(ctx context.Context, id uuid.UUID) (*Token, error) {
 	var t Token
 	err := s.db.QueryRow(ctx,
-		`SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at FROM tokens WHERE id=$1`, id).
-		Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.CreatedAt)
+		`SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, contract_verified, is_featured, created_at FROM tokens WHERE id=$1`, id).
+		Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.ContractVerified, &t.IsFeatured, &t.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -260,9 +262,9 @@ func (s *Store) UpdateToken(ctx context.Context, id uuid.UUID, t *Token) (*Token
 	err := s.db.QueryRow(ctx,
 		`UPDATE tokens SET name=$1, symbol=$2, contract_address=$3, chain_id=$4, decimals=$5, logo_url=$6, description=$7, website=$8, listing_type=$9, updated_at=NOW()
 		 WHERE id=$10
-		 RETURNING id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at`,
+		 RETURNING id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, contract_verified, is_featured, created_at`,
 		t.Name, t.Symbol, t.ContractAddress, t.ChainID, t.Decimals, t.LogoURL, t.Description, t.Website, t.ListingType, id).
-		Scan(&out.ID, &out.Name, &out.Symbol, &out.ContractAddress, &out.ChainID, &out.Decimals, &out.LogoURL, &out.Description, &out.Website, &out.Status, &out.ListingType, &out.CreatedAt)
+		Scan(&out.ID, &out.Name, &out.Symbol, &out.ContractAddress, &out.ChainID, &out.Decimals, &out.LogoURL, &out.Description, &out.Website, &out.Status, &out.ListingType, &out.ContractVerified, &out.IsFeatured, &out.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -731,7 +733,7 @@ func (s *Store) GetTokenStatus(ctx context.Context, id uuid.UUID) (*TokenStatus,
 func (s *Store) SearchTokens(ctx context.Context, q string) ([]Token, error) {
 	pattern := "%" + q + "%"
 	rows, err := s.db.Query(ctx,
-		`SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at
+		`SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, contract_verified, is_featured, created_at
 		 FROM tokens WHERE name ILIKE $1 OR symbol ILIKE $1 OR contract_address ILIKE $1
 		 ORDER BY created_at DESC LIMIT 50`, pattern)
 	if err != nil {
@@ -741,7 +743,7 @@ func (s *Store) SearchTokens(ctx context.Context, q string) ([]Token, error) {
 	out := []Token{}
 	for rows.Next() {
 		var t Token
-		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.ContractVerified, &t.IsFeatured, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -752,7 +754,7 @@ func (s *Store) SearchTokens(ctx context.Context, q string) ([]Token, error) {
 // FeaturedTokens returns tokens where is_featured=true and status='listed'.
 func (s *Store) FeaturedTokens(ctx context.Context) ([]Token, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at
+		`SELECT id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, contract_verified, is_featured, created_at
 		 FROM tokens WHERE is_featured=true AND status='listed' ORDER BY created_at DESC LIMIT 20`)
 	if err != nil {
 		return nil, err
@@ -761,7 +763,7 @@ func (s *Store) FeaturedTokens(ctx context.Context) ([]Token, error) {
 	out := []Token{}
 	for rows.Next() {
 		var t Token
-		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.ContractVerified, &t.IsFeatured, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -773,7 +775,7 @@ func (s *Store) FeaturedTokens(ctx context.Context) ([]Token, error) {
 // falling back to created_at when no price history exists.
 func (s *Store) TrendingTokens(ctx context.Context) ([]Token, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT t.id, t.name, t.symbol, t.contract_address, t.chain_id, t.decimals, t.logo_url, t.description, t.website, t.status, t.listing_type, t.created_at
+		`SELECT t.id, t.name, t.symbol, t.contract_address, t.chain_id, t.decimals, t.logo_url, t.description, t.website, t.status, t.listing_type, t.contract_verified, t.is_featured, t.created_at
 		 FROM tokens t
 		 LEFT JOIN (SELECT DISTINCT ON (token_id) token_id, volume_24h FROM token_prices ORDER BY token_id, timestamp DESC) tp ON tp.token_id=t.id
 		 WHERE t.status='listed'
@@ -785,7 +787,7 @@ func (s *Store) TrendingTokens(ctx context.Context) ([]Token, error) {
 	out := []Token{}
 	for rows.Next() {
 		var t Token
-		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.CreatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &t.Symbol, &t.ContractAddress, &t.ChainID, &t.Decimals, &t.LogoURL, &t.Description, &t.Website, &t.Status, &t.ListingType, &t.ContractVerified, &t.IsFeatured, &t.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, t)
@@ -1536,4 +1538,29 @@ func (s *Store) DeleteMarketMakingConfig(ctx context.Context, id uuid.UUID) erro
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// ListFeePayments lists fee payments, optionally filtered by status.
+func (s *Store) ListFeePayments(ctx context.Context, status string) ([]FeePayment, error) {
+	q := `SELECT id, token_id, user_id, amount, currency, payment_method, tx_hash, status, created_at FROM fee_payments`
+	args := []any{}
+	if status != "" {
+		q += ` WHERE status=$1`
+		args = append(args, status)
+	}
+	q += ` ORDER BY created_at DESC LIMIT 500`
+	rows, err := s.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FeePayment
+	for rows.Next() {
+		var p FeePayment
+		if err := rows.Scan(&p.ID, &p.TokenID, &p.UserID, &p.Amount, &p.Currency, &p.PaymentMethod, &p.TxHash, &p.Status, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
 }

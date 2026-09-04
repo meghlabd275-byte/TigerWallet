@@ -1251,3 +1251,41 @@
   extension are UserWallet copies needing retarget; PP web has no admin UI
   (approve/reject/verify-contract/fees-verify); PP android/ios/desktop/
   extension same orphaned/copy pattern; market_maker_orders never auto-match.
+
+## Session 37 (2026-09-04) — Bots execution plane round 2 + PP admin UI + PP order matcher (see docs/GAPS.md §13)
+- BOT_CORE EXECUTION RUNNERS 8→10: PerpHedgeRunner (CEX: target hedge notional
+  = hedge_ratio x spot_notional_usd, real market-order rebalances on drift,
+  position updated only from real exchange order responses) +
+  LiquidityProviderRunner (DEX: REAL on-chain Uniswap-V2 addLiquidity — new
+  execute_add_liquidity in dex/mod.rs with abigen addLiquidity, fail-closed
+  approvals for BOTH tokens, real EIP-155 sign+broadcast+receipt; never
+  fabricates a hash). bot_core cargo build 0 errors 0 warnings.
+- BOT_API + WL_BOTS buildStartPayload map perp_hedge (CEX creds) +
+  liquidity_provider (liq_req nested DexAddLiquidityRequest, reuses per-user
+  DEX connection); executable types now 10. Remaining fail-closed
+  signal-only: ai_trading/signal/cross_chain/flash_loan/sandwich/front_run/
+  mev/custom (8). go build+vet PASS both.
+- PP WEB ADMIN CONSOLE: new Admin.tsx (token approve/reject/verify-contract
+  + fee-payment verification queue), /admin route + admin-only nav;
+  login() returns role/scopes; AuthContext exposes isAdmin (persisted
+  projectparty-admin). Backend: Login returns role/scopes, ListFeePayments +
+  fee_payments.verified_at, token queries expose contract_verified/
+  is_featured. tsc=0, vite build OK, wl PP build+vet+test PASS.
+- CANONICAL PP ORDER MATCHER (the "market_maker_orders never auto-match"
+  gap): new cmd/order_matcher.go — continuous background matching engine
+  (PP_MATCH_INTERVAL_MS, default 5s) settling crossing buy/sell orders
+  atomically per cycle in ONE PostgreSQL tx: FOR UPDATE locks, SQL-numeric
+  qty/price (never float), partial fills decrement remaining, zero-remaining
+  marked filled (real filled_at), expiry cancels, settlements recorded in
+  new market_maker_trades table (schema auto-created). New public
+  GET /market-making/trades. PP web MarketMaking page now shows Open Orders
+  + Settled Trades (api.ts listMakerOrders/createMakerOrder/listMakerTrades).
+  PP build+vet PASS; web tsc=0.
+- SANDBOX NOTE: file_editor str_replace payloads get mangled on large
+  multi-block replacements — always re-view the file after editing; the
+  final on-disk state was verified by build/vet/tsc for every file.
+- STILL OPEN (bots/PP): 8 fail-closed signal-only bot types (need bridge
+  SDK / Flashbots-style bundle infra / model sandbox — real runners only);
+  bots android/ios orphaned SDK shells; bots desktop+extension + PP
+  android/ios/desktop/extension are UserWallet copies awaiting retarget;
+  wl PP market-making delegates execution to licensed wl_bots by design.

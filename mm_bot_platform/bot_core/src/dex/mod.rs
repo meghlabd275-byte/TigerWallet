@@ -23,6 +23,7 @@ abigen!(
     r#"[
         function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] path, address to, uint deadline) external returns (uint[] amounts)
         function getAmountsOut(uint amountIn, address[] path) external view returns (uint[] amounts)
+        function addLiquidity(address tokenA, address tokenB, uint amountADesired, uint amountBDesired, uint amountAMin, uint amountBMin, address to, uint deadline) external returns (uint amountA, uint amountB, uint liquidity)
     ]"#,
 );
 
@@ -261,6 +262,189 @@ pub async fn get_amounts_out(
     let s = out.to_string();
     let v: f64 = s.parse().unwrap_or(0.0);
     Ok(v / 1e18)
+}
+
+/// Configuration for a real on-chain `addLiquidity` call.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DexAddLiquidityRequest {
+    /// Ethereum/BSC/Polygon/Arbitrum RPC URL.
+    pub rpc_url: String,
+    /// Chain id used for EIP-155 signing.
+    pub chain_id: u64,
+    /// Hex-encoded private key (already decrypted by bot_api). NEVER logged.
+    #[serde(skip_serializing)]
+    pub private_key: String,
+    /// Uniswap-V2-compatible router address (checksummed).
+    pub router: String,
+    /// First pool token.
+    pub token_a: String,
+    /// Second pool token.
+    pub token_b: String,
+    /// Human-readable desired amount of token_a.
+    pub amount_a: f64,
+    /// Human-readable desired amount of token_b.
+    pub amount_b: f64,
+    /// Minimum amounts accepted (slippage protection), human-readable.
+    pub amount_a_min: f64,
+    pub amount_b_min: f64,
+    /// Optional decimals (auto-detected via `decimals()` if absent).
+    pub token_a_decimals: Option<u8>,
+    pub token_b_decimals: Option<u8>,
+}
+
+/// Result of a real on-chain addLiquidity transaction.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DexAddLiquidityResult {
+    /// Real transaction hash from `eth_sendRawTransaction`.
+    pub tx_hash: String,
+    /// Real gas used by the mined transaction.
+    pub gas_used: u64,
+    /// Block number in which the tx was included.
+    pub block_number: u64,
+    /// True only when the receipt status is `1` (success).
+    pub success: bool,
+}
+
+/// Execute a real Uniswap V2 `addLiquidity` call: approves BOTH tokens to the
+/// router (fail-closed pre-check), signs (EIP-155) and broadcasts the tx and
+/// waits for the receipt. Never fabricates a hash.
+pub async fn execute_add_liquidity(
+    req: &DexAddLiquidityRequest,
+) -> Result<DexAddLiquidityResult, DexError> {
+    let provider = Arc::new(
+        Provider::<Http>::try_from(req.rpc_url.as_str())
+            .map_err(DexError::provider)?
+            .interval(Duration::from_millis(200)),
+    );
+
+    let wallet = req
+        .private_key
+        .parse::<LocalWallet>()
+        .map_err(DexError::signer)?
+        .with_chain_id(req.chain_id);
+
+    let client = SignerMiddleware::new(provider, wallet);
+    let client = Arc::new(client);
+
+    let router_addr: ethers::core::types::Address = req
+        .router
+        .parse()
+        .map_err(|e| DexError::config(format!("bad router address: {e}")))?;
+    let token_a: ethers::core::types::Address = req
+        .token_a
+        .parse()
+        .map_err(|e| DexError::config(format!("bad token_a address: {e}")))?;
+    let token_b: ethers::core::types::Address = req
+        .token_b
+        .parse()
+        .map_err(|e| DexError::config(format!("bad token_b address: {e}")))?;
+
+    let a_decimals = match req.token_a_decimals {
+        Some(d) => d,
+        None => fetch_decimals(client.clone(), token_a).await?,
+    };
+    let b_decimals = match req.token_b_decimals {
+        Some(d) => d,
+        None => fetch_decimals(client.clone(), token_b).await?,
+    };
+
+    let amount_a = to_base_units(req.amount_a, a_decimals);
+    let amount_b = to_base_units(req.amount_b, b_decimals);
+    let amount_a_min = to_base_units(req.amount_a_min, a_decimals);
+    let amount_b_min = to_base_units(req.amount_b_min, b_decimals);
+
+    let from = client.signer().address();
+    let deadline = unix_now() + 600; // 10 min
+    let router = IUniswapV2Router::new(router_addr, client.clone());
+
+    // Fail-closed pre-checks: router must be approved to spend BOTH tokens.
+    ensure_allowance(client.clone(), token_a, from, router_addr, amount_a).await?;
+    ensure_allowance(client.clone(), token_b, from, router_addr, amount_b).await?;
+
+    let call = router.add_liquidity(
+        token_a,
+        token_b,
+        amount_a,
+        amount_b,
+        amount_a_min,
+        amount_b_min,
+        from,
+        deadline,
+    );
+    let calibrated = call.calldata().ok_or_else(|| DexError::abi("no calldata"))?;
+
+    let nonce = client
+        .get_transaction_count(from, Some(BlockId::Number(BlockNumber::Pending)))
+        .await
+        .map_err(DexError::provider)?;
+
+    let chain = Chain::try_from(req.chain_id).ok();
+    let gas_price = client
+        .get_gas_price()
+        .await
+        .map_err(DexError::provider)?;
+    let estimate = client
+        .estimate_gas(
+            &TypedTransaction::Legacy(
+                TransactionRequest::new()
+                    .from(from)
+                    .to(router_addr)
+                    .data(calibrated.clone())
+                    .value(U256::zero()),
+            ),
+            None,
+        )
+        .await
+        .map_err(DexError::provider)?;
+    let estimate = estimate.max(U256::from(120_000u64));
+
+    let mut tx = TransactionRequest::new()
+        .from(from)
+        .to(router_addr)
+        .nonce(nonce)
+        .gas_price(gas_price)
+        .gas(estimate)
+        .data(calibrated);
+    if let Some(c) = chain {
+        tx = tx.chain_id(c);
+    } else {
+        tx = tx.chain_id(req.chain_id);
+    }
+    let typed = TypedTransaction::Legacy(tx);
+
+    // Real secp256k1 ECDSA signature with EIP-155.
+    let signature = client
+        .signer()
+        .sign_transaction(&typed)
+        .await
+        .map_err(DexError::signer)?;
+    let raw = typed.rlp_signed(&signature);
+
+    // Real broadcast. No fabricated hash.
+    let pending = client
+        .provider()
+        .send_raw_transaction(raw)
+        .await
+        .map_err(DexError::provider)?;
+    let tx_hash = pending.tx_hash();
+
+    let receipt = tokio::time::timeout(Duration::from_secs(180), pending)
+        .await
+        .map_err(|_| DexError::timeout(tx_hash))?
+        .map_err(DexError::provider)?
+        .ok_or_else(|| DexError::timeout(tx_hash))?;
+
+    let success = receipt.status == Some(1.into());
+    if !success {
+        return Err(DexError::reverted(tx_hash));
+    }
+
+    Ok(DexAddLiquidityResult {
+        tx_hash: format!("{tx_hash:#x}"),
+        gas_used: receipt.gas_used.map(|g| g.as_u64()).unwrap_or(0),
+        block_number: receipt.block_number.map(|b| b.as_u64()).unwrap_or(0),
+        success,
+    })
 }
 
 async fn fetch_decimals(

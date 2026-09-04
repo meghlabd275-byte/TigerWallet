@@ -225,6 +225,7 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 			// Fee verification: real on-chain receipt check before a pending
 			// fee payment counts as paid.
 			admin.POST("/fees/verify/:id", svc.VerifyFeePayment)
+			admin.GET("/fees/payments", svc.ListFeePayments)
 			// Scoped-admin role assignment — WL client owner only (wl_client
 			// scope). RequireRole passes wl_client (full tenancy control); the
 			// handler re-checks HasScope("wl_client") so a listing_admin cannot

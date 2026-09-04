@@ -21,14 +21,23 @@ export default function MarketMaking() {
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const [orders, setOrders] = useState<any[]>([]);
+  const [trades, setTrades] = useState<any[]>([]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await api.listMarketMakingConfigs();
-      setConfigs(data.market_making_configs || []);
+      const [cfgData, ordData, trdData] = await Promise.all([
+        api.listMarketMakingConfigs(),
+        api.listMakerOrders(),
+        api.listMakerTrades()
+      ]);
+      setConfigs(cfgData.market_making_configs || []);
+      setOrders(ordData.orders || []);
+      setTrades(trdData.trades || []);
     } catch (e: any) {
-      setError(e.message || 'Failed to load market-making configs');
+      setError(e.message || 'Failed to load market-making data');
     }
     setLoading(false);
   }, []);
@@ -131,6 +140,63 @@ export default function MarketMaking() {
           </div>
         </section>
       )}
+
+      <section>
+        <div className="section-title"><h2>Open Orders ({orders.length})</h2></div>
+        {orders.length === 0 ? (
+          <div className="state">No open market-making orders.</div>
+        ) : (
+          <div className="coins-table">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Token</th><th>Side</th><th>Price</th><th>Qty</th><th>Remaining</th><th>Status</th><th>Expires</th></tr>
+              </thead>
+              <tbody>
+                {orders.map((o: any) => (
+                  <tr key={o.id}>
+                    <td title={o.id}>{String(o.id).slice(0, 8)}…</td>
+                    <td title={o.token_id}>{String(o.token_id).slice(0, 8)}…</td>
+                    <td><span className={`badge ${o.side === 'buy' ? 'active' : 'error'}`}>{o.side}</span></td>
+                    <td>{o.price}</td>
+                    <td>{o.quantity}</td>
+                    <td>{o.remaining}</td>
+                    <td>{o.status}</td>
+                    <td>{o.expires_at ? new Date(o.expires_at).toLocaleString() : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="section-title"><h2>Settled Trades ({trades.length})</h2></div>
+        {trades.length === 0 ? (
+          <div className="state">No settled trades yet — crossing buy/sell orders settle automatically.</div>
+        ) : (
+          <div className="coins-table">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Token</th><th>Buy Order</th><th>Sell Order</th><th>Price</th><th>Quantity</th><th>Settled</th></tr>
+              </thead>
+              <tbody>
+                {trades.map((t: any) => (
+                  <tr key={t.id}>
+                    <td title={t.id}>{String(t.id).slice(0, 8)}…</td>
+                    <td title={t.token_id}>{String(t.token_id).slice(0, 8)}…</td>
+                    <td title={t.buy_order_id}>{String(t.buy_order_id).slice(0, 8)}…</td>
+                    <td title={t.sell_order_id}>{String(t.sell_order_id).slice(0, 8)}…</td>
+                    <td>{t.price}</td>
+                    <td>{t.quantity}</td>
+                    <td>{t.created_at ? new Date(t.created_at).toLocaleString() : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
