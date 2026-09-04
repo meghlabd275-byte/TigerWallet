@@ -563,10 +563,64 @@ class MasterWalletService {
     return authedFetch('/api/v1/health', { method: 'GET', auth: false });
   }
 
+  /** GET /readyz — readiness probe (200 ready / 503 degraded). No auth. */
+  async getReady() {
+    return authedFetch('/readyz', { method: 'GET', auth: false });
+  }
+
   // Read-only SuperAdmin kill-switch state: GET /api/v1/kill-switch/status
   // (protected route — requires the operator JWT).
   async getKillSwitchStatus() {
     return authedFetch('/kill-switch/status', { method: 'GET' });
+  }
+
+  // ---------- Trading control-plane (/master-wallet/:id/trading/*) ----------
+  // Full builtin DEX/futures/margin/options/copy governance. Real backend
+  // reads/writes only — nothing is fabricated client-side.
+
+  _tc(id) {
+    return '/master-wallet/' + this._wid(id) + '/trading';
+  }
+
+  async getTradingOverview(id) {
+    return authedFetch(this._tc(id) + '/overview', { method: 'GET' });
+  }
+
+  async getTradingAudit(id) {
+    const res = await authedFetch(this._tc(id) + '/audit', { method: 'GET' });
+    return res.audit || [];
+  }
+
+  async haltTradingVertical(id, vertical) {
+    return authedFetch(this._tc(id) + '/halt/' + vertical, { method: 'POST' });
+  }
+
+  async resumeTradingVertical(id, vertical) {
+    return authedFetch(this._tc(id) + '/resume/' + vertical, { method: 'POST' });
+  }
+
+  /** List one managed entity collection. kind: contracts|pools|pairs|margin-markets|options-series|copy-traders */
+  async listTradingEntities(id, kind) {
+    const res = await authedFetch(this._tc(id) + '/' + kind, { method: 'GET' });
+    for (const k of ['contracts', 'pools', 'pairs', 'margin_markets', 'series', 'traders']) {
+      if (Array.isArray(res[k])) return res[k];
+    }
+    return Array.isArray(res) ? res : [];
+  }
+
+  /** Create one managed entity with the exact body the backend binds. */
+  async createTradingEntity(id, kind, body) {
+    return authedFetch(this._tc(id) + '/' + kind, { method: 'POST', body });
+  }
+
+  /** stop|resume a managed entity. */
+  async setTradingEntityStatus(id, kind, entityId, action) {
+    return authedFetch(this._tc(id) + '/' + kind + '/' + entityId + '/' + action, { method: 'POST' });
+  }
+
+  /** Permanently remove a managed entity. */
+  async deleteTradingEntity(id, kind, entityId) {
+    return authedFetch(this._tc(id) + '/' + kind + '/' + entityId, { method: 'DELETE' });
   }
 
   // ---------- Local chain metadata ----------

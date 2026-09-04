@@ -110,6 +110,18 @@ class MasterWalletViewModel : ViewModel() {
             } catch (_: Exception) { /* status unknown — leave previous state */ }
         }
     }
+
+    /** Liveness (/health) + readiness (/readyz) probes (no auth). */
+    fun loadBackendStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                apiGetPublicRaw("/health")?.let { _backendHealth.value = JSONObject(it) }
+            } catch (_: Exception) { _backendHealth.value = null }
+            try {
+                apiGetPublicRaw("/readyz")?.let { _backendReady.value = JSONObject(it) }
+            } catch (_: Exception) { _backendReady.value = null }
+        }
+    }
     
     private suspend fun loadMasterWallet() = withContext(Dispatchers.IO) {
         try {
@@ -481,6 +493,23 @@ class MasterWalletViewModel : ViewModel() {
         }
     }
     
+    /** Raw-path GET (no /api/v1 prefix, no auth) for /health + /readyz. */
+    private fun apiGetPublicRaw(path: String): String? {
+        return try {
+            val url = URL("${ApiConfig.BASE_URL}$path")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
+            if (conn.responseCode == 200) {
+                conn.inputStream.bufferedReader().readText()
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun apiPost(endpoint: String, body: String): String? {
         return try {
             val url = URL("${ApiConfig.BASE_URL}${ApiConfig.API_VERSION}$endpoint")
@@ -587,6 +616,12 @@ class MasterWalletViewModel : ViewModel() {
     private val _killSwitch = MutableStateFlow<JSONObject?>(null)
     val killSwitch: StateFlow<JSONObject?> = _killSwitch.asStateFlow()
 
+    private val _backendHealth = MutableStateFlow<JSONObject?>(null)
+    val backendHealth: StateFlow<JSONObject?> = _backendHealth.asStateFlow()
+
+    private val _backendReady = MutableStateFlow<JSONObject?>(null)
+    val backendReady: StateFlow<JSONObject?> = _backendReady.asStateFlow()
+
     /** Parse either a raw JSON array or a {"<key>":[...]} envelope. */
     private fun parseList(raw: String?, key: String): List<JSONObject> {
         if (raw.isNullOrBlank()) return emptyList()
@@ -650,6 +685,16 @@ class MasterWalletViewModel : ViewModel() {
                     "tokens" -> _userTokens.value = parseList(apiGet("/master-wallet/$id/user-tokens"), "tokens")
                     "passkeys" -> _passkeys.value = parseList(apiGet("/master-wallet/$id/passkey/credentials"), "passkeys")
                     "killswitch" -> loadKillSwitchStatus()
+                    "trading" -> {
+                        apiGet("/master-wallet/$id/trading/overview")?.let { _tradingOverview.value = JSONObject(it) }
+                        _tradingContracts.value = parseList(apiGet("/master-wallet/$id/trading/contracts"), "contracts")
+                        _tradingPools.value = parseList(apiGet("/master-wallet/$id/trading/pools"), "pools")
+                        _tradingPairs.value = parseList(apiGet("/master-wallet/$id/trading/pairs"), "pairs")
+                        _tradingMarginMarkets.value = parseList(apiGet("/master-wallet/$id/trading/margin-markets"), "margin_markets")
+                        _tradingOptionsSeries.value = parseList(apiGet("/master-wallet/$id/trading/options-series"), "series")
+                        _tradingCopyTraders.value = parseList(apiGet("/master-wallet/$id/trading/copy-traders"), "traders")
+                        _tradingAudit.value = parseList(apiGet("/master-wallet/$id/trading/audit"), "audit")
+                    }
                     "analytics" -> {
                         val out = mutableMapOf<String, String>()
                         apiGet("/master-wallet/$id/analytics/volume")?.let { r ->
@@ -1004,6 +1049,116 @@ class MasterWalletViewModel : ViewModel() {
                 else "Withdrawal request failed")
             } catch (e: Exception) {
                 onDone(e.message ?: "error")
+            }
+        }
+    }
+
+    // ============================================================================
+    // Trading control-plane (/master-wallet/:id/trading/*) — full builtin
+    // DEX/futures/margin/options/copy governance. Real backend reads/writes only.
+    // ============================================================================
+
+    private val _tradingOverview = MutableStateFlow<JSONObject?>(null)
+    val tradingOverview: StateFlow<JSONObject?> = _tradingOverview.asStateFlow()
+    private val _tradingContracts = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingContracts: StateFlow<List<JSONObject>> = _tradingContracts.asStateFlow()
+    private val _tradingPools = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingPools: StateFlow<List<JSONObject>> = _tradingPools.asStateFlow()
+    private val _tradingPairs = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingPairs: StateFlow<List<JSONObject>> = _tradingPairs.asStateFlow()
+    private val _tradingMarginMarkets = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingMarginMarkets: StateFlow<List<JSONObject>> = _tradingMarginMarkets.asStateFlow()
+    private val _tradingOptionsSeries = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingOptionsSeries: StateFlow<List<JSONObject>> = _tradingOptionsSeries.asStateFlow()
+    private val _tradingCopyTraders = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingCopyTraders: StateFlow<List<JSONObject>> = _tradingCopyTraders.asStateFlow()
+    private val _tradingAudit = MutableStateFlow<List<JSONObject>>(emptyList())
+    val tradingAudit: StateFlow<List<JSONObject>> = _tradingAudit.asStateFlow()
+
+    /** Reload every trading control-plane surface (delegates to loadFeature). */
+    fun loadTradingControl() = loadFeature("trading")
+
+    fun createTradingContract(kind: String, symbol: String, baseAsset: String, quoteAsset: String, maxLeverage: Int) =
+        tradingAction { id ->
+            apiPost("/master-wallet/$id/trading/contracts",
+                JSONObject().put("kind", kind).put("symbol", symbol).put("base_asset", baseAsset)
+                    .put("quote_asset", quoteAsset).put("max_leverage", maxLeverage).toString()) != null
+        }
+
+    fun createTradingPool(chainId: Long, dex: String, token0: String, token1: String, feeBps: Int) =
+        tradingAction { id ->
+            apiPost("/master-wallet/$id/trading/pools",
+                JSONObject().put("chain_id", chainId).put("dex", dex).put("token0", token0)
+                    .put("token1", token1).put("fee_bps", feeBps).toString()) != null
+        }
+
+    fun createTradingPair(symbol: String, baseAsset: String, quoteAsset: String, market: String) =
+        tradingAction { id ->
+            apiPost("/master-wallet/$id/trading/pairs",
+                JSONObject().put("symbol", symbol).put("base_asset", baseAsset)
+                    .put("quote_asset", quoteAsset).put("market", market).toString()) != null
+        }
+
+    fun createTradingMarginMarket(symbol: String, baseAsset: String, quoteAsset: String, maxLeverage: Int) =
+        tradingAction { id ->
+            apiPost("/master-wallet/$id/trading/margin-markets",
+                JSONObject().put("symbol", symbol).put("base_asset", baseAsset)
+                    .put("quote_asset", quoteAsset).put("max_leverage", maxLeverage).toString()) != null
+        }
+
+    fun createTradingOptionsSeries(underlying: String, quoteAsset: String, strike: String, expiryUnix: Long, style: String, ivBps: Int, contractSize: String) =
+        tradingAction { id ->
+            apiPost("/master-wallet/$id/trading/options-series",
+                JSONObject().put("underlying", underlying).put("quote_asset", quoteAsset)
+                    .put("strike", strike).put("expiry_unix", expiryUnix).put("style", style)
+                    .put("iv_bps", ivBps).put("contract_size", contractSize).toString()) != null
+        }
+
+    fun createTradingCopyTrader(trader: String, displayName: String, feeBps: Int, maxCopiers: Int) =
+        tradingAction { id ->
+            apiPost("/master-wallet/$id/trading/copy-traders",
+                JSONObject().put("trader", trader).put("display_name", displayName)
+                    .put("fee_bps", feeBps).put("max_copiers", maxCopiers).toString()) != null
+        }
+
+    /**
+     * Lifecycle action on one managed entity.
+     * kind: contracts|pools|pairs|margin-markets|options-series|copy-traders
+     * action: stop|resume|delete (delete issues DELETE, the rest POST)
+     */
+    fun tradingEntityLifecycle(kind: String, entityId: String, action: String) =
+        tradingAction { id ->
+            when (action) {
+                "delete" -> apiDelete("/master-wallet/$id/trading/$kind/$entityId")
+                "stop", "resume" -> apiPost("/master-wallet/$id/trading/$kind/$entityId/$action", "{}") != null
+                else -> false
+            }
+        }
+
+    fun haltTradingVertical(vertical: String) =
+        tradingAction { id -> apiPost("/master-wallet/$id/trading/halt/$vertical", "{}") != null }
+
+    fun resumeTradingVertical(vertical: String) =
+        tradingAction { id -> apiPost("/master-wallet/$id/trading/resume/$vertical", "{}") != null }
+
+    /** POST/DELETE against a trading route, then reload the trading surface. */
+    private fun tradingAction(build: (id: String) -> Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.value = true
+            try {
+                val id = requireWalletId() ?: run {
+                    _error.value = "No master wallet selected"
+                    return@launch
+                }
+                if (!build(id)) {
+                    _error.value = "Trading control-plane request failed (admin/operator role required)"
+                    return@launch
+                }
+                loadTradingControl()
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _isLoading.value = false
             }
         }
     }

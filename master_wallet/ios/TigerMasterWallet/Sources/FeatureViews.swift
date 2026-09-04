@@ -33,6 +33,7 @@ struct MoreView: View {
         ("Sub-Wallets", "rectangle.stack.fill", "subwallets"),
         ("Send", "paperplane.fill", "send"),
         ("Auto-Sign Ops", "wrench.and.screwdriver.fill", "ops"),
+        ("Trading Control", "slider.horizontal.3", "trading"),
     ]
 
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
@@ -81,6 +82,7 @@ struct MoreView: View {
         case "subwallets": MasterSubWalletsView()
         case "send": SendView()
         case "ops": AutoSignOpsView()
+        case "trading": TradingControlView()
         default: EmptyView()
         }
     }
@@ -1323,5 +1325,321 @@ struct WithdrawView: View {
             if let result = result { Section { Text(result).font(.caption) } }
         }
         .navigationTitle("Withdraw")
+    }
+}
+
+// MARK: - Trading control-plane
+
+private let tcVerticals = ["spot", "perpetual", "futures", "margin", "options", "copy", "liquidity"]
+private let tcTabs: [(String, String)] = [
+    ("contracts", "Contracts"), ("pools", "Pools"), ("pairs", "Pairs"),
+    ("margin-markets", "Margin"), ("options-series", "Options"),
+    ("copy-traders", "Copy"), ("verticals", "Verticals"), ("audit", "Audit"),
+]
+
+struct TradingControlView: View {
+    @EnvironmentObject var appState: MasterAppState
+    @StateObject private var overview = FeatureLoadState<[String: Any]?>(nil)
+    @StateObject private var entities = FeatureLoadState<[[String: Any]]>([])
+    @StateObject private var auditRows = FeatureLoadState<[[String: Any]]>([])
+
+    @State private var tab = "contracts"
+    @State private var actionMessage: String?
+
+    // Create-form fields (real submissions; empty until the operator types).
+    @State private var kind = "perpetual"
+    @State private var symbol = ""
+    @State private var baseAsset = ""
+    @State private var quoteAsset = "USDT"
+    @State private var maxLeverage = "10"
+    @State private var chainId = "1"
+    @State private var dex = ""
+    @State private var token0 = ""
+    @State private var token1 = ""
+    @State private var feeBps = "30"
+    @State private var market = "spot"
+    @State private var underlying = ""
+    @State private var strike = ""
+    @State private var expiryUnix = ""
+    @State private var style = "call"
+    @State private var ivBps = "8000"
+    @State private var contractSize = "1"
+    @State private var trader = ""
+    @State private var displayName = ""
+    @State private var maxCopiers = "0"
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Builtin TigerWallet trading governance — decisions publish to the shared control plane enforced by every wallet engine.")
+                    .font(.caption).foregroundColor(.secondary)
+            }
+
+            if let ov = overview.items {
+                Section("Overview") {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        overviewCell("Contracts", ov["contracts_active"])
+                        overviewCell("Pools", ov["pools_active"])
+                        overviewCell("Pairs", ov["pairs_active"])
+                        overviewCell("Margin", ov["margin_markets_active"])
+                        overviewCell("Options", ov["options_active"])
+                        overviewCell("Copy", ov["copy_configs_active"])
+                    }
+                }
+            }
+
+            Section {
+                Picker("Surface", selection: $tab) {
+                    ForEach(tcTabs, id: \.0) { value, label in
+                        Text(label).tag(value)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: tab) { _ in Task { await load() } }
+            }
+
+            switch tab {
+            case "contracts": contractsSection
+            case "pools": poolsSection
+            case "pairs": pairsSection
+            case "margin-markets": marginSection
+            case "options-series": optionsSection
+            case "copy-traders": copySection
+            case "verticals": verticalsSection
+            default: auditSection
+            }
+
+            if let actionMessage = actionMessage { Section { Text(actionMessage).font(.caption) } }
+            Section { FeatureErrorText(message: entities.error ?? overview.error) }
+        }
+        .navigationTitle("Trading Control")
+        .task { await load() }
+    }
+
+    private func overviewCell(_ label: String, _ value: Any?) -> some View {
+        VStack {
+            Text(value.map { "\($0)" } ?? "0").font(.headline)
+            Text(label).font(.caption2).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var contractsSection: some View {
+        Group {
+            Section("New Contract") {
+                TextField("Kind (perpetual|futures|options)", text: $kind)
+                TextField("Symbol (BTC-PERP)", text: $symbol)
+                TextField("Base asset", text: $baseAsset)
+                TextField("Quote asset", text: $quoteAsset)
+                TextField("Max leverage", text: $maxLeverage).keyboardType(.numberPad)
+                Button("Create") {
+                    create(["kind": kind, "symbol": symbol, "base_asset": baseAsset, "quote_asset": quoteAsset, "max_leverage": Int(maxLeverage) ?? 1])
+                }.disabled(symbol.isEmpty || baseAsset.isEmpty)
+            }
+            entityList(title: "Contracts") { r in
+                "\(anyStr(r, ["kind"])) — \(anyStr(r, ["symbol"]))\n\(anyStr(r, ["base_asset"]))/\(anyStr(r, ["quote_asset"])) · \(anyStr(r, ["max_leverage"]))x · \(anyStr(r, ["status"]))"
+            }
+        }
+    }
+
+    private var poolsSection: some View {
+        Group {
+            Section("New Liquidity Pool") {
+                TextField("Chain ID", text: $chainId).keyboardType(.numberPad)
+                TextField("DEX", text: $dex)
+                TextField("Token0", text: $token0)
+                TextField("Token1", text: $token1)
+                TextField("Fee bps", text: $feeBps).keyboardType(.numberPad)
+                Button("Create") {
+                    create(["chain_id": Int(chainId) ?? 1, "dex": dex, "token0": token0, "token1": token1, "fee_bps": Int(feeBps) ?? 30])
+                }.disabled(dex.isEmpty || token0.isEmpty || token1.isEmpty)
+            }
+            entityList(title: "Pools") { r in
+                "\(anyStr(r, ["dex"])) (chain \(anyStr(r, ["chain_id"])))\n\(anyStr(r, ["token0"]))/\(anyStr(r, ["token1"])) · \(anyStr(r, ["fee_bps"])) bps · \(anyStr(r, ["status"]))"
+            }
+        }
+    }
+
+    private var pairsSection: some View {
+        Group {
+            Section("New Trading Pair") {
+                TextField("Symbol (BTC/USDT)", text: $symbol)
+                TextField("Base asset", text: $baseAsset)
+                TextField("Quote asset", text: $quoteAsset)
+                TextField("Market (spot|perpetual|margin)", text: $market)
+                Button("Create") {
+                    create(["symbol": symbol, "base_asset": baseAsset, "quote_asset": quoteAsset, "market": market])
+                }.disabled(symbol.isEmpty || baseAsset.isEmpty)
+            }
+            entityList(title: "Pairs") { r in
+                "\(anyStr(r, ["symbol"]))\n\(anyStr(r, ["base_asset"]))/\(anyStr(r, ["quote_asset"])) · \(anyStr(r, ["market"])) · \(anyStr(r, ["status"]))"
+            }
+        }
+    }
+
+    private var marginSection: some View {
+        Group {
+            Section("New Margin Market") {
+                TextField("Symbol (BTC/USDT)", text: $symbol)
+                TextField("Base asset", text: $baseAsset)
+                TextField("Quote asset", text: $quoteAsset)
+                TextField("Max leverage", text: $maxLeverage).keyboardType(.numberPad)
+                Button("Create") {
+                    create(["symbol": symbol, "base_asset": baseAsset, "quote_asset": quoteAsset, "max_leverage": Int(maxLeverage) ?? 3])
+                }.disabled(symbol.isEmpty || baseAsset.isEmpty)
+            }
+            entityList(title: "Margin Markets") { r in
+                "\(anyStr(r, ["symbol"]))\n\(anyStr(r, ["base_asset"]))/\(anyStr(r, ["quote_asset"])) · \(anyStr(r, ["max_leverage"]))x · \(anyStr(r, ["status"]))"
+            }
+        }
+    }
+
+    private var optionsSection: some View {
+        Group {
+            Section("New Options Series") {
+                TextField("Underlying (BTC)", text: $underlying)
+                TextField("Quote asset", text: $quoteAsset)
+                TextField("Strike", text: $strike).keyboardType(.decimalPad)
+                TextField("Expiry (unix seconds)", text: $expiryUnix).keyboardType(.numberPad)
+                TextField("Style (call|put)", text: $style)
+                TextField("IV bps", text: $ivBps).keyboardType(.numberPad)
+                TextField("Contract size", text: $contractSize)
+                Button("Create") {
+                    create(["underlying": underlying, "quote_asset": quoteAsset, "strike": strike, "expiry_unix": Int(expiryUnix) ?? 0, "style": style, "iv_bps": Int(ivBps) ?? 8000, "contract_size": contractSize])
+                }.disabled(underlying.isEmpty || strike.isEmpty || expiryUnix.isEmpty)
+            }
+            entityList(title: "Options Series") { r in
+                "\(anyStr(r, ["underlying"])) \(anyStr(r, ["strike"])) \(anyStr(r, ["style"]))\nexpiry \(anyStr(r, ["expiry_unix"])) · IV \(anyStr(r, ["iv_bps"])) bps · \(anyStr(r, ["status"]))"
+            }
+        }
+    }
+
+    private var copySection: some View {
+        Group {
+            Section("New Copy Trader") {
+                TextField("Trader address (0x…)", text: $trader).autocapitalization(.none)
+                TextField("Display name", text: $displayName)
+                TextField("Fee bps", text: $feeBps).keyboardType(.numberPad)
+                TextField("Max copiers (0 = unlimited)", text: $maxCopiers).keyboardType(.numberPad)
+                Button("Create") {
+                    create(["trader": trader, "display_name": displayName, "fee_bps": Int(feeBps) ?? 100, "max_copiers": Int(maxCopiers) ?? 0])
+                }.disabled(trader.isEmpty)
+            }
+            entityList(title: "Copy Traders") { r in
+                let name = anyStr(r, ["display_name"])
+                return "\(name.isEmpty ? anyStr(r, ["trader"]) : name)\n\(anyStr(r, ["trader"])) · \(anyStr(r, ["fee_bps"])) bps · \(anyStr(r, ["status"]))"
+            }
+        }
+    }
+
+    private var verticalsSection: some View {
+        Section("Vertical Halt / Resume") {
+            let halts = overview.items?["vertical_halts"] as? [String: Any] ?? [:]
+            ForEach(tcVerticals, id: \.self) { v in
+                let halted = (halts[v] as? Bool) == true
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(v).fontWeight(.semibold)
+                        Text(halted ? "halted" : "running").font(.caption).foregroundColor(halted ? .red : .green)
+                    }
+                    Spacer()
+                    Button("Halt") { vertical(v, action: "halt") }.disabled(halted).foregroundColor(.red)
+                    Button("Resume") { vertical(v, action: "resume") }.disabled(!halted)
+                }
+            }
+        }
+    }
+
+    private var auditSection: some View {
+        Section("Control-Plane Audit") {
+            if auditRows.loaded && auditRows.items.isEmpty {
+                Text("No control-plane actions recorded yet.").foregroundColor(.secondary)
+            }
+            ForEach(Array(auditRows.items.enumerated()), id: \.offset) { _, a in
+                VStack(alignment: .leading) {
+                    Text("\(anyStr(a, ["action"])) \(anyStr(a, ["kind"])) \(anyStr(a, ["entity"]))").font(.subheadline)
+                    Text("\(anyStr(a, ["actor", "actor_role"])) · \(anyStr(a, ["created_at"]))").font(.caption).foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private func entityList(title: String, describe: @escaping ([String: Any]) -> String) -> some View {
+        Section(title) {
+            if entities.loaded && entities.items.isEmpty {
+                Text("None yet.").foregroundColor(.secondary)
+            }
+            ForEach(Array(entities.items.enumerated()), id: \.offset) { _, r in
+                let id = anyStr(r, ["id"])
+                let status = anyStr(r, ["status"])
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(describe(r)).font(.subheadline)
+                    HStack {
+                        Button("Stop") { lifecycle(id, action: "stop") }.disabled(status == "stopped").font(.caption).foregroundColor(.red)
+                        Button("Resume") { lifecycle(id, action: "resume") }.disabled(status == "active").font(.caption)
+                        Button("Remove", role: .destructive) { lifecycle(id, action: "delete") }.font(.caption)
+                    }
+                }
+            }
+        }
+    }
+
+    private func load() async {
+        guard let wid = walletId(of: appState) else { entities.error = "No master wallet selected"; return }
+        do {
+            overview.items = try await appState.apiService.getTradingOverview(id: wid)
+            overview.loaded = true
+            if tab == "audit" {
+                auditRows.items = try await appState.apiService.getTradingAudit(id: wid)
+                auditRows.loaded = true
+            } else if tab != "verticals" {
+                entities.items = try await appState.apiService.listTradingEntities(id: wid, kind: tab)
+                entities.loaded = true
+            }
+        } catch {
+            entities.error = error.localizedDescription
+            entities.loaded = true
+        }
+    }
+
+    private func create(_ payload: [String: Any]) {
+        guard let wid = walletId(of: appState) else { return }
+        Task {
+            do {
+                try await appState.apiService.createTradingEntity(id: wid, kind: tab, payload: payload)
+                actionMessage = "Created."
+                await load()
+            } catch { actionMessage = error.localizedDescription }
+        }
+    }
+
+    private func lifecycle(_ entityId: String, action: String) {
+        guard let wid = walletId(of: appState) else { return }
+        Task {
+            do {
+                if action == "delete" {
+                    try await appState.apiService.deleteTradingEntity(id: wid, kind: tab, entityId: entityId)
+                } else {
+                    try await appState.apiService.setTradingEntityStatus(id: wid, kind: tab, entityId: entityId, action: action)
+                }
+                actionMessage = "Done."
+                await load()
+            } catch { actionMessage = error.localizedDescription }
+        }
+    }
+
+    private func vertical(_ v: String, action: String) {
+        guard let wid = walletId(of: appState) else { return }
+        Task {
+            do {
+                if action == "halt" {
+                    try await appState.apiService.haltTradingVertical(id: wid, vertical: v)
+                } else {
+                    try await appState.apiService.resumeTradingVertical(id: wid, vertical: v)
+                }
+                actionMessage = "\(v) \(action)ed."
+                await load()
+            } catch { actionMessage = error.localizedDescription }
+        }
     }
 }

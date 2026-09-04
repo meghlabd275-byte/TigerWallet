@@ -176,6 +176,7 @@ const MasterSidebar = ({ currentPage, setCurrentPage }: { currentPage: string; s
     { id: 'audit', label: 'Audit', icon: '🧾' },
     { id: 'passkeys', label: 'Passkeys', icon: '🪪' },
     { id: 'withdraw', label: 'Withdraw', icon: '📤' },
+    { id: 'trading', label: 'Trading Control', icon: '🎛️' },
     { id: 'analytics', label: 'Analytics', icon: '📈' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
@@ -1625,7 +1626,8 @@ const MasterWithdraw = () => {
 const MasterSettings = () => {
   const { isDark, toggle } = useTheme();
   const [ks, setKs] = useState<{ halted: boolean; reason: string; source: string; note?: string } | null>(null);
-  const [health, setHealth] = useState<{ core: string; api: string }>({ core: 'unknown', api: 'unknown' });
+  const [health, setHealth] = useState<{ core: string; api: string; ready: string }>({ core: 'unknown', api: 'unknown', ready: 'unknown' });
+  const [readyDetail, setReadyDetail] = useState<{ database?: string; redis?: string; node_id?: string } | null>(null);
   const loadKs = useCallback(async () => {
     const r = await apiFetch<{ halted: boolean; reason: string; source: string; note?: string }>('/api/v1/kill-switch/status');
     if (r) setKs(r);
@@ -1633,10 +1635,13 @@ const MasterSettings = () => {
   const loadHealth = useCallback(async () => {
     const core = await apiFetch<any>('/health');
     const api = await apiFetch<any>('/api/v1/health');
+    const ready = await apiFetch<any>('/readyz');
     setHealth({
       core: core ? (core.status ?? 'ok') : 'unreachable',
       api: api ? (api.status ?? 'ok') : 'unreachable',
+      ready: ready ? (ready.status ?? 'ready') : 'degraded',
     });
+    setReadyDetail(ready);
   }, []);
   useEffect(() => {
     loadKs();
@@ -1675,6 +1680,10 @@ const MasterSettings = () => {
         </div>
         <div className="row-between"><span>Core (/health)</span><span className={`badge ${health.core === 'unreachable' ? 'danger' : 'ok'}`}>{health.core}</span></div>
         <div className="row-between"><span>API (/api/v1/health)</span><span className={`badge ${health.api === 'unreachable' ? 'danger' : 'ok'}`}>{health.api}</span></div>
+        <div className="row-between"><span>Readiness (/readyz)</span><span className={`badge ${health.ready === 'degraded' ? 'danger' : 'ok'}`}>{health.ready}</span></div>
+        {readyDetail?.database && <div className="row-between"><span>PostgreSQL</span><span className="muted mono">{readyDetail.database}</span></div>}
+        {readyDetail?.redis && <div className="row-between"><span>Redis</span><span className="muted mono">{readyDetail.redis}</span></div>}
+        {readyDetail?.node_id && <div className="row-between"><span>Node</span><span className="muted mono">{readyDetail.node_id}</span></div>}
       </div>
       <div className="card">
         <h2 className="card-title">Appearance</h2>
@@ -1797,8 +1806,363 @@ const ThemeStyle = () => (
     .switch.on .knob { right: .25rem; } .switch.off .knob { left: .25rem; }
     .vlist { display: flex; flex-direction: column; gap: .5rem; }
     .list-btn { text-align: left; padding: .5rem 1rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: .25rem; cursor: pointer; color: var(--text-color); }
+    .tab-row { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .tab-row .list-btn.active { background: var(--primary-color); color: #fff; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: .5rem; margin-bottom: 1rem; }
+    .stat-cell { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: .5rem; padding: .5rem; text-align: center; }
+    .stat-cell .n { font-size: 1.25rem; font-weight: 700; }
+    .stat-cell .l { font-size: .7rem; color: var(--text-secondary-color); }
   `}</style>
 );
+
+// Trading control-plane page — full builtin DEX/futures/margin/options/copy
+// governance over /api/v1/master-wallet/:id/trading/* (admin/operator role).
+// All rows and actions are real backend reads/writes; nothing is fabricated.
+const TC_TABS: { id: string; label: string }[] = [
+  { id: 'contracts', label: 'Contracts' },
+  { id: 'pools', label: 'Pools' },
+  { id: 'pairs', label: 'Pairs' },
+  { id: 'margin-markets', label: 'Margin' },
+  { id: 'options-series', label: 'Options' },
+  { id: 'copy-traders', label: 'Copy' },
+  { id: 'verticals', label: 'Verticals' },
+  { id: 'audit', label: 'Audit' },
+];
+const TC_VERTICALS = ['spot', 'perpetual', 'futures', 'margin', 'options', 'copy', 'liquidity'];
+
+const MasterTradingControl = () => {
+  const [wid, setWid] = useState<string | null>(null);
+  const [tab, setTab] = useState('contracts');
+  const [overview, setOverview] = useState<any>(null);
+  const [rows, setRows] = useState<any[]>([]);
+  const [auditRows, setAuditRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [f, setF] = useState<Record<string, string>>({ quote_asset: 'USDT', kind: 'perpetual', market: 'spot', fee_bps: '30', max_leverage: '10', style: 'call', iv_bps: '8000', contract_size: '1', chain_id: '1', fee_bps_copy: '100', max_copiers: '0' });
+  const set = (k: string, v: string) => setF({ ...f, [k]: v });
+
+  const load = useCallback(async () => {
+    setLoading(true); setMsg(null);
+    try {
+      const id = await firstWalletId();
+      setWid(id);
+      if (!id) { setRows([]); setAuditRows([]); setOverview(null); setLoading(false); return; }
+      const base = `/api/v1/master-wallet/${id}/trading`;
+      apiFetch<any>(`${base}/overview`).then((o) => setOverview(o)).catch(() => {});
+      if (tab === 'audit') {
+        const r = await apiFetch<any>(`${base}/audit`);
+        setAuditRows(asList(r, 'audit'));
+      } else if (tab !== 'verticals') {
+        const r = await apiFetch<any>(`${base}/${tab}`);
+        setRows(asList(r, 'contracts', 'pools', 'pairs', 'margin_markets', 'series', 'traders'));
+      }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [tab]);
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (fn: () => Promise<any>, ok = 'Saved.') => {
+    setMsg(null);
+    try { await fn(); setMsg(ok); load(); }
+    catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  };
+
+  const create = () => {
+    if (!wid) return;
+    const base = `/api/v1/master-wallet/${wid}/trading`;
+    if (tab === 'contracts') return act(() => apiSend(`${base}/contracts`, 'POST', { kind: f.kind, symbol: f.symbol, base_asset: f.base_asset, quote_asset: f.quote_asset, max_leverage: parseInt(f.max_leverage) || 1 }), 'Contract created.');
+    if (tab === 'pools') return act(() => apiSend(`${base}/pools`, 'POST', { chain_id: parseInt(f.chain_id) || 1, dex: f.dex, token0: f.token0, token1: f.token1, fee_bps: parseInt(f.fee_bps) || 30 }), 'Pool created.');
+    if (tab === 'pairs') return act(() => apiSend(`${base}/pairs`, 'POST', { symbol: f.symbol, base_asset: f.base_asset, quote_asset: f.quote_asset, market: f.market }), 'Pair created.');
+    if (tab === 'margin-markets') return act(() => apiSend(`${base}/margin-markets`, 'POST', { symbol: f.symbol, base_asset: f.base_asset, quote_asset: f.quote_asset, max_leverage: parseInt(f.max_leverage) || 3 }), 'Margin market created.');
+    if (tab === 'options-series') return act(() => apiSend(`${base}/options-series`, 'POST', { underlying: f.underlying, quote_asset: f.quote_asset, strike: f.strike, expiry_unix: parseInt(f.expiry_unix) || 0, style: f.style, iv_bps: parseInt(f.iv_bps) || 8000, contract_size: f.contract_size }), 'Options series created.');
+    if (tab === 'copy-traders') return act(() => apiSend(`${base}/copy-traders`, 'POST', { trader: f.trader, display_name: f.display_name, fee_bps: parseInt(f.fee_bps_copy) || 100, max_copiers: parseInt(f.max_copiers) || 0 }), 'Copy trader created.');
+  };
+
+  const lifecycle = (entityId: string, action: 'stop' | 'resume' | 'delete') => {
+    if (!wid) return;
+    const base = `/api/v1/master-wallet/${wid}/trading/${tab}/${entityId}`;
+    if (action === 'delete') return act(() => apiSend(base, 'DELETE'), 'Removed.');
+    return act(() => apiSend(`${base}/${action}`, 'POST', {}), `${action}ed.`);
+  };
+
+  const vertical = (v: string, action: 'halt' | 'resume') => {
+    if (!wid) return;
+    act(() => apiSend(`/api/v1/master-wallet/${wid}/trading/${action}/${v}`, 'POST', {}), `${v} ${action}ed.`);
+  };
+
+  const statusBadge = (st: string) => (
+    <span className={`badge ${st === 'active' ? 'ok' : st === 'removed' ? 'danger' : 'muted'}`}>{st || '—'}</span>
+  );
+
+  const lifecycleCell = (r: any) => (
+    <td>
+      <RowBtn label="Stop" onClick={() => lifecycle(r.id, 'stop')} />
+      <RowBtn label="Resume" kind="ok" onClick={() => lifecycle(r.id, 'resume')} />
+      <RowBtn label="Remove" kind="danger" onClick={() => lifecycle(r.id, 'delete')} />
+    </td>
+  );
+
+  const halts = (overview && overview.vertical_halts) || {};
+
+  return (
+    <div className="page">
+      <h1 className="page-title">Trading Control-Plane</h1>
+      <p className="muted">Builtin TigerWallet trading governance — contracts, liquidity pools, pairs, margin markets, options series, copy traders. Decisions publish to the shared control plane enforced by every wallet engine.</p>
+      {!wid && <div className="banner error">No master wallet selected — create one first.</div>}
+      {msg && <div className="banner">{msg}</div>}
+
+      {overview && (
+        <div className="stat-grid">
+          {[
+            ['Contracts', overview.contracts_active],
+            ['Pools', overview.pools_active],
+            ['Pairs', overview.pairs_active],
+            ['Margin', overview.margin_markets_active],
+            ['Options', overview.options_active],
+            ['Copy', overview.copy_configs_active],
+          ].map(([label, value]) => (
+            <div key={label as string} className="stat-cell">
+              <div className="n">{(value as number) ?? 0}</div>
+              <div className="l">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="tab-row">
+        {TC_TABS.map((t) => (
+          <button key={t.id} className={`list-btn ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      {loading && <div className="empty-hint">Loading…</div>}
+
+      {!loading && tab === 'verticals' && (
+        <div className="card table-card">
+          <table className="data-table">
+            <thead><tr><th>Vertical</th><th>State</th><th>Actions</th></tr></thead>
+            <tbody>
+              {TC_VERTICALS.map((v) => (
+                <tr key={v}>
+                  <td>{v}</td>
+                  <td>{halts[v] ? <span className="badge danger">halted</span> : <span className="badge ok">running</span>}</td>
+                  <td>
+                    <RowBtn label="Halt" kind="danger" onClick={() => vertical(v, 'halt')} />
+                    <RowBtn label="Resume" kind="ok" onClick={() => vertical(v, 'resume')} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && tab === 'audit' && (
+        <div className="card table-card">
+          <table className="data-table">
+            <thead><tr><th>Actor</th><th>Role</th><th>Action</th><th>Kind</th><th>Entity</th><th>When</th></tr></thead>
+            <tbody>
+              {auditRows.length === 0 && <tr><td colSpan={6} className="empty-hint">No control-plane actions recorded yet.</td></tr>}
+              {auditRows.map((a, i) => (
+                <tr key={a.id ?? i}>
+                  <td>{a.actor ?? '—'}</td><td>{a.actor_role ?? '—'}</td><td>{a.action}</td>
+                  <td>{a.kind}</td><td>{a.entity}</td>
+                  <td>{a.created_at ? new Date(a.created_at).toLocaleString() : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && tab === 'contracts' && (
+        <>
+          <div className="card">
+            <h2 className="card-title">New Contract</h2>
+            <div className="form-grid">
+              <input placeholder="Kind (perpetual|futures|options)" value={f.kind} onChange={(e) => set('kind', e.target.value)} />
+              <input placeholder="Symbol (BTC-PERP)" value={f.symbol ?? ''} onChange={(e) => set('symbol', e.target.value)} />
+              <input placeholder="Base asset" value={f.base_asset ?? ''} onChange={(e) => set('base_asset', e.target.value)} />
+              <input placeholder="Quote asset" value={f.quote_asset} onChange={(e) => set('quote_asset', e.target.value)} />
+              <input placeholder="Max leverage" value={f.max_leverage} onChange={(e) => set('max_leverage', e.target.value)} />
+              <button className="action-btn blue" onClick={create}>Create</button>
+            </div>
+          </div>
+          <div className="card table-card">
+            <table className="data-table">
+              <thead><tr><th>Kind</th><th>Symbol</th><th>Assets</th><th>Max Lev</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={6} className="empty-hint">No contracts yet.</td></tr>}
+                {rows.map((r, i) => (
+                  <tr key={r.id ?? i}>
+                    <td>{r.kind}</td><td>{r.symbol}</td>
+                    <td>{r.base_asset}/{r.quote_asset}</td><td>{r.max_leverage}x</td>
+                    <td>{statusBadge(r.status)}</td>{lifecycleCell(r)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'pools' && (
+        <>
+          <div className="card">
+            <h2 className="card-title">New Liquidity Pool</h2>
+            <div className="form-grid">
+              <input placeholder="Chain ID" value={f.chain_id} onChange={(e) => set('chain_id', e.target.value)} />
+              <input placeholder="DEX" value={f.dex ?? ''} onChange={(e) => set('dex', e.target.value)} />
+              <input placeholder="Token0" value={f.token0 ?? ''} onChange={(e) => set('token0', e.target.value)} />
+              <input placeholder="Token1" value={f.token1 ?? ''} onChange={(e) => set('token1', e.target.value)} />
+              <input placeholder="Fee bps" value={f.fee_bps} onChange={(e) => set('fee_bps', e.target.value)} />
+              <button className="action-btn blue" onClick={create}>Create</button>
+            </div>
+          </div>
+          <div className="card table-card">
+            <table className="data-table">
+              <thead><tr><th>Chain</th><th>DEX</th><th>Tokens</th><th>Fee</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={6} className="empty-hint">No pools yet.</td></tr>}
+                {rows.map((r, i) => (
+                  <tr key={r.id ?? i}>
+                    <td>{r.chain_id}</td><td>{r.dex}</td>
+                    <td>{r.token0}/{r.token1}</td><td>{r.fee_bps} bps</td>
+                    <td>{statusBadge(r.status)}</td>{lifecycleCell(r)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'pairs' && (
+        <>
+          <div className="card">
+            <h2 className="card-title">New Trading Pair</h2>
+            <div className="form-grid">
+              <input placeholder="Symbol (BTC/USDT)" value={f.symbol ?? ''} onChange={(e) => set('symbol', e.target.value)} />
+              <input placeholder="Base asset" value={f.base_asset ?? ''} onChange={(e) => set('base_asset', e.target.value)} />
+              <input placeholder="Quote asset" value={f.quote_asset} onChange={(e) => set('quote_asset', e.target.value)} />
+              <input placeholder="Market (spot|perpetual|margin)" value={f.market} onChange={(e) => set('market', e.target.value)} />
+              <button className="action-btn blue" onClick={create}>Create</button>
+            </div>
+          </div>
+          <div className="card table-card">
+            <table className="data-table">
+              <thead><tr><th>Symbol</th><th>Assets</th><th>Market</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={5} className="empty-hint">No pairs yet.</td></tr>}
+                {rows.map((r, i) => (
+                  <tr key={r.id ?? i}>
+                    <td>{r.symbol}</td><td>{r.base_asset}/{r.quote_asset}</td><td>{r.market}</td>
+                    <td>{statusBadge(r.status)}</td>{lifecycleCell(r)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'margin-markets' && (
+        <>
+          <div className="card">
+            <h2 className="card-title">New Margin Market</h2>
+            <div className="form-grid">
+              <input placeholder="Symbol (BTC/USDT)" value={f.symbol ?? ''} onChange={(e) => set('symbol', e.target.value)} />
+              <input placeholder="Base asset" value={f.base_asset ?? ''} onChange={(e) => set('base_asset', e.target.value)} />
+              <input placeholder="Quote asset" value={f.quote_asset} onChange={(e) => set('quote_asset', e.target.value)} />
+              <input placeholder="Max leverage" value={f.max_leverage} onChange={(e) => set('max_leverage', e.target.value)} />
+              <button className="action-btn blue" onClick={create}>Create</button>
+            </div>
+          </div>
+          <div className="card table-card">
+            <table className="data-table">
+              <thead><tr><th>Symbol</th><th>Assets</th><th>Max Lev</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={5} className="empty-hint">No margin markets yet.</td></tr>}
+                {rows.map((r, i) => (
+                  <tr key={r.id ?? i}>
+                    <td>{r.symbol}</td><td>{r.base_asset}/{r.quote_asset}</td><td>{r.max_leverage}x</td>
+                    <td>{statusBadge(r.status)}</td>{lifecycleCell(r)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'options-series' && (
+        <>
+          <div className="card">
+            <h2 className="card-title">New Options Series</h2>
+            <div className="form-grid">
+              <input placeholder="Underlying (BTC)" value={f.underlying ?? ''} onChange={(e) => set('underlying', e.target.value)} />
+              <input placeholder="Quote asset" value={f.quote_asset} onChange={(e) => set('quote_asset', e.target.value)} />
+              <input placeholder="Strike" value={f.strike ?? ''} onChange={(e) => set('strike', e.target.value)} />
+              <input placeholder="Expiry (unix seconds)" value={f.expiry_unix ?? ''} onChange={(e) => set('expiry_unix', e.target.value)} />
+              <input placeholder="Style (call|put)" value={f.style} onChange={(e) => set('style', e.target.value)} />
+              <input placeholder="IV bps" value={f.iv_bps} onChange={(e) => set('iv_bps', e.target.value)} />
+              <input placeholder="Contract size" value={f.contract_size} onChange={(e) => set('contract_size', e.target.value)} />
+              <button className="action-btn blue" onClick={create}>Create</button>
+            </div>
+          </div>
+          <div className="card table-card">
+            <table className="data-table">
+              <thead><tr><th>Underlying</th><th>Strike</th><th>Style</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={6} className="empty-hint">No options series yet.</td></tr>}
+                {rows.map((r, i) => (
+                  <tr key={r.id ?? i}>
+                    <td>{r.underlying}/{r.quote_asset}</td><td>{r.strike}</td><td>{r.style}</td>
+                    <td>{r.expiry_unix ? new Date(Number(r.expiry_unix) * 1000).toLocaleString() : ''}</td>
+                    <td>{statusBadge(r.status)}</td>{lifecycleCell(r)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {!loading && tab === 'copy-traders' && (
+        <>
+          <div className="card">
+            <h2 className="card-title">New Copy Trader</h2>
+            <div className="form-grid">
+              <input placeholder="Trader address (0x…)" value={f.trader ?? ''} onChange={(e) => set('trader', e.target.value)} />
+              <input placeholder="Display name" value={f.display_name ?? ''} onChange={(e) => set('display_name', e.target.value)} />
+              <input placeholder="Fee bps" value={f.fee_bps_copy} onChange={(e) => set('fee_bps_copy', e.target.value)} />
+              <input placeholder="Max copiers (0 = unlimited)" value={f.max_copiers} onChange={(e) => set('max_copiers', e.target.value)} />
+              <button className="action-btn blue" onClick={create}>Create</button>
+            </div>
+          </div>
+          <div className="card table-card">
+            <table className="data-table">
+              <thead><tr><th>Trader</th><th>Name</th><th>Fee</th><th>Max Copiers</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={6} className="empty-hint">No copy traders yet.</td></tr>}
+                {rows.map((r, i) => (
+                  <tr key={r.id ?? i}>
+                    <td><span className="mono">{r.trader}</span></td><td>{r.display_name || '—'}</td>
+                    <td>{r.fee_bps} bps</td><td>{r.max_copiers === 0 ? 'unlimited' : r.max_copiers}</td>
+                    <td>{statusBadge(r.status)}</td>{lifecycleCell(r)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 // Main App — auth-gated: no stored JWT => the Login page is the only route.
 const MasterDesktopApp = () => {
@@ -1839,6 +2203,7 @@ const MasterDesktopApp = () => {
             {page === 'audit' && <MasterAudit />}
             {page === 'passkeys' && <MasterPasskeys />}
             {page === 'withdraw' && <MasterWithdraw />}
+            {page === 'trading' && <MasterTradingControl />}
             {page === 'analytics' && <MasterAnalytics />}
             {page === 'settings' && <MasterSettings />}
           </main>

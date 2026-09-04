@@ -203,6 +203,49 @@ class MasterAPIService {
         return try await request(endpoint: "/api/v1/kill-switch/status")
     }
 
+    // MARK: - Trading control-plane (/api/v1/master-wallet/:id/trading/*)
+    // Full builtin DEX/futures/margin/options/copy governance. All calls are
+    // real authenticated reads/writes against the canonical backend; nothing
+    // is fabricated client-side.
+
+    private func tcBase(_ id: String) -> String { "/api/v1/master-wallet/\(id)/trading" }
+
+    func getTradingOverview(id: String) async throws -> [String: Any] {
+        try await requestJSON(endpoint: "\(tcBase(id))/overview")
+    }
+    func getTradingAudit(id: String) async throws -> [[String: Any]] {
+        let dict = try await requestJSON(endpoint: "\(tcBase(id))/audit")
+        return (dict["audit"] as? [[String: Any]]) ?? []
+    }
+    func haltTradingVertical(id: String, vertical: String) async throws {
+        _ = try await requestJSON(endpoint: "\(tcBase(id))/halt/\(vertical)", method: "POST", body: Data("{}".utf8))
+    }
+    func resumeTradingVertical(id: String, vertical: String) async throws {
+        _ = try await requestJSON(endpoint: "\(tcBase(id))/resume/\(vertical)", method: "POST", body: Data("{}".utf8))
+    }
+
+    /// List one managed entity collection. kind: contracts|pools|pairs|margin-markets|options-series|copy-traders
+    func listTradingEntities(id: String, kind: String) async throws -> [[String: Any]] {
+        let dict = try await requestJSON(endpoint: "\(tcBase(id))/\(kind)")
+        for key in ["contracts", "pools", "pairs", "margin_markets", "series", "traders"] {
+            if let arr = dict[key] as? [[String: Any]] { return arr }
+        }
+        return []
+    }
+    /// Create one managed entity with the exact JSON body the backend binds.
+    func createTradingEntity(id: String, kind: String, payload: [String: Any]) async throws {
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        _ = try await requestJSON(endpoint: "\(tcBase(id))/\(kind)", method: "POST", body: body)
+    }
+    /// stop|resume a managed entity.
+    func setTradingEntityStatus(id: String, kind: String, entityId: String, action: String) async throws {
+        _ = try await requestJSON(endpoint: "\(tcBase(id))/\(kind)/\(entityId)/\(action)", method: "POST", body: Data("{}".utf8))
+    }
+    /// Permanently remove a managed entity.
+    func deleteTradingEntity(id: String, kind: String, entityId: String) async throws {
+        _ = try await rawData(endpoint: "\(tcBase(id))/\(kind)/\(entityId)", method: "DELETE", body: nil, auth: true)
+    }
+
     func getUsers(walletId: String) async throws -> [MasterUser] {
         let envelope: UsersEnvelope = try await request(endpoint: "/api/v1/master-wallet/\(walletId)/users")
         return envelope.users
@@ -752,6 +795,11 @@ class MasterAPIService {
     /// GET /api/v1/health (alias of /health).
     func getApiHealth() async throws -> HealthResponse {
         return try await request(endpoint: "/api/v1/health", auth: false)
+    }
+
+    /// GET /readyz — readiness probe (200 ready / 503 degraded). No auth.
+    func getReady() async throws -> [String: Any] {
+        return try await request(endpoint: "/readyz", auth: false)
     }
 
     func getTransactionHistory(address: String, chainId: Int) async throws -> [MasterTransaction] {

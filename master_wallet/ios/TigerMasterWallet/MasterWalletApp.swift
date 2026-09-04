@@ -570,6 +570,8 @@ struct SettingsView: View {
 
                 KillSwitchSettingsSection()
 
+                BackendStatusSettingsSection()
+
                 Section("Network") {
                     Picker("Default Chain", selection: $appState.selectedChain) {
                         ForEach(Chain.allCases, id: \.self) { chain in
@@ -776,6 +778,58 @@ struct APIKeysView: View {
             }
         }
         .navigationTitle("API Keys")
+    }
+}
+
+/// Liveness (/health) + readiness (/readyz) probes so the operator sees
+/// cluster-degraded states (PostgreSQL down) before any API call fails.
+struct BackendStatusSettingsSection: View {
+    @EnvironmentObject var appState: MasterAppState
+    @State private var health: HealthResponse?
+    @State private var ready: [String: Any]?
+    @State private var unreachable = false
+
+    var body: some View {
+        Section {
+            HStack {
+                Text("Liveness (/health)")
+                Spacer()
+                Text(unreachable ? "down" : (health?.status ?? "up"))
+                    .foregroundColor(unreachable ? .red : .green)
+                    .fontWeight(.bold)
+            }
+            HStack {
+                Text("Readiness (/readyz)")
+                Spacer()
+                Text(ready?["status"] as? String ?? "degraded")
+                    .foregroundColor(ready != nil ? .green : .red)
+                    .fontWeight(.bold)
+            }
+            if let db = ready?["database"] as? String, !db.isEmpty {
+                HStack { Text("PostgreSQL"); Spacer(); Text(db).foregroundColor(.secondary).font(.caption) }
+            }
+            if let r = ready?["redis"] as? String, !r.isEmpty {
+                HStack { Text("Redis"); Spacer(); Text(r).foregroundColor(.secondary).font(.caption) }
+            }
+            if let n = ready?["node_id"] as? String, !n.isEmpty {
+                HStack { Text("Node"); Spacer(); Text(n).foregroundColor(.secondary).font(.caption) }
+            }
+            Button("Refresh") { Task { await load() } }
+        } header: {
+            Text("Backend Status")
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        do {
+            health = try await appState.apiService.getHealth()
+            unreachable = false
+        } catch {
+            unreachable = true
+            health = nil
+        }
+        ready = try? await appState.apiService.getReady()
     }
 }
 

@@ -321,8 +321,10 @@ fun SettingsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifi
     val autoSignRules by viewModel.autoSignRules.collectAsState()
     val users by viewModel.users.collectAsState()
     val killSwitch by viewModel.killSwitch.collectAsState()
+    val backendHealth by viewModel.backendHealth.collectAsState()
+    val backendReady by viewModel.backendReady.collectAsState()
 
-    LaunchedEffect(Unit) { viewModel.loadKillSwitchStatus() }
+    LaunchedEffect(Unit) { viewModel.loadKillSwitchStatus(); viewModel.loadBackendStatus() }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -353,6 +355,35 @@ fun SettingsScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifi
                     val note = killSwitch?.optString("note", "") ?: ""
                     if (note.isNotBlank()) Text(note, fontSize = 11.sp, color = Color.Gray)
                 }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Backend Status", fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { viewModel.loadBackendStatus() }) { Text("Refresh") }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Liveness (/health)")
+                    Text(
+                        backendHealth?.optString("status", "up") ?: "down",
+                        color = if (backendHealth != null) Color(0xFF2E7D32) else Color.Red,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Readiness (/readyz)")
+                    Text(
+                        backendReady?.optString("status", "ready") ?: "degraded",
+                        color = if (backendReady != null) Color(0xFF2E7D32) else Color.Red,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                backendReady?.optString("database", "")?.takeIf { it.isNotBlank() }?.let { Text("PostgreSQL: $it", fontSize = 12.sp, color = Color.Gray) }
+                backendReady?.optString("redis", "")?.takeIf { it.isNotBlank() }?.let { Text("Redis: $it", fontSize = 12.sp, color = Color.Gray) }
+                backendReady?.optString("node_id", "")?.takeIf { it.isNotBlank() }?.let { Text("Node: $it", fontSize = 12.sp, color = Color.Gray) }
             }
         }
 

@@ -1280,6 +1280,8 @@ const SettingsPage = ({ isDark }: { isDark: boolean }) => {
         </div>
       </div>
 
+      <BackendStatusCard isDark={isDark} />
+
       <div className={`${card} rounded-xl p-6`}>
         <h2 className={`text-lg font-semibold mb-4 ${heading}`}>About</h2>
         <div className={`flex justify-between py-2`}>
@@ -1291,6 +1293,86 @@ const SettingsPage = ({ isDark }: { isDark: boolean }) => {
           <span className={subtext}>{apiUrl}</span>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ---------------- Backend liveness/readiness status ----------------
+
+const BackendStatusCard = ({ isDark }: { isDark: boolean }) => {
+  const [health, setHealth] = useState<{ status: string; version?: string; node_id?: string } | null>(null);
+  const [ready, setReady] = useState<{ status: string; database?: string; redis?: string; node_id?: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setHealth(await masterWalletAPI.apiHealth());
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setHealth(null);
+    }
+    try {
+      setReady(await masterWalletAPI.getReady());
+    } catch {
+      setReady(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const card = isDark ? 'bg-gray-800' : 'bg-white border border-gray-200';
+  const row = isDark ? 'bg-gray-700' : 'bg-gray-50';
+  const heading = isDark ? 'text-white' : 'text-gray-900';
+  const subtext = isDark ? 'text-gray-400' : 'text-gray-500';
+  const ok = health?.status === 'ok' || health?.status === 'healthy';
+  const readyOk = ready?.status === 'ready' || ready?.status === 'ok';
+
+  return (
+    <div className={`${card} rounded-xl p-6 space-y-4`}>
+      <div className="flex justify-between items-center">
+        <h2 className={`text-lg font-semibold ${heading}`}>Backend Status</h2>
+        <button onClick={load} className={`px-3 py-1 rounded-lg text-sm ${isDark ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Refresh</button>
+      </div>
+      {err && <div className="text-sm text-red-500">{err}</div>}
+      <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+        <span className={heading}>Liveness (/health)</span>
+        <span className={`px-3 py-1 rounded text-white ${ok ? 'bg-green-500' : 'bg-red-500'}`}>
+          {health ? (ok ? 'UP' : health.status) : 'DOWN'}
+        </span>
+      </div>
+      <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+        <span className={heading}>Readiness (/readyz)</span>
+        <span className={`px-3 py-1 rounded text-white ${readyOk ? 'bg-green-500' : 'bg-red-500'}`}>
+          {ready ? (readyOk ? 'READY' : ready.status) : 'DEGRADED'}
+        </span>
+      </div>
+      {ready && (
+        <>
+          {ready.database && (
+            <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+              <span className={heading}>PostgreSQL</span>
+              <span className={`font-mono text-sm ${subtext}`}>{ready.database}</span>
+            </div>
+          )}
+          {ready.redis && (
+            <div className={`flex items-center justify-between p-4 ${row} rounded-lg`}>
+              <span className={heading}>Redis</span>
+              <span className={`font-mono text-sm ${subtext}`}>{ready.redis}</span>
+            </div>
+          )}
+        </>
+      )}
+      {(health?.version || health?.node_id || ready?.node_id) && (
+        <div className={`text-xs ${subtext}`}>
+          {health?.version ? `version ${health.version}` : ''}
+          {health?.node_id || ready?.node_id ? ` · node ${health?.node_id ?? ready?.node_id}` : ''}
+        </div>
+      )}
     </div>
   );
 };
@@ -1519,7 +1601,7 @@ const App = () => {
           {currentPage === 'passkeys' && (
             <PasskeysPage isDark={isDark} masterId={masterId} />
           )}
-          {currentPage === 'trading-control' && <TradingControlPage isDark={isDark} />}
+          {currentPage === 'trading-control' && <TradingControlPage isDark={isDark} masterId={masterId} />}
           {currentPage === 'settings' && <SettingsPage isDark={isDark} />}
         </main>
       </div>

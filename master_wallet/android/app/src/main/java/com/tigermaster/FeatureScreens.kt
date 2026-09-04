@@ -42,6 +42,7 @@ val MASTER_FEATURES = listOf(
     FeatureEntry("analytics", "Analytics", "📈"),
     FeatureEntry("passkeys", "Passkeys", "🪪"),
     FeatureEntry("withdraw", "Withdraw", "📤"),
+    FeatureEntry("trading", "Trading Control", "🎛️"),
 )
 
 @Composable
@@ -95,6 +96,7 @@ fun FeatureHostScreen(viewModel: MasterWalletViewModel, feature: String, modifie
             "analytics" -> AnalyticsScreen(viewModel)
             "passkeys" -> PasskeysScreen(viewModel)
             "withdraw" -> WithdrawScreen(viewModel)
+            "trading" -> TradingControlScreen(viewModel)
         }
     }
 }
@@ -686,5 +688,227 @@ fun WithdrawScreen(viewModel: MasterWalletViewModel) {
             viewModel.requestWithdrawal(to, amountWei, currency, chainId.toLongOrNull() ?: 1) { result = it }
         }, modifier = Modifier.fillMaxWidth()) { Text("Request withdrawal") }
         result?.let { Text(it, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
+    }
+}
+
+// ---- Trading control-plane --------------------------------------------------
+
+private val TC_VERTICALS = listOf("spot", "perpetual", "futures", "margin", "options", "copy", "liquidity")
+private val TC_TABS = listOf("contracts", "pools", "pairs", "margin", "options", "copy", "verticals", "audit")
+
+@Composable
+fun TradingControlScreen(viewModel: MasterWalletViewModel) {
+    val overview by viewModel.tradingOverview.collectAsState()
+    val contracts by viewModel.tradingContracts.collectAsState()
+    val pools by viewModel.tradingPools.collectAsState()
+    val pairs by viewModel.tradingPairs.collectAsState()
+    val marginMarkets by viewModel.tradingMarginMarkets.collectAsState()
+    val optionsSeries by viewModel.tradingOptionsSeries.collectAsState()
+    val copyTraders by viewModel.tradingCopyTraders.collectAsState()
+    val audit by viewModel.tradingAudit.collectAsState()
+
+    var tab by remember { mutableStateOf("contracts") }
+
+    // Create-form state (real submissions to the backend; nothing prefilled).
+    var contractKind by remember { mutableStateOf("perpetual") }
+    var contractSymbol by remember { mutableStateOf("") }
+    var contractBase by remember { mutableStateOf("") }
+    var contractQuote by remember { mutableStateOf("USDT") }
+    var contractLev by remember { mutableStateOf("10") }
+    var poolChainId by remember { mutableStateOf("1") }
+    var poolDex by remember { mutableStateOf("") }
+    var poolToken0 by remember { mutableStateOf("") }
+    var poolToken1 by remember { mutableStateOf("") }
+    var poolFeeBps by remember { mutableStateOf("30") }
+    var pairSymbol by remember { mutableStateOf("") }
+    var pairBase by remember { mutableStateOf("") }
+    var pairQuote by remember { mutableStateOf("USDT") }
+    var pairMarket by remember { mutableStateOf("spot") }
+    var marginSymbol by remember { mutableStateOf("") }
+    var marginBase by remember { mutableStateOf("") }
+    var marginQuote by remember { mutableStateOf("USDT") }
+    var marginLev by remember { mutableStateOf("3") }
+    var optUnderlying by remember { mutableStateOf("") }
+    var optQuote by remember { mutableStateOf("USDT") }
+    var optStrike by remember { mutableStateOf("") }
+    var optExpiryUnix by remember { mutableStateOf("") }
+    var optStyle by remember { mutableStateOf("call") }
+    var optIvBps by remember { mutableStateOf("8000") }
+    var optSize by remember { mutableStateOf("1") }
+    var copyTrader by remember { mutableStateOf("") }
+    var copyName by remember { mutableStateOf("") }
+    var copyFeeBps by remember { mutableStateOf("100") }
+    var copyMax by remember { mutableStateOf("0") }
+
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text(
+            "Builtin TigerWallet trading governance — decisions publish to the shared control plane enforced by every wallet engine.",
+            fontSize = 12.sp, color = Color.Gray
+        )
+        Spacer(Modifier.height(8.dp))
+
+        overview?.let { ov ->
+            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    listOf(
+                        "Contracts" to ov.optInt("contracts_active"),
+                        "Pools" to ov.optInt("pools_active"),
+                        "Pairs" to ov.optInt("pairs_active"),
+                        "Margin" to ov.optInt("margin_markets_active"),
+                        "Options" to ov.optInt("options_active"),
+                        "Copy" to ov.optInt("copy_configs_active")
+                    ).forEach { (label, value) ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("$value", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text(label, fontSize = 10.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TC_TABS.take(4).forEach { t ->
+                FilterChip(
+                    selected = tab == t,
+                    onClick = { tab = t },
+                    label = { Text(t.replaceFirstChar { it.uppercase() }, fontSize = 11.sp) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TC_TABS.drop(4).forEach { t ->
+                FilterChip(
+                    selected = tab == t,
+                    onClick = { tab = t },
+                    label = { Text(t.replaceFirstChar { it.uppercase() }, fontSize = 11.sp) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        when (tab) {
+            "contracts" -> {
+                Text("New Contract", fontWeight = FontWeight.Bold)
+                FieldRow(listOf(
+                    "Kind (perpetual|futures|options)" to { v: String -> contractKind = v },
+                    "Symbol (BTC-PERP)" to { v: String -> contractSymbol = v },
+                    "Base asset" to { v: String -> contractBase = v },
+                    "Quote asset" to { v: String -> contractQuote = v },
+                    "Max leverage" to { v: String -> contractLev = v }
+                ), listOf(contractKind, contractSymbol, contractBase, contractQuote, contractLev))
+                Button(onClick = {
+                    viewModel.createTradingContract(contractKind, contractSymbol, contractBase, contractQuote, contractLev.toIntOrNull() ?: 1)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+                contracts.forEach { r -> TradingEntityRow(r, "contracts", viewModel, "${r.str("kind")} — ${r.str("symbol")}", "${r.str("base_asset")}/${r.str("quote_asset")} · ${r.str("max_leverage")}x") }
+            }
+            "pools" -> {
+                Text("New Liquidity Pool", fontWeight = FontWeight.Bold)
+                FieldRow(listOf(
+                    "Chain ID" to { v: String -> poolChainId = v },
+                    "DEX" to { v: String -> poolDex = v },
+                    "Token0" to { v: String -> poolToken0 = v },
+                    "Token1" to { v: String -> poolToken1 = v },
+                    "Fee bps" to { v: String -> poolFeeBps = v }
+                ), listOf(poolChainId, poolDex, poolToken0, poolToken1, poolFeeBps))
+                Button(onClick = {
+                    viewModel.createTradingPool(poolChainId.toLongOrNull() ?: 1, poolDex, poolToken0, poolToken1, poolFeeBps.toIntOrNull() ?: 30)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+                pools.forEach { r -> TradingEntityRow(r, "pools", viewModel, "${r.str("dex")} (chain ${r.str("chain_id")})", "${r.str("token0")}/${r.str("token1")} · ${r.str("fee_bps")} bps") }
+            }
+            "pairs" -> {
+                Text("New Trading Pair", fontWeight = FontWeight.Bold)
+                FieldRow(listOf(
+                    "Symbol (BTC/USDT)" to { v: String -> pairSymbol = v },
+                    "Base asset" to { v: String -> pairBase = v },
+                    "Quote asset" to { v: String -> pairQuote = v },
+                    "Market (spot|perpetual|margin)" to { v: String -> pairMarket = v }
+                ), listOf(pairSymbol, pairBase, pairQuote, pairMarket))
+                Button(onClick = {
+                    viewModel.createTradingPair(pairSymbol, pairBase, pairQuote, pairMarket)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+                pairs.forEach { r -> TradingEntityRow(r, "pairs", viewModel, r.str("symbol"), "${r.str("base_asset")}/${r.str("quote_asset")} · ${r.str("market")}") }
+            }
+            "margin" -> {
+                Text("New Margin Market", fontWeight = FontWeight.Bold)
+                FieldRow(listOf(
+                    "Symbol (BTC/USDT)" to { v: String -> marginSymbol = v },
+                    "Base asset" to { v: String -> marginBase = v },
+                    "Quote asset" to { v: String -> marginQuote = v },
+                    "Max leverage" to { v: String -> marginLev = v }
+                ), listOf(marginSymbol, marginBase, marginQuote, marginLev))
+                Button(onClick = {
+                    viewModel.createTradingMarginMarket(marginSymbol, marginBase, marginQuote, marginLev.toIntOrNull() ?: 3)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+                marginMarkets.forEach { r -> TradingEntityRow(r, "margin-markets", viewModel, r.str("symbol"), "${r.str("base_asset")}/${r.str("quote_asset")} · ${r.str("max_leverage")}x") }
+            }
+            "options" -> {
+                Text("New Options Series", fontWeight = FontWeight.Bold)
+                FieldRow(listOf(
+                    "Underlying (BTC)" to { v: String -> optUnderlying = v },
+                    "Quote asset" to { v: String -> optQuote = v },
+                    "Strike" to { v: String -> optStrike = v },
+                    "Expiry (unix seconds)" to { v: String -> optExpiryUnix = v },
+                    "Style (call|put)" to { v: String -> optStyle = v },
+                    "IV bps" to { v: String -> optIvBps = v },
+                    "Contract size" to { v: String -> optSize = v }
+                ), listOf(optUnderlying, optQuote, optStrike, optExpiryUnix, optStyle, optIvBps, optSize))
+                Button(onClick = {
+                    viewModel.createTradingOptionsSeries(optUnderlying, optQuote, optStrike, optExpiryUnix.toLongOrNull() ?: 0, optStyle, optIvBps.toIntOrNull() ?: 8000, optSize)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+                optionsSeries.forEach { r -> TradingEntityRow(r, "options-series", viewModel, "${r.str("underlying")} ${r.str("strike")} ${r.str("style")}", "expiry ${r.str("expiry_unix")} · IV ${r.str("iv_bps")} bps") }
+            }
+            "copy" -> {
+                Text("New Copy Trader", fontWeight = FontWeight.Bold)
+                FieldRow(listOf(
+                    "Trader address (0x…)" to { v: String -> copyTrader = v },
+                    "Display name" to { v: String -> copyName = v },
+                    "Fee bps" to { v: String -> copyFeeBps = v },
+                    "Max copiers (0 = unlimited)" to { v: String -> copyMax = v }
+                ), listOf(copyTrader, copyName, copyFeeBps, copyMax))
+                Button(onClick = {
+                    viewModel.createTradingCopyTrader(copyTrader, copyName, copyFeeBps.toIntOrNull() ?: 100, copyMax.toIntOrNull() ?: 0)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Create") }
+                copyTraders.forEach { r -> TradingEntityRow(r, "copy-traders", viewModel, r.str("display_name", "trader"), "${r.str("trader")} · ${r.str("fee_bps")} bps") }
+            }
+            "verticals" -> {
+                val halts = overview?.optJSONObject("vertical_halts")
+                TC_VERTICALS.forEach { v ->
+                    val halted = halts?.optBoolean(v) == true
+                    JsonRowCard(v, if (halted) "halted" else "running") {
+                        TextButton(onClick = { viewModel.haltTradingVertical(v) }, enabled = !halted) {
+                            Text("Halt", color = MaterialTheme.colorScheme.error)
+                        }
+                        TextButton(onClick = { viewModel.resumeTradingVertical(v) }, enabled = halted) { Text("Resume") }
+                    }
+                }
+            }
+            "audit" -> {
+                if (audit.isEmpty()) Text("No control-plane actions recorded yet.", fontSize = 12.sp, color = Color.Gray)
+                audit.forEach { a ->
+                    JsonRowCard(
+                        "${a.str("action")} ${a.str("kind")} ${a.str("entity")}",
+                        "${a.str("actor", "actor_role")} · ${a.str("created_at")}"
+                    )
+                }
+            }
+        }
+        ErrorText(viewModel)
+    }
+}
+
+@Composable
+private fun TradingEntityRow(r: JSONObject, kind: String, viewModel: MasterWalletViewModel, title: String, subtitle: String) {
+    val status = r.str("status")
+    val id = r.str("id")
+    JsonRowCard(title, "$subtitle · $status") {
+        TextButton(onClick = { viewModel.tradingEntityLifecycle(kind, id, "stop") }, enabled = status != "stopped") {
+            Text("Stop", color = MaterialTheme.colorScheme.error)
+        }
+        TextButton(onClick = { viewModel.tradingEntityLifecycle(kind, id, "resume") }, enabled = status != "active") { Text("Resume") }
+        TextButton(onClick = { viewModel.tradingEntityLifecycle(kind, id, "delete") }) {
+            Text("Del", color = MaterialTheme.colorScheme.error)
+        }
     }
 }

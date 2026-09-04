@@ -770,6 +770,109 @@ class MasterWalletService {
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  // ==================== Trading control-plane ====================
+  // Full builtin DEX/futures/margin/options/copy governance over
+  // /api/v1/master-wallet/:id/trading/* (admin/operator role). Real backend
+  // reads/writes only — nothing is fabricated client-side.
+
+  /// GET …/trading/overview — active-entity counts + vertical halt state.
+  Future<Map<String, dynamic>> getTradingOverview(String masterId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/overview'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET …/trading/audit — control-plane action log.
+  Future<List<Map<String, dynamic>>> getTradingAudit(String masterId) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/audit'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final rows = body['audit'] as List? ?? [];
+    return rows.cast<Map<String, dynamic>>();
+  }
+
+  /// List one managed entity collection.
+  /// kind: contracts|pools|pairs|margin-markets|options-series|copy-traders
+  Future<List<Map<String, dynamic>>> listTradingEntities(String masterId, String kind) async {
+    final r = await http.get(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/$kind'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200) throw _error(r);
+    final body = jsonDecode(r.body);
+    if (body is List) return body.cast<Map<String, dynamic>>();
+    for (final k in ['contracts', 'pools', 'pairs', 'margin_markets', 'series', 'traders']) {
+      final arr = (body as Map<String, dynamic>)[k] as List?;
+      if (arr != null) return arr.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Create one managed entity with the exact body the backend binds.
+  Future<Map<String, dynamic>> createTradingEntity(
+    String masterId,
+    String kind,
+    Map<String, dynamic> body,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/$kind'),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// stop|resume a managed entity.
+  Future<void> setTradingEntityStatus(
+    String masterId,
+    String kind,
+    String entityId,
+    String action,
+  ) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/$kind/$entityId/$action'),
+      headers: _headers,
+      body: jsonEncode(const {}),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+  }
+
+  /// Permanently remove a managed entity.
+  Future<void> deleteTradingEntity(String masterId, String kind, String entityId) async {
+    final r = await http.delete(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/$kind/$entityId'),
+      headers: _headers,
+    );
+    if (r.statusCode != 200 && r.statusCode != 204) throw _error(r);
+  }
+
+  /// Halt a whole trading vertical fleet-wide (spot|perpetual|futures|margin|options|copy|liquidity).
+  Future<void> haltTradingVertical(String masterId, String vertical) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/halt/$vertical'),
+      headers: _headers,
+      body: jsonEncode(const {}),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+  }
+
+  /// Resume a halted trading vertical.
+  Future<void> resumeTradingVertical(String masterId, String vertical) async {
+    final r = await http.post(
+      Uri.parse('$_apiV1/master-wallet/$masterId/trading/resume/$vertical'),
+      headers: _headers,
+      body: jsonEncode(const {}),
+    );
+    if (r.statusCode != 200 && r.statusCode != 201) throw _error(r);
+  }
+
   // ==================== Sub Wallets ====================
 
   /// GET /master-wallet/:id/sub-wallets → {sub_wallets: [...]}
@@ -1060,6 +1163,16 @@ class MasterWalletService {
   Future<Map<String, dynamic>> apiHealth() async {
     final r = await http.get(
       Uri.parse('$_apiV1/health'),
+      headers: {'Content-Type': 'application/json'},
+    );
+    if (r.statusCode != 200) throw _error(r);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// GET /readyz — readiness probe (200 ready / 503 degraded). No auth.
+  Future<Map<String, dynamic>> readyz() async {
+    final r = await http.get(
+      Uri.parse('$API_BASE/readyz'),
       headers: {'Content-Type': 'application/json'},
     );
     if (r.statusCode != 200) throw _error(r);

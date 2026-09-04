@@ -92,6 +92,7 @@ class FeaturesScreen extends StatelessWidget {
     ('Analytics', Icons.bar_chart, AnalyticsScreen.new),
     ('Passkeys', Icons.badge, PasskeysScreen.new),
     ('Withdraw', Icons.upload, WithdrawScreen.new),
+    ('Trading Control', Icons.tune, TradingControlScreen.new),
   ];
 
   @override
@@ -1828,6 +1829,376 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             },
             child: const Text('Request withdrawal'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================== Trading Control-Plane =======================
+
+const _tcVerticals = ['spot', 'perpetual', 'futures', 'margin', 'options', 'copy', 'liquidity'];
+const _tcKinds = <(String, String)>[
+  ('contracts', 'Contracts'),
+  ('pools', 'Pools'),
+  ('pairs', 'Pairs'),
+  ('margin-markets', 'Margin'),
+  ('options-series', 'Options'),
+  ('copy-traders', 'Copy'),
+  ('verticals', 'Verticals'),
+  ('audit', 'Audit'),
+];
+
+class TradingControlScreen extends StatefulWidget {
+  const TradingControlScreen({super.key});
+  @override
+  State<TradingControlScreen> createState() => _TradingControlScreenState();
+}
+
+class _TradingControlScreenState extends State<TradingControlScreen> {
+  final _c = _CrudControllers();
+  String _kind = 'contracts';
+  Map<String, dynamic>? _overview;
+  List<Map<String, dynamic>> _rows = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  MasterWalletService get _mws => context.read<MasterWalletService>();
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final wid = await _firstWalletId(_mws);
+      if (wid == null) {
+        setState(() {
+          _rows = [];
+          _overview = null;
+          _loading = false;
+          _error = 'No master wallet selected';
+        });
+        return;
+      }
+      try {
+        _overview = await _mws.getTradingOverview(wid);
+      } catch (_) {
+        _overview = null;
+      }
+      if (_kind == 'verticals') {
+        _rows = [];
+      } else if (_kind == 'audit') {
+        _rows = await _mws.getTradingAudit(wid);
+      } else {
+        _rows = await _mws.listTradingEntities(wid, _kind);
+      }
+    } catch (e) {
+      _error = '$e';
+      _rows = [];
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _act(Future<void> Function(String wid) fn, String ok) async {
+    try {
+      final wid = await _firstWalletId(_mws);
+      if (wid == null) {
+        if (mounted) _snack(context, 'No master wallet.');
+        return;
+      }
+      await fn(wid);
+      if (mounted) _snack(context, ok);
+      await _load();
+    } catch (e) {
+      if (mounted) _snack(context, '$e');
+    }
+  }
+
+  Future<void> _create() async {
+    Map<String, dynamic>? body;
+    switch (_kind) {
+      case 'contracts':
+        body = {
+          'kind': _c('kind').text.trim().isEmpty ? 'perpetual' : _c('kind').text.trim(),
+          'symbol': _c('symbol').text.trim(),
+          'base_asset': _c('base').text.trim(),
+          'quote_asset': _c('quote').text.trim().isEmpty ? 'USDT' : _c('quote').text.trim(),
+          'max_leverage': int.tryParse(_c('lev').text) ?? 1,
+        };
+        break;
+      case 'pools':
+        body = {
+          'chain_id': int.tryParse(_c('chain').text) ?? 1,
+          'dex': _c('dex').text.trim(),
+          'token0': _c('token0').text.trim(),
+          'token1': _c('token1').text.trim(),
+          'fee_bps': int.tryParse(_c('feeBps').text) ?? 30,
+        };
+        break;
+      case 'pairs':
+        body = {
+          'symbol': _c('symbol').text.trim(),
+          'base_asset': _c('base').text.trim(),
+          'quote_asset': _c('quote').text.trim().isEmpty ? 'USDT' : _c('quote').text.trim(),
+          'market': _c('market').text.trim().isEmpty ? 'spot' : _c('market').text.trim(),
+        };
+        break;
+      case 'margin-markets':
+        body = {
+          'symbol': _c('symbol').text.trim(),
+          'base_asset': _c('base').text.trim(),
+          'quote_asset': _c('quote').text.trim().isEmpty ? 'USDT' : _c('quote').text.trim(),
+          'max_leverage': int.tryParse(_c('lev').text) ?? 3,
+        };
+        break;
+      case 'options-series':
+        body = {
+          'underlying': _c('underlying').text.trim(),
+          'quote_asset': _c('quote').text.trim().isEmpty ? 'USDT' : _c('quote').text.trim(),
+          'strike': _c('strike').text.trim(),
+          'expiry_unix': int.tryParse(_c('expiry').text) ?? 0,
+          'style': _c('style').text.trim().isEmpty ? 'call' : _c('style').text.trim(),
+          'iv_bps': int.tryParse(_c('ivBps').text) ?? 8000,
+          'contract_size': _c('size').text.trim().isEmpty ? '1' : _c('size').text.trim(),
+        };
+        break;
+      case 'copy-traders':
+        body = {
+          'trader': _c('trader').text.trim(),
+          'display_name': _c('name').text.trim(),
+          'fee_bps': int.tryParse(_c('feeBps').text) ?? 100,
+          'max_copiers': int.tryParse(_c('maxCopiers').text) ?? 0,
+        };
+        break;
+    }
+    if (body == null) return;
+    await _act((wid) async {
+      await _mws.createTradingEntity(wid, _kind, body!);
+    }, 'Created.');
+  }
+
+  String _title(Map<String, dynamic> r) {
+    switch (_kind) {
+      case 'contracts':
+        return '${r['kind'] ?? ''} — ${r['symbol'] ?? ''}';
+      case 'pools':
+        return '${r['dex'] ?? ''} (chain ${r['chain_id'] ?? ''})';
+      case 'options-series':
+        return '${r['underlying'] ?? ''} ${r['strike'] ?? ''} ${r['style'] ?? ''}';
+      case 'copy-traders':
+        return (r['display_name'] ?? '').toString().isNotEmpty
+            ? '${r['display_name']}'
+            : '${r['trader'] ?? ''}';
+      default:
+        return '${r['symbol'] ?? ''}';
+    }
+  }
+
+  String _sub(Map<String, dynamic> r) {
+    final st = r['status'] ?? '';
+    switch (_kind) {
+      case 'contracts':
+        return '${r['base_asset'] ?? ''}/${r['quote_asset'] ?? ''} · ${r['max_leverage'] ?? ''}x · $st';
+      case 'pools':
+        return '${r['token0'] ?? ''}/${r['token1'] ?? ''} · ${r['fee_bps'] ?? ''} bps · $st';
+      case 'pairs':
+        return '${r['base_asset'] ?? ''}/${r['quote_asset'] ?? ''} · ${r['market'] ?? ''} · $st';
+      case 'margin-markets':
+        return '${r['base_asset'] ?? ''}/${r['quote_asset'] ?? ''} · ${r['max_leverage'] ?? ''}x · $st';
+      case 'options-series':
+        return 'expiry ${r['expiry_unix'] ?? ''} · IV ${r['iv_bps'] ?? ''} bps · $st';
+      case 'copy-traders':
+        return '${r['trader'] ?? ''} · ${r['fee_bps'] ?? ''} bps · $st';
+      default:
+        return '$st';
+    }
+  }
+
+  List<Widget> _createForm() {
+    switch (_kind) {
+      case 'contracts':
+        return [
+          _field('Kind (perpetual|futures|options)', _c('kind')),
+          _field('Symbol (BTC-PERP)', _c('symbol')),
+          _field('Base asset', _c('base')),
+          _field('Quote asset', _c('quote')),
+          _field('Max leverage', _c('lev'), keyboard: TextInputType.number),
+        ];
+      case 'pools':
+        return [
+          _field('Chain ID', _c('chain'), keyboard: TextInputType.number),
+          _field('DEX', _c('dex')),
+          _field('Token0', _c('token0')),
+          _field('Token1', _c('token1')),
+          _field('Fee bps', _c('feeBps'), keyboard: TextInputType.number),
+        ];
+      case 'pairs':
+        return [
+          _field('Symbol (BTC/USDT)', _c('symbol')),
+          _field('Base asset', _c('base')),
+          _field('Quote asset', _c('quote')),
+          _field('Market (spot|perpetual|margin)', _c('market')),
+        ];
+      case 'margin-markets':
+        return [
+          _field('Symbol (BTC/USDT)', _c('symbol')),
+          _field('Base asset', _c('base')),
+          _field('Quote asset', _c('quote')),
+          _field('Max leverage', _c('lev'), keyboard: TextInputType.number),
+        ];
+      case 'options-series':
+        return [
+          _field('Underlying (BTC)', _c('underlying')),
+          _field('Quote asset', _c('quote')),
+          _field('Strike', _c('strike'), keyboard: TextInputType.number),
+          _field('Expiry (unix seconds)', _c('expiry'), keyboard: TextInputType.number),
+          _field('Style (call|put)', _c('style')),
+          _field('IV bps', _c('ivBps'), keyboard: TextInputType.number),
+          _field('Contract size', _c('size')),
+        ];
+      case 'copy-traders':
+        return [
+          _field('Trader address (0x…)', _c('trader')),
+          _field('Display name', _c('name')),
+          _field('Fee bps', _c('feeBps'), keyboard: TextInputType.number),
+          _field('Max copiers (0 = unlimited)', _c('maxCopiers'), keyboard: TextInputType.number),
+        ];
+      default:
+        return [];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ov = _overview;
+    final halts = (ov?['vertical_halts'] as Map?)?.cast<String, dynamic>() ?? {};
+    final canCreate = _createForm().isNotEmpty;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Trading Control')),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          const Text(
+            'Builtin TigerWallet trading governance — decisions publish to the shared control plane enforced by every wallet engine.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          if (ov != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    for (final (label, key) in [
+                      ('Contracts', 'contracts_active'),
+                      ('Pools', 'pools_active'),
+                      ('Pairs', 'pairs_active'),
+                      ('Margin', 'margin_markets_active'),
+                      ('Options', 'options_active'),
+                      ('Copy', 'copy_configs_active'),
+                    ])
+                      Column(children: [
+                        Text('${ov[key] ?? 0}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      ]),
+                  ],
+                ),
+              ),
+            ),
+          DropdownButtonFormField<String>(
+            value: _kind,
+            decoration: const InputDecoration(labelText: 'Surface'),
+            items: [for (final (v, l) in _tcKinds) DropdownMenuItem(value: v, child: Text(l))],
+            onChanged: (v) {
+              if (v != null) {
+                setState(() => _kind = v);
+                _load();
+              }
+            },
+          ),
+          const SizedBox(height: 8),
+          if (_loading) const Center(child: CircularProgressIndicator()),
+          if (!_loading && canCreate) ..._createForm(),
+          if (!_loading && canCreate)
+            FilledButton(onPressed: _create, child: const Text('Create')),
+          if (!_loading && _kind == 'verticals')
+            for (final v in _tcVerticals)
+              Card(
+                child: ListTile(
+                  title: Text(v),
+                  subtitle: Text(halts[v] == true ? 'halted' : 'running'),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    TextButton(
+                      onPressed: halts[v] == true
+                          ? null
+                          : () => _act((wid) => _mws.haltTradingVertical(wid, v), '$v halted.'),
+                      child: const Text('Halt', style: TextStyle(color: Colors.red)),
+                    ),
+                    TextButton(
+                      onPressed: halts[v] == true
+                          ? () => _act((wid) => _mws.resumeTradingVertical(wid, v), '$v resumed.')
+                          : null,
+                      child: const Text('Resume'),
+                    ),
+                  ]),
+                ),
+              ),
+          if (!_loading && _kind != 'verticals' && _rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text('None yet.', style: TextStyle(color: Colors.grey)),
+            ),
+          if (!_loading && _kind == 'audit')
+            for (final a in _rows)
+              Card(
+                child: ListTile(
+                  title: Text('${a['action'] ?? ''} ${a['kind'] ?? ''} ${a['entity'] ?? ''}'),
+                  subtitle: Text('${a['actor'] ?? a['actor_role'] ?? ''} · ${a['created_at'] ?? ''}'),
+                ),
+              ),
+          if (!_loading && _kind != 'verticals' && _kind != 'audit')
+            for (final r in _rows)
+              Card(
+                child: ListTile(
+                  title: Text(_title(r), style: const TextStyle(fontSize: 14)),
+                  subtitle: Text(_sub(r), style: const TextStyle(fontSize: 11)),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    TextButton(
+                      onPressed: () => _act((wid) => _mws.setTradingEntityStatus(wid, _kind, '${r['id']}', 'stop'), 'Stopped.'),
+                      child: const Text('Stop', style: TextStyle(color: Colors.red)),
+                    ),
+                    TextButton(
+                      onPressed: () => _act((wid) => _mws.setTradingEntityStatus(wid, _kind, '${r['id']}', 'resume'), 'Resumed.'),
+                      child: const Text('Resume'),
+                    ),
+                    TextButton(
+                      onPressed: () => _act((wid) => _mws.deleteTradingEntity(wid, _kind, '${r['id']}'), 'Removed.'),
+                      child: const Text('Del', style: TextStyle(color: Colors.red)),
+                    ),
+                  ]),
+                ),
+              ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ),
         ],
       ),
     );

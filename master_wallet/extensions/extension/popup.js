@@ -117,6 +117,7 @@
     $('walletView').classList.remove('hidden');
     setStatus('Loading walletsâ¦');
     refreshKillSwitchBanner();
+    renderBackendStatus();
     try {
       const res = await send('MW_RELAY', { action: 'listMasterWallets', args: [] });
       const wallets = (res && (res.wallets || res)) || [];
@@ -127,6 +128,28 @@
       renderWalletList([]);
       renderPasskeys();
     }
+  }
+
+  // Liveness (/health) + readiness (/readyz) probes so the operator sees
+  // cluster-degraded states (PostgreSQL down) before any API call fails.
+  async function renderBackendStatus() {
+    const box = $('backendStatus');
+    if (!box) return;
+    box.innerHTML = '';
+    let health = null;
+    let ready = null;
+    try { health = await send('MW_RELAY', { action: 'health', args: [] }); } catch (_) { health = null; }
+    try { ready = await send('MW_RELAY', { action: 'getReady', args: [] }); } catch (_) { ready = null; }
+    const row = (label, val, ok) => {
+      const d = el('div', { class: 'row' });
+      d.appendChild(el('span', {}, label));
+      d.appendChild(el('span', { class: 'pill ' + (ok ? 'ok' : 'danger') }, val));
+      return d;
+    };
+    box.appendChild(row('/health', health ? (health.status || 'up') : 'down', !!health));
+    box.appendChild(row('/readyz', ready ? (ready.status || 'ready') : 'degraded', !!ready));
+    if (ready && ready.database) box.appendChild(el('div', { class: 'sub muted' }, 'pg ' + ready.database));
+    if (ready && ready.node_id) box.appendChild(el('div', { class: 'sub muted' }, 'node ' + ready.node_id));
   }
 
   // Kill-switch banner: polls the read-only SuperAdmin halt state so the
@@ -352,6 +375,7 @@
     ['audit', 'Audit'],
     ['analytics', 'Analytics'],
     ['withdraw', 'Withdraw'],
+    ['trading', 'Trading'],
   ];
 
   function buildTabbar() {
@@ -394,6 +418,7 @@
       case 'audit': renderAudit(); break;
       case 'analytics': renderAnalytics(); break;
       case 'withdraw': break; // form-only tab
+      case 'trading': renderTrading(); break;
       default: break;
     }
   }
@@ -983,6 +1008,107 @@
     await runAction(() => relay('requestWithdrawal', [null, { to_address: toAddress, amount_wei: amountWei, currency, chain_id: chainId }]));
   }
 
+  // ---- Trading control-plane ----
+  const TC_VERTICALS = ['spot', 'perpetual', 'futures', 'margin', 'options', 'copy', 'liquidity'];
+  const TC_CREATE_FORMS = {
+    'contracts': 'tcCreateContract',
+    'pools': 'tcCreatePool',
+    'pairs': 'tcCreatePair',
+    'margin-markets': 'tcCreateMargin',
+    'options-series': 'tcCreateOptions',
+    'copy-traders': 'tcCreateCopy',
+  };
+
+  function tcCurrentKind() {
+    const sel = $('tcKind');
+    return sel ? sel.value : 'contracts';
+  }
+
+  function tcSyncCreateForm() {
+    const kind = tcCurrentKind();
+    for (const id of Object.values(TC_CREATE_FORMS)) {
+      const n = $(id);
+      if (n) n.classList.add('hidden');
+    }
+    const active = TC_CREATE_FORMS[kind];
+    if (active && $(active)) $(active).classList.remove('hidden');
+    const btn = $('tcCreateBtn');
+    if (btn) btn.classList.toggle('hidden', !TC_CREATE_FORMS[kind]);
+  }
+
+  async function renderTrading() {
+    tcSyncCreateForm();
+    const kind = tcCurrentKind();
+    try {
+      const ov = await relay('getTradingOverview');
+      const halts = (ov && ov.vertical_halts) || {};
+      renderList('tradingOverview', ov ? [ov] : [],
+        () => 'contracts ' + (ov.contracts_active || 0) + ' · pools ' + (ov.pools_active || 0) + ' · pairs ' + (ov.pairs_active || 0),
+        () => 'margin ' + (ov.margin_markets_active || 0) + ' · options ' + (ov.options_active || 0) + ' · copy ' + (ov.copy_configs_active || 0));
+      if (kind === 'verticals') {
+        renderList('tcList', TC_VERTICALS,
+          (v) => v + ' — ' + (halts[v] ? 'halted' : 'running'),
+          null,
+          (v) => {
+            if (halts[v]) return [actionBtn('Resume', '', () => runAction(() => relay('resumeTradingVertical', [null, v]), renderTrading))];
+            return [actionBtn('Halt', 'danger', () => runAction(() => relay('haltTradingVertical', [null, v]), renderTrading))];
+          });
+        return;
+      }
+    } catch (e) { renderList('tradingOverview', []); }
+    if (kind === 'verticals') return;
+    try {
+      if (kind === 'audit') {
+        const rows = await relay('getTradingAudit');
+        renderList('tcList', rows.slice(0, 50),
+          (a) => (a.action || '') + ' ' + (a.kind || '') + ' ' + truncate(a.entity || '', 18),
+          (a) => (a.actor || a.actor_role || '') + ' · ' + (a.created_at || ''));
+        return;
+      }
+      const rows = await relay('listTradingEntities', [null, kind]);
+      renderList('tcList', rows,
+        (r) => tcEntityTitle(kind, r),
+        (r) => tcEntitySub(kind, r) + ' · ' + (r.status || ''),
+        (r) => [
+          actionBtn('Stop', '', () => runAction(() => relay('setTradingEntityStatus', [null, kind, r.id, 'stop']), renderTrading)),
+          actionBtn('Resume', '', () => runAction(() => relay('setTradingEntityStatus', [null, kind, r.id, 'resume']), renderTrading)),
+          actionBtn('Del', 'danger', () => runAction(() => relay('deleteTradingEntity', [null, kind, r.id]), renderTrading)),
+        ]);
+    } catch (e) { renderList('tcList', []); setStatus(e.message, true); }
+  }
+
+  function tcEntityTitle(kind, r) {
+    if (kind === 'contracts') return (r.kind || '') + ' — ' + (r.symbol || '');
+    if (kind === 'pools') return (r.dex || '') + ' (chain ' + (r.chain_id || '') + ')';
+    if (kind === 'options-series') return (r.underlying || '') + ' ' + (r.strike || '') + ' ' + (r.style || '');
+    if (kind === 'copy-traders') return r.display_name || truncate(r.trader || '', 16);
+    return r.symbol || '';
+  }
+
+  function tcEntitySub(kind, r) {
+    if (kind === 'contracts') return (r.base_asset || '') + '/' + (r.quote_asset || '') + ' · ' + (r.max_leverage || '') + 'x';
+    if (kind === 'pools') return (r.token0 || '') + '/' + (r.token1 || '') + ' · ' + (r.fee_bps || '') + ' bps';
+    if (kind === 'pairs' || kind === 'margin-markets') return (r.base_asset || '') + '/' + (r.quote_asset || '') + (r.market ? ' · ' + r.market : '') + (r.max_leverage ? ' · ' + r.max_leverage + 'x' : '');
+    if (kind === 'options-series') return 'expiry ' + (r.expiry_unix || '') + ' · IV ' + (r.iv_bps || '') + ' bps';
+    if (kind === 'copy-traders') return truncate(r.trader || '', 18) + ' · ' + (r.fee_bps || '') + ' bps';
+    return '';
+  }
+
+  function val(id) { const n = $(id); return n ? n.value.trim() : ''; }
+
+  async function tcCreate() {
+    const kind = tcCurrentKind();
+    let body;
+    if (kind === 'contracts') body = { kind: val('tcContractKind'), symbol: val('tcSymbol'), base_asset: val('tcBase'), quote_asset: val('tcQuote'), max_leverage: parseInt(val('tcMaxLev'), 10) || 1 };
+    else if (kind === 'pools') body = { chain_id: parseInt(val('tcChainId'), 10) || 1, dex: val('tcDex'), token0: val('tcToken0'), token1: val('tcToken1'), fee_bps: parseInt(val('tcFeeBps'), 10) || 30 };
+    else if (kind === 'pairs') body = { symbol: val('tcPairSymbol'), base_asset: val('tcPairBase'), quote_asset: val('tcPairQuote'), market: val('tcPairMarket') };
+    else if (kind === 'margin-markets') body = { symbol: val('tcMarginSymbol'), base_asset: val('tcMarginBase'), quote_asset: val('tcMarginQuote'), max_leverage: parseInt(val('tcMarginLev'), 10) || 3 };
+    else if (kind === 'options-series') body = { underlying: val('tcOptUnderlying'), quote_asset: val('tcOptQuote'), strike: val('tcOptStrike'), expiry_unix: parseInt(val('tcOptExpiry'), 10) || 0, style: val('tcOptStyle'), iv_bps: parseInt(val('tcOptIvBps'), 10) || 8000, contract_size: val('tcOptSize') };
+    else if (kind === 'copy-traders') body = { trader: val('tcCopyTrader'), display_name: val('tcCopyName'), fee_bps: parseInt(val('tcCopyFeeBps'), 10) || 100, max_copiers: parseInt(val('tcCopyMax'), 10) || 0 };
+    else return;
+    await runAction(() => relay('createTradingEntity', [null, kind, body]), renderTrading);
+  }
+
   function wireFeatureTabs() {
     buildTabbar();
     const bind = (id, fn) => { const b = $(id); if (b) b.addEventListener('click', fn); };
@@ -1008,6 +1134,9 @@
     bind('autoSignTxBtn', autoSignTx);
     bind('uwAutoSignBtn', uwAutoSign);
     bind('revenuePayoutBtn', revenuePayout);
+    bind('tcCreateBtn', tcCreate);
+    const tcKindSel = $('tcKind');
+    if (tcKindSel) tcKindSel.addEventListener('change', renderTrading);
     showTab('wallets');
   }
 

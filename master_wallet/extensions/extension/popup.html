@@ -51,6 +51,9 @@
       border-radius: 8px; margin-bottom: 8px;
     }
     .muted { font-size: 10px; color: var(--text-muted); }
+    .pill { padding: 2px 8px; border-radius: 999px; font-size: 10px; color: #fff; }
+    .pill.ok { background: var(--success); }
+    .pill.danger { background: var(--danger, #c0392b); }
     .balance { color: var(--success); font-weight: bold; }
     input, select {
       width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
@@ -118,6 +121,8 @@
       <h3 class="sub">Passkeys</h3>
       <div id="passkeyList"><div class="empty">No passkeys registered.</div></div>
       <button class="btn" id="registerPasskeyBtn">↓ Passkey register</button>
+      <h3 class="sub">Backend Status</h3>
+      <div id="backendStatus"><div class="empty">Checking…</div></div>
       <h3 class="sub">Actions</h3>
       <button class="btn" id="refreshBtn">↻ Refresh</button>
       <button class="btn secondary" id="themeToggleBtn">Toggle theme</button>
@@ -317,6 +322,65 @@
       <input id="wdCurrency" placeholder="Currency (e.g. ETH)" />
       <input id="wdChainId" placeholder="Chain ID (e.g. 1)" />
       <button class="btn" id="requestWithdrawalBtn">Request withdrawal</button>
+    </div>
+
+    <div id="tab-trading" class="section tabpanel hidden">
+      <h2>Trading Control-Plane</h2>
+      <p class="muted">Builtin TigerWallet trading governance — contracts, pools, pairs, margin markets, options series, copy traders + vertical halt/resume.</p>
+      <div id="tradingOverview"></div>
+      <select id="tcKind">
+        <option value="contracts">Contracts</option>
+        <option value="pools">Pools</option>
+        <option value="pairs">Pairs</option>
+        <option value="margin-markets">Margin Markets</option>
+        <option value="options-series">Options Series</option>
+        <option value="copy-traders">Copy Traders</option>
+        <option value="verticals">Verticals</option>
+        <option value="audit">Audit</option>
+      </select>
+      <div id="tcCreateContract" class="tc-create">
+        <input id="tcContractKind" placeholder="Kind (perpetual|futures|options)" value="perpetual" />
+        <input id="tcSymbol" placeholder="Symbol (BTC-PERP)" />
+        <input id="tcBase" placeholder="Base asset" />
+        <input id="tcQuote" placeholder="Quote asset" value="USDT" />
+        <input id="tcMaxLev" placeholder="Max leverage" value="10" />
+      </div>
+      <div id="tcCreatePool" class="tc-create hidden">
+        <input id="tcChainId" placeholder="Chain ID" value="1" />
+        <input id="tcDex" placeholder="DEX" />
+        <input id="tcToken0" placeholder="Token0" />
+        <input id="tcToken1" placeholder="Token1" />
+        <input id="tcFeeBps" placeholder="Fee bps" value="30" />
+      </div>
+      <div id="tcCreatePair" class="tc-create hidden">
+        <input id="tcPairSymbol" placeholder="Symbol (BTC/USDT)" />
+        <input id="tcPairBase" placeholder="Base asset" />
+        <input id="tcPairQuote" placeholder="Quote asset" value="USDT" />
+        <input id="tcPairMarket" placeholder="Market (spot|perpetual|margin)" value="spot" />
+      </div>
+      <div id="tcCreateMargin" class="tc-create hidden">
+        <input id="tcMarginSymbol" placeholder="Symbol (BTC/USDT)" />
+        <input id="tcMarginBase" placeholder="Base asset" />
+        <input id="tcMarginQuote" placeholder="Quote asset" value="USDT" />
+        <input id="tcMarginLev" placeholder="Max leverage" value="3" />
+      </div>
+      <div id="tcCreateOptions" class="tc-create hidden">
+        <input id="tcOptUnderlying" placeholder="Underlying (BTC)" />
+        <input id="tcOptQuote" placeholder="Quote asset" value="USDT" />
+        <input id="tcOptStrike" placeholder="Strike" />
+        <input id="tcOptExpiry" placeholder="Expiry (unix seconds)" />
+        <input id="tcOptStyle" placeholder="Style (call|put)" value="call" />
+        <input id="tcOptIvBps" placeholder="IV bps" value="8000" />
+        <input id="tcOptSize" placeholder="Contract size" value="1" />
+      </div>
+      <div id="tcCreateCopy" class="tc-create hidden">
+        <input id="tcCopyTrader" placeholder="Trader address (0x…)" />
+        <input id="tcCopyName" placeholder="Display name" />
+        <input id="tcCopyFeeBps" placeholder="Fee bps" value="100" />
+        <input id="tcCopyMax" placeholder="Max copiers (0 = unlimited)" value="0" />
+      </div>
+      <button class="btn" id="tcCreateBtn">Create</button>
+      <div id="tcList"><div class="empty">Loading…</div></div>
     </div>
   </div>
 

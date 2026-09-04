@@ -654,6 +654,13 @@ class _NetworkTabState extends State<_NetworkTab> {
           ),
         ),
         _Panel(
+          title: 'Backend Readiness (/readyz)',
+          child: _LiveMap(
+            cacheKey: 'readyz',
+            load: widget.walletSvc.readyz,
+          ),
+        ),
+        _Panel(
           title: 'Supported Chains',
           child: _LiveList(
             cacheKey: 'chains',

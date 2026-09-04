@@ -150,6 +150,7 @@ async function handleRelay(payload) {
     'getTransactionHistory',
     'health',
     'apiHealth',
+    'getReady',
   ].includes(action);
 
   const walletId = (args && args[0]) || ctx.currentWalletId;
@@ -286,6 +287,8 @@ async function handleRelay(payload) {
       return svc.health();
     case 'apiHealth':
       return svc.apiHealth();
+    case 'getReady':
+      return svc.getReady();
     // ---------- Auto-sign bridge ----------
     case 'userWalletAutoSign':
       return svc.userWalletAutoSign(walletId, args[1]);
@@ -370,6 +373,23 @@ async function handleRelay(payload) {
     // ---------- Kill switch (read-only SuperAdmin halt state) ----------
     case 'getKillSwitchStatus':
       return svc.getKillSwitchStatus();
+    // ---------- Trading control-plane ----------
+    case 'getTradingOverview':
+      return svc.getTradingOverview(walletId);
+    case 'getTradingAudit':
+      return svc.getTradingAudit(walletId);
+    case 'haltTradingVertical':
+      return svc.haltTradingVertical(walletId, args[1]);
+    case 'resumeTradingVertical':
+      return svc.resumeTradingVertical(walletId, args[1]);
+    case 'listTradingEntities':
+      return svc.listTradingEntities(walletId, args[1]);
+    case 'createTradingEntity':
+      return svc.createTradingEntity(walletId, args[1], args[2]);
+    case 'setTradingEntityStatus':
+      return svc.setTradingEntityStatus(walletId, args[1], args[2], args[3]);
+    case 'deleteTradingEntity':
+      return svc.deleteTradingEntity(walletId, args[1], args[2]);
     default:
       throw new Error('Unknown relay action: ' + action);
   }

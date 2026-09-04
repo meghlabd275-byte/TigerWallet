@@ -833,6 +833,67 @@ impl BackendClient {
         self.get("/api/v1/health").await
     }
 
+    /// GET /readyz — readiness probe (200 when the backend can serve, 503
+    /// while PostgreSQL is unreachable). No auth required.
+    pub async fn readyz(&self) -> Result<serde_json::Value, MasterError> {
+        self.get("/readyz").await
+    }
+
+    // ---- Kill switch (read-only SuperAdmin halt state) ----
+
+    /// GET /api/v1/kill-switch/status — returns {halted, reason?, ...}.
+    /// Protected route: requires the operator JWT. Toggle stays SuperAdmin-only
+    /// via the kill_switch service (:8469) — never exposed here.
+    pub async fn get_kill_switch_status(&self) -> Result<serde_json::Value, MasterError> {
+        self.get("/api/v1/kill-switch/status").await
+    }
+
+    // ---- Trading control-plane (/api/v1/master-wallet/:id/trading/*) ----
+    // Full builtin DEX/futures/margin/options/copy governance (admin/operator
+    // role). Real backend reads/writes only; nothing is fabricated.
+
+    /// GET …/trading/overview — active-entity counts + vertical halt state.
+    pub async fn get_trading_overview(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/trading/overview", master_wallet_id)).await
+    }
+
+    /// GET …/trading/audit — control-plane action log.
+    pub async fn get_trading_audit(&self, master_wallet_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/trading/audit", master_wallet_id)).await
+    }
+
+    /// Halt a whole trading vertical fleet-wide
+    /// (spot|perpetual|futures|margin|options|copy|liquidity).
+    pub async fn halt_trading_vertical(&self, master_wallet_id: &str, vertical: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/trading/halt/{}", master_wallet_id, vertical)).await
+    }
+
+    /// Resume a halted trading vertical.
+    pub async fn resume_trading_vertical(&self, master_wallet_id: &str, vertical: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/trading/resume/{}", master_wallet_id, vertical)).await
+    }
+
+    /// List one managed entity collection.
+    /// kind: contracts|pools|pairs|margin-markets|options-series|copy-traders
+    pub async fn list_trading_entities(&self, master_wallet_id: &str, kind: &str) -> Result<serde_json::Value, MasterError> {
+        self.get(&format!("/api/v1/master-wallet/{}/trading/{}", master_wallet_id, kind)).await
+    }
+
+    /// Create one managed entity with the exact body the backend binds.
+    pub async fn create_trading_entity(&self, master_wallet_id: &str, kind: &str, body: &serde_json::Value) -> Result<serde_json::Value, MasterError> {
+        self.post(&format!("/api/v1/master-wallet/{}/trading/{}", master_wallet_id, kind), body).await
+    }
+
+    /// stop|resume a managed entity.
+    pub async fn set_trading_entity_status(&self, master_wallet_id: &str, kind: &str, entity_id: &str, action: &str) -> Result<serde_json::Value, MasterError> {
+        self.post_empty(&format!("/api/v1/master-wallet/{}/trading/{}/{}/{}", master_wallet_id, kind, entity_id, action)).await
+    }
+
+    /// Permanently remove a managed entity.
+    pub async fn delete_trading_entity(&self, master_wallet_id: &str, kind: &str, entity_id: &str) -> Result<serde_json::Value, MasterError> {
+        self.delete(&format!("/api/v1/master-wallet/{}/trading/{}/{}", master_wallet_id, kind, entity_id)).await
+    }
+
     // ---- New master-wallet endpoints ----
 
     pub async fn update_master_wallet(

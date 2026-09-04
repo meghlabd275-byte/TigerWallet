@@ -1243,6 +1243,11 @@ class MasterWalletAPI {
     );
   }
 
+  /** GET /readyz — readiness probe (200 ready / 503 degraded). No auth. */
+  async getReady(): Promise<{ status: string; database?: string; redis?: string; node_id?: string }> {
+    return this.request('/readyz', {}, false);
+  }
+
   // ---------------- Passkey relying-party ----------------
   // The backend is the WebAuthn relying party; the client performs the
   // navigator.credentials ceremony and POSTs the result for server-side
@@ -1294,78 +1299,111 @@ class MasterWalletAPI {
       { method: 'POST', body: JSON.stringify(req) }
     );
   }
-  // ---- Trading control-plane (/api/v1/trading/* on master_wallet/backend :8450) ----
-  async getTradingOverview(): Promise<any> {
-    return this.request('/api/v1/trading/overview');
+  // ---- Trading control-plane (/api/v1/master-wallet/:id/trading/* on master_wallet/backend :8450) ----
+  private tcBase(masterId: string): string {
+    return `/api/v1/master-wallet/${masterId}/trading`;
   }
-  async getTradingAudit(): Promise<{ audit: any[] }> {
-    return this.request('/api/v1/trading/audit');
+  async getTradingOverview(masterId: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/overview`);
   }
-  async haltTradingVertical(vertical: string): Promise<any> {
-    return this.request(`/api/v1/trading/halt/${vertical}`, { method: 'POST' });
+  async getTradingAudit(masterId: string): Promise<{ audit: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/audit`);
   }
-  async resumeTradingVertical(vertical: string): Promise<any> {
-    return this.request(`/api/v1/trading/resume/${vertical}`, { method: 'POST' });
+  async haltTradingVertical(masterId: string, vertical: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/halt/${vertical}`, { method: 'POST' });
   }
-  async getTradingContracts(): Promise<{ contracts: any[] }> {
-    return this.request('/api/v1/trading/contracts');
+  async resumeTradingVertical(masterId: string, vertical: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/resume/${vertical}`, { method: 'POST' });
   }
-  async createTradingContract(data: any): Promise<any> {
-    return this.request('/api/v1/trading/contracts', { method: 'POST', body: JSON.stringify(data) });
+  async getTradingContracts(masterId: string): Promise<{ contracts: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/contracts`);
   }
-  async stopTradingContract(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/contracts/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  async createTradingContract(masterId: string, data: any): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/contracts`, { method: 'POST', body: JSON.stringify(data) });
   }
-  async resumeTradingContract(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/contracts/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  async stopTradingContract(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/contracts/${id}/stop`, { method: 'POST' });
   }
-  async deleteTradingContract(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/contracts/${id}`, { method: 'DELETE' });
+  async resumeTradingContract(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/contracts/${id}/resume`, { method: 'POST' });
   }
-  async getTradingPools(): Promise<{ pools: any[] }> {
-    return this.request('/api/v1/trading/pools');
+  async deleteTradingContract(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/contracts/${id}`, { method: 'DELETE' });
   }
-  async createTradingPool(data: any): Promise<any> {
-    return this.request('/api/v1/trading/pools', { method: 'POST', body: JSON.stringify(data) });
+  async getTradingPools(masterId: string): Promise<{ pools: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/pools`);
   }
-  async stopTradingPool(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/pools/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  async createTradingPool(masterId: string, data: any): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pools`, { method: 'POST', body: JSON.stringify(data) });
   }
-  async resumeTradingPool(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/pools/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  async stopTradingPool(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pools/${id}/stop`, { method: 'POST' });
   }
-  async deleteTradingPool(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/pools/${id}`, { method: 'DELETE' });
+  async resumeTradingPool(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pools/${id}/resume`, { method: 'POST' });
   }
-  async getTradingPairsList(): Promise<{ pairs: any[] }> {
-    return this.request('/api/v1/trading/pairs');
+  async deleteTradingPool(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pools/${id}`, { method: 'DELETE' });
   }
-  async createTradingPair(data: any): Promise<any> {
-    return this.request('/api/v1/trading/pairs', { method: 'POST', body: JSON.stringify(data) });
+  async getTradingPairsList(masterId: string): Promise<{ pairs: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/pairs`);
   }
-  async stopTradingPairLifecycle(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/pairs/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  async createTradingPair(masterId: string, data: any): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pairs`, { method: 'POST', body: JSON.stringify(data) });
   }
-  async resumeTradingPairLifecycle(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/pairs/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  async stopTradingPairLifecycle(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pairs/${id}/stop`, { method: 'POST' });
   }
-  async deleteTradingPairLifecycle(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/pairs/${id}`, { method: 'DELETE' });
+  async resumeTradingPairLifecycle(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pairs/${id}/resume`, { method: 'POST' });
   }
-  async getTradingMarginMarkets(): Promise<{ margin_markets: any[] }> {
-    return this.request('/api/v1/trading/margin-markets');
+  async deleteTradingPairLifecycle(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/pairs/${id}`, { method: 'DELETE' });
   }
-  async createTradingMarginMarket(data: any): Promise<any> {
-    return this.request('/api/v1/trading/margin-markets', { method: 'POST', body: JSON.stringify(data) });
+  async getTradingMarginMarkets(masterId: string): Promise<{ margin_markets: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/margin-markets`);
   }
-  async stopTradingMarginMarket(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/margin-markets/${id}/stop`, { method: 'POST', body: JSON.stringify({ status: 'stopped' }) });
+  async createTradingMarginMarket(masterId: string, data: any): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/margin-markets`, { method: 'POST', body: JSON.stringify(data) });
   }
-  async resumeTradingMarginMarket(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/margin-markets/${id}/resume`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
+  async stopTradingMarginMarket(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/margin-markets/${id}/stop`, { method: 'POST' });
   }
-  async deleteTradingMarginMarket(id: string): Promise<any> {
-    return this.request(`/api/v1/trading/margin-markets/${id}`, { method: 'DELETE' });
+  async resumeTradingMarginMarket(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/margin-markets/${id}/resume`, { method: 'POST' });
+  }
+  async deleteTradingMarginMarket(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/margin-markets/${id}`, { method: 'DELETE' });
+  }
+  async getTradingOptionsSeries(masterId: string): Promise<{ series: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/options-series`);
+  }
+  async createTradingOptionsSeries(masterId: string, data: any): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/options-series`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingOptionsSeries(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/options-series/${id}/stop`, { method: 'POST' });
+  }
+  async resumeTradingOptionsSeries(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/options-series/${id}/resume`, { method: 'POST' });
+  }
+  async deleteTradingOptionsSeries(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/options-series/${id}`, { method: 'DELETE' });
+  }
+  async getTradingCopyTraders(masterId: string): Promise<{ traders: any[] }> {
+    return this.request(`${this.tcBase(masterId)}/copy-traders`);
+  }
+  async createTradingCopyTrader(masterId: string, data: any): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/copy-traders`, { method: 'POST', body: JSON.stringify(data) });
+  }
+  async stopTradingCopyTrader(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/copy-traders/${id}/stop`, { method: 'POST' });
+  }
+  async resumeTradingCopyTrader(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/copy-traders/${id}/resume`, { method: 'POST' });
+  }
+  async deleteTradingCopyTrader(masterId: string, id: string): Promise<any> {
+    return this.request(`${this.tcBase(masterId)}/copy-traders/${id}`, { method: 'DELETE' });
   }
 }
 
@@ -1382,37 +1420,51 @@ export interface PasskeyCredential {
 export const masterWalletAPI = new MasterWalletAPI();
 
 export const tradingControlAPI = {
-  overview: () => masterWalletAPI.getTradingOverview(),
-  audit: () => masterWalletAPI.getTradingAudit(),
-  haltVertical: (vertical: string) => masterWalletAPI.haltTradingVertical(vertical),
-  resumeVertical: (vertical: string) => masterWalletAPI.resumeTradingVertical(vertical),
+  overview: (mid: string) => masterWalletAPI.getTradingOverview(mid),
+  audit: (mid: string) => masterWalletAPI.getTradingAudit(mid),
+  haltVertical: (mid: string, vertical: string) => masterWalletAPI.haltTradingVertical(mid, vertical),
+  resumeVertical: (mid: string, vertical: string) => masterWalletAPI.resumeTradingVertical(mid, vertical),
   contracts: {
-    list: () => masterWalletAPI.getTradingContracts(),
-    create: (data: any) => masterWalletAPI.createTradingContract(data),
-    stop: (id: string) => masterWalletAPI.stopTradingContract(id),
-    resume: (id: string) => masterWalletAPI.resumeTradingContract(id),
-    remove: (id: string) => masterWalletAPI.deleteTradingContract(id),
+    list: (mid: string) => masterWalletAPI.getTradingContracts(mid),
+    create: (mid: string, data: any) => masterWalletAPI.createTradingContract(mid, data),
+    stop: (mid: string, id: string) => masterWalletAPI.stopTradingContract(mid, id),
+    resume: (mid: string, id: string) => masterWalletAPI.resumeTradingContract(mid, id),
+    remove: (mid: string, id: string) => masterWalletAPI.deleteTradingContract(mid, id),
   },
   pools: {
-    list: () => masterWalletAPI.getTradingPools(),
-    create: (data: any) => masterWalletAPI.createTradingPool(data),
-    stop: (id: string) => masterWalletAPI.stopTradingPool(id),
-    resume: (id: string) => masterWalletAPI.resumeTradingPool(id),
-    remove: (id: string) => masterWalletAPI.deleteTradingPool(id),
+    list: (mid: string) => masterWalletAPI.getTradingPools(mid),
+    create: (mid: string, data: any) => masterWalletAPI.createTradingPool(mid, data),
+    stop: (mid: string, id: string) => masterWalletAPI.stopTradingPool(mid, id),
+    resume: (mid: string, id: string) => masterWalletAPI.resumeTradingPool(mid, id),
+    remove: (mid: string, id: string) => masterWalletAPI.deleteTradingPool(mid, id),
   },
   pairs: {
-    list: () => masterWalletAPI.getTradingPairsList(),
-    create: (data: any) => masterWalletAPI.createTradingPair(data),
-    stop: (id: string) => masterWalletAPI.stopTradingPairLifecycle(id),
-    resume: (id: string) => masterWalletAPI.resumeTradingPairLifecycle(id),
-    remove: (id: string) => masterWalletAPI.deleteTradingPairLifecycle(id),
+    list: (mid: string) => masterWalletAPI.getTradingPairsList(mid),
+    create: (mid: string, data: any) => masterWalletAPI.createTradingPair(mid, data),
+    stop: (mid: string, id: string) => masterWalletAPI.stopTradingPairLifecycle(mid, id),
+    resume: (mid: string, id: string) => masterWalletAPI.resumeTradingPairLifecycle(mid, id),
+    remove: (mid: string, id: string) => masterWalletAPI.deleteTradingPairLifecycle(mid, id),
   },
   marginMarkets: {
-    list: () => masterWalletAPI.getTradingMarginMarkets(),
-    create: (data: any) => masterWalletAPI.createTradingMarginMarket(data),
-    stop: (id: string) => masterWalletAPI.stopTradingMarginMarket(id),
-    resume: (id: string) => masterWalletAPI.resumeTradingMarginMarket(id),
-    remove: (id: string) => masterWalletAPI.deleteTradingMarginMarket(id),
+    list: (mid: string) => masterWalletAPI.getTradingMarginMarkets(mid),
+    create: (mid: string, data: any) => masterWalletAPI.createTradingMarginMarket(mid, data),
+    stop: (mid: string, id: string) => masterWalletAPI.stopTradingMarginMarket(mid, id),
+    resume: (mid: string, id: string) => masterWalletAPI.resumeTradingMarginMarket(mid, id),
+    remove: (mid: string, id: string) => masterWalletAPI.deleteTradingMarginMarket(mid, id),
+  },
+  optionsSeries: {
+    list: (mid: string) => masterWalletAPI.getTradingOptionsSeries(mid),
+    create: (mid: string, data: any) => masterWalletAPI.createTradingOptionsSeries(mid, data),
+    stop: (mid: string, id: string) => masterWalletAPI.stopTradingOptionsSeries(mid, id),
+    resume: (mid: string, id: string) => masterWalletAPI.resumeTradingOptionsSeries(mid, id),
+    remove: (mid: string, id: string) => masterWalletAPI.deleteTradingOptionsSeries(mid, id),
+  },
+  copyTraders: {
+    list: (mid: string) => masterWalletAPI.getTradingCopyTraders(mid),
+    create: (mid: string, data: any) => masterWalletAPI.createTradingCopyTrader(mid, data),
+    stop: (mid: string, id: string) => masterWalletAPI.stopTradingCopyTrader(mid, id),
+    resume: (mid: string, id: string) => masterWalletAPI.resumeTradingCopyTrader(mid, id),
+    remove: (mid: string, id: string) => masterWalletAPI.deleteTradingCopyTrader(mid, id),
   },
 };
 

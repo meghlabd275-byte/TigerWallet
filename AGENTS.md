@@ -1205,6 +1205,7 @@
   solana/cosmos broadcasters, cluster.go (SKIP LOCKED auto-sign claiming +
   WS Redis fanout + /readyz), auto_signer daemon, kill_switch gate,
   license_gate two-party co-sign.
+
 ## Session 35 (2026-09-03) — Bots + BotsClients + ProjectParty listing deep audit (read-only report)
 - BOTS BACKEND: canonical = mm_bot_platform/bot_api (:8471) + Rust bot_core (:8472). Only 3 of 18 bot types have real execution runners (market_maker/arbitrage/sniper); the other 15 (grid/dca/momentum/mean_reversion/scalping/ai_trading/signal/cross_chain/perp_hedge/flash_loan/sandwich/front_run/mev/liquidity_provider/custom) are signal-only — start flips DB status to running with NO execution.
 - BUGS: canonical bot_api getBot/start/stop/pause have NO ownership check (fetchBot WHERE id=$1, setBotStatus UPDATE without user_id) — IDOR: any user can stop/pause another user bot; deleteBot DOES have ownerClause. wl_bots arbitrage+sniper start payloads OMIT dex_req (bot_core requires it) -> 422, those bots never run in WL. wl_bots fetchCEXCreds pairs per-user api_key with ADMIN-LEVEL api_secret (bot_cex_connections has no user_id; api_keys has no secret column) -> every CEX order fails HMAC. MarketMakerRunner never cancels prior orders (stacks bid+ask every tick). createSubscription = free self-upgrade to Enterprise (no payment). wl CreateBot has no tier-limit enforcement (canonical has). bot_api PUT /fees + wl POST/PUT /fees are NOT admin-gated. bot_api getMMConfigs proxies to project-party /api/v1/market-making/configs which exists on NEITHER backend (404).
@@ -1289,3 +1290,45 @@
   bots android/ios orphaned SDK shells; bots desktop+extension + PP
   android/ios/desktop/extension are UserWallet copies awaiting retarget;
   wl PP market-making delegates execution to licensed wl_bots by design.
+
+
+## Session 38 (2026-09-04) — MasterWallet 93/93 parity on ALL 7 surfaces (pushed to main)
+- BACKEND scope clarification: the /api/v1/master-wallet/:id group = 93 literal
+  routes (the "129" in Session 34 counted wallet_api public/group routes that
+  are NOT MW's; definitive dynamic-segment matcher /tmp/mw_audit6.py). After
+  this session: web 93/93, android 93/93, ios 93/93, desktop-gui 93/93,
+  extension 93/93, flutter 93/93, rust 93/93.
+- WEB /trading 404 BUG FIXED: TradingControlPage called `${MW_BASE}/trading/...`
+  (no /:id) but backend registers /:id/trading/... -> every call 404'd. Now
+  tcBase(masterId). Added missing copy-traders + options-series tabs (10
+  routes) with inline stop/resume + haltReasonModal forms.
+- ANDROID: MasterWalletApiService +38 trading methods; NEW
+  TradingControlScreen.kt (Overview/Contracts/Pools/Pairs/Margin/Options/Copy/
+  Verticals/Audit tabs) + "Trading Control" button on FeaturesScreen.
+- iOS: MasterAPIService +38 trading methods; NEW TradingControlView.swift
+  (tabbed ForEach Form + haltReasonModal + audit table) + FeaturesView link.
+- DESKTOP GUI (React/Vite): TradingControl React page (tabs + forms + tables
+  + audit) inside App.tsx; ws helper replaced with real apiPost + wsPost;
+  .badge.danger CSS. tsc 0 + vite build OK.
+- EXTENSION (MV3): masterWalletService.js +38 trading methods; NEW trading tab
+  (tabbar + tcBase + 7 forms + 8 lists + audit, el() helper renderers, no
+  innerHTML). node --check OK.
+- FLUTTER: master_wallet_service.dart +38 trading methods (pools/pairs/margin/
+  options/copy + stop/resume + halt/resume + audit); TradingControlScreen
+  appended to features_screen.dart + "trading" FeaturesScreen entry.
+- RUST SDK: get_kill_switch_status + readyz + full trading control-plane
+  (tc_base + list/create contracts/pools/pairs/margin/options/copy + stop/
+  resume + halt/resume + overview + audit). Cargo.lock MSRV-1.85 downgrades:
+  url 2.5.8->2.5.4, reqwest 0.13.2->0.12.24, hyper 1.8.1->1.7.0, hyper-util
+  0.1.19->0.1.18, webpki-roots 1.0.5->1.0.4 (icu 2.2 needed 1.86). cargo build 0.
+- /readyz READINESS-PROBE UI on all 6 remaining surfaces (Rust already had it):
+  apiGetPublicRaw+backendHealth/backendReady StateFlows+loadBackendStatus+
+  "Backend Status" card (android MainActivity SettingsScreen);
+  getReady()+BackendStatusSettingsSection (ios); getReady()+BackendStatusCard
+  (web SettingsPage); /readyz in loadHealth+readyDetail rows (desktop
+  MasterSettings); getReady relay+renderBackendStatus+/backendStatus panel+
+  .pill CSS (extension); readyz()+_NetworkTab Readiness _LiveMap (flutter).
+- Toolchain: go1.22.12 at /tmp/go122, cargo 1.85 (rustup) — both session-local.
+- Separation rule re-verified: git status shows ONLY master_wallet/* files
+  modified (zero UserWallet/Admin app edits).
+

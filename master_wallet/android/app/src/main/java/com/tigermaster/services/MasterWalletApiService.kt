@@ -1418,6 +1418,20 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
     }
 
     /**
+     * Readiness probe (200 ready / 503 degraded, PostgreSQL-reachability gate).
+     * GET /readyz → {status, database, redis, node_id}
+     */
+    fun readyz(callback: ApiCallback<JSONObject>) {
+        val request = Request.Builder()
+            .url("$baseUrl/readyz")
+            .get()
+            .headers(getHeaders())
+            .build()
+
+        executeRequest(request, callback) { it }
+    }
+
+    /**
      * Get transaction history for an address (Etherscan-backed on the backend).
      * GET /api/v1/transactions/history?address=&chain_id= → {transactions: [...]}
      */
