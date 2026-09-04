@@ -62,7 +62,6 @@ func (h *Handlers) Register(c *gin.Context) {
 	var req struct {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required,min=8"`
-		Role     string `json:"role"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -73,7 +72,10 @@ func (h *Handlers) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash failed"})
 		return
 	}
-	u, err := h.store.CreateUser(c.Request.Context(), req.Email, string(hash), req.Role)
+	// Fail-closed: public self-registration ALWAYS creates a plain user.
+	// Privileged roles/scopes are assigned only by the WL client owner via
+	// PUT /users/:id/scopes — never via the request body.
+	u, err := h.store.CreateUser(c.Request.Context(), req.Email, string(hash), "user")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -115,6 +117,49 @@ func (h *Handlers) Login(c *gin.Context) {
 
 // ==================== Tokens ====================
 
+// isWLPrivileged reports whether the caller may manage any tenant resource:
+// wl_client / listing_admin scopes or a legacy DB admin role.
+func (h *Handlers) isWLPrivileged(c *gin.Context) bool {
+	if wlgate.HasScope(c, "wl_client") || wlgate.HasScope(c, "listing_admin") {
+		return true
+	}
+	uid := wlgate.UserID(c)
+	if uid == uuid.Nil {
+		return false
+	}
+	u, err := h.store.GetUserByID(c.Request.Context(), uid)
+	if err != nil {
+		return false
+	}
+	return u.Role == "admin" || u.Role == "super_admin"
+}
+
+// canManageToken: token owner or privileged role.
+func (h *Handlers) canManageToken(c *gin.Context, id uuid.UUID) bool {
+	if h.isWLPrivileged(c) {
+		return true
+	}
+	owner, err := h.store.TokenOwner(c.Request.Context(), id)
+	if err != nil {
+		return false
+	}
+	uid := wlgate.UserID(c)
+	return owner != nil && uid != uuid.Nil && *owner == uid
+}
+
+// canManageOrder: market-making order owner or privileged role.
+func (h *Handlers) canManageOrder(c *gin.Context, id uuid.UUID) bool {
+	if h.isWLPrivileged(c) {
+		return true
+	}
+	owner, err := h.store.MMOrderOwner(c.Request.Context(), id)
+	if err != nil {
+		return false
+	}
+	uid := wlgate.UserID(c)
+	return owner != nil && uid != uuid.Nil && *owner == uid
+}
+
 func (h *Handlers) CreateToken(c *gin.Context) {
 	var req struct {
 		Name            string `json:"name" binding:"required"`
@@ -135,10 +180,17 @@ func (h *Handlers) CreateToken(c *gin.Context) {
 	if req.ChainID == 0 {
 		req.ChainID = 1
 	}
+	// Status is forced to draft in the store; a user-supplied status is
+	// never honored (self-approval/self-listing bypass closed).
+	ownerID := wlgate.UserID(c)
+	var owner *uuid.UUID
+	if ownerID != uuid.Nil {
+		owner = &ownerID
+	}
 	t, err := h.store.CreateToken(c.Request.Context(), &store.Token{
 		Name: req.Name, Symbol: req.Symbol, ContractAddress: req.ContractAddress,
 		ChainID: req.ChainID, Decimals: req.Decimals, LogoURL: req.LogoURL,
-		Description: req.Description, Website: req.Website, Status: req.Status,
+		Description: req.Description, Website: req.Website, OwnerID: owner,
 		ListingType: req.ListingType,
 	})
 	if err != nil {
@@ -196,10 +248,16 @@ func (h *Handlers) UpdateToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.canManageToken(c, id) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not the token owner"})
+		return
+	}
+	// Status is not updatable here; listing status only moves through the
+	// submit/approve/reject admin workflow.
 	t, err := h.store.UpdateToken(c.Request.Context(), id, &store.Token{
 		Name: req.Name, Symbol: req.Symbol, ContractAddress: req.ContractAddress,
 		ChainID: req.ChainID, Decimals: req.Decimals, LogoURL: req.LogoURL,
-		Description: req.Description, Website: req.Website, Status: req.Status,
+		Description: req.Description, Website: req.Website,
 		ListingType: req.ListingType,
 	})
 	if err != nil {
@@ -216,6 +274,10 @@ func (h *Handlers) UpdateToken(c *gin.Context) {
 func (h *Handlers) DeleteToken(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
+		return
+	}
+	if !h.canManageToken(c, id) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not the token owner"})
 		return
 	}
 	if err := h.store.DeleteToken(c.Request.Context(), id); err != nil {
@@ -562,6 +624,24 @@ func (h *Handlers) CreateMarketMakingConfig(c *gin.Context) {
 	c.JSON(http.StatusCreated, marketMakingToJSON(m))
 }
 
+// DeleteMarketMakingConfig removes a market-making config (owner of the
+// underlying token or privileged role).
+func (h *Handlers) DeleteMarketMakingConfig(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	if !h.isWLPrivileged(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin role required"})
+		return
+	}
+	if err := h.store.DeleteMarketMakingConfig(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "config not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": id})
+}
+
 func (h *Handlers) ListMarketMakingConfigs(c *gin.Context) {
 	ms, err := h.store.ListMarketMakingConfigs(c.Request.Context())
 	if err != nil {
@@ -762,6 +842,10 @@ func (h *Handlers) SubmitToken(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !h.canManageToken(c, id) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not the token owner"})
+		return
+	}
 	if err := h.store.SubmitToken(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "token not found or already submitted"})
 		return
@@ -891,10 +975,10 @@ func (h *Handlers) Contribute(c *gin.Context) {
 	if err != nil {
 		// On-chain tx failed; the contribution stays "pending" (no fake hash).
 		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":         "on-chain contribution failed",
-			"detail":        err.Error(),
-			"contribution":  contributionToJSON(contrib),
-			"on_chain":      false,
+			"error":        "on-chain contribution failed",
+			"detail":       err.Error(),
+			"contribution": contributionToJSON(contrib),
+			"on_chain":     false,
 		})
 		return
 	}
@@ -1003,7 +1087,7 @@ func (h *Handlers) GetContributionStatus(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"contribution": dbView,
 			"on_chain": TxConfirmation{Hash: txHash, Confirmed: false, Status: "error"},
-			"error": err.Error()})
+			"error":    err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"contribution": dbView, "on_chain": conf})
@@ -1094,8 +1178,13 @@ func (h *Handlers) CreateMMOrder(c *gin.Context) {
 		}
 		expiresAt = &t
 	}
+	ownerID := wlgate.UserID(c)
+	var owner *uuid.UUID
+	if ownerID != uuid.Nil {
+		owner = &ownerID
+	}
 	o, err := h.store.CreateMMOrder(c.Request.Context(), &store.MMOrder{
-		TokenID: tokenID, Side: req.Side, Price: req.Price,
+		TokenID: tokenID, Side: req.Side, Price: req.Price, OwnerID: owner,
 		Quantity: req.Quantity, Status: "pending", ExpiresAt: expiresAt,
 	})
 	if err != nil {
@@ -1122,11 +1211,105 @@ func (h *Handlers) UpdateMMOrderStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be pending, filled or cancelled"})
 		return
 	}
+	if !h.canManageOrder(c, id) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not the order owner"})
+		return
+	}
 	if err := h.store.UpdateMMOrderStatus(c.Request.Context(), id, req.Status); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "order not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"id": id, "status": req.Status})
+}
+
+// VerifyFeePayment performs REAL on-chain receipt verification of a fee
+// payment's tx_hash (admin gate) and only then marks it completed.
+// Fail-closed: no RPC configured / no receipt / failed tx => not completed.
+func (h *Handlers) VerifyFeePayment(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	txHash, status, err := h.store.FeePaymentTx(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "fee payment not found"})
+		return
+	}
+	if status == "completed" {
+		c.JSON(http.StatusOK, gin.H{"id": id, "status": "completed", "message": "payment already verified"})
+		return
+	}
+	if txHash == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no tx_hash recorded for this payment"})
+		return
+	}
+	if h.cfg.RPCURL == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "on-chain verification not configured (PP_RPC_URL unset)"})
+		return
+	}
+	txCtx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	client, err := ethclient.DialContext(txCtx, h.cfg.RPCURL)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "RPC connection failed", "detail": err.Error()})
+		return
+	}
+	defer client.Close()
+	if !strings.HasPrefix(txHash, "0x") {
+		txHash = "0x" + txHash
+	}
+	receipt, err := client.TransactionReceipt(txCtx, common.HexToHash(txHash))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "transaction receipt not found on-chain", "detail": err.Error()})
+		return
+	}
+	if receipt.Status != 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transaction failed on-chain", "receipt_status": receipt.Status})
+		return
+	}
+	if err := h.store.SetFeePaymentVerified(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": id, "status": "completed", "tx_hash": txHash, "block_number": receipt.BlockNumber.String()})
+}
+
+// GetTokenPriceQuery is the query-param form of GetTokenPrice:
+// GET /pricing?token_id=<uuid> (used by the frontend pricing page).
+func (h *Handlers) GetTokenPriceQuery(c *gin.Context) {
+	tid := strings.TrimSpace(c.Query("token_id"))
+	if tid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token_id query param required"})
+		return
+	}
+	id, err := uuid.Parse(tid)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	p, err := h.store.GetTokenPrice(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "price not found"})
+		return
+	}
+	c.JSON(http.StatusOK, tokenPriceToJSON(p))
+}
+
+// ComplianceStatus aggregates a token's compliance posture in one read:
+// listing status, KYC state, latest audit, and on-chain contract verification.
+func (h *Handlers) ComplianceStatus(c *gin.Context) {
+	tid := strings.TrimSpace(c.Param("token_id"))
+	id, err := uuid.Parse(tid)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+		return
+	}
+	cs, err := h.store.ComplianceStatus(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "token not found"})
+		return
+	}
+	c.JSON(http.StatusOK, cs)
 }
 
 // MarketMakerStatus returns the real MM aggregate for a token.
@@ -1380,9 +1563,12 @@ func (h *Handlers) PayFees(c *gin.Context) {
 	if currency == "" {
 		currency = "USD"
 	}
+	// Record as pending — NEVER completed. The user-supplied tx_hash is not
+	// trusted; an admin verifies the real on-chain receipt via
+	// POST /fees/verify/:id before the fee counts as paid.
 	p, err := h.store.RecordFeePayment(c.Request.Context(), &store.FeePayment{
 		TokenID: tokenID, UserID: uid, Amount: req.Amount, Currency: currency,
-		PaymentMethod: req.PaymentMethod, TxHash: req.TxHash, Status: "completed",
+		PaymentMethod: req.PaymentMethod, TxHash: req.TxHash, Status: "pending",
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

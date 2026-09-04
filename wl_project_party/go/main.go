@@ -184,6 +184,13 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 
 			mw.POST("/market-making", svc.CreateMarketMakingConfig)
 			mw.GET("/market-making", svc.ListMarketMakingConfigs)
+			// Plural /configs alias (used by bot_api getMMConfigs + web).
+			mw.POST("/market-making/configs", svc.CreateMarketMakingConfig)
+			mw.GET("/market-making/configs", svc.ListMarketMakingConfigs)
+			mw.DELETE("/market-making/configs/:id", svc.DeleteMarketMakingConfig)
+			// Query-param pricing form + aggregated compliance status.
+			mw.GET("/pricing", svc.GetTokenPriceQuery)
+			mw.GET("/compliance/status/:token_id", svc.ComplianceStatus)
 
 			mw.POST("/fees", svc.CreateFeeConfig)
 			mw.GET("/fees/configs", svc.ListFeeConfigs)
@@ -215,6 +222,9 @@ func buildRouter(cfg *config.Config, svc *handlers.Handlers, gate *wlgate.Gate) 
 			admin.POST("/compliance/audit", svc.CreateAuditLog)
 			admin.POST("/pricing/set", svc.SetTokenPrice)
 			admin.POST("/pricing/update", svc.UpdatePrice)
+			// Fee verification: real on-chain receipt check before a pending
+			// fee payment counts as paid.
+			admin.POST("/fees/verify/:id", svc.VerifyFeePayment)
 			// Scoped-admin role assignment — WL client owner only (wl_client
 			// scope). RequireRole passes wl_client (full tenancy control); the
 			// handler re-checks HasScope("wl_client") so a listing_admin cannot

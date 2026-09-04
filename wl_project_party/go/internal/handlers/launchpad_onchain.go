@@ -312,7 +312,7 @@ func (loc *LaunchpadOnChain) getTokenPrice(ctx context.Context, saleID [32]byte)
 type TxConfirmation struct {
 	Hash        string `json:"hash"`
 	Confirmed   bool   `json:"confirmed"`
-	Status      string `json:"status"`            // "success" | "reverted" | "pending" | "not_found"
+	Status      string `json:"status"` // "success" | "reverted" | "pending" | "not_found"
 	BlockNumber uint64 `json:"block_number,omitempty"`
 	GasUsed     uint64 `json:"gas_used,omitempty"`
 }

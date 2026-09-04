@@ -26,6 +26,8 @@ type Config struct {
 	JWTExpiry         time.Duration
 	HeartbeatInterval time.Duration
 	BotCoreURL        string // Rust bot_core execution plane (BOT_CORE_URL)
+	ProjectPartyURL   string // WL ProjectParty backend for mm-configs linkage (PROJECT_PARTY_URL)
+	PPServiceToken    string // shared service-to-service token with project-party (PP_SERVICE_TOKEN)
 }
 
 func Load() *Config {
@@ -43,6 +45,8 @@ func Load() *Config {
 		JWTExpiry:         getDuration("JWT_EXPIRY", 24*time.Hour),
 		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
 		BotCoreURL:        getEnv("BOT_CORE_URL", "http://localhost:8472"),
+		ProjectPartyURL:   getEnv("PROJECT_PARTY_URL", "http://localhost:8106"),
+		PPServiceToken:    getEnv("PP_SERVICE_TOKEN", ""),
 	}
 }
 

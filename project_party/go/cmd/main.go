@@ -88,9 +88,9 @@ func main() {
 		// Token Management — mutations require auth; approve/reject require admin.
 		tokens := api.Group("/tokens")
 		{
-			tokens.GET("", listTokensHandler(db))               // public browse
-			tokens.GET("/:id", getTokenHandler(db))             // public view
-			tokensAuth := tokens.Group("", authMiddleware())    // authenticated mutations
+			tokens.GET("", listTokensHandler(db))            // public browse
+			tokens.GET("/:id", getTokenHandler(db))          // public view
+			tokensAuth := tokens.Group("", authMiddleware()) // authenticated mutations
 			{
 				tokensAuth.POST("", createTokenHandler(db))
 				tokensAuth.PUT("/:id", updateTokenHandler(db))
@@ -298,48 +298,48 @@ func getEnvInt(key string, defaultValue int) int {
 // ============== Models ==============
 
 type Token struct {
-	ID                uuid.UUID  `json:"id" db:"id"`
-	TenantID         uuid.UUID `json:"tenant_id" db:"tenant_id"`
-	Name             string    `json:"name" db:"name"`
-	Symbol           string    `json:"symbol" db:"symbol"`
-	Decimals         int       `json:"decimals" db:"decimals"`
-	ContractAddress  string    `json:"contract_address" db:"contract_address"`
-	Chain            string    `json:"chain" db:"chain"`
-	TotalSupply      string    `json:"total_supply" db:"total_supply"`
-	LogoURL          string    `json:"logo_url" db:"logo_url"`
-	Description      string    `json:"description" db:"description"`
-	Website          string    `json:"website" db:"website"`
-	Whitepaper      string    `json:"whitepaper" db:"whitepaper"`
-	SocialLinks      map[string]string `json:"social_links" db:"social_links"`
-	Status           string    `json:"status" db:"status"` // draft, submitted, in_review, approved, rejected, listed
-	SubmissionDate   *time.Time `json:"submission_date" db:"submission_date"`
-	ReviewerID       *uuid.UUID `json:"reviewer_id" db:"reviewer_id"`
-	ReviewedAt       *time.Time `json:"reviewed_at" db:"reviewed_at"`
-	RejectionReason  *string   `json:"rejection_reason" db:"rejection_reason"`
-	ListingFeeUSD    float64   `json:"listing_fee_usd" db:"listing_fee_usd"`
-	IsFeatured       bool      `json:"is_featured" db:"is_featured"`
-	LaunchpadID      *uuid.UUID `json:"launchpad_id" db:"launchpad_id"`
-	CreatedAt        time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+	ID              uuid.UUID         `json:"id" db:"id"`
+	TenantID        uuid.UUID         `json:"tenant_id" db:"tenant_id"`
+	Name            string            `json:"name" db:"name"`
+	Symbol          string            `json:"symbol" db:"symbol"`
+	Decimals        int               `json:"decimals" db:"decimals"`
+	ContractAddress string            `json:"contract_address" db:"contract_address"`
+	Chain           string            `json:"chain" db:"chain"`
+	TotalSupply     string            `json:"total_supply" db:"total_supply"`
+	LogoURL         string            `json:"logo_url" db:"logo_url"`
+	Description     string            `json:"description" db:"description"`
+	Website         string            `json:"website" db:"website"`
+	Whitepaper      string            `json:"whitepaper" db:"whitepaper"`
+	SocialLinks     map[string]string `json:"social_links" db:"social_links"`
+	Status          string            `json:"status" db:"status"` // draft, submitted, in_review, approved, rejected, listed
+	SubmissionDate  *time.Time        `json:"submission_date" db:"submission_date"`
+	ReviewerID      *uuid.UUID        `json:"reviewer_id" db:"reviewer_id"`
+	ReviewedAt      *time.Time        `json:"reviewed_at" db:"reviewed_at"`
+	RejectionReason *string           `json:"rejection_reason" db:"rejection_reason"`
+	ListingFeeUSD   float64           `json:"listing_fee_usd" db:"listing_fee_usd"`
+	IsFeatured      bool              `json:"is_featured" db:"is_featured"`
+	LaunchpadID     *uuid.UUID        `json:"launchpad_id" db:"launchpad_id"`
+	CreatedAt       time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at" db:"updated_at"`
 }
 
 type TokenListing struct {
-	ID                uuid.UUID `json:"id" db:"id"`
-	TokenID          uuid.UUID `json:"token_id" db:"token_id"`
-	TenantID         uuid.UUID `json:"tenant_id" db:"tenant_id"`
-	PairToken        string    `json:"pair_token" db:"pair_token"` // e.g., "USDT", "ETH"
-	InitialPrice     string    `json:"initial_price" db:"initial_price"`
-	CurrentPrice     string    `json:"current_price" db:"current_price"`
-	LaunchType       string    `json:"launch_type" db:"launch_type"` // fair_launch, presale, farming
-	StartTime        time.Time `json:"start_time" db:"start_time"`
-	EndTime          time.Time `json:"end_time" db:"end_time"`
-	Status           string    `json:"status" db:"status"` // upcoming, active, completed, cancelled
-	Volume24h        string    `json:"volume_24h" db:"volume_24h"`
-	LiquidityUSD     string    `json:"liquidity_usd" db:"liquidity_usd"`
-	MarketCap        string    `json:"market_cap" db:"market_cap"`
-	PriceChange24h   float64   `json:"price_change_24h" db:"price_change_24h"`
-	CreatedAt        time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+	ID             uuid.UUID `json:"id" db:"id"`
+	TokenID        uuid.UUID `json:"token_id" db:"token_id"`
+	TenantID       uuid.UUID `json:"tenant_id" db:"tenant_id"`
+	PairToken      string    `json:"pair_token" db:"pair_token"` // e.g., "USDT", "ETH"
+	InitialPrice   string    `json:"initial_price" db:"initial_price"`
+	CurrentPrice   string    `json:"current_price" db:"current_price"`
+	LaunchType     string    `json:"launch_type" db:"launch_type"` // fair_launch, presale, farming
+	StartTime      time.Time `json:"start_time" db:"start_time"`
+	EndTime        time.Time `json:"end_time" db:"end_time"`
+	Status         string    `json:"status" db:"status"` // upcoming, active, completed, cancelled
+	Volume24h      string    `json:"volume_24h" db:"volume_24h"`
+	LiquidityUSD   string    `json:"liquidity_usd" db:"liquidity_usd"`
+	MarketCap      string    `json:"market_cap" db:"market_cap"`
+	PriceChange24h float64   `json:"price_change_24h" db:"price_change_24h"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type Launchpad struct {
@@ -363,50 +363,50 @@ type Launchpad struct {
 }
 
 type LaunchpadContribution struct {
-	ID            uuid.UUID  `json:"id" db:"id"`
-	LaunchpadID  uuid.UUID  `json:"launchpad_id" db:"launchpad_id"`
-	UserID       uuid.UUID  `json:"user_id" db:"user_id"`
-	Amount       string     `json:"amount" db:"amount"`
-	TokenAmount  string     `json:"token_amount" db:"token_amount"`
-	Status       string     `json:"status" db:"status"` // pending, confirmed, claimed, refunded
-	TxHash       string     `json:"tx_hash" db:"tx_hash"`
-	ConfirmedAt  *time.Time `json:"confirmed_at" db:"confirmed_at"`
-	ClaimedAt    *time.Time `json:"claimed_at" db:"claimed_at"`
-	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	ID          uuid.UUID  `json:"id" db:"id"`
+	LaunchpadID uuid.UUID  `json:"launchpad_id" db:"launchpad_id"`
+	UserID      uuid.UUID  `json:"user_id" db:"user_id"`
+	Amount      string     `json:"amount" db:"amount"`
+	TokenAmount string     `json:"token_amount" db:"token_amount"`
+	Status      string     `json:"status" db:"status"` // pending, confirmed, claimed, refunded
+	TxHash      string     `json:"tx_hash" db:"tx_hash"`
+	ConfirmedAt *time.Time `json:"confirmed_at" db:"confirmed_at"`
+	ClaimedAt   *time.Time `json:"claimed_at" db:"claimed_at"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
 }
 
 type MarketMakerOrder struct {
-	ID           uuid.UUID `json:"id" db:"id"`
-	TenantID    uuid.UUID `json:"tenant_id" db:"tenant_id"`
-	TokenID     uuid.UUID `json:"token_id" db:"token_id"`
-	Side        string    `json:"side" db:"side"` // buy, sell
-	Price       string    `json:"price" db:"price"`
-	Quantity    string    `json:"quantity" db:"quantity"`
-	Remaining   string    `json:"remaining" db:"remaining"`
-	Status      string    `json:"status" db:"status"` // pending, filled, cancelled
-	FilledAt    *time.Time `json:"filled_at" db:"filled_at"`
-	ExpiresAt   time.Time `json:"expires_at" db:"expires_at"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID        uuid.UUID  `json:"id" db:"id"`
+	TenantID  uuid.UUID  `json:"tenant_id" db:"tenant_id"`
+	TokenID   uuid.UUID  `json:"token_id" db:"token_id"`
+	Side      string     `json:"side" db:"side"` // buy, sell
+	Price     string     `json:"price" db:"price"`
+	Quantity  string     `json:"quantity" db:"quantity"`
+	Remaining string     `json:"remaining" db:"remaining"`
+	Status    string     `json:"status" db:"status"` // pending, filled, cancelled
+	FilledAt  *time.Time `json:"filled_at" db:"filled_at"`
+	ExpiresAt time.Time  `json:"expires_at" db:"expires_at"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
 }
 
 type TokenPrice struct {
 	ID        uuid.UUID `json:"id" db:"id"`
-	TokenID  uuid.UUID `json:"token_id" db:"token_id"`
-	Price    string    `json:"price" db:"price"`
+	TokenID   uuid.UUID `json:"token_id" db:"token_id"`
+	Price     string    `json:"price" db:"price"`
 	Change24h float64   `json:"change_24h" db:"change_24h"`
 	Volume24h string    `json:"volume_24h" db:"volume_24h"`
 	Timestamp time.Time `json:"timestamp" db:"timestamp"`
 }
 
 type ComplianceAudit struct {
-	ID            uuid.UUID `json:"id" db:"id"`
-	TokenID       uuid.UUID `json:"token_id" db:"token_id"`
-	AuditType     string    `json:"audit_type" db:"audit_type"` // security, code, financial
-	Status        string    `json:"status" db:"status"` // requested, in_progress, completed, failed
-	ReportURL     *string   `json:"report_url" db:"report_url"`
-	Auditor       string    `json:"auditor" db:"auditor"`
-	CompletedAt   *time.Time `json:"completed_at" db:"completed_at"`
-	RequestedAt   time.Time `json:"requested_at" db:"requested_at"`
+	ID          uuid.UUID  `json:"id" db:"id"`
+	TokenID     uuid.UUID  `json:"token_id" db:"token_id"`
+	AuditType   string     `json:"audit_type" db:"audit_type"` // security, code, financial
+	Status      string     `json:"status" db:"status"`         // requested, in_progress, completed, failed
+	ReportURL   *string    `json:"report_url" db:"report_url"`
+	Auditor     string     `json:"auditor" db:"auditor"`
+	CompletedAt *time.Time `json:"completed_at" db:"completed_at"`
+	RequestedAt time.Time  `json:"requested_at" db:"requested_at"`
 }
 
 // ============== HTTP Handlers ==============
@@ -602,7 +602,7 @@ func getMarketHandler(db *pgxpool.Pool, rdb *redis.Client) gin.HandlerFunc {
 			"total_tokens":     totalTokens,
 			"total_listings":   totalListings,
 			"total_launchpads": totalLaunchpads,
-			"volume_24h":        totalVolume24h,
+			"volume_24h":       totalVolume24h,
 		}
 		cacheSet(rdb, "market", market, 30*time.Second)
 		c.JSON(http.StatusOK, market)
@@ -886,6 +886,7 @@ func createTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		tenantID, _ := uuid.Parse(req.TenantID)
+		ownerID, _ := actorUUID(c)
 		linksJSON, _ := json.Marshal(req.SocialLinks)
 		token := Token{
 			ID:              uuid.New(),
@@ -909,8 +910,8 @@ func createTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		_, err := db.Exec(ctx, `INSERT INTO tokens (id, tenant_id, name, symbol, decimals, contract_address, chain, total_supply, logo_url, description, website, whitepaper, social_links, status, listing_fee_usd, is_featured, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-			token.ID, token.TenantID, token.Name, token.Symbol, token.Decimals, token.ContractAddress, token.Chain, token.TotalSupply, token.LogoURL, token.Description, token.Website, token.Whitepaper, linksJSON, token.Status, token.ListingFeeUSD, token.IsFeatured, token.CreatedAt, token.UpdatedAt)
+		_, err := db.Exec(ctx, `INSERT INTO tokens (id, tenant_id, owner_id, name, symbol, decimals, contract_address, chain, total_supply, logo_url, description, website, whitepaper, social_links, status, listing_fee_usd, is_featured, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+			token.ID, token.TenantID, ownerID, token.Name, token.Symbol, token.Decimals, token.ContractAddress, token.Chain, token.TotalSupply, token.LogoURL, token.Description, token.Website, token.Whitepaper, linksJSON, token.Status, token.ListingFeeUSD, token.IsFeatured, token.CreatedAt, token.UpdatedAt)
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
@@ -999,6 +1000,10 @@ func updateTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		if !canManageToken(c, db, tokenID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not the token owner"})
+			return
+		}
 		linksJSON, _ := json.Marshal(req.SocialLinks)
 		decimals := 18
 		if req.Decimals != nil {
@@ -1019,6 +1024,10 @@ func updateTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 func deleteTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenID := c.Param("id")
+		if !canManageToken(c, db, tokenID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not the token owner"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 		ct, err := db.Exec(ctx, `DELETE FROM tokens WHERE id=$1`, tokenID)
@@ -1033,6 +1042,10 @@ func deleteTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 func submitTokenHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenID := c.Param("id")
+		if !canManageToken(c, db, tokenID) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not the token owner"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 		ct, err := db.Exec(ctx, `UPDATE tokens SET status='submitted', submission_date=$1, updated_at=$1 WHERE id=$2 AND status='draft'`, time.Now(), tokenID)
@@ -1049,7 +1062,7 @@ func approveTokenHandler(db *pgxpool.Pool, cfg *Config) gin.HandlerFunc {
 		tokenID := c.Param("id")
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		ct, err := db.Exec(ctx, `UPDATE tokens SET status='approved', reviewed_at=$1, updated_at=$1 WHERE id=$2 AND status IN ('submitted','in_review')`, time.Now(), tokenID)
+		ct, err := db.Exec(ctx, `UPDATE tokens SET status='listed', reviewed_at=$1, updated_at=$1 WHERE id=$2 AND status IN ('submitted','in_review')`, time.Now(), tokenID)
 		if err != nil || ct.RowsAffected() == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "token not found or not in a reviewable status"})
 			return
@@ -1060,7 +1073,7 @@ func approveTokenHandler(db *pgxpool.Pool, cfg *Config) gin.HandlerFunc {
 		// propagation is a downstream side-effect that surfaces the token in
 		// UserWallet. A failure here does not roll back the approval.
 		go propagateTokenToUserWallet(cfg, tokenID)
-		c.JSON(http.StatusOK, gin.H{"message": "Token approved", "status": "approved"})
+		c.JSON(http.StatusOK, gin.H{"message": "Token approved and listed", "status": "listed"})
 	}
 }
 
@@ -1220,26 +1233,26 @@ func createListingHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		listing := TokenListing{
-			ID:            uuid.New(),
-			TokenID:       tokenID,
-			PairToken:     req.PairToken,
-			InitialPrice:  req.InitialPrice,
-			CurrentPrice:  req.InitialPrice,
-			LaunchType:    req.LaunchType,
-			StartTime:     start,
-			EndTime:       end,
-			Status:        "upcoming",
-			Volume24h:     "0",
-			LiquidityUSD:  "0",
-			MarketCap:     "0",
+			ID:             uuid.New(),
+			TokenID:        tokenID,
+			PairToken:      req.PairToken,
+			InitialPrice:   req.InitialPrice,
+			CurrentPrice:   req.InitialPrice,
+			LaunchType:     req.LaunchType,
+			StartTime:      start,
+			EndTime:        end,
+			Status:         "upcoming",
+			Volume24h:      "0",
+			LiquidityUSD:   "0",
+			MarketCap:      "0",
 			PriceChange24h: 0,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		if _, err := db.Exec(ctx, `INSERT INTO token_listings (id, token_id, pair_token, initial_price, current_price, launch_type, start_time, end_time, status, volume_24h, liquidity_usd, market_cap, price_change_24h, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-			listing.ID, listing.TokenID, listing.PairToken, listing.InitialPrice, listing.CurrentPrice, listing.LaunchType, listing.StartTime, listing.EndTime, listing.Status, listing.Volume24h, listing.LiquidityUSD, listing.MarketCap, listing.PriceChange24h, listing.CreatedAt, listing.UpdatedAt); err != nil {
+		if _, err := db.Exec(ctx, `INSERT INTO token_listings (id, token_id, owner_id, pair_token, initial_price, current_price, launch_type, start_time, end_time, status, volume_24h, liquidity_usd, market_cap, price_change_24h, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+			listing.ID, listing.TokenID, lpOwnerID(c), listing.PairToken, listing.InitialPrice, listing.CurrentPrice, listing.LaunchType, listing.StartTime, listing.EndTime, listing.Status, listing.Volume24h, listing.LiquidityUSD, listing.MarketCap, listing.PriceChange24h, listing.CreatedAt, listing.UpdatedAt); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
@@ -1294,6 +1307,10 @@ func updateListingStatusHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		valid := map[string]bool{"upcoming": true, "active": true, "completed": true, "cancelled": true}
 		if !valid[req.Status] {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid status"})
+			return
+		}
+		if !canManageListing(c, db, c.Param("id")) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not the listing owner"})
 			return
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -1376,8 +1393,8 @@ func createLaunchpadHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		if _, err := db.Exec(ctx, `INSERT INTO launchpads (id, token_id, name, description, soft_cap, hard_cap, min_contribution, max_contribution, start_time, end_time, token_price, accepted_payment, total_raised, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-			lp.ID, lp.TokenID, lp.Name, lp.Description, lp.SoftCap, lp.HardCap, lp.MinContribution, lp.MaxContribution, lp.StartTime, lp.EndTime, lp.TokenPrice, lp.AcceptedPayment, lp.TotalRaised, lp.Status, lp.CreatedAt, lp.UpdatedAt); err != nil {
+		if _, err := db.Exec(ctx, `INSERT INTO launchpads (id, token_id, owner_id, name, description, soft_cap, hard_cap, min_contribution, max_contribution, start_time, end_time, token_price, accepted_payment, total_raised, status, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+			lp.ID, lp.TokenID, lpOwnerID(c), lp.Name, lp.Description, lp.SoftCap, lp.HardCap, lp.MinContribution, lp.MaxContribution, lp.StartTime, lp.EndTime, lp.TokenPrice, lp.AcceptedPayment, lp.TotalRaised, lp.Status, lp.CreatedAt, lp.UpdatedAt); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
@@ -1397,9 +1414,9 @@ func listLaunchpadsHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		defer rows.Close()
 		type LaunchpadView struct {
 			Launchpad
-			Symbol     string  `json:"symbol"`
-			Progress   float64 `json:"progress"`
-			Contributors int   `json:"contributors"`
+			Symbol       string  `json:"symbol"`
+			Progress     float64 `json:"progress"`
+			Contributors int     `json:"contributors"`
 		}
 		launchpads := []LaunchpadView{}
 		for rows.Next() {
@@ -1426,15 +1443,15 @@ func getLaunchpadHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		var contributors int
 		db.QueryRow(ctx, `SELECT COUNT(DISTINCT user_id) FROM launchpad_contributions WHERE launchpad_id=$1`, lp.ID).Scan(&contributors)
 		c.JSON(http.StatusOK, gin.H{
-			"id":            lp.ID,
-			"token_id":      lp.TokenID,
-			"name":          lp.Name,
-			"soft_cap":      lp.SoftCap,
-			"hard_cap":      lp.HardCap,
-			"total_raised":  lp.TotalRaised,
-			"status":        lp.Status,
-			"contributors":  contributors,
-			"symbol":        symbol,
+			"id":           lp.ID,
+			"token_id":     lp.TokenID,
+			"name":         lp.Name,
+			"soft_cap":     lp.SoftCap,
+			"hard_cap":     lp.HardCap,
+			"total_raised": lp.TotalRaised,
+			"status":       lp.Status,
+			"contributors": contributors,
+			"symbol":       symbol,
 		})
 	}
 }
@@ -1490,9 +1507,9 @@ func contributeHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		// the operator can reconcile. NEVER fabricate a tx hash.)
 		if !launchpadOnChainEnabled() {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error":         "on-chain launchpad not configured",
-				"contribution":  contrib,
-				"status":        "pending_offchain",
+				"error":        "on-chain launchpad not configured",
+				"contribution": contrib,
+				"status":       "pending_offchain",
 			})
 			return
 		}
@@ -1525,8 +1542,8 @@ func contributeHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusCreated, gin.H{
 			"contribution": contrib,
-			"tx_hash":     txHash,
-			"message":     "On-chain contribution confirmed",
+			"tx_hash":      txHash,
+			"message":      "On-chain contribution confirmed",
 		})
 	}
 }
@@ -1577,8 +1594,8 @@ func claimTokensHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"message":     "Tokens claimed on-chain",
-			"tx_hash":     claimTxHash,
+			"message":      "Tokens claimed on-chain",
+			"tx_hash":      claimTxHash,
 			"contribution": contribID,
 		})
 	}
@@ -1586,6 +1603,10 @@ func claimTokensHandler(db *pgxpool.Pool) gin.HandlerFunc {
 
 func cancelLaunchpadHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !canManageLaunchpad(c, db, c.Param("id")) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not the launchpad owner"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 		ct, err := db.Exec(ctx, `UPDATE launchpads SET status='cancelled', updated_at=$1 WHERE id=$2`, time.Now(), c.Param("id"))
@@ -1633,8 +1654,8 @@ func createMakerOrdersHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		if _, err := db.Exec(ctx, `INSERT INTO market_maker_orders (id, token_id, side, price, quantity, remaining, status, expires_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-			order.ID, order.TokenID, order.Side, order.Price, order.Quantity, order.Remaining, order.Status, order.ExpiresAt, order.CreatedAt); err != nil {
+		if _, err := db.Exec(ctx, `INSERT INTO market_maker_orders (id, token_id, owner_id, side, price, quantity, remaining, status, expires_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+			order.ID, order.TokenID, lpOwnerID(c), order.Side, order.Price, order.Quantity, order.Remaining, order.Status, order.ExpiresAt, order.CreatedAt); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
@@ -1684,6 +1705,10 @@ func updateOrderStatusHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid status"})
 			return
 		}
+		if !canManageOrder(c, db, c.Param("id")) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not the order owner"})
+			return
+		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
 		var ct pgconn.CommandTag
@@ -1698,6 +1723,126 @@ func updateOrderStatusHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Order status updated"})
+	}
+}
+
+// isAdminRole reports whether the caller has an admin-tier role.
+func isAdminRole(c *gin.Context) bool {
+	role, _ := c.Get("role")
+	r, _ := role.(string)
+	return r == "admin" || r == "super_admin"
+}
+
+// actorUUID parses the JWT user_id set by authMiddleware.
+func actorUUID(c *gin.Context) (uuid.UUID, bool) {
+	uid, _ := c.Get("user_id")
+	s, _ := uid.(string)
+	id, err := uuid.Parse(s)
+	return id, err == nil
+}
+
+// lpOwnerID returns the JWT actor as a *uuid.UUID for owner columns (nil when absent).
+func lpOwnerID(c *gin.Context) *uuid.UUID {
+	id, ok := actorUUID(c)
+	if !ok {
+		return nil
+	}
+	return &id
+}
+
+// canManageToken: token owner (tokens.owner_id) or admin.
+func canManageToken(c *gin.Context, db *pgxpool.Pool, tokenID string) bool {
+	if isAdminRole(c) {
+		return true
+	}
+	actor, ok := actorUUID(c)
+	if !ok {
+		return false
+	}
+	var owner *uuid.UUID
+	if err := db.QueryRow(c.Request.Context(), `SELECT owner_id FROM tokens WHERE id=$1`, tokenID).Scan(&owner); err != nil {
+		return false
+	}
+	return owner != nil && *owner == actor
+}
+
+// canManageLaunchpad: launchpad owner, underlying token owner, or admin.
+func canManageLaunchpad(c *gin.Context, db *pgxpool.Pool, launchpadID string) bool {
+	if isAdminRole(c) {
+		return true
+	}
+	actor, ok := actorUUID(c)
+	if !ok {
+		return false
+	}
+	var owner, tokenOwner *uuid.UUID
+	if err := db.QueryRow(c.Request.Context(),
+		`SELECT l.owner_id, t.owner_id FROM launchpads l JOIN tokens t ON t.id=l.token_id WHERE l.id=$1`,
+		launchpadID).Scan(&owner, &tokenOwner); err != nil {
+		return false
+	}
+	return (owner != nil && *owner == actor) || (tokenOwner != nil && *tokenOwner == actor)
+}
+
+// canManageOrder: order owner, underlying token owner, or admin.
+func canManageOrder(c *gin.Context, db *pgxpool.Pool, orderID string) bool {
+	if isAdminRole(c) {
+		return true
+	}
+	actor, ok := actorUUID(c)
+	if !ok {
+		return false
+	}
+	var owner, tokenOwner *uuid.UUID
+	if err := db.QueryRow(c.Request.Context(),
+		`SELECT o.owner_id, t.owner_id FROM market_maker_orders o JOIN tokens t ON t.id=o.token_id WHERE o.id=$1`,
+		orderID).Scan(&owner, &tokenOwner); err != nil {
+		return false
+	}
+	return (owner != nil && *owner == actor) || (tokenOwner != nil && *tokenOwner == actor)
+}
+
+// canManageListing: listing owner, underlying token owner, or admin.
+func canManageListing(c *gin.Context, db *pgxpool.Pool, listingID string) bool {
+	if isAdminRole(c) {
+		return true
+	}
+	actor, ok := actorUUID(c)
+	if !ok {
+		return false
+	}
+	var owner, tokenOwner *uuid.UUID
+	if err := db.QueryRow(c.Request.Context(),
+		`SELECT l.owner_id, t.owner_id FROM token_listings l JOIN tokens t ON t.id=l.token_id WHERE l.id=$1`,
+		listingID).Scan(&owner, &tokenOwner); err != nil {
+		return false
+	}
+	return (owner != nil && *owner == actor) || (tokenOwner != nil && *tokenOwner == actor)
+}
+
+// updateListingLiquidity recomputes a token's pool liquidity in USD terms
+// (total reserve x latest token price) onto its token_listings row.
+func updateListingLiquidity(ctx context.Context, db *pgxpool.Pool, tokenID string) {
+	var reserve float64
+	if err := db.QueryRow(ctx,
+		`SELECT COALESCE(SUM(amount::numeric),0) FROM liquidity_positions WHERE token_id=$1`,
+		tokenID).Scan(&reserve); err != nil {
+		return
+	}
+	var price string
+	if err := db.QueryRow(ctx,
+		`SELECT price FROM token_prices WHERE token_id=$1 ORDER BY timestamp DESC LIMIT 1`,
+		tokenID).Scan(&price); err != nil {
+		return
+	}
+	p, err := parseFloat(price)
+	if err != nil {
+		return
+	}
+	if _, err := db.Exec(ctx,
+		`UPDATE token_listings SET liquidity_usd=$1, updated_at=$2 WHERE token_id=$3`,
+		fmt.Sprintf("%.6f", reserve*p), time.Now(), tokenID); err != nil {
+		log.Printf("warn: update listing liquidity failed: %v", err)
 	}
 }
 
@@ -1731,8 +1876,8 @@ func getMarketMakerStatusHandler(db *pgxpool.Pool) gin.HandlerFunc {
 func addLiquidityHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TokenID   string `json:"token_id" binding:"required"`
-			Amount    string `json:"amount" binding:"required"`
+			TokenID    string `json:"token_id" binding:"required"`
+			Amount     string `json:"amount" binding:"required"`
 			QuoteToken string `json:"quote_token"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -1749,14 +1894,28 @@ func addLiquidityHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
 			return
 		}
-		// LP tokens minted proportional to contribution (constant-product proxy)
-		lpTokens := fmt.Sprintf("%.6f", amt*1000)
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		if _, err := db.Exec(ctx, `INSERT INTO liquidity_positions (id, token_id, quote_token, lp_tokens, created_at) VALUES ($1,$2,$3,$4,$5)`, uuid.New(), tokenID, req.QuoteToken, lpTokens, time.Now()); err != nil {
+		// Real proportional LP shares: the first deposit mints 1:1; every
+		// later deposit mints amount * totalLP / totalReserve so LP tokens
+		// always represent an exact pro-rata share of the pool reserve.
+		var totalReserve, totalLP float64
+		if err := db.QueryRow(ctx,
+			`SELECT COALESCE(SUM(amount::numeric),0), COALESCE(SUM(lp_tokens::numeric),0) FROM liquidity_positions WHERE token_id=$1`,
+			tokenID).Scan(&totalReserve, &totalLP); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
+		lp := amt
+		if totalReserve > 0 && totalLP > 0 {
+			lp = amt * totalLP / totalReserve
+		}
+		lpTokens := fmt.Sprintf("%.6f", lp)
+		if _, err := db.Exec(ctx, `INSERT INTO liquidity_positions (id, token_id, quote_token, amount, lp_tokens, created_at) VALUES ($1,$2,$3,$4,$5,$6)`, uuid.New(), tokenID, req.QuoteToken, req.Amount, lpTokens, time.Now()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
+			return
+		}
+		updateListingLiquidity(ctx, db, tokenID.String())
 		c.JSON(http.StatusOK, gin.H{"message": "Liquidity added successfully", "lp_tokens": lpTokens})
 	}
 }
@@ -1764,21 +1923,92 @@ func addLiquidityHandler(db *pgxpool.Pool) gin.HandlerFunc {
 func removeLiquidityHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TokenID string `json:"token_id" binding:"required"`
+			TokenID  string `json:"token_id" binding:"required"`
 			LPAmount string `json:"lp_amount" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-		defer cancel()
-		ct, err := db.Exec(ctx, `DELETE FROM liquidity_positions WHERE token_id=$1 AND lp_tokens::numeric <= $2::numeric ORDER BY created_at DESC LIMIT 1`, req.TokenID, req.LPAmount)
-		if err != nil || ct.RowsAffected() == 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "no matching liquidity position"})
+		lpAmt, err := parseFloat(req.LPAmount)
+		if err != nil || lpAmt <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid lp_amount"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Liquidity removed successfully"})
+		tokenID, err := uuid.Parse(req.TokenID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token_id"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+			return
+		}
+		defer tx.Rollback(ctx)
+		// Burn LP tokens proportionally, newest position first: each burned LP
+		// releases exactly lp/totalLP of that position's recorded amount.
+		rows, err := tx.Query(ctx,
+			`SELECT id, lp_tokens::numeric, amount::numeric FROM liquidity_positions WHERE token_id=$1 ORDER BY created_at DESC FOR UPDATE`,
+			tokenID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+			return
+		}
+		type pos struct {
+			id     uuid.UUID
+			lp     float64
+			amount float64
+		}
+		var positions []pos
+		var totalLP float64
+		for rows.Next() {
+			var p pos
+			if err := rows.Scan(&p.id, &p.lp, &p.amount); err == nil {
+				positions = append(positions, p)
+				totalLP += p.lp
+			}
+		}
+		rows.Close()
+		if totalLP <= 0 || lpAmt > totalLP {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient lp balance"})
+			return
+		}
+		remaining := lpAmt
+		withdrawn := 0.0
+		for _, p := range positions {
+			if remaining <= 0 {
+				break
+			}
+			burn := p.lp
+			if burn > remaining {
+				burn = remaining
+			}
+			released := p.amount * (burn / p.lp)
+			withdrawn += released
+			remaining -= burn
+			if burn >= p.lp {
+				if _, err := tx.Exec(ctx, `DELETE FROM liquidity_positions WHERE id=$1`, p.id); err != nil {
+					c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+					return
+				}
+			} else {
+				newLP := fmt.Sprintf("%.6f", p.lp-burn)
+				newAmt := fmt.Sprintf("%.6f", p.amount-released)
+				if _, err := tx.Exec(ctx, `UPDATE liquidity_positions SET lp_tokens=$1, amount=$2 WHERE id=$3`, newLP, newAmt, p.id); err != nil {
+					c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+					return
+				}
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable"})
+			return
+		}
+		updateListingLiquidity(ctx, db, tokenID.String())
+		c.JSON(http.StatusOK, gin.H{"message": "Liquidity removed successfully", "lp_burned": fmt.Sprintf("%.6f", lpAmt), "amount_released": fmt.Sprintf("%.6f", withdrawn)})
 	}
 }
 
@@ -1787,8 +2017,9 @@ func removeLiquidityHandler(db *pgxpool.Pool) gin.HandlerFunc {
 func setTokenPriceHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TokenID string `json:"token_id" binding:"required"`
-			Price   string `json:"price" binding:"required"`
+			TokenID   string `json:"token_id" binding:"required"`
+			Price     string `json:"price" binding:"required"`
+			Volume24h string `json:"volume_24h"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1801,14 +2032,48 @@ func setTokenPriceHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		if _, err := db.Exec(ctx, `INSERT INTO token_prices (id, token_id, price, change_24h, volume_24h, timestamp) VALUES ($1,$2,$3,0,'0',$4)`, uuid.New(), tokenID, req.Price, time.Now()); err != nil {
+		// Real 24h change: pct vs the newest price recorded >= 24h ago.
+		change24h := 0.0
+		var prevPrice string
+		if err := db.QueryRow(ctx,
+			`SELECT price FROM token_prices WHERE token_id=$1 AND timestamp <= NOW() - INTERVAL '24 hours' ORDER BY timestamp DESC LIMIT 1`,
+			tokenID).Scan(&prevPrice); err == nil {
+			if prev, err1 := parseFloat(prevPrice); err1 == nil && prev > 0 {
+				if cur, err2 := parseFloat(req.Price); err2 == nil {
+					change24h = (cur - prev) / prev * 100
+				}
+			}
+		}
+		// Real 24h volume: caller-supplied oracle volume, else the sum of
+		// this token's launchpad contributions over the last 24h.
+		vol24h := req.Volume24h
+		if vol24h == "" {
+			_ = db.QueryRow(ctx,
+				`SELECT COALESCE(SUM(amount::numeric),0)::text FROM launchpad_contributions lc JOIN launchpads l ON l.id=lc.launchpad_id WHERE l.token_id=$1 AND lc.created_at > NOW() - INTERVAL '24 hours'`,
+				tokenID).Scan(&vol24h)
+		}
+		if vol24h == "" {
+			vol24h = "0"
+		}
+		if _, err := db.Exec(ctx, `INSERT INTO token_prices (id, token_id, price, change_24h, volume_24h, timestamp) VALUES ($1,$2,$3,$4,$5,$6)`, uuid.New(), tokenID, req.Price, change24h, vol24h, time.Now()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
-		if _, err := db.Exec(ctx, `UPDATE token_listings SET current_price=$1, updated_at=$2 WHERE token_id=$3`, req.Price, time.Now(), tokenID); err != nil {
+		// Keep the listing row in sync: current price, 24h change, 24h
+		// volume, and market cap (price x total_supply).
+		marketCap := "0"
+		var supply string
+		if err := db.QueryRow(ctx, `SELECT COALESCE(NULLIF(total_supply,''),'0') FROM tokens WHERE id=$1`, tokenID).Scan(&supply); err == nil {
+			if sup, err1 := parseFloat(supply); err1 == nil {
+				if cur, err2 := parseFloat(req.Price); err2 == nil {
+					marketCap = fmt.Sprintf("%.6f", sup*cur)
+				}
+			}
+		}
+		if _, err := db.Exec(ctx, `UPDATE token_listings SET current_price=$1, volume_24h=$2, price_change_24h=$3, market_cap=$4, updated_at=$5 WHERE token_id=$6`, req.Price, vol24h, change24h, marketCap, time.Now(), tokenID); err != nil {
 			log.Printf("warn: update listing price failed: %v", err)
 		}
-		c.JSON(http.StatusOK, gin.H{"message": "Price set", "price": req.Price})
+		c.JSON(http.StatusOK, gin.H{"message": "Price set", "price": req.Price, "change_24h": change24h, "volume_24h": vol24h})
 	}
 }
 
@@ -2297,15 +2562,15 @@ func verifyTokenContractHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message":            "contract verified on-chain",
-			"contract_verified":  true,
-			"on_chain_name":      onChainName,
-			"on_chain_symbol":    onChainSymbol,
-			"on_chain_decimals":  onChainDecimals,
-			"on_chain_supply":    onChainTotalSupply,
-			"db_name":            dbName,
-			"db_symbol":          dbSymbol,
-			"match":              strings.EqualFold(onChainSymbol, dbSymbol),
+			"message":           "contract verified on-chain",
+			"contract_verified": true,
+			"on_chain_name":     onChainName,
+			"on_chain_symbol":   onChainSymbol,
+			"on_chain_decimals": onChainDecimals,
+			"on_chain_supply":   onChainTotalSupply,
+			"db_name":           dbName,
+			"db_symbol":         dbSymbol,
+			"match":             strings.EqualFold(onChainSymbol, dbSymbol),
 		})
 	}
 }
@@ -2354,13 +2619,13 @@ func decodeABIString(data []byte) string {
 
 // MarketMakingConfig represents a market-making config linked to a listed token.
 type MarketMakingConfig struct {
-	ID         string `json:"id"`
-	TokenID    string `json:"token_id"`
-	Pair       string `json:"pair"`
-	SpreadBps  string `json:"spread_bps"`
-	OrderSize  string `json:"order_size"`
-	Enabled    bool   `json:"enabled"`
-	CreatedAt  string `json:"created_at"`
+	ID        string `json:"id"`
+	TokenID   string `json:"token_id"`
+	Pair      string `json:"pair"`
+	SpreadBps string `json:"spread_bps"`
+	OrderSize string `json:"order_size"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt string `json:"created_at"`
 }
 
 // listMarketMakingConfigsHandler returns all market-making configs (public,
@@ -2533,6 +2798,11 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 ALTER TABLE tokens ADD COLUMN IF NOT EXISTS contract_verified BOOLEAN DEFAULT false;
 ALTER TABLE tokens ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE tokens ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE token_listings ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE launchpads ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE market_maker_orders ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE liquidity_positions ADD COLUMN IF NOT EXISTS amount TEXT DEFAULT '0';
 CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);
 CREATE INDEX IF NOT EXISTS idx_tokens_chain ON tokens(chain);
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);

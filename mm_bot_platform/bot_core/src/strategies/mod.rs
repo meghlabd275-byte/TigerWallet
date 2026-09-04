@@ -656,6 +656,10 @@ impl MarketMakerRunner {
         let client = CexClient::new(self.exchange, self.creds.clone(), self.base_url.clone());
         let bot_id = self.bot_id.clone();
         let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(100)));
+        // Real order lifecycle: the ids of the currently-open bid/ask are
+        // tracked so every re-quote first CANCELS the previous pair on the
+        // exchange (cancel/replace) instead of piling up stale orders.
+        let mut open_orders: Vec<String> = Vec::new();
         loop {
             tokio::select! {
                 _ = run_flag.changed() => {
@@ -663,16 +667,16 @@ impl MarketMakerRunner {
                 }
                 _ = tick.tick() => {
                     if !*run_flag.borrow() { continue; }
-                    let outcome = self.place_quotes(&client).await;
+                    let outcome = self.place_quotes(&client, &mut open_orders).await;
                     record(&store, &bot_id, "market_maker", "place_quotes", &outcome).await;
                 }
             }
         }
     }
 
-    async fn place_quotes(&self, client: &CexClient) -> StrategyOutcome {
+    async fn place_quotes(&self, client: &CexClient, open_orders: &mut Vec<String>) -> StrategyOutcome {
         let start = std::time::Instant::now();
-        let mid = match self.fetch_mid(client).await {
+        let mid = match fetch_mid_price(self.exchange, &self.symbol, client.http()).await {
             Ok(m) => m,
             Err(e) => {
                 return StrategyOutcome {
@@ -682,6 +686,11 @@ impl MarketMakerRunner {
                 };
             }
         };
+        // Cancel the previous quote pair (best-effort: a cancel failure only
+        // means the order already filled or is gone).
+        for oid in open_orders.drain(..) {
+            let _ = client.cancel_order(&self.symbol, &oid).await;
+        }
         let half = mid * (self.spread_bps / 2.0) / 10000.0;
         let bid = mid - half;
         let ask = mid + half;
@@ -703,70 +712,74 @@ impl MarketMakerRunner {
         };
         let bid_res = client.place_order(&bid_req).await;
         let ask_res = client.place_order(&ask_req).await;
-        let detail = match (bid_res, ask_res) {
-            (Ok(b), Ok(a)) => format!("bid={} ask={}", b.order_id, a.order_id),
-            (Err(e), _) | (_, Err(e)) => format!("place_order error: {e}"),
+        let detail = match (&bid_res, &ask_res) {
+            (Ok(b), Ok(a)) => {
+                open_orders.push(b.order_id.clone());
+                open_orders.push(a.order_id.clone());
+                format!("bid={} ask={}", b.order_id, a.order_id)
+            }
+            (Ok(b), Err(e)) => {
+                open_orders.push(b.order_id.clone());
+                format!("bid={} ask_error={e}", b.order_id)
+            }
+            (Err(e), Ok(a)) => {
+                open_orders.push(a.order_id.clone());
+                format!("bid_error={e} ask={}", a.order_id)
+            }
+            (Err(e), Err(_)) => format!("place_order error: {e}"),
         };
         StrategyOutcome {
-            success: !detail.starts_with("place_order error"),
+            success: !detail.starts_with("place_order error") && !detail.contains("_error="),
             detail,
             latency_us: start.elapsed().as_micros() as u64,
         }
     }
+}
 
-    async fn fetch_mid(&self, client: &CexClient) -> Result<f64, crate::cex::CexError> {
-        // Use the real balance endpoint as a connectivity/credential probe;
-        // the actual mid price is fetched via the public ticker.
-        let url = match self.exchange {
-            CexExchange::Binance => format!(
-                "https://api.binance.com/api/v3/ticker/price?symbol={}",
-                self.symbol.to_uppercase()
-            ),
-            CexExchange::Okx => format!(
-                "https://www.okx.com/api/v5/market/ticker?instId={}",
-                self.symbol
-            ),
-            CexExchange::Bybit => format!(
-                "https://api.bybit.com/v5/market/tickers?category=spot&symbol={}",
-                self.symbol
-            ),
-            CexExchange::Kraken => format!(
-                "https://api.kraken.com/0/public/Ticker?pair={}",
-                self.symbol
-            ),
-        };
-        let resp = client
-            .http()
-            .get(&url)
-            .send()
-            .await
-            .map_err(crate::cex::CexError::http)?;
-        let json: serde_json::Value = resp.json().await.map_err(crate::cex::CexError::http)?;
-        let price = match self.exchange {
-            CexExchange::Binance => json
-                .get("price")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok()),
-            CexExchange::Okx => json
-                .pointer("/data/0/last")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok()),
-            CexExchange::Bybit => json
-                .pointer("/result/list/0/lastPrice")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok()),
-            CexExchange::Kraken => json
-                .pointer("/result")
-                .and_then(|v| v.as_object())
-                .and_then(|o| o.values().next())
-                .and_then(|v| v.get("c"))
-                .and_then(|v| v.as_array())
-                .and_then(|a| a.first())
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse::<f64>().ok()),
-        };
-        price.ok_or_else(|| crate::cex::CexError::decode("no ticker price"))
-    }
+/// Shared real mid-price fetch from the exchange public ticker (no auth).
+pub async fn fetch_mid_price(
+    exchange: CexExchange,
+    symbol: &str,
+    http: &reqwest::Client,
+) -> Result<f64, crate::cex::CexError> {
+    let url = match exchange {
+        CexExchange::Binance => format!(
+            "https://api.binance.com/api/v3/ticker/price?symbol={}",
+            symbol.to_uppercase()
+        ),
+        CexExchange::Okx => format!("https://www.okx.com/api/v5/market/ticker?instId={}", symbol),
+        CexExchange::Bybit => format!(
+            "https://api.bybit.com/v5/market/tickers?category=spot&symbol={}",
+            symbol
+        ),
+        CexExchange::Kraken => format!("https://api.kraken.com/0/public/Ticker?pair={}", symbol),
+    };
+    let resp = http.get(&url).send().await.map_err(crate::cex::CexError::http)?;
+    let json: serde_json::Value = resp.json().await.map_err(crate::cex::CexError::http)?;
+    let price = match exchange {
+        CexExchange::Binance => json
+            .get("price")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<f64>().ok()),
+        CexExchange::Okx => json
+            .pointer("/data/0/last")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<f64>().ok()),
+        CexExchange::Bybit => json
+            .pointer("/result/list/0/lastPrice")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<f64>().ok()),
+        CexExchange::Kraken => json
+            .pointer("/result")
+            .and_then(|v| v.as_object())
+            .and_then(|o| o.values().next())
+            .and_then(|v| v.get("c"))
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<f64>().ok()),
+    };
+    price.ok_or_else(|| crate::cex::CexError::decode("no ticker price"))
 }
 
 /// Arbitrage: monitors price diff between a DEX and a CEX, executes a real arb
@@ -872,18 +885,7 @@ impl ArbitrageRunner {
     }
 
     async fn fetch_cex_price(&self, client: &CexClient) -> Result<f64, crate::cex::CexError> {
-        MarketMakerRunner {
-            bot_id: self.bot_id.clone(),
-            exchange: self.exchange,
-            creds: self.creds.clone(),
-            base_url: self.base_url.clone(),
-            symbol: self.symbol.clone(),
-            order_size: 0.0,
-            spread_bps: 0.0,
-            poll_interval_ms: 0,
-        }
-        .fetch_mid(client)
-        .await
+        fetch_mid_price(self.exchange, &self.symbol, client.http()).await
     }
 
     async fn fetch_dex_price(&self) -> Result<f64, crate::dex::DexError> {
@@ -1002,3 +1004,336 @@ async fn record(store: &PgPool, bot_id: &str, strategy: &str, action: &str, outc
     }
 }
 
+
+// ============================================================================
+// CEX-DRIVEN RUNNERS: grid / dca / momentum / mean-reversion / scalping
+//
+// Every runner below executes REAL orders through CexClient (signed REST) and
+// REAL market data via fetch_mid_price. Order lifecycle is real: grid and
+// market maker track open order ids and CANCEL them on the exchange before
+// re-quoting (cancel/replace). No simulated fills, no fake PnL.
+// ============================================================================
+
+/// Place a real market order and map the exchange result to a StrategyOutcome.
+async fn market_order(client: &CexClient, symbol: &str, side: &str, qty: f64) -> StrategyOutcome {
+    let start = std::time::Instant::now();
+    let req = CexOrderRequest {
+        base_url: None,
+        symbol: symbol.to_string(),
+        side: side.to_string(),
+        order_type: "market".to_string(),
+        price: None,
+        quantity: qty,
+    };
+    match client.place_order(&req).await {
+        Ok(r) => StrategyOutcome {
+            success: true,
+            detail: format!("{side} market qty={qty} order_id={}", r.order_id),
+            latency_us: start.elapsed().as_micros() as u64,
+        },
+        Err(e) => StrategyOutcome {
+            success: false,
+            detail: format!("{side} market error: {e}"),
+            latency_us: start.elapsed().as_micros() as u64,
+        },
+    }
+}
+
+/// Grid trading: maintains a real ladder of limit orders around the mid.
+/// Orders are cancelled and re-centered when price drifts out of the grid.
+pub struct GridRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub grid_count: usize,
+    pub grid_spacing_pct: f64,
+    pub order_size_usd: f64,
+    pub poll_interval_ms: u64,
+}
+
+impl GridRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let client = CexClient::new(self.exchange, self.creds.clone(), self.base_url.clone());
+        let bot_id = self.bot_id.clone();
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(500)));
+        let mut center: Option<f64> = None;
+        let mut open_orders: Vec<String> = Vec::new();
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    let outcome = self.rebalance(&client, &mut center, &mut open_orders).await;
+                    record(&store, &bot_id, "grid", "rebalance", &outcome).await;
+                }
+            }
+        }
+    }
+
+    async fn rebalance(
+        &self,
+        client: &CexClient,
+        center: &mut Option<f64>,
+        open_orders: &mut Vec<String>,
+    ) -> StrategyOutcome {
+        let start = std::time::Instant::now();
+        let mid = match fetch_mid_price(self.exchange, &self.symbol, client.http()).await {
+            Ok(m) => m,
+            Err(e) => {
+                return StrategyOutcome {
+                    success: false,
+                    detail: format!("fetch_mid: {e}"),
+                    latency_us: start.elapsed().as_micros() as u64,
+                }
+            }
+        };
+        // Re-center only when the grid is empty or price left the outer band.
+        let span = (self.grid_count as f64 / 2.0) * self.grid_spacing_pct / 100.0;
+        let stale = match center {
+            None => true,
+            Some(c) => (mid - *c).abs() / *c > span,
+        };
+        if !stale {
+            return StrategyOutcome {
+                success: true,
+                detail: format!("grid stable mid={mid} levels={}", open_orders.len()),
+                latency_us: start.elapsed().as_micros() as u64,
+            };
+        }
+        for oid in open_orders.drain(..) {
+            let _ = client.cancel_order(&self.symbol, &oid).await;
+        }
+        *center = Some(mid);
+        let mut placed = 0usize;
+        let mut errors = 0usize;
+        for i in 0..self.grid_count {
+            let offset = (i as f64 - self.grid_count as f64 / 2.0 + 0.5) * self.grid_spacing_pct / 100.0;
+            if offset.abs() < f64::EPSILON {
+                continue;
+            }
+            let price = mid * (1.0 + offset);
+            let qty = self.order_size_usd / price;
+            let side = if offset < 0.0 { "buy" } else { "sell" };
+            let req = CexOrderRequest {
+                base_url: None,
+                symbol: self.symbol.clone(),
+                side: side.to_string(),
+                order_type: "limit".to_string(),
+                price: Some(price),
+                quantity: qty,
+            };
+            match client.place_order(&req).await {
+                Ok(r) => {
+                    open_orders.push(r.order_id);
+                    placed += 1;
+                }
+                Err(_) => errors += 1,
+            }
+        }
+        StrategyOutcome {
+            success: errors == 0,
+            detail: format!("grid recentered mid={mid} placed={placed} errors={errors}"),
+            latency_us: start.elapsed().as_micros() as u64,
+        }
+    }
+}
+
+/// Dollar-cost averaging: buys a fixed USD amount on a fixed cadence with a
+/// real market order; stops after max_positions accumulated lots.
+pub struct DcaRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub buy_interval_hours: i64,
+    pub buy_amount_usd: f64,
+    pub max_positions: usize,
+    pub poll_interval_ms: u64,
+}
+
+impl DcaRunner {
+    pub async fn run(self, mut run_flag: RunFlag, store: Arc<PgPool>) {
+        let client = CexClient::new(self.exchange, self.creds.clone(), self.base_url.clone());
+        let bot_id = self.bot_id.clone();
+        let mut tick = interval(Duration::from_millis(self.poll_interval_ms.max(10_000)));
+        let mut strat = DcaStrategy::new(self.buy_interval_hours, self.buy_amount_usd, self.max_positions);
+        loop {
+            tokio::select! {
+                _ = run_flag.changed() => {
+                    if !*run_flag.borrow() { continue; }
+                }
+                _ = tick.tick() => {
+                    if !*run_flag.borrow() { continue; }
+                    let now = Utc::now().timestamp();
+                    if !strat.should_buy(now) {
+                        continue;
+                    }
+                    let start = std::time::Instant::now();
+                    let outcome = match fetch_mid_price(self.exchange, &self.symbol, client.http()).await {
+                        Ok(mid) => match strat.execute_buy(now, mid) {
+                            Some((TradingSignal::Buy, amount_usd)) => {
+                                let qty = amount_usd / mid;
+                                market_order(&client, &self.symbol, "buy", qty).await
+                            }
+                            _ => StrategyOutcome {
+                                success: true,
+                                detail: "dca: max positions reached".to_string(),
+                                latency_us: start.elapsed().as_micros() as u64,
+                            },
+                        },
+                        Err(e) => StrategyOutcome {
+                            success: false,
+                            detail: format!("fetch_mid: {e}"),
+                            latency_us: start.elapsed().as_micros() as u64,
+                        },
+                    };
+                    record(&store, &bot_id, "dca", "buy_tick", &outcome).await;
+                }
+            }
+        }
+    }
+}
+
+/// Shared loop for signal-driven CEX strategies (momentum, mean-reversion,
+/// scalping): fetch the real mid each tick, feed the strategy, and execute a
+/// real market order when it signals Buy/Sell.
+async fn signal_loop(
+    bot_id: &str,
+    strategy_name: &str,
+    exchange: CexExchange,
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: &str,
+    order_size: f64,
+    poll_interval_ms: u64,
+    mut next_signal: impl FnMut(f64) -> Option<TradingSignal>,
+    mut run_flag: RunFlag,
+    store: Arc<PgPool>,
+) {
+    let client = CexClient::new(exchange, creds, base_url);
+    let mut tick = interval(Duration::from_millis(poll_interval_ms.max(500)));
+    loop {
+        tokio::select! {
+            _ = run_flag.changed() => {
+                if !*run_flag.borrow() { continue; }
+            }
+            _ = tick.tick() => {
+                if !*run_flag.borrow() { continue; }
+                let start = std::time::Instant::now();
+                let outcome = match fetch_mid_price(exchange, symbol, client.http()).await {
+                    Ok(mid) => match next_signal(mid) {
+                        Some(TradingSignal::Buy) => market_order(&client, symbol, "buy", order_size).await,
+                        Some(TradingSignal::Sell) | Some(TradingSignal::ClosePosition) => {
+                            market_order(&client, symbol, "sell", order_size).await
+                        }
+                        _ => StrategyOutcome {
+                            success: true,
+                            detail: format!("hold mid={mid}"),
+                            latency_us: start.elapsed().as_micros() as u64,
+                        },
+                    },
+                    Err(e) => StrategyOutcome {
+                        success: false,
+                        detail: format!("fetch_mid: {e}"),
+                        latency_us: start.elapsed().as_micros() as u64,
+                    },
+                };
+                record(&store, bot_id, strategy_name, "signal_tick", &outcome).await;
+            }
+        }
+    }
+}
+
+/// Momentum: buys on upward momentum beyond entry_threshold, exits when it
+/// decays below exit_threshold. Real orders on every signal change.
+pub struct MomentumRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub order_size: f64,
+    pub lookback_period: usize,
+    pub entry_threshold: f64,
+    pub exit_threshold: f64,
+    pub poll_interval_ms: u64,
+}
+
+impl MomentumRunner {
+    pub async fn run(self, run_flag: RunFlag, store: Arc<PgPool>) {
+        let mut strat = MomentumStrategy::new(self.lookback_period, self.entry_threshold, self.exit_threshold);
+        let bot_id = self.bot_id.clone();
+        signal_loop(
+            &bot_id, "momentum", self.exchange, self.creds, self.base_url, &self.symbol,
+            self.order_size, self.poll_interval_ms,
+            move |price| strat.generate_signal(price),
+            run_flag, store,
+        )
+        .await;
+    }
+}
+
+/// Mean reversion: buys below the lower Bollinger-style band, sells above the
+/// upper band. Real orders on every band cross.
+pub struct MeanReversionRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub order_size: f64,
+    pub lookback_period: usize,
+    pub std_dev_threshold: f64,
+    pub poll_interval_ms: u64,
+}
+
+impl MeanReversionRunner {
+    pub async fn run(self, run_flag: RunFlag, store: Arc<PgPool>) {
+        let mut strat = MeanReversionStrategy::new(self.lookback_period, self.std_dev_threshold);
+        let bot_id = self.bot_id.clone();
+        signal_loop(
+            &bot_id, "mean_reversion", self.exchange, self.creds, self.base_url, &self.symbol,
+            self.order_size, self.poll_interval_ms,
+            move |price| strat.generate_signal(price),
+            run_flag, store,
+        )
+        .await;
+    }
+}
+
+/// Scalping: quick in/out on profit-target/stop-loss around the mid price.
+/// The public last-price ticker has no bid/ask spread, so the mid feeds both
+/// sides of the strategy's order book estimate.
+pub struct ScalpingRunner {
+    pub bot_id: String,
+    pub exchange: CexExchange,
+    pub creds: CexCredentials,
+    pub base_url: Option<String>,
+    pub symbol: String,
+    pub order_size: f64,
+    pub profit_target_pct: f64,
+    pub stop_loss_pct: f64,
+    pub poll_interval_ms: u64,
+}
+
+impl ScalpingRunner {
+    pub async fn run(self, run_flag: RunFlag, store: Arc<PgPool>) {
+        let mut strat = ScalpingStrategy::new(self.profit_target_pct, self.stop_loss_pct, 0.0);
+        let bot_id = self.bot_id.clone();
+        signal_loop(
+            &bot_id, "scalping", self.exchange, self.creds, self.base_url, &self.symbol,
+            self.order_size, self.poll_interval_ms,
+            move |price| {
+                strat.update_order_book(price, price);
+                strat.generate_signal(price)
+            },
+            run_flag, store,
+        )
+        .await;
+    }
+}

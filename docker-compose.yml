@@ -149,6 +149,13 @@ services:
       PROJECT_PARTY_DB_PASSWORD: tigerwallet
       PROJECT_PARTY_DB_NAME: tigerwallet_project_party
       PROJECT_PARTY_REDIS_ADDR: "redis:6379"
+      # On-chain launchpad (fail-closed 503 on contribute/claim when unset).
+      PP_RPC_URL: "${PP_RPC_URL:-}"
+      PP_LAUNCHPAD_PRIVATE_KEY: "${PP_LAUNCHPAD_PRIVATE_KEY:-}"
+      PP_LAUNCHPAD_CONTRACT_ADDRESS: "${PP_LAUNCHPAD_CONTRACT_ADDRESS:-}"
+      # UserWallet token-registry propagation on token approval.
+      WALLET_API_URL: "${WALLET_API_URL:-http://wallet-api:8443}"
+      WALLET_API_ADMIN_TOKEN: "${WALLET_API_ADMIN_TOKEN:-}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -568,10 +575,31 @@ services:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
       JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      BOT_CORE_URL: "http://bot-core:8472"
+      PROJECT_PARTY_URL: "http://project-party-api:8106"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      bot-core:
+        condition: service_started
+    restart: unless-stopped
+
+  # TigerWallet bot_core — the Rust execution plane (real CEX/DEX order
+  # execution for the bot fleet). bot-api and wl-bots dispatch to it.
+  # Host port 8473 (host 8472 is the bots web frontend); container :8472.
+  bot-core:
+    build:
+      context: ./mm_bot_platform/bot_core
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bot-core
+    ports:
+      - "8473:8472"
+    environment:
+      BOT_CORE_PG: "host=postgres port=5432 user=tigerwallet password=tigerwallet dbname=tigerwallet"
+    depends_on:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 
@@ -718,10 +746,15 @@ services:
       TWO_PARTY_GATE_URL: "http://license-service:8460"
       TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
       HEARTBEAT_INTERVAL: "30s"
+      BOT_CORE_URL: "http://bot-core:8472"
+      PROJECT_PARTY_URL: "http://wl-project-party:8106"
+      PP_SERVICE_TOKEN: "${PP_SERVICE_TOKEN:-}"
     depends_on:
       postgres:
         condition: service_healthy
       license-service:
+        condition: service_started
+      bot-core:
         condition: service_started
     restart: unless-stopped
 
@@ -746,6 +779,10 @@ services:
       TWO_PARTY_GATE_URL: "http://license-service:8460"
       TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
       HEARTBEAT_INTERVAL: "30s"
+      # On-chain launchpad (fail-closed 503 on contribute/claim when unset).
+      PP_RPC_URL: "${PP_RPC_URL:-}"
+      PP_LAUNCHPAD_PRIVATE_KEY: "${PP_LAUNCHPAD_PRIVATE_KEY:-}"
+      PP_LAUNCHPAD_CONTRACT_ADDRESS: "${PP_LAUNCHPAD_CONTRACT_ADDRESS:-}"
     depends_on:
       postgres:
         condition: service_healthy

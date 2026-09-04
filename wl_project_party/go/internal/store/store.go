@@ -74,6 +74,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS rejection_reason TEXT`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS total_supply NUMERIC(36,18) DEFAULT 0`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
+		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS owner_id UUID`,
+		`ALTER TABLE mm_orders ADD COLUMN IF NOT EXISTS owner_id UUID`,
+		`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS idx_tokens_featured ON tokens(is_featured)`,
 
 		// Launchpad contributions (atomic contribute/claim/cancel workflow).
@@ -180,6 +183,7 @@ func (s *Store) UpdateUserScopes(ctx context.Context, id uuid.UUID, scopes []str
 
 type Token struct {
 	ID              uuid.UUID
+	OwnerID         *uuid.UUID
 	Name            string
 	Symbol          string
 	ContractAddress string
@@ -194,9 +198,9 @@ type Token struct {
 }
 
 func (s *Store) CreateToken(ctx context.Context, t *Token) (*Token, error) {
-	if t.Status == "" {
-		t.Status = "draft"
-	}
+	// Fail-closed: status is ALWAYS "draft" on creation. A user can never
+	// self-approve/self-list by supplying a status in the request body.
+	t.Status = "draft"
 	if t.ListingType == "" {
 		t.ListingType = "standard"
 	}
@@ -205,10 +209,10 @@ func (s *Store) CreateToken(ctx context.Context, t *Token) (*Token, error) {
 	}
 	var out Token
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO tokens (name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		`INSERT INTO tokens (name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, owner_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		 RETURNING id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at`,
-		t.Name, t.Symbol, t.ContractAddress, t.ChainID, t.Decimals, t.LogoURL, t.Description, t.Website, t.Status, t.ListingType).
+		t.Name, t.Symbol, t.ContractAddress, t.ChainID, t.Decimals, t.LogoURL, t.Description, t.Website, t.Status, t.ListingType, t.OwnerID).
 		Scan(&out.ID, &out.Name, &out.Symbol, &out.ContractAddress, &out.ChainID, &out.Decimals, &out.LogoURL, &out.Description, &out.Website, &out.Status, &out.ListingType, &out.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -254,10 +258,10 @@ func (s *Store) GetToken(ctx context.Context, id uuid.UUID) (*Token, error) {
 func (s *Store) UpdateToken(ctx context.Context, id uuid.UUID, t *Token) (*Token, error) {
 	var out Token
 	err := s.db.QueryRow(ctx,
-		`UPDATE tokens SET name=$1, symbol=$2, contract_address=$3, chain_id=$4, decimals=$5, logo_url=$6, description=$7, website=$8, status=$9, listing_type=$10
-		 WHERE id=$11
+		`UPDATE tokens SET name=$1, symbol=$2, contract_address=$3, chain_id=$4, decimals=$5, logo_url=$6, description=$7, website=$8, listing_type=$9, updated_at=NOW()
+		 WHERE id=$10
 		 RETURNING id, name, symbol, contract_address, chain_id, decimals, logo_url, description, website, status, listing_type, created_at`,
-		t.Name, t.Symbol, t.ContractAddress, t.ChainID, t.Decimals, t.LogoURL, t.Description, t.Website, t.Status, t.ListingType, id).
+		t.Name, t.Symbol, t.ContractAddress, t.ChainID, t.Decimals, t.LogoURL, t.Description, t.Website, t.ListingType, id).
 		Scan(&out.ID, &out.Name, &out.Symbol, &out.ContractAddress, &out.ChainID, &out.Decimals, &out.LogoURL, &out.Description, &out.Website, &out.Status, &out.ListingType, &out.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -322,9 +326,9 @@ type Listing struct {
 }
 
 func (s *Store) CreateListing(ctx context.Context, l *Listing) (*Listing, error) {
-	if l.Status == "" {
-		l.Status = "upcoming"
-	}
+	// Fail-closed: listings are always created 'upcoming'. Activation moves
+	// through the admin listing-status workflow, never the request body.
+	l.Status = "upcoming"
 	var out Listing
 	err := s.db.QueryRow(ctx,
 		`INSERT INTO listings (token_id, pair, base_token, quote_token, status)
@@ -1008,6 +1012,7 @@ func (s *Store) ListContributionsByToken(ctx context.Context, tokenID uuid.UUID)
 
 type MMOrder struct {
 	ID        uuid.UUID
+	OwnerID   *uuid.UUID
 	TokenID   uuid.UUID
 	Side      string
 	Price     string
@@ -1025,10 +1030,10 @@ func (s *Store) CreateMMOrder(ctx context.Context, o *MMOrder) (*MMOrder, error)
 	}
 	var out MMOrder
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO mm_orders (token_id, side, price, quantity, remaining, status, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)
+		`INSERT INTO mm_orders (token_id, side, price, quantity, remaining, status, expires_at, owner_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		 RETURNING id, token_id, side, price, quantity, remaining, status, filled_at, expires_at, created_at`,
-		o.TokenID, o.Side, o.Price, o.Quantity, o.Remaining, o.Status, o.ExpiresAt).
+		o.TokenID, o.Side, o.Price, o.Quantity, o.Remaining, o.Status, o.ExpiresAt, o.OwnerID).
 		Scan(&out.ID, &out.TokenID, &out.Side, &out.Price, &out.Quantity, &out.Remaining, &out.Status, &out.FilledAt, &out.ExpiresAt, &out.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -1452,3 +1457,83 @@ var (
 	ErrNotAccepting = errors.New("launchpad not accepting contributions")
 	ErrEnded        = errors.New("launchpad has ended")
 )
+
+// TokenOwner returns the recorded owner of a token (nil when the row predates
+// ownership tracking).
+func (s *Store) TokenOwner(ctx context.Context, id uuid.UUID) (*uuid.UUID, error) {
+	var owner *uuid.UUID
+	err := s.db.QueryRow(ctx, `SELECT owner_id FROM tokens WHERE id=$1`, id).Scan(&owner)
+	if err != nil {
+		return nil, err
+	}
+	return owner, nil
+}
+
+// MMOrderOwner returns the recorded owner of a market-making order.
+func (s *Store) MMOrderOwner(ctx context.Context, id uuid.UUID) (*uuid.UUID, error) {
+	var owner *uuid.UUID
+	err := s.db.QueryRow(ctx, `SELECT owner_id FROM mm_orders WHERE id=$1`, id).Scan(&owner)
+	if err != nil {
+		return nil, err
+	}
+	return owner, nil
+}
+
+// FeePaymentTx returns the tx_hash + status of a fee payment for verification.
+func (s *Store) FeePaymentTx(ctx context.Context, id uuid.UUID) (string, string, error) {
+	var txHash, status string
+	err := s.db.QueryRow(ctx, `SELECT COALESCE(tx_hash,''), status FROM fee_payments WHERE id=$1`, id).Scan(&txHash, &status)
+	return txHash, status, err
+}
+
+// SetFeePaymentVerified transitions a fee payment to completed after a real
+// on-chain receipt check. Forward-only: pending -> completed.
+func (s *Store) SetFeePaymentVerified(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx,
+		`UPDATE fee_payments SET status='completed', verified_at=NOW() WHERE id=$1 AND status='pending'`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// ComplianceStatus aggregates a token's compliance posture: listing status,
+// contract verification, latest KYC state, and latest audit state.
+func (s *Store) ComplianceStatus(ctx context.Context, id uuid.UUID) (map[string]any, error) {
+	var status string
+	var verified bool
+	err := s.db.QueryRow(ctx,
+		`SELECT status, contract_verified FROM tokens WHERE id=$1`, id).Scan(&status, &verified)
+	if err != nil {
+		return nil, err
+	}
+	var kycStatus *string
+	_ = s.db.QueryRow(ctx,
+		`SELECT status FROM token_kyc WHERE token_id=$1 ORDER BY submitted_at DESC LIMIT 1`, id).Scan(&kycStatus)
+	var auditStatus, auditType *string
+	_ = s.db.QueryRow(ctx,
+		`SELECT status, audit_type FROM token_audit_logs WHERE token_id=$1 ORDER BY requested_at DESC LIMIT 1`, id).Scan(&auditStatus, &auditType)
+	return map[string]any{
+		"token_id":          id,
+		"listing_status":    status,
+		"contract_verified": verified,
+		"kyc_status":        kycStatus,
+		"audit_status":      auditStatus,
+		"audit_type":        auditType,
+	}, nil
+}
+
+// DeleteMarketMakingConfig removes a market-making config by id.
+func (s *Store) DeleteMarketMakingConfig(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `DELETE FROM market_making_configs WHERE id=$1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}

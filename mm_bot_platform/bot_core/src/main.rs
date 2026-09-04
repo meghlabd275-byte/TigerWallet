@@ -26,7 +26,8 @@ use tigerswap_bot_core::cex::{CexClient, CexCredentials, CexExchange, CexOrderRe
 use tigerswap_bot_core::dex::{self, DexSwapRequest};
 use tigerswap_bot_core::store::{PgPool, TradeRecord};
 use tigerswap_bot_core::strategies::{
-    ArbitrageRunner, MarketMakerRunner, SniperRunner,
+    ArbitrageRunner, DcaRunner, GridRunner, MarketMakerRunner, MeanReversionRunner,
+    MomentumRunner, ScalpingRunner, SniperRunner,
 };
 
 const PORT: u16 = 8472;
@@ -44,6 +45,11 @@ enum BotKind {
     MarketMaker,
     Arbitrage,
     Sniper,
+    Grid,
+    Dca,
+    Momentum,
+    MeanReversion,
+    Scalping,
 }
 
 #[derive(Default)]
@@ -54,6 +60,16 @@ struct AppState {
 
 #[tokio::main]
 async fn main() {
+    // Docker HEALTHCHECK mode: probe the local /health endpoint and exit
+    // 0 (healthy) / 1 (unhealthy). Real HTTP probe, no side effects.
+    if std::env::args().any(|a| a == "--healthcheck") {
+        let ok = reqwest::get(format!("http://127.0.0.1:{PORT}/health"))
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false);
+        std::process::exit(if ok { 0 } else { 1 });
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
@@ -172,12 +188,75 @@ struct StartSniper {
     min_target_amount: Option<u64>,
 }
 
+/// Common fields every CEX-driven runner needs.
+#[derive(Debug, Deserialize)]
+struct StartCexBase {
+    bot_id: String,
+    exchange: CexExchange,
+    #[serde(flatten)]
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: String,
+    poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartGrid {
+    #[serde(flatten)]
+    base: StartCexBase,
+    grid_count: Option<usize>,
+    grid_spacing_pct: Option<f64>,
+    order_size_usd: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartDca {
+    #[serde(flatten)]
+    base: StartCexBase,
+    buy_interval_hours: Option<i64>,
+    buy_amount_usd: Option<f64>,
+    max_positions: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartMomentum {
+    #[serde(flatten)]
+    base: StartCexBase,
+    order_size: Option<f64>,
+    lookback_period: Option<usize>,
+    entry_threshold: Option<f64>,
+    exit_threshold: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartMeanReversion {
+    #[serde(flatten)]
+    base: StartCexBase,
+    order_size: Option<f64>,
+    lookback_period: Option<usize>,
+    std_dev_threshold: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StartScalping {
+    #[serde(flatten)]
+    base: StartCexBase,
+    order_size: Option<f64>,
+    profit_target_pct: Option<f64>,
+    stop_loss_pct: Option<f64>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum StartReq {
     MarketMaker(StartMarketMaker),
     Arbitrage(StartArbitrage),
     Sniper(StartSniper),
+    Grid(StartGrid),
+    Dca(StartDca),
+    Momentum(StartMomentum),
+    MeanReversion(StartMeanReversion),
+    Scalping(StartScalping),
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,6 +332,92 @@ async fn dispatch_start(
             let task = tokio::spawn(async move { runner.run(run_rx, p).await });
             (s.bot_id, BotKind::Sniper, task, run_tx)
         }
+        StartReq::Grid(g) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = GridRunner {
+                bot_id: g.base.bot_id.clone(),
+                exchange: g.base.exchange,
+                creds: g.base.creds,
+                base_url: g.base.base_url,
+                symbol: g.base.symbol,
+                grid_count: g.grid_count.unwrap_or(10),
+                grid_spacing_pct: g.grid_spacing_pct.unwrap_or(1.0),
+                order_size_usd: g.order_size_usd.unwrap_or(100.0),
+                poll_interval_ms: g.base.poll_interval_ms.unwrap_or(5000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (g.base.bot_id, BotKind::Grid, task, run_tx)
+        }
+        StartReq::Dca(d) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = DcaRunner {
+                bot_id: d.base.bot_id.clone(),
+                exchange: d.base.exchange,
+                creds: d.base.creds,
+                base_url: d.base.base_url,
+                symbol: d.base.symbol,
+                buy_interval_hours: d.buy_interval_hours.unwrap_or(24),
+                buy_amount_usd: d.buy_amount_usd.unwrap_or(50.0),
+                max_positions: d.max_positions.unwrap_or(30),
+                poll_interval_ms: d.base.poll_interval_ms.unwrap_or(60_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (d.base.bot_id, BotKind::Dca, task, run_tx)
+        }
+        StartReq::Momentum(m) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = MomentumRunner {
+                bot_id: m.base.bot_id.clone(),
+                exchange: m.base.exchange,
+                creds: m.base.creds,
+                base_url: m.base.base_url,
+                symbol: m.base.symbol,
+                order_size: m.order_size.unwrap_or(0.01),
+                lookback_period: m.lookback_period.unwrap_or(20),
+                entry_threshold: m.entry_threshold.unwrap_or(0.02),
+                exit_threshold: m.exit_threshold.unwrap_or(0.005),
+                poll_interval_ms: m.base.poll_interval_ms.unwrap_or(5000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (m.base.bot_id, BotKind::Momentum, task, run_tx)
+        }
+        StartReq::MeanReversion(m) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = MeanReversionRunner {
+                bot_id: m.base.bot_id.clone(),
+                exchange: m.base.exchange,
+                creds: m.base.creds,
+                base_url: m.base.base_url,
+                symbol: m.base.symbol,
+                order_size: m.order_size.unwrap_or(0.01),
+                lookback_period: m.lookback_period.unwrap_or(20),
+                std_dev_threshold: m.std_dev_threshold.unwrap_or(2.0),
+                poll_interval_ms: m.base.poll_interval_ms.unwrap_or(5000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (m.base.bot_id, BotKind::MeanReversion, task, run_tx)
+        }
+        StartReq::Scalping(sc) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = ScalpingRunner {
+                bot_id: sc.base.bot_id.clone(),
+                exchange: sc.base.exchange,
+                creds: sc.base.creds,
+                base_url: sc.base.base_url,
+                symbol: sc.base.symbol,
+                order_size: sc.order_size.unwrap_or(0.01),
+                profit_target_pct: sc.profit_target_pct.unwrap_or(0.3),
+                stop_loss_pct: sc.stop_loss_pct.unwrap_or(0.5),
+                poll_interval_ms: sc.base.poll_interval_ms.unwrap_or(1000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (sc.base.bot_id, BotKind::Scalping, task, run_tx)
+        }
     };
 
     let mut bots = state.bots.write().await;
@@ -302,7 +467,7 @@ async fn dispatch_pause(
         let _ = h.run_tx.send(false);
         (
             StatusCode::OK,
-            Json(DispatchAck { ok: true, bot_id: req.bot_id, action: "pause" }),
+            Json(json!({"ok":true,"bot_id":req.bot_id,"action":"pause","bot_kind":format!("{:?}",h.kind)})),
         )
             .into_response()
     } else {

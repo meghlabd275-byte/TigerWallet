@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -59,17 +60,17 @@ func validRoles() map[string]bool {
 }
 
 type Svc struct {
-	cfg       *config.Config
-	store     *store.Store
-	gate      *wlgate.Gate
+	cfg        *config.Config
+	store      *store.Store
+	gate       *wlgate.Gate
 	httpClient *http.Client // shared HTTP client for dispatch to bot_core
 }
 
 func New(cfg *config.Config, s *store.Store, g *wlgate.Gate) *Svc {
 	return &Svc{
-		cfg:   cfg,
-		store: s,
-		gate:  g,
+		cfg:        cfg,
+		store:      s,
+		gate:       g,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -253,6 +254,21 @@ func (s *Svc) CreateBot(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid bot_type", "valid_types": botTypes})
 		return
 	}
+	// Subscription tier limit (canonical parity): the active tier caps how
+	// many bots a user may own. No active subscription = free-tier limit.
+	tier := s.store.ActiveSubscriptionTier(c.Request.Context(), userID)
+	if tier == "" {
+		// Auto-enroll on the free tier so limits are always defined.
+		if _, err := s.store.CreateSubscription(c.Request.Context(), userID, "free", nil); err == nil {
+			tier = "free"
+		}
+	}
+	if maxBots, ok := tierMaxBots(tier); ok {
+		if count, err := s.store.CountBots(c.Request.Context(), userID); err == nil && count >= maxBots {
+			c.JSON(http.StatusPaymentRequired, gin.H{"error": "bot limit reached for your tier", "tier": tier, "max_bots": maxBots})
+			return
+		}
+	}
 	if req.Config == nil {
 		req.Config = map[string]any{}
 	}
@@ -303,17 +319,35 @@ func (s *Svc) StartBot(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Fail-closed: validate the full dispatch payload BEFORE flipping the
+	// status. A bot that cannot actually execute (missing exchange creds,
+	// missing DEX wallet, unsupported type) is never shown as "running".
+	if _, err := s.buildStartPayload(c, b); err != nil {
+		if errors.Is(err, errStopDispatch) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":            "bot type has no execution runner yet",
+				"bot_type":         b.BotType,
+				"executable_types": executableBotTypes(),
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot start bot: " + err.Error()})
+		return
+	}
 	if err := s.store.SetBotStatus(c.Request.Context(), b.ID, "running"); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
 		return
 	}
 	_ = s.store.AppendBotLog(c.Request.Context(), b.ID, "info", "start requested")
-	// Dispatch real start to the Rust bot_core execution plane (same async
-	// best-effort pattern as canonical mm_bot_platform/bot_api). DB status
-	// already succeeded; dispatch failures are logged, not fatal.
 	s.dispatchBotCore(c, b, "start")
 	b.Status = "running"
 	c.JSON(http.StatusOK, botJSON(b))
+}
+
+// executableBotTypes lists the bot types with a real execution runner in
+// bot_core. All other types fail closed at start time.
+func executableBotTypes() []string {
+	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping"}
 }
 
 func (s *Svc) StopBot(c *gin.Context) {
@@ -394,7 +428,9 @@ func (s *Svc) botCoreURL() string {
 
 // buildStartPayload builds the StartReq tagged-enum JSON that bot_core's
 // dispatch_start endpoint expects, mapping bot_type -> strategy kind:
-//   market_maker -> marketmaker, arbitrage -> arbitrage, sniper -> sniper.
+//
+//	market_maker -> marketmaker, arbitrage -> arbitrage, sniper -> sniper.
+//
 // Other bot types are signal-only in bot_core and have no real execution
 // runner; their start dispatch is skipped (returns errStopDispatch). This is
 // honest: no fake execution is emitted.
@@ -436,6 +472,10 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		dexReq, err := s.buildDexReq(c, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
+		}
 		payload := map[string]any{
 			"kind":          "arbitrage",
 			"bot_id":        b.ID.String(),
@@ -444,6 +484,7 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 			"secret_key":    cexCreds.apiSecret,
 			"symbol":        b.Pair,
 			"threshold_bps": cfgFloat(cfg, "threshold_bps", 50),
+			"dex_req":       dexReq,
 		}
 		if v, ok := cfg["base_url"].(string); ok && v != "" {
 			payload["base_url"] = v
@@ -454,13 +495,20 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 		return json.Marshal(payload)
 
 	case "sniper":
-		payload := map[string]any{
-			"kind":   "sniper",
-			"bot_id": b.ID.String(),
-			"symbol": b.Pair,
+		dexReq, err := s.buildDexReq(c, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
 		}
-		if mu, ok := cfg["mempool_url"].(string); ok && mu != "" {
-			payload["mempool_url"] = mu
+		mempoolURL, _ := cfg["mempool_url"].(string)
+		if mempoolURL == "" {
+			return nil, errors.New("sniper requires 'mempool_url' in bot config")
+		}
+		payload := map[string]any{
+			"kind":        "sniper",
+			"bot_id":      b.ID.String(),
+			"symbol":      b.Pair,
+			"dex_req":     dexReq,
+			"mempool_url": mempoolURL,
 		}
 		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
 			payload["poll_interval_ms"] = int64(pi)
@@ -470,8 +518,62 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 		}
 		return json.Marshal(payload)
 
+	case "grid", "dca", "momentum", "mean_reversion", "scalping":
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		kind := b.BotType
+		if kind == "mean_reversion" {
+			kind = "meanreversion" // bot_core serde tag
+		}
+		payload := map[string]any{
+			"kind":       kind,
+			"bot_id":     b.ID.String(),
+			"exchange":   cexCreds.exchange,
+			"api_key":    cexCreds.apiKey,
+			"secret_key": cexCreds.apiSecret,
+			"symbol":     b.Pair,
+		}
+		switch b.BotType {
+		case "grid":
+			payload["grid_count"] = int64(cfgFloat(cfg, "grid_count", 10))
+			payload["grid_spacing_pct"] = cfgFloat(cfg, "grid_spacing_pct", 1.0)
+			payload["order_size_usd"] = cfgFloat(cfg, "order_size_usd", 100)
+		case "dca":
+			payload["buy_interval_hours"] = int64(cfgFloat(cfg, "buy_interval_hours", 24))
+			payload["buy_amount_usd"] = cfgFloat(cfg, "buy_amount_usd", 50)
+			payload["max_positions"] = int64(cfgFloat(cfg, "max_positions", 30))
+		case "momentum":
+			payload["order_size"] = cfgFloat(cfg, "order_size", 0.01)
+			payload["lookback_period"] = int64(cfgFloat(cfg, "lookback_period", 20))
+			payload["entry_threshold"] = cfgFloat(cfg, "entry_threshold", 0.02)
+			payload["exit_threshold"] = cfgFloat(cfg, "exit_threshold", 0.005)
+		case "mean_reversion":
+			payload["order_size"] = cfgFloat(cfg, "order_size", 0.01)
+			payload["lookback_period"] = int64(cfgFloat(cfg, "lookback_period", 20))
+			payload["std_dev_threshold"] = cfgFloat(cfg, "std_dev_threshold", 2.0)
+		case "scalping":
+			payload["order_size"] = cfgFloat(cfg, "order_size", 0.01)
+			payload["profit_target_pct"] = cfgFloat(cfg, "profit_target_pct", 0.3)
+			payload["stop_loss_pct"] = cfgFloat(cfg, "stop_loss_pct", 0.5)
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if v, ok := cfg["passphrase"].(string); ok && v != "" {
+			payload["passphrase"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
 	default:
-		// Signal-only bot types have no real execution runner in bot_core.
+		// Bot types without a real execution runner in bot_core (mev,
+		// sandwich, front_run, flash_loan, cross_chain, perp_hedge,
+		// liquidity_provider, ai_trading, signal, custom) fail closed:
+		// the start is rejected with 400, never faked as "running".
 		return nil, errStopDispatch
 	}
 }
@@ -499,43 +601,88 @@ type cexCreds struct {
 // bot_cex_connections, admin-managed) for the given exchange, decrypting both
 // via wlcrypto. Returns an error if no key is configured for the exchange —
 // the caller skips dispatch rather than emitting a payload with empty creds.
+// fetchCEXCreds resolves the calling user's OWN exchange credentials. Both
+// halves come from the same source so a key never pairs with someone else's
+// secret (a mismatched pair would fail exchange HMAC on every order).
+// Resolution order: (1) per-user bot_cex_connections row, (2) per-user
+// api_keys row with a stored secret. Fail-closed when neither exists.
 func (s *Svc) fetchCEXCreds(c *gin.Context, userID uuid.UUID, exchange string) (cexCreds, error) {
 	if exchange == "" {
 		return cexCreds{}, errors.New("bot has no exchange configured")
 	}
-	keys, err := s.store.ListAPIKeys(c.Request.Context(), userID)
+	ctx := c.Request.Context()
+	if conn, err := s.store.GetCEXForUser(ctx, userID, exchange); err == nil {
+		key, derr := wlcrypto.DecryptSeedAtRest(conn.APIKeyEncrypted, s.cfg.JWTSecret)
+		if derr != nil {
+			return cexCreds{}, fmt.Errorf("decrypt api key: %w", derr)
+		}
+		secret, derr := wlcrypto.DecryptSeedAtRest(conn.APISecretEncrypted, s.cfg.JWTSecret)
+		if derr != nil {
+			return cexCreds{}, fmt.Errorf("decrypt api secret: %w", derr)
+		}
+		return cexCreds{exchange: exchange, apiKey: string(key), apiSecret: string(secret)}, nil
+	}
+	keys, err := s.store.ListAPIKeys(ctx, userID)
 	if err != nil {
 		return cexCreds{}, fmt.Errorf("list api keys: %w", err)
 	}
-	var encAPIKey string
 	for i := range keys {
-		if keys[i].Exchange == exchange && keys[i].Enabled {
-			encAPIKey = keys[i].APIKeyEncrypted
-			break
+		if keys[i].Exchange != exchange || !keys[i].Enabled || keys[i].APISecretEncrypted == "" {
+			continue
 		}
+		key, derr := wlcrypto.DecryptSeedAtRest(keys[i].APIKeyEncrypted, s.cfg.JWTSecret)
+		if derr != nil {
+			return cexCreds{}, fmt.Errorf("decrypt api key: %w", derr)
+		}
+		secret, derr := wlcrypto.DecryptSeedAtRest(keys[i].APISecretEncrypted, s.cfg.JWTSecret)
+		if derr != nil {
+			return cexCreds{}, fmt.Errorf("decrypt api secret: %w", derr)
+		}
+		return cexCreds{exchange: exchange, apiKey: string(key), apiSecret: string(secret)}, nil
 	}
-	if encAPIKey == "" {
-		return cexCreds{}, fmt.Errorf("no api key configured for exchange %s", exchange)
+	return cexCreds{}, fmt.Errorf("no api key+secret configured for exchange %s (add via /api-keys or /cex)", exchange)
+}
+
+// buildDexReq builds the DexSwapRequest object bot_core requires for DEX-side
+// strategies (arbitrage/sniper): the user's DEX connector on the configured
+// chain provides rpc_url + decrypted wallet seed; router/tokens/amounts come
+// from the bot config. Fail-closed: an error aborts the start.
+func (s *Svc) buildDexReq(c *gin.Context, userID uuid.UUID, cfg map[string]any) (map[string]any, error) {
+	chainID := int64(0)
+	if v, ok := cfg["chain_id"].(float64); ok {
+		chainID = int64(v)
 	}
-	apiKey, err := wlcrypto.DecryptSeedAtRest(encAPIKey, s.cfg.JWTSecret)
+	if chainID == 0 {
+		return nil, errors.New("dex requires 'chain_id' in bot config")
+	}
+	conn, err := s.store.GetDEXForUser(c.Request.Context(), userID, chainID)
 	if err != nil {
-		return cexCreds{}, fmt.Errorf("decrypt api key: %w", err)
+		return nil, fmt.Errorf("no dex connection for chain_id %d (add via /dex with wallet_seed)", chainID)
 	}
-	// Platform-level secret for the same exchange (admin-managed).
-	var apiSecret string
-	conns, err := s.store.ListCEX(c.Request.Context())
-	if err == nil {
-		for i := range conns {
-			if conns[i].Exchange == exchange && conns[i].IsActive {
-				dec, derr := wlcrypto.DecryptSeedAtRest(conns[i].APISecretEncrypted, s.cfg.JWTSecret)
-				if derr == nil {
-					apiSecret = string(dec)
-				}
-				break
-			}
-		}
+	if conn.WalletSeedEncrypted == "" {
+		return nil, fmt.Errorf("dex connection for chain_id %d has no wallet seed (re-add with wallet_seed)", chainID)
 	}
-	return cexCreds{exchange: exchange, apiKey: string(apiKey), apiSecret: apiSecret}, nil
+	seed, err := wlcrypto.DecryptSeedAtRest(conn.WalletSeedEncrypted, s.cfg.JWTSecret)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt wallet_seed: %w", err)
+	}
+	return map[string]any{
+		"rpc_url":        conn.RPCURL,
+		"chain_id":       conn.ChainID,
+		"private_key":    string(seed),
+		"router":         cfgString(cfg, "router", ""),
+		"token_in":       cfgString(cfg, "token_in", ""),
+		"token_out":      cfgString(cfg, "token_out", ""),
+		"amount_in":      cfgFloat(cfg, "amount_in", 0),
+		"amount_out_min": cfgFloat(cfg, "amount_out_min", 0),
+	}, nil
+}
+
+func cfgString(cfg map[string]any, key, def string) string {
+	if v, ok := cfg[key].(string); ok && v != "" {
+		return v
+	}
+	return def
 }
 
 func (s *Svc) ListBotExecutions(c *gin.Context) {
@@ -597,6 +744,20 @@ func (s *Svc) CreateSubscription(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// Paid tiers are activated by the platform AFTER payment verification
+	// (admin grant). Self-serve is the free tier only - a user must never be
+	// able to upgrade themselves for free.
+	if fee, ok := tierMonthlyFee(req.Tier); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown tier", "valid_tiers": tierIDs()})
+		return
+	} else if fee != "0" {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error":       "paid tiers are activated by the platform after payment verification",
+			"tier":        req.Tier,
+			"monthly_fee": fee,
+		})
 		return
 	}
 	var expiresAt *time.Time
@@ -696,8 +857,9 @@ func (s *Svc) ListFeeConfigs(c *gin.Context) {
 func (s *Svc) CreateApiKey(c *gin.Context) {
 	userID := wlgate.UserID(c)
 	var req struct {
-		Exchange string `json:"exchange" binding:"required"`
-		APIKey   string `json:"api_key" binding:"required"`
+		Exchange  string `json:"exchange" binding:"required"`
+		APIKey    string `json:"api_key" binding:"required"`
+		APISecret string `json:"api_secret"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -705,22 +867,31 @@ func (s *Svc) CreateApiKey(c *gin.Context) {
 	}
 	// Real AEAD: scrypt(passphrase) -> AES-256-GCM. The JWT secret is the
 	// at-rest passphrase (configured per WL client deployment).
-	encrypted, err := wlcrypto.EncryptSeedAtRest([]byte(req.APIKey), s.cfg.JWTSecret)
+	encKey, err := wlcrypto.EncryptSeedAtRest([]byte(req.APIKey), s.cfg.JWTSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
 		return
 	}
-	k, err := s.store.CreateAPIKey(c.Request.Context(), userID, req.Exchange, encrypted)
+	encSecret := ""
+	if req.APISecret != "" {
+		encSecret, err = wlcrypto.EncryptSeedAtRest([]byte(req.APISecret), s.cfg.JWTSecret)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+			return
+		}
+	}
+	k, err := s.store.CreateAPIKey(c.Request.Context(), userID, req.Exchange, encKey, encSecret)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
-		"id":          k.ID,
-		"user_id":     k.UserID,
-		"exchange":    k.Exchange,
-		"enabled":     k.Enabled,
-		"created_at":  k.CreatedAt,
+		"id":              k.ID,
+		"user_id":         k.UserID,
+		"exchange":        k.Exchange,
+		"enabled":         k.Enabled,
+		"has_secret":      req.APISecret != "",
+		"created_at":      k.CreatedAt,
 		"api_key_preview": previewKey(req.APIKey),
 	})
 }
@@ -735,20 +906,20 @@ func (s *Svc) ListApiKeys(c *gin.Context) {
 	out := make([]gin.H, 0, len(keys))
 	for i := range keys {
 		k := &keys[i]
-		// Decrypt back to plaintext only for the owning user's view.
-		plain, derr := wlcrypto.DecryptSeedAtRest(k.APIKeyEncrypted, s.cfg.JWTSecret)
-		apiKey := ""
-		if derr == nil {
-			apiKey = string(plain)
+		// PREVIEWS ONLY - plaintext exchange credentials are never
+		// returned over the API (decrypted in-memory only at dispatch).
+		preview := ""
+		if plain, derr := wlcrypto.DecryptSeedAtRest(k.APIKeyEncrypted, s.cfg.JWTSecret); derr == nil {
+			preview = previewKey(string(plain))
 		}
 		out = append(out, gin.H{
-			"id":             k.ID,
-			"user_id":        k.UserID,
-			"exchange":       k.Exchange,
-			"enabled":        k.Enabled,
-			"created_at":     k.CreatedAt,
-			"api_key":        apiKey,
-			"api_key_preview": previewKey(apiKey),
+			"id":              k.ID,
+			"user_id":         k.UserID,
+			"exchange":        k.Exchange,
+			"enabled":         k.Enabled,
+			"has_secret":      k.APISecretEncrypted != "",
+			"created_at":      k.CreatedAt,
+			"api_key_preview": preview,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"api_keys": out, "count": len(out)})
@@ -926,10 +1097,10 @@ func (s *Svc) Stats(c *gin.Context) {
 		typeDist = append(typeDist, gin.H{"bot_type": dist[i].BotType, "count": dist[i].Count})
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"total_users":      st.TotalUsers,
-		"total_bots":       st.TotalBots,
-		"running_bots":     st.RunningBots,
-		"total_executions": st.TotalExecutions,
+		"total_users":           st.TotalUsers,
+		"total_bots":            st.TotalBots,
+		"running_bots":          st.RunningBots,
+		"total_executions":      st.TotalExecutions,
 		"bot_type_distribution": typeDist,
 	})
 }
@@ -1036,7 +1207,7 @@ func (s *Svc) CreateCEX(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
 		return
 	}
-	cn, err := s.store.CreateCEX(c.Request.Context(), req.Exchange, encKey, encSecret)
+	cn, err := s.store.CreateCEX(c.Request.Context(), nil, req.Exchange, encKey, encSecret)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1098,7 +1269,9 @@ func (s *Svc) CreateDEX(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	d, err := s.store.CreateDEX(c.Request.Context(), req.DEX, req.ChainID, req.RPCURL)
+	// Admin platform-level DEX rows carry no wallet seed (""); per-user
+	// seeds are stored via the user-facing POST /dex handler.
+	d, err := s.store.CreateDEX(c.Request.Context(), nil, req.DEX, req.ChainID, req.RPCURL, "")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -1199,14 +1372,229 @@ func (s *Svc) GetSubscription(c *gin.Context) { s.ListSubscriptions(c) }
 
 // ==================== Health ====================
 
+// ==================== Tier helpers ====================
+
+// tierMaxBots maps a subscription tier id to its bot limit.
+func tierMaxBots(tier string) (int, bool) {
+	switch tier {
+	case "free":
+		return 1, true
+	case "basic":
+		return 3, true
+	case "pro":
+		return 10, true
+	case "enterprise":
+		return 50, true
+	}
+	return 0, false
+}
+
+// tierMonthlyFee maps a tier id to its monthly fee string ("0" = free).
+func tierMonthlyFee(tier string) (string, bool) {
+	switch tier {
+	case "free":
+		return "0", true
+	case "basic":
+		return "49", true
+	case "pro":
+		return "299", true
+	case "enterprise":
+		return "1499", true
+	}
+	return "", false
+}
+
+func tierIDs() []string { return []string{"free", "basic", "pro", "enterprise"} }
+
+// AdminGrantSubscription activates ANY tier for a target user. Admin-only
+// (RequireRole at the route); payment is verified out-of-band first.
+func (s *Svc) AdminGrantSubscription(c *gin.Context) {
+	var req struct {
+		UserID    string `json:"user_id" binding:"required"`
+		Tier      string `json:"tier" binding:"required"`
+		ExpiresIn string `json:"expires_in"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	uid, err := uuid.Parse(req.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user_id"})
+		return
+	}
+	if _, ok := tierMonthlyFee(req.Tier); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown tier", "valid_tiers": tierIDs()})
+		return
+	}
+	var expiresAt *time.Time
+	if req.ExpiresIn != "" {
+		if d, err := time.ParseDuration(req.ExpiresIn); err == nil {
+			t := time.Now().Add(d)
+			expiresAt = &t
+		}
+	}
+	sub, err := s.store.CreateSubscription(c.Request.Context(), uid, req.Tier, expiresAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": sub.ID, "user_id": sub.UserID, "tier": sub.Tier, "expires_at": sub.ExpiresAt})
+}
+
+// ==================== Per-user CEX/DEX connectors (canonical parity) ====================
+
+// ListMyCEX returns the caller's own CEX connectors (key previews only).
+func (s *Svc) ListMyCEX(c *gin.Context) {
+	userID := wlgate.UserID(c)
+	conns, err := s.store.ListCEXForUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(conns))
+	for i := range conns {
+		cn := &conns[i]
+		preview := ""
+		if plain, derr := wlcrypto.DecryptSeedAtRest(cn.APIKeyEncrypted, s.cfg.JWTSecret); derr == nil {
+			preview = previewKey(string(plain))
+		}
+		out = append(out, gin.H{"id": cn.ID, "exchange": cn.Exchange, "is_active": cn.IsActive, "created_at": cn.CreatedAt, "api_key_preview": preview})
+	}
+	c.JSON(http.StatusOK, gin.H{"connections": out, "count": len(out)})
+}
+
+// CreateMyCEX stores the caller's own exchange key+secret (AES-GCM at rest).
+func (s *Svc) CreateMyCEX(c *gin.Context) {
+	userID := wlgate.UserID(c)
+	var req struct {
+		Exchange  string `json:"exchange" binding:"required"`
+		APIKey    string `json:"api_key" binding:"required"`
+		APISecret string `json:"api_secret" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	encKey, err := wlcrypto.EncryptSeedAtRest([]byte(req.APIKey), s.cfg.JWTSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	encSecret, err := wlcrypto.EncryptSeedAtRest([]byte(req.APISecret), s.cfg.JWTSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	conn, err := s.store.CreateCEX(c.Request.Context(), &userID, req.Exchange, encKey, encSecret)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": conn.ID, "exchange": conn.Exchange, "is_active": conn.IsActive, "api_key_preview": previewKey(req.APIKey)})
+}
+
+func (s *Svc) DeleteMyCEX(c *gin.Context) {
+	userID := wlgate.UserID(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteCEXOwned(c.Request.Context(), id, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": id})
+}
+
+// ListMyDEX returns the caller's own DEX connectors (seed never exposed).
+func (s *Svc) ListMyDEX(c *gin.Context) {
+	userID := wlgate.UserID(c)
+	conns, err := s.store.ListDEXForUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(conns))
+	for i := range conns {
+		d := &conns[i]
+		out = append(out, gin.H{"id": d.ID, "dex": d.DEX, "chain_id": d.ChainID, "rpc_url": d.RPCURL, "has_wallet": d.WalletSeedEncrypted != "", "is_active": d.IsActive, "created_at": d.CreatedAt})
+	}
+	c.JSON(http.StatusOK, gin.H{"connections": out, "count": len(out)})
+}
+
+// CreateMyDEX stores the caller's DEX connector incl. the trading wallet seed
+// (AES-GCM at rest) used to sign real swaps for arbitrage/sniper bots.
+func (s *Svc) CreateMyDEX(c *gin.Context) {
+	userID := wlgate.UserID(c)
+	var req struct {
+		DEX        string `json:"dex" binding:"required"`
+		ChainID    int64  `json:"chain_id" binding:"required"`
+		RPCURL     string `json:"rpc_url" binding:"required"`
+		WalletSeed string `json:"wallet_seed" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	encSeed, err := wlcrypto.EncryptSeedAtRest([]byte(req.WalletSeed), s.cfg.JWTSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "encryption failed"})
+		return
+	}
+	d, err := s.store.CreateDEX(c.Request.Context(), &userID, req.DEX, req.ChainID, req.RPCURL, encSeed)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": d.ID, "dex": d.DEX, "chain_id": d.ChainID, "rpc_url": d.RPCURL, "has_wallet": true})
+}
+
+func (s *Svc) DeleteMyDEX(c *gin.Context) {
+	userID := wlgate.UserID(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if err := s.store.DeleteDEXOwned(c.Request.Context(), id, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": id})
+}
+
+// GetMMConfigs proxies market-making configs from the ProjectParty backend
+// (Bots <-> ProjectParty linkage) with the shared service token.
+func (s *Svc) GetMMConfigs(c *gin.Context) {
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet,
+		s.cfg.ProjectPartyURL+"/api/v1/market-making/configs", nil)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to build request to project-party"})
+		return
+	}
+	if s.cfg.PPServiceToken != "" {
+		req.Header.Set("X-Service-Token", s.cfg.PPServiceToken)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "project-party backend unreachable", "detail": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, "application/json", body)
+}
+
 func (s *Svc) Health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":      "healthy",
-		"service":     "wl-bots",
-		"licensed":    s.gate.IsAlive(),
-		"reason":      s.gate.Reason(),
+		"status":       "healthy",
+		"service":      "wl-bots",
+		"licensed":     s.gate.IsAlive(),
+		"reason":       s.gate.Reason(),
 		"wl_client_id": s.cfg.WLClientID,
-		"product":     s.cfg.Product,
+		"product":      s.cfg.Product,
 	})
 }
 

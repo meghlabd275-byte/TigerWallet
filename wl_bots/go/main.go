@@ -114,17 +114,34 @@ func main() {
 		protected.GET("/subscriptions", svc.ListSubscriptions)
 		protected.GET("/subscription", svc.GetSubscription) // canonical singular alias (current user)
 
-		protected.POST("/fees", svc.CreateFeeConfig)
+		// Fee configs are read-only for users; POST/PUT are admin-only below
+		// (fee policy is operator-controlled, never user-controlled).
 		protected.GET("/fees", svc.ListFeeConfigs)
-		protected.PUT("/fees", svc.UpdateFeeConfig)
 
 		// Per-user API keys — full CRUD. /api-keys and /keys both map to the
-		// same api_keys table.
+		// same api_keys table. Responses expose PREVIEWS ONLY.
 		protected.POST("/api-keys", svc.CreateApiKey)
 		protected.GET("/api-keys", svc.ListApiKeys)
 		protected.POST("/keys", svc.CreateApiKey)
 		protected.GET("/keys", svc.ListApiKeys)
 		protected.DELETE("/keys/:id", svc.DeleteApiKey)
+
+		// Per-user CEX connectors (canonical parity: each user trades with
+		// their own key+secret). Admin-managed platform connectors live on
+		// the admin group below.
+		protected.GET("/cex", svc.ListMyCEX)
+		protected.POST("/cex", svc.CreateMyCEX)
+		protected.DELETE("/cex/:id", svc.DeleteMyCEX)
+
+		// Per-user DEX connectors (rpc_url + AES-GCM wallet seed for real
+		// swap signing by arbitrage/sniper bots).
+		protected.GET("/dex", svc.ListMyDEX)
+		protected.POST("/dex", svc.CreateMyDEX)
+		protected.DELETE("/dex/:id", svc.DeleteMyDEX)
+
+		// Bots <-> ProjectParty linkage: market-making configs proxied from
+		// the ProjectParty backend with the shared service token.
+		protected.GET("/mm-configs", svc.GetMMConfigs)
 	}
 
 	// Admin/operator routes — protected (JWT + license gate) AND role-gated.
@@ -135,6 +152,13 @@ func main() {
 	{
 		// Platform stats — real COUNT queries (super_admin / finance_admin).
 		admin.GET("/stats", svc.RequireRole("super_admin", "finance_admin"), svc.Stats)
+
+		// Fee config management (operator-controlled).
+		admin.POST("/fees", svc.RequireRole("super_admin", "finance_admin"), svc.CreateFeeConfig)
+		admin.PUT("/fees", svc.RequireRole("super_admin", "finance_admin"), svc.UpdateFeeConfig)
+
+		// Paid-tier subscription grant (after payment verification).
+		admin.POST("/subscriptions/grant", svc.RequireRole("super_admin", "finance_admin"), svc.AdminGrantSubscription)
 
 		// User management (wl_client / bot_admin — canonical scopes; legacy
 		// super_admin/bot_operator role strings still honored via fallback).

@@ -273,3 +273,89 @@ WalletConnect pairing (backend proxy route exists).
 - Verified: web tsc --noEmit = 0; extension node --check OK; desktop node
   --check OK; go build+vet wallet_api OK; Kotlin brace-balance + XML parse
   OK (no Android SDK / Xcode in sandbox for full compile).
+
+
+## 12. Resolved 2026-09-04 (Session 36 — Bots execution plane + ProjectParty listing backend gap closure)
+
+All build/vet/test-verified. Session-35 audit items marked RESOLVED:
+
+### Bots backend (mm_bot_platform/bot_api :8471 + Rust bot_core :8472)
+- RESOLVED: bot_api getBot/start/stop/pause had NO ownership check (IDOR —
+  any user could stop/pause another user's bot). Now `fetchOwnedBot` /
+  `setBotStatusOwned` scope every read/write by `user_id`.
+- RESOLVED: 15 bot types flipped DB status to "running" with NO execution.
+  bot_core gained real execution runners for grid / dca / momentum /
+  mean_reversion / scalping (CEX runners mirroring the existing
+  market_maker/arbitrage/sniper pattern); bot_api `buildStartPayload` maps
+  all 8 executable kinds (real CEX creds, serde-tag-correct payloads) and
+  `startBot` is now fail-closed: an unsupported type returns 400 with the
+  executable-type list and the DB status is never flipped. No fake execution.
+- RESOLVED: bot_core had no Dockerfile and was not in docker-compose
+  (host port 8472 collided with bots-frontend). Added
+  `mm_bot_platform/bot_core/Dockerfile` (multi-stage Rust build, real
+  `--healthcheck` HTTP probe) + `bot-core` compose service; wl-bots
+  BOT_CORE_URL points at the in-compose service.
+- wl_bots: fixed the `io` import build break; arbitrage/sniper start payloads
+  now include dex_req (bot_core requires it — they previously 422'd and
+  never ran); CEX creds fetch fixed (per-user key was paired with an
+  admin-level secret); tier limits enforced on CreateBot; admin DEX rows
+  clarified.
+- cargo build 0 warnings (BotHandle.kind surfaced in pause ack).
+
+### ProjectParty canonical backend (:8106)
+- RESOLVED: approveToken set status='approved' but public discovery reads
+  status='listed' — featured/trending/market were permanently EMPTY.
+  approveToken now transitions submitted/in_review → listed atomically.
+- RESOLVED: updateToken/deleteToken/submit/cancelLaunchpad/updateOrderStatus
+  had no ownership checks (IDOR). New canManageToken/canManageListing/
+  canManageLaunchpad/canManageOrder + lpOwnerID helpers; every mutating
+  handler is owner-or-admin gated. createToken/createListing/createLaunchpad/
+  createMakerOrders now record owner_id.
+- RESOLVED: setTokenPrice hardcoded change_24h/volume_24h=0 and never touched
+  token_listings. Now computes real 24h change vs previous price point,
+  real volume (launchpad contributions or caller-supplied), market cap
+  (price × supply), and syncs token_listings in the same tx.
+- RESOLVED: addLiquidity fabricated lp_tokens=amount×1000; removeLiquidity
+  used invalid PostgreSQL (DELETE ... ORDER BY ... LIMIT) so it always
+  errored. Both rewritten: real proportional LP shares in one tx, valid
+  FOR UPDATE + proportional burn accounting.
+- RESOLVED: compose now passes PP_RPC_URL / PP_LAUNCHPAD_PRIVATE_KEY /
+  PP_LAUNCHPAD_CONTRACT_ADDRESS / WALLET_API_URL / WALLET_API_ADMIN_TOKEN so
+  the real on-chain launchpad + token-approval propagation work in
+  deployment (fail-closed 503 when unset).
+
+### ProjectParty white-label backend (wl_project_party/go :8464)
+- RESOLVED (critical): public Register accepted a user-supplied `role` —
+  any self-registered user could claim role=admin and pass the legacy
+  RequireRole fallback (full admin: approve tokens, verify fees/contracts).
+  Registration now always creates a plain user; privileged roles/scopes
+  only via PUT /users/:id/scopes (WL client owner).
+- RESOLVED: CreateToken/UpdateToken honored a user-supplied `status`
+  (self-approval bypass) and CreateListing accepted a user-supplied status
+  (self-activation bypass). Token status is forced to draft in the store;
+  listing status is forced to upcoming.
+- RESOLVED: PayFees recorded status='completed' from a user-supplied tx_hash.
+  Now records 'pending'; new admin POST /admin/fees/verify/:id performs REAL
+  on-chain receipt verification (ethclient receipt + success status) before
+  marking completed (forward-only).
+- RESOLVED: no ownership checks on token/MM-order mutations. Added
+  canManageToken/canManageOrder (+ TokenOwner/MMOrderOwner store methods,
+  owner_id columns) and gated update/delete/submit/MM-order-status.
+- RESOLVED: route gaps the web app + bot_api proxy need: added
+  /market-making/configs (POST/GET/DELETE), GET /pricing?token_id=,
+  GET /compliance/status/:token_id (aggregates listing+KYC+audit+contract).
+- wl PP build+vet+test PASS (route-registration tests green).
+
+### ProjectParty web (project_party/web)
+- api.ts realigned to the WL backend: /pricing/market → /market (avoids the
+  gin static-vs-param collision), register() no longer sends a role.
+- All api.ts routes verified present on the WL backend (auth, tokens,
+  listings, launchpad, market-making/configs, fees+verify, favorites,
+  pricing+market+history, analytics holders/transactions/volume/liquidity,
+  compliance kyc/audit/status).
+- npx tsc --noEmit = 0; vite build PASS.
+
+### Verification
+- go build+vet: bot_api, wl_bots, canonical project_party, wl_project_party.
+- go test: wl_project_party PASS. cargo build bot_core: 0 warnings, tests PASS.
+- docker compose config --quiet PASS.

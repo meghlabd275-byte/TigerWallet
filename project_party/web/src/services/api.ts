@@ -70,10 +70,12 @@ class ApiService {
   }
 
   // ==================== Auth ====================
-  async register(email: string, password: string, role?: string) {
+  async register(email: string, password: string) {
+    // Public self-registration always creates a plain user; roles/scopes are
+    // assigned by the WL client owner, never from the client.
     return this.request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, role: role || 'user' })
+      body: JSON.stringify({ email, password })
     });
   }
 
@@ -220,7 +222,7 @@ class ApiService {
   }
 
   async getMarketData() {
-    return this.request<{ tokens: any[]; total_market_cap: string; total_volume: string; active_tokens: number }>(`/pricing/market`);
+    return this.request<{ tokens: any[]; total_market_cap: string; total_volume: string; active_tokens: number }>(`/market`);
   }
 
   // ==================== Analytics ====================

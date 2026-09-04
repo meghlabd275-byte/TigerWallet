@@ -1214,3 +1214,40 @@
 - PP BUGS: canonical approveToken sets status=approved but featured/trending/market read status=listed -> public discovery permanently EMPTY (wl fixed: sets listed). wl+canonical: updateToken/deleteToken/submit/cancelLaunchpad/updateOrderStatus have NO ownership checks; wl CreateToken/UpdateToken accept user-supplied status => self-approval bypass of admin listing workflow. setTokenPrice/updatePrice: any authenticated user can set ANY token price; change_24h/volume_24h hardcoded 0; nothing ever updates token_listings.volume_24h/liquidity_usd => analytics volume/liquidity always 0. addLiquidity fabricates lp_tokens=amount*1000 (no AMM). canonical removeLiquidity uses DELETE ... ORDER BY ... LIMIT 1 = invalid PostgreSQL -> always errors. market_maker_orders never match (manual status only). ParticipateInLaunchpad (used by web) is DB-only, collects NO payment; on-chain Contribute has no UI.
 - PP CLIENTS: web (11 pages) targets wl backend BUT api.ts mismatches: /market-making/configs (wl has /market-making) -> MarketMaking page 404s; /pricing?token_id= vs /pricing/:token_id; /pricing/market collides with /pricing/:token_id; /compliance/status/:id missing; /fees/verify/:id missing on wl; /analytics/* response-shape mismatches. compose nginx points project-party-frontend at CANONICAL project-party-api:8106 whose shapes differ even more (login wants username not email; createToken requires chain string not chain_id; contribute not participate). Tokens page status chips [draft,pending,active,rejected] do not match real statuses; form exposes status select (self-listing via UI). NO admin UI anywhere for approve/reject/verify-contract/featured/fees-verify. android/ios = orphaned-SDK/placeholder-shell pattern like bots (no build files). desktop/extension = UserWallet copies (:8105), extension missing icons. cpp = no CMakeLists. rust SDK uses /market-making/orders which 404s on BOTH backends (canonical=/mm/orders, wl=/marketmaking/orders).
 - TESTS: bot_core, bot_api, wl_bots, canonical project_party = 0 tests; wl_project_party has route-registration test only; Solidity (TigerBotPlatform, ProjectPartyLaunchpad) has foundry tests but contracts not deployed/wired by default.
+
+
+## Session 36 (2026-09-04) — Bots execution plane + ProjectParty listing backend gap closure (see docs/GAPS.md §12)
+- BOT_API IDOR FIXED: getBot/start/stop/pause now owner-scoped via
+  fetchOwnedBot/setBotStatusOwned (user_id on every read/write).
+- BOT_CORE EXECUTION RUNNERS 3→8: grid/dca/momentum/mean_reversion/scalping
+  real CEX runners added; bot_api startBot is FAIL-CLOSED for the 10 types
+  without runners (400 + executable_types list, status never flipped to
+  running). bot_core Dockerfile + compose service added (real --healthcheck).
+- WL_BOTS: io-import build break fixed; arbitrage/sniper dispatch payloads
+  now include dex_req; CEX cred per-user pairing fixed; tier limits enforced.
+- CANONICAL PP (:8106): approveToken now submitted/in_review → listed
+  atomically (public discovery was permanently empty); ownership gates on
+  all token/listing/launchpad/order mutations (owner_id recorded);
+  setTokenPrice computes real 24h change/volume/market-cap and syncs
+  token_listings; addLiquidity/removeLiquidity rewritten with real
+  proportional LP-share math + valid SQL; compose passes PP_RPC_URL/
+  PP_LAUNCHPAD_*/WALLET_API_URL/WALLET_API_ADMIN_TOKEN.
+- WL PP (:8464): CRITICAL role-escalation closed — public Register always
+  creates 'user' (roles/scopes only via PUT /users/:id/scopes). Token +
+  listing status self-approval bypasses closed (draft/upcoming forced in
+  store). PayFees records 'pending'; new admin /admin/fees/verify/:id does
+  REAL on-chain receipt verification before 'completed'. Ownership gates
+  (TokenOwner/MMOrderOwner + owner_id columns). New routes:
+  /market-making/configs (POST/GET/DELETE), GET /pricing?token_id=,
+  GET /compliance/status/:token_id.
+- PP WEB: api.ts realigned (/pricing/market → /market; register drops role);
+  every api.ts route verified present on the WL backend; tsc=0, vite build OK.
+- VERIFIED: go build+vet bot_api/wl_bots/canonical-PP/wl-PP; wl PP tests
+  PASS; bot_core cargo build 0 warnings + tests PASS; compose config PASS.
+- STILL OPEN (bots/PP): 10 signal-only bot types need real runners
+  (ai_trading/signal/cross_chain/perp_hedge/flash_loan/sandwich/front_run/
+  mev/liquidity_provider/custom — start fails closed, never fakes);
+  bots/android+ios orphaned SDK shells (no build files); bots/desktop+
+  extension are UserWallet copies needing retarget; PP web has no admin UI
+  (approve/reject/verify-contract/fees-verify); PP android/ios/desktop/
+  extension same orphaned/copy pattern; market_maker_orders never auto-match.

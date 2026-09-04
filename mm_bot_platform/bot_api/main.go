@@ -49,10 +49,10 @@ import (
 type UserRole string
 
 const (
-	RoleSuperAdmin  UserRole = "super_admin"
-	RoleBotOperator UserRole = "bot_operator"
+	RoleSuperAdmin   UserRole = "super_admin"
+	RoleBotOperator  UserRole = "bot_operator"
 	RoleFinanceAdmin UserRole = "finance_admin"
-	RoleClient      UserRole = "client"
+	RoleClient       UserRole = "client"
 )
 
 func validRoles() map[UserRole]bool {
@@ -160,7 +160,8 @@ func main() {
 		auth.POST("/subscription", svc.createSubscription)
 
 		auth.GET("/fees", svc.getFeeConfigs)
-		auth.PUT("/fees", svc.updateFeeConfig)
+		// PUT /fees moved to the admin group: platform fee percentages are
+		// operator-controlled, never user-writable.
 
 		auth.GET("/cex", svc.listCEX)
 		auth.POST("/cex", svc.addCEX)
@@ -188,6 +189,11 @@ func main() {
 			admin.POST("/fee-addresses", svc.adminSetFeeAddress)
 			admin.DELETE("/fee-addresses/:id", svc.adminDeleteFeeAddress)
 			admin.POST("/bots/:id/status", svc.adminBotStatus)
+			admin.PUT("/fees", svc.updateFeeConfig)
+			// Admin grants a paid subscription tier after payment is verified
+			// out-of-band (invoice/fee-address receipt). Users can self-serve
+			// only the free tier via POST /subscription.
+			admin.POST("/subscriptions/grant", svc.adminGrantSubscription)
 		}
 	}
 
@@ -212,7 +218,7 @@ type config struct {
 	// bot_api is controllable by TigerWallet SuperAdmin via the same control
 	// plane as white-label products.
 	ControlPlaneURL, ControlPlaneToken, LicenseKey, Product, InstanceID string
-	HeartbeatInterval                                                    time.Duration
+	HeartbeatInterval                                                   time.Duration
 }
 
 func loadCfg() config {
@@ -245,9 +251,9 @@ func loadCfg() config {
 }
 
 type service struct {
-	pg        *pgxpool.Pool
-	redis     *redis.Client
-	jwt       string
+	pg         *pgxpool.Pool
+	redis      *redis.Client
+	jwt        string
 	httpClient *http.Client // shared HTTP client for dispatch to bot_core
 }
 
@@ -623,7 +629,7 @@ INSERT INTO bots (user_id,name,bot_type,config,status,exchange,pair) VALUES ($1,
 }
 
 func (s *service) getBot(c *gin.Context) {
-	b, ok := s.fetchBot(c, c.Param("id"))
+	b, ok := s.fetchOwnedBot(c, c.Param("id"))
 	if !ok {
 		return
 	}
@@ -631,18 +637,44 @@ func (s *service) getBot(c *gin.Context) {
 }
 
 func (s *service) startBot(c *gin.Context) {
-	s.setBotStatus(c, c.Param("id"), "running")
+	bot, ok := s.fetchOwnedBot(c, c.Param("id"))
+	if !ok {
+		return
+	}
+	// Fail-closed: validate the full dispatch payload BEFORE flipping the
+	// status. A bot that cannot actually execute (missing exchange creds,
+	// missing DEX wallet, unsupported type) is never shown as "running".
+	userID := bot["user_id"].(string)
+	if _, err := s.buildStartPayload(c.Request.Context(), c.Param("id"), userID); err != nil {
+		if errors.Is(err, errSignalOnlyStrategy) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":            "bot type has no execution runner yet",
+				"bot_type":         bot["bot_type"],
+				"executable_types": executableBotTypes(),
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot start bot: " + err.Error()})
+		return
+	}
+	if !s.setBotStatusOwned(c, c.Param("id"), "running") {
+		return
+	}
 	// Dispatch real start to the Rust bot_core execution plane.
 	s.dispatchBotCore(c, c.Param("id"), "start")
 }
 
 func (s *service) stopBot(c *gin.Context) {
-	s.setBotStatus(c, c.Param("id"), "stopped")
+	if !s.setBotStatusOwned(c, c.Param("id"), "stopped") {
+		return
+	}
 	s.dispatchBotCore(c, c.Param("id"), "stop")
 }
 
 func (s *service) pauseBot(c *gin.Context) {
-	s.setBotStatus(c, c.Param("id"), "paused")
+	if !s.setBotStatusOwned(c, c.Param("id"), "paused") {
+		return
+	}
 	s.dispatchBotCore(c, c.Param("id"), "pause")
 }
 
@@ -710,11 +742,16 @@ func (s *service) dispatchBotCore(c *gin.Context, botID, action string) {
 // buildStartPayload fetches the bot row + decrypted CEX/DEX credentials from
 // DB and builds the StartReq tagged-enum JSON that bot_core's dispatch_start
 // endpoint expects. Maps bot_type -> strategy kind:
-//   market_maker -> MarketMaker, arbitrage -> Arbitrage, sniper -> Sniper.
-// Other bot types (grid/dca/momentum/etc.) are signal-only strategies in
-// bot_core and do not have a real execution runner yet — their start dispatch
-// is skipped (logged), and the DB status still transitions to running so the
-// bot appears active for monitoring. This is honest: no fake execution.
+//
+// market_maker -> MarketMaker, arbitrage -> Arbitrage, sniper -> Sniper,
+// grid/dca/momentum/mean_reversion/scalping -> the corresponding CEX runners
+// (bot_core serde tags).
+//
+// Bot types without a real execution runner in bot_core (ai_trading/signal/
+// cross_chain/perp_hedge/flash_loan/sandwich/front_run/mev/liquidity_provider/
+// custom) return the errSignalOnlyStrategy sentinel so startBot fails closed
+// with a 400 — the DB status is never flipped to "running" for a bot that
+// cannot actually execute. No fake execution, ever.
 func (s *service) buildStartPayload(ctx context.Context, botID, userID string) ([]byte, error) {
 	var botType, exchange, pair string
 	var configJSON json.RawMessage
@@ -742,14 +779,14 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 			return nil, fmt.Errorf("cex creds: %w", err)
 		}
 		payload := map[string]any{
-			"kind":        "marketmaker",
-			"bot_id":      botID,
-			"exchange":    cexCreds.exchange,
-			"api_key":     cexCreds.apiKey,
-			"secret_key":  cexCreds.apiSecret,
-			"symbol":      pair,
-			"order_size":  cfgFloat(cfg, "order_size", 0.01),
-			"spread_bps":  cfgFloat(cfg, "spread_bps", 10),
+			"kind":       "marketmaker",
+			"bot_id":     botID,
+			"exchange":   cexCreds.exchange,
+			"api_key":    cexCreds.apiKey,
+			"secret_key": cexCreds.apiSecret,
+			"symbol":     pair,
+			"order_size": cfgFloat(cfg, "order_size", 0.01),
+			"spread_bps": cfgFloat(cfg, "spread_bps", 10),
 		}
 		if baseURL, ok := cfg["base_url"].(string); ok && baseURL != "" {
 			payload["base_url"] = baseURL
@@ -805,10 +842,10 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 			return nil, errors.New("sniper requires mempool_url in config")
 		}
 		payload := map[string]any{
-			"kind":         "sniper",
-			"bot_id":       botID,
-			"dex_req":      dexReq,
-			"mempool_url":  mempoolURL,
+			"kind":        "sniper",
+			"bot_id":      botID,
+			"dex_req":     dexReq,
+			"mempool_url": mempoolURL,
 		}
 		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
 			payload["poll_interval_ms"] = int64(pi)
@@ -818,13 +855,70 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 		}
 		return json.Marshal(payload)
 
+	case "grid", "dca", "momentum", "mean_reversion", "scalping":
+		cexCreds, err := s.fetchCEXCreds(ctx, userID, exchange)
+		if err != nil {
+			return nil, fmt.Errorf("cex creds: %w", err)
+		}
+		kind := botType
+		if kind == "mean_reversion" {
+			kind = "meanreversion" // bot_core serde tag
+		}
+		payload := map[string]any{
+			"kind":       kind,
+			"bot_id":     botID,
+			"exchange":   cexCreds.exchange,
+			"api_key":    cexCreds.apiKey,
+			"secret_key": cexCreds.apiSecret,
+			"symbol":     pair,
+		}
+		switch botType {
+		case "grid":
+			payload["grid_count"] = int64(cfgFloat(cfg, "grid_count", 10))
+			payload["grid_spacing_pct"] = cfgFloat(cfg, "grid_spacing_pct", 1.0)
+			payload["order_size_usd"] = cfgFloat(cfg, "order_size_usd", 100)
+		case "dca":
+			payload["buy_interval_hours"] = int64(cfgFloat(cfg, "buy_interval_hours", 24))
+			payload["buy_amount_usd"] = cfgFloat(cfg, "buy_amount_usd", 50)
+			payload["max_positions"] = int64(cfgFloat(cfg, "max_positions", 30))
+		case "momentum":
+			payload["order_size"] = cfgFloat(cfg, "order_size", 0.01)
+			payload["lookback_period"] = int64(cfgFloat(cfg, "lookback_period", 20))
+			payload["entry_threshold"] = cfgFloat(cfg, "entry_threshold", 0.02)
+			payload["exit_threshold"] = cfgFloat(cfg, "exit_threshold", 0.005)
+		case "mean_reversion":
+			payload["order_size"] = cfgFloat(cfg, "order_size", 0.01)
+			payload["lookback_period"] = int64(cfgFloat(cfg, "lookback_period", 20))
+			payload["std_dev_threshold"] = cfgFloat(cfg, "std_dev_threshold", 2.0)
+		case "scalping":
+			payload["order_size"] = cfgFloat(cfg, "order_size", 0.01)
+			payload["profit_target_pct"] = cfgFloat(cfg, "profit_target_pct", 0.3)
+			payload["stop_loss_pct"] = cfgFloat(cfg, "stop_loss_pct", 0.5)
+		}
+		if baseURL, ok := cfg["base_url"].(string); ok && baseURL != "" {
+			payload["base_url"] = baseURL
+		}
+		if pp, ok := cfg["passphrase"].(string); ok && pp != "" {
+			payload["passphrase"] = pp
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
 	default:
-		// Signal-only strategies (grid/dca/momentum/mean_reversion/scalping/
-		// ai_trading/signal/cross_chain/perp_hedge/flash_loan/sandwich/front_run/
-		// mev/liquidity_provider/custom) — no real execution runner in bot_core
-		// yet. Return a sentinel so dispatchBotCore skips the HTTP call.
+		// Bot types without a real execution runner in bot_core
+		// (ai_trading/signal/cross_chain/perp_hedge/flash_loan/sandwich/
+		// front_run/mev/liquidity_provider/custom). Return a sentinel so
+		// the caller fails closed (start rejected, never faked).
 		return nil, errSignalOnlyStrategy
 	}
+}
+
+// executableBotTypes lists the bot types with a real execution runner in
+// bot_core (Rust). All other types fail closed at start time.
+func executableBotTypes() []string {
+	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping"}
 }
 
 // errSignalOnlyStrategy is a sentinel indicating the bot type is a
@@ -833,8 +927,8 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 var errSignalOnlyStrategy = errors.New("bot type is signal-only (no execution runner)")
 
 type cexCreds struct {
-	exchange string
-	apiKey   string
+	exchange  string
+	apiKey    string
 	apiSecret string
 }
 
@@ -1109,17 +1203,48 @@ func (s *service) listBotTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"transactions": out, "count": len(out)})
 }
 
-func (s *service) setBotStatus(c *gin.Context, id, status string) {
-	tag, err := s.pg.Exec(c.Request.Context(), `UPDATE bots SET status=$1, updated_at=now() WHERE id=$2`, status, id)
+// fetchOwnedBot loads a bot enforcing ownership: non-admin callers may only
+// read their own bots. Writes a 404 (indistinguishable from not-found, so
+// existence is not leaked) on failure.
+func (s *service) fetchOwnedBot(c *gin.Context, id string) (gin.H, bool) {
+	b, ok := s.fetchBot(c, id)
+	if !ok {
+		return nil, false
+	}
+	if r := c.GetString("role"); r == string(RoleSuperAdmin) || r == string(RoleFinanceAdmin) {
+		return b, true
+	}
+	owner, _ := b["user_id"].(string)
+	if owner != c.GetString("user_id") {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
+		return nil, false
+	}
+	return b, true
+}
+
+// setBotStatusOwned transitions a bot's status with ownership enforcement:
+// non-admin callers can only transition bots they own. Returns true when the
+// transition succeeded (response already written either way).
+func (s *service) setBotStatusOwned(c *gin.Context, id, status string) bool {
+	uid := c.GetString("user_id")
+	role := c.GetString("role")
+	q := `UPDATE bots SET status=$1, updated_at=now() WHERE id=$2`
+	args := []any{status, id}
+	if role != string(RoleSuperAdmin) && role != string(RoleFinanceAdmin) {
+		q += ` AND user_id=$3`
+		args = append(args, uid)
+	}
+	tag, err := s.pg.Exec(c.Request.Context(), q, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return false
 	}
 	if tag.RowsAffected() == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "bot not found"})
-		return
+		return false
 	}
 	c.JSON(http.StatusOK, gin.H{"id": id, "status": status})
+	return true
 }
 
 // ---- subscription handlers ----
@@ -1143,16 +1268,50 @@ func (s *service) getSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"subscription": gin.H{
 		"id": subID, "tier_id": tierID, "tier_name": tierName, "status": status,
 		"started_at": started.Time, "expires_at": expires.Time,
-		"limits": gin.H{"max_bots": maxBots, "max_dex": maxDex, "max_cex": maxCex, "latency_ms": lat},
+		"limits":      gin.H{"max_bots": maxBots, "max_dex": maxDex, "max_cex": maxCex, "latency_ms": lat},
 		"monthly_fee": fee,
 	}})
 }
 
+// createSubscription is self-serve for the FREE tier only. Paid tiers carry a
+// monthly_fee and are granted exclusively by an admin via
+// POST /admin/subscriptions/grant after payment verification — a user must
+// never be able to upgrade themselves for free.
 func (s *service) createSubscription(c *gin.Context) {
 	uid := c.GetString("user_id")
-	var req struct{ TierID string `json:"tier_id"` }
+	var req struct {
+		TierID string `json:"tier_id"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.TierID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "tier_id required"})
+		return
+	}
+	var fee string
+	err := s.pg.QueryRow(c.Request.Context(),
+		`SELECT monthly_fee FROM bot_tiers WHERE id=$1`, req.TierID).Scan(&fee)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown tier"})
+		return
+	}
+	if fee != "0" && fee != "0.0" && fee != "" {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error": "paid tiers are activated by the platform after payment verification",
+			"tier":  req.TierID, "monthly_fee": fee,
+		})
+		return
+	}
+	s.upsertSubscription(c, uid, req.TierID)
+}
+
+// adminGrantSubscription activates any tier for a target user. Admin-only
+// (route-level role gate); payment is verified out-of-band before granting.
+func (s *service) adminGrantSubscription(c *gin.Context) {
+	var req struct {
+		UserID string `json:"user_id"`
+		TierID string `json:"tier_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.UserID == "" || req.TierID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id and tier_id required"})
 		return
 	}
 	var valid bool
@@ -1161,15 +1320,19 @@ func (s *service) createSubscription(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown tier"})
 		return
 	}
+	s.upsertSubscription(c, req.UserID, req.TierID)
+}
+
+func (s *service) upsertSubscription(c *gin.Context, userID, tierID string) {
 	_, err := s.pg.Exec(c.Request.Context(), `
 INSERT INTO bot_subscriptions (user_id,tier_id,status,expires_at) VALUES ($1,$2,'active',now()+interval '30 days')
 ON CONFLICT (user_id) DO UPDATE SET tier_id=excluded.tier_id, status='active', started_at=now(), expires_at=now()+interval '30 days'`,
-		uid, req.TierID)
+		userID, tierID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": "active", "tier_id": req.TierID})
+	c.JSON(http.StatusOK, gin.H{"status": "active", "tier_id": tierID, "user_id": userID})
 }
 
 // ---- fee handlers ----
@@ -1195,10 +1358,10 @@ func (s *service) getFeeConfigs(c *gin.Context) {
 
 func (s *service) updateFeeConfig(c *gin.Context) {
 	var req struct {
-		FeeType   string  `json:"fee_type"`
-		Asset     string  `json:"asset"`
+		FeeType    string  `json:"fee_type"`
+		Asset      string  `json:"asset"`
 		FeePercent float64 `json:"fee_percent"`
-		IsActive  *bool   `json:"is_active"`
+		IsActive   *bool   `json:"is_active"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.FeeType == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "fee_type required"})
@@ -1345,7 +1508,9 @@ func (s *service) removeDEX(c *gin.Context) {
 // This is the Bots↔ProjectParty linkage: when a token is listed on ProjectParty,
 // the project team can create a market-making config; the bots platform reads
 // these configs to auto-create market-maker bots for listed tokens.
-// Proxies GET <PP_URL>/api/v1/market-making/configs — no fabricated data.
+// Proxies GET <PP_URL>/api/v1/market-making/configs with the shared
+// service-to-service token (X-Service-Token, PP_SERVICE_TOKEN env on both
+// sides) — project-party fails closed when the token is unset/mismatched.
 func (s *service) getMMConfigs(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
 	defer cancel()
@@ -1353,6 +1518,9 @@ func (s *service) getMMConfigs(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "failed to build request to project-party"})
 		return
+	}
+	if tok := os.Getenv("PP_SERVICE_TOKEN"); tok != "" {
+		req.Header.Set("X-Service-Token", tok)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -1553,12 +1721,16 @@ func (s *service) adminDeleteFeeAddress(c *gin.Context) {
 }
 
 func (s *service) adminBotStatus(c *gin.Context) {
-	var req struct{ Status string `json:"status"` }
+	var req struct {
+		Status string `json:"status"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Status == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "status required"})
 		return
 	}
-	s.setBotStatus(c, c.Param("id"), req.Status)
+	// Admin route: role gate already applied; setBotStatusOwned passes through
+	// for super_admin without an ownership clause.
+	s.setBotStatusOwned(c, c.Param("id"), req.Status)
 }
 
 // ---- public ----

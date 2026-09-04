@@ -91,6 +91,9 @@ func (s *Store) migrate(ctx context.Context) error {
 			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_apikeys_user ON api_keys(user_id)`,
+		// Per-user API secret alongside the key (canonical parity: real
+		// HMAC signing needs both halves of the user's exchange creds).
+		`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_secret_encrypted TEXT`,
 		`CREATE TABLE IF NOT EXISTS bot_logs (
 			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			bot_id     UUID NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
@@ -114,6 +117,9 @@ func (s *Store) migrate(ctx context.Context) error {
 			is_active           BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// Per-user CEX connector ownership (canonical parity: each user's bots
+		// sign orders with their OWN key+secret, never an admin row).
+		`ALTER TABLE bot_cex_connections ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE`,
 		// Platform-level DEX connector configs (admin-managed).
 		`CREATE TABLE IF NOT EXISTS bot_dex_connections (
 			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -123,6 +129,10 @@ func (s *Store) migrate(ctx context.Context) error {
 			is_active  BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// Per-user DEX connector ownership + the user's trading wallet seed
+		// (AES-GCM at rest) — real DEX execution signs transactions with it.
+		`ALTER TABLE bot_dex_connections ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE`,
+		`ALTER TABLE bot_dex_connections ADD COLUMN IF NOT EXISTS wallet_seed_encrypted TEXT`,
 		// Admin fee-collection addresses (admin-managed).
 		`CREATE TABLE IF NOT EXISTS admin_fee_addresses (
 			id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -517,21 +527,22 @@ func (s *Store) UpdateFeeConfig(ctx context.Context, id uuid.UUID, name, percent
 // ==================== API keys (encrypted at rest) ====================
 
 type APIKey struct {
-	ID               uuid.UUID
-	UserID           uuid.UUID
-	Exchange         string
-	APIKeyEncrypted  string
-	Enabled          bool
-	CreatedAt        time.Time
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	Exchange           string
+	APIKeyEncrypted    string
+	APISecretEncrypted string
+	Enabled            bool
+	CreatedAt          time.Time
 }
 
-func (s *Store) CreateAPIKey(ctx context.Context, userID uuid.UUID, exchange, encrypted string) (*APIKey, error) {
+func (s *Store) CreateAPIKey(ctx context.Context, userID uuid.UUID, exchange, encKey, encSecret string) (*APIKey, error) {
 	var k APIKey
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO api_keys (user_id, exchange, api_key_encrypted) VALUES ($1,$2,$3)
-		 RETURNING id, user_id, exchange, api_key_encrypted, enabled, created_at`,
-		userID, exchange, encrypted).
-		Scan(&k.ID, &k.UserID, &k.Exchange, &k.APIKeyEncrypted, &k.Enabled, &k.CreatedAt)
+		`INSERT INTO api_keys (user_id, exchange, api_key_encrypted, api_secret_encrypted) VALUES ($1,$2,$3,$4)
+		 RETURNING id, user_id, exchange, api_key_encrypted, COALESCE(api_secret_encrypted,''), enabled, created_at`,
+		userID, exchange, encKey, encSecret).
+		Scan(&k.ID, &k.UserID, &k.Exchange, &k.APIKeyEncrypted, &k.APISecretEncrypted, &k.Enabled, &k.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +551,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, userID uuid.UUID, exchange, en
 
 func (s *Store) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]APIKey, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT id, user_id, exchange, api_key_encrypted, enabled, created_at
+		`SELECT id, user_id, exchange, api_key_encrypted, COALESCE(api_secret_encrypted,''), enabled, created_at
 		 FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -549,7 +560,7 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]APIKey, er
 	out := []APIKey{}
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.UserID, &k.Exchange, &k.APIKeyEncrypted, &k.Enabled, &k.CreatedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.UserID, &k.Exchange, &k.APIKeyEncrypted, &k.APISecretEncrypted, &k.Enabled, &k.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, k)
@@ -573,6 +584,7 @@ func (s *Store) DeleteAPIKey(ctx context.Context, id, userID uuid.UUID) error {
 
 type CEXConnection struct {
 	ID                 uuid.UUID
+	UserID             *uuid.UUID
 	Exchange           string
 	APIKeyEncrypted    string
 	APISecretEncrypted string
@@ -580,14 +592,16 @@ type CEXConnection struct {
 	CreatedAt          time.Time
 }
 
-func (s *Store) CreateCEX(ctx context.Context, exchange, encKey, encSecret string) (*CEXConnection, error) {
+// CreateCEX inserts a CEX connector. userID nil = platform-level (admin);
+// non-nil = owned by that user (canonical per-user semantics).
+func (s *Store) CreateCEX(ctx context.Context, userID *uuid.UUID, exchange, encKey, encSecret string) (*CEXConnection, error) {
 	var c CEXConnection
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO bot_cex_connections (exchange, api_key_encrypted, api_secret_encrypted)
-		 VALUES ($1,$2,$3)
-		 RETURNING id, exchange, api_key_encrypted, api_secret_encrypted, is_active, created_at`,
-		exchange, encKey, encSecret).
-		Scan(&c.ID, &c.Exchange, &c.APIKeyEncrypted, &c.APISecretEncrypted, &c.IsActive, &c.CreatedAt)
+		`INSERT INTO bot_cex_connections (user_id, exchange, api_key_encrypted, api_secret_encrypted)
+		 VALUES ($1,$2,$3,$4)
+		 RETURNING id, user_id, exchange, api_key_encrypted, api_secret_encrypted, is_active, created_at`,
+		userID, exchange, encKey, encSecret).
+		Scan(&c.ID, &c.UserID, &c.Exchange, &c.APIKeyEncrypted, &c.APISecretEncrypted, &c.IsActive, &c.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -595,9 +609,24 @@ func (s *Store) CreateCEX(ctx context.Context, exchange, encKey, encSecret strin
 }
 
 func (s *Store) ListCEX(ctx context.Context) ([]CEXConnection, error) {
-	rows, err := s.db.Query(ctx,
-		`SELECT id, exchange, api_key_encrypted, api_secret_encrypted, is_active, created_at
-		 FROM bot_cex_connections ORDER BY created_at DESC`)
+	return s.listCEX(ctx, nil)
+}
+
+// ListCEXForUser returns the caller's own CEX connectors (canonical parity).
+func (s *Store) ListCEXForUser(ctx context.Context, userID uuid.UUID) ([]CEXConnection, error) {
+	return s.listCEX(ctx, &userID)
+}
+
+func (s *Store) listCEX(ctx context.Context, userID *uuid.UUID) ([]CEXConnection, error) {
+	q := `SELECT id, user_id, exchange, api_key_encrypted, api_secret_encrypted, is_active, created_at
+		 FROM bot_cex_connections`
+	args := []any{}
+	if userID != nil {
+		q += ` WHERE user_id=$1`
+		args = append(args, *userID)
+	}
+	q += ` ORDER BY created_at DESC`
+	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -605,12 +634,26 @@ func (s *Store) ListCEX(ctx context.Context) ([]CEXConnection, error) {
 	out := []CEXConnection{}
 	for rows.Next() {
 		var c CEXConnection
-		if err := rows.Scan(&c.ID, &c.Exchange, &c.APIKeyEncrypted, &c.APISecretEncrypted, &c.IsActive, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.Exchange, &c.APIKeyEncrypted, &c.APISecretEncrypted, &c.IsActive, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// GetCEXForUser returns the user's active CEX connector for an exchange.
+func (s *Store) GetCEXForUser(ctx context.Context, userID uuid.UUID, exchange string) (*CEXConnection, error) {
+	var c CEXConnection
+	err := s.db.QueryRow(ctx,
+		`SELECT id, user_id, exchange, api_key_encrypted, api_secret_encrypted, is_active, created_at
+		 FROM bot_cex_connections WHERE user_id=$1 AND exchange=$2 AND is_active
+		 ORDER BY created_at DESC LIMIT 1`, userID, exchange).
+		Scan(&c.ID, &c.UserID, &c.Exchange, &c.APIKeyEncrypted, &c.APISecretEncrypted, &c.IsActive, &c.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 
 func (s *Store) DeleteCEX(ctx context.Context, id uuid.UUID) error {
@@ -624,25 +667,39 @@ func (s *Store) DeleteCEX(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// DeleteCEXOwned removes a CEX connector owned by userID.
+func (s *Store) DeleteCEXOwned(ctx context.Context, id, userID uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `DELETE FROM bot_cex_connections WHERE id=$1 AND user_id=$2`, id, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ==================== DEX connector configs ====================
 
 type DEXConnection struct {
-	ID        uuid.UUID
-	DEX       string
-	ChainID   int64
-	RPCURL    string
-	IsActive  bool
-	CreatedAt time.Time
+	ID                  uuid.UUID
+	UserID              *uuid.UUID
+	DEX                 string
+	ChainID             int64
+	RPCURL              string
+	WalletSeedEncrypted string
+	IsActive            bool
+	CreatedAt           time.Time
 }
 
-func (s *Store) CreateDEX(ctx context.Context, dex string, chainID int64, rpcURL string) (*DEXConnection, error) {
+func (s *Store) CreateDEX(ctx context.Context, userID *uuid.UUID, dex string, chainID int64, rpcURL, encSeed string) (*DEXConnection, error) {
 	var d DEXConnection
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO bot_dex_connections (dex, chain_id, rpc_url)
-		 VALUES ($1,$2,$3)
-		 RETURNING id, dex, chain_id, rpc_url, is_active, created_at`,
-		dex, chainID, strOrNull(rpcURL)).
-		Scan(&d.ID, &d.DEX, &d.ChainID, &d.RPCURL, &d.IsActive, &d.CreatedAt)
+		`INSERT INTO bot_dex_connections (user_id, dex, chain_id, rpc_url, wallet_seed_encrypted)
+		 VALUES ($1,$2,$3,$4,$5)
+		 RETURNING id, user_id, dex, chain_id, rpc_url, COALESCE(wallet_seed_encrypted,''), is_active, created_at`,
+		userID, dex, chainID, strOrNull(rpcURL), strOrNull(encSeed)).
+		Scan(&d.ID, &d.UserID, &d.DEX, &d.ChainID, &d.RPCURL, &d.WalletSeedEncrypted, &d.IsActive, &d.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -650,9 +707,24 @@ func (s *Store) CreateDEX(ctx context.Context, dex string, chainID int64, rpcURL
 }
 
 func (s *Store) ListDEX(ctx context.Context) ([]DEXConnection, error) {
-	rows, err := s.db.Query(ctx,
-		`SELECT id, dex, chain_id, rpc_url, is_active, created_at
-		 FROM bot_dex_connections ORDER BY created_at DESC`)
+	return s.listDEX(ctx, nil)
+}
+
+// ListDEXForUser returns the caller's own DEX connectors (canonical parity).
+func (s *Store) ListDEXForUser(ctx context.Context, userID uuid.UUID) ([]DEXConnection, error) {
+	return s.listDEX(ctx, &userID)
+}
+
+func (s *Store) listDEX(ctx context.Context, userID *uuid.UUID) ([]DEXConnection, error) {
+	q := `SELECT id, user_id, dex, chain_id, rpc_url, COALESCE(wallet_seed_encrypted,''), is_active, created_at
+		 FROM bot_dex_connections`
+	args := []any{}
+	if userID != nil {
+		q += ` WHERE user_id=$1`
+		args = append(args, *userID)
+	}
+	q += ` ORDER BY created_at DESC`
+	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -660,12 +732,27 @@ func (s *Store) ListDEX(ctx context.Context) ([]DEXConnection, error) {
 	out := []DEXConnection{}
 	for rows.Next() {
 		var d DEXConnection
-		if err := rows.Scan(&d.ID, &d.DEX, &d.ChainID, &d.RPCURL, &d.IsActive, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.UserID, &d.DEX, &d.ChainID, &d.RPCURL, &d.WalletSeedEncrypted, &d.IsActive, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+// GetDEXForUser returns the user's active DEX connector for a chain (with the
+// encrypted trading wallet seed needed to sign real swaps).
+func (s *Store) GetDEXForUser(ctx context.Context, userID uuid.UUID, chainID int64) (*DEXConnection, error) {
+	var d DEXConnection
+	err := s.db.QueryRow(ctx,
+		`SELECT id, user_id, dex, chain_id, rpc_url, COALESCE(wallet_seed_encrypted,''), is_active, created_at
+		 FROM bot_dex_connections WHERE user_id=$1 AND chain_id=$2 AND is_active
+		 ORDER BY created_at DESC LIMIT 1`, userID, chainID).
+		Scan(&d.ID, &d.UserID, &d.DEX, &d.ChainID, &d.RPCURL, &d.WalletSeedEncrypted, &d.IsActive, &d.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 func (s *Store) DeleteDEX(ctx context.Context, id uuid.UUID) error {
@@ -677,6 +764,41 @@ func (s *Store) DeleteDEX(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// DeleteDEXOwned removes a DEX connector owned by userID.
+func (s *Store) DeleteDEXOwned(ctx context.Context, id, userID uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `DELETE FROM bot_dex_connections WHERE id=$1 AND user_id=$2`, id, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ==================== Subscriptions (limits) ====================
+
+// ActiveSubscriptionTier returns the user's current active tier id
+// ("free"/"basic"/"pro"/"enterprise") or "" when none is active.
+func (s *Store) ActiveSubscriptionTier(ctx context.Context, userID uuid.UUID) string {
+	var tier string
+	err := s.db.QueryRow(ctx,
+		`SELECT tier FROM subscriptions
+		 WHERE user_id=$1 AND (expires_at IS NULL OR expires_at > NOW())
+		 ORDER BY started_at DESC LIMIT 1`, userID).Scan(&tier)
+	if err != nil {
+		return ""
+	}
+	return tier
+}
+
+// CountBots returns how many bots the user owns (tier-limit enforcement).
+func (s *Store) CountBots(ctx context.Context, userID uuid.UUID) (int, error) {
+	var n int
+	err := s.db.QueryRow(ctx, `SELECT COUNT(*) FROM bots WHERE user_id=$1`, userID).Scan(&n)
+	return n, err
 }
 
 // ==================== Admin fee addresses ====================
