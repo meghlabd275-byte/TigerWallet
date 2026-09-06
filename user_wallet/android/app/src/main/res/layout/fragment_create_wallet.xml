@@ -94,6 +94,15 @@
             android:layout_marginTop="24dp"
             android:text="@string/create_wallet_submit" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/passkeyCreateButton"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="Create Passkey Wallet"
+            android:textColor="?attr/colorOnSurface" />
+
         <com.google.android.material.progressindicator.CircularProgressIndicator
             android:id="@+id/createProgress"
             android:layout_width="wrap_content"

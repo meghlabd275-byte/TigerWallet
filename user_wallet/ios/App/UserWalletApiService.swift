@@ -1005,6 +1005,47 @@ final class UserWalletApiService {
         return try await requestRaw("/margin/positions/\(safeId)/close", method: "POST", body: body)
     }
 
+    // MARK: - Options engine
+
+    /// GET /options/series — active, unexpired series (filterable by underlying).
+    func getOptionsSeries(underlying: String? = nil) async throws -> [String: Any] {
+        var path = "/options/series"
+        if let underlying = underlying, !underlying.isEmpty {
+            path += "?underlying=\(underlying.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? underlying)"
+        }
+        return try await requestRaw(path)
+    }
+
+    /// GET /options/quote — live Black-Scholes premium for a series.
+    func getOptionsQuote(seriesId: String) async throws -> [String: Any] {
+        let safeId = seriesId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? seriesId
+        return try await requestRaw("/options/quote?series_id=\(safeId)")
+    }
+
+    /// GET /options/positions — the caller's open/closed option positions.
+
+    func getOptionsPositions() async throws -> [String: Any] {
+        return try await requestRaw("/options/positions")
+    }
+
+    /// POST /options/positions — open a buy/sell position on a series.
+
+    func openOptionsPosition(seriesId: String, side: String, contracts: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "series_id": seriesId, "side": side, "contracts": contracts,
+        ])
+        return try await requestRaw("/options/positions", method: "POST", body: body)
+    }
+
+    /// POST /options/positions/:id/close — settle and close an open position.
+
+
+    func closeOptionsPosition(positionId: String) async throws -> [String: Any] {
+        let safeId = positionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? positionId
+        let body = try JSONSerialization.data(withJSONObject: [String: Any]())
+        return try await requestRaw("/options/positions/\(safeId)/close", method: "POST", body: body)
+    }
+
     // MARK: - Prediction markets
 
     func getPredictionMarkets() async throws -> [String: Any] {
@@ -1401,6 +1442,21 @@ final class UserWalletApiService {
     /// GET /finance/deposit-addresses -> deterministic per-user deposit addresses.
     func getDepositAddresses() async throws -> [String: Any] {
         try await requestRaw("/finance/deposit-addresses")
+    }
+
+    /// GET /finance/deposit-addresses/:asset -> per-asset deterministic deposit address.
+    func getDepositAddress(asset: String) async throws -> [String: Any] {
+        try await requestRaw("/finance/deposit-addresses/\(asset.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? asset)")
+    }
+
+    /// GET /finance/deposit-addresses/:asset/qr -> per-asset QR PNG (base64).
+    func getDepositAddressQr(asset: String) async throws -> [String: Any] {
+        try await requestRaw("/finance/deposit-addresses/\(asset.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? asset)/qr")
+    }
+
+    /// GET /finance/convert/history -> the caller's settled conversions.
+    func getConvertHistory() async throws -> [String: Any] {
+        try await requestRaw("/finance/convert/history")
     }
 
     /// POST /finance/withdrawals -> risk-scored, HMAC-signed withdrawal request.

@@ -22,6 +22,7 @@ struct FeaturesView: View {
                 }
                 Section("Trade") {
                     NavigationLink("Trading") { TradingView() }
+                    NavigationLink("Options Engine") { OptionsView() }
                     NavigationLink("Prediction Markets") { PredictionView() }
                     NavigationLink("Copy Trading") { CopyTradingView() }
                     NavigationLink("DAO Governance") { DAOView() }

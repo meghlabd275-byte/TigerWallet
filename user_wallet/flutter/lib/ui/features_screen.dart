@@ -25,6 +25,7 @@ class FeaturesScreen extends StatelessWidget {
       _Feature('Bridge', Icons.account_tree, (_) => BridgeScreen(api: api)),
       _Feature('DeFi / Lending', Icons.waterfall_chart, (_) => DefiScreen(api: api)),
       _Feature('Trading', Icons.candlestick_chart, (_) => TradingScreen(api: api)),
+      _Feature('Options', Icons.workspace_premium, (_) => OptionsScreen(api: api)),
       _Feature('Earn', Icons.auto_graph, (_) => EarnScreen(api: api)),
       _Feature('Social', Icons.groups, (_) => SocialScreen(api: api)),
       _Feature('NFTs', Icons.image, (_) => NftScreen(api: api)),
@@ -365,6 +366,134 @@ class TradingScreen extends StatelessWidget {
       );
 }
 
+class OptionsScreen extends StatefulWidget {
+  final UserWalletService api;
+  const OptionsScreen({super.key, required this.api});
+
+  @override
+  State<OptionsScreen> createState() => _OptionsScreenState();
+}
+
+class _OptionsScreenState extends State<OptionsScreen> {
+  final seriesIdCtrl = TextEditingController();
+  final sideCtrl = TextEditingController();
+  final contractsCtrl = TextEditingController();
+  final closeIdCtrl = TextEditingController();
+  String status = '';
+  List<dynamic> series = [];
+  List<dynamic> positions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.api.getOptionsSeries();
+      final p = await widget.api.getOptionsPositions();
+      if (!mounted) return;
+      setState(() {
+        series = (s?['series'] as List?) ?? (s?['data'] as List?) ?? const [];
+        positions = (p?['positions'] as List?) ?? (p?['data'] as List?) ?? const [];
+        status = '';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => status = 'Load failed: $e');
+    }
+  }
+
+  Future<void> _quote(String seriesId) async {
+    try {
+      final q = await widget.api.getOptionsQuote(seriesId);
+      if (!mounted) return;
+      setState(() => status = 'Premium: ${q?['premium_per_contract']} ${q?['quote_asset']} (underlying ${q?['underlying_price']})');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => status = 'Quote failed: $e');
+    }
+  }
+
+  Future<void> _open() async {
+    if (seriesIdCtrl.text.trim().isEmpty || sideCtrl.text.trim().isEmpty || contractsCtrl.text.trim().isEmpty) {
+      setState(() => status = 'Enter series ID, side (buy/sell), and contracts.');
+      return;
+    }
+    try {
+      final res = await widget.api.openOptionsPosition({
+        'series_id': seriesIdCtrl.text.trim(),
+        'side': sideCtrl.text.trim().toLowerCase(),
+        'contracts': int.tryParse(contractsCtrl.text.trim()) ?? 1,
+      });
+      if (!mounted) return;
+      final tx = res?['tx_hash'];
+      setState(() => status = tx != null ? 'Transaction submitted to the blockchain network: $tx' : 'Options position opened: ${res?['id'] ?? res?['status']}');
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => status = 'Open failed: $e');
+    }
+  }
+
+  Future<void> _close() async {
+    if (closeIdCtrl.text.trim().isEmpty) {
+      setState(() => status = 'Enter a position ID.');
+      return;
+    }
+    try {
+      final res = await widget.api.closeOptionsPosition(closeIdCtrl.text.trim());
+      if (!mounted) return;
+      final tx = res?['tx_hash'];
+      setState(() => status = tx != null ? 'Transaction submitted to the blockchain network: $tx' : 'Options position closed: ${res?['id'] ?? res?['status']}');
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => status = 'Close failed: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Options Engine'), actions: [
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+      ]),
+      body: ListView(padding: const EdgeInsets.all(12), children: [
+        const Text('Series (tap for quote)', style: TextStyle(fontWeight: FontWeight.bold)),
+        if (series.isEmpty) const Text('No active options series'),
+        ...series.map((s) {
+          return ListTile(
+            dense: true,
+            title: Text('${s['underlying']}-${s['strike']} ${s['style']} exp ${DateTime.fromMillisecondsSinceEpoch(((s['expiry_unix'] ?? 0) as int) * 1000).toIso8601String().substring(0, 10)} (id ${s['id']})',
+                style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+            onTap: () => _quote('${s['id']}'),
+          );
+        }).toList(),
+        const SizedBox(height: 8),
+        const Text('Your positions', style: TextStyle(fontWeight: FontWeight.bold)),
+        if (positions.isEmpty) const Text('No options positions yet'),
+        ...positions.map((p) {
+          return ListTile(
+            dense: true,
+            title: Text('${p['id']}: ${p['underlying']}-${p['strike']} ${p['style']} ${p['side']} x${p['contracts']} ${p['status']} pnl:${p['pnl'] ?? 0}',
+                style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+          );
+        }).toList(),
+        const SizedBox(height: 8),
+        TextField(controller: seriesIdCtrl, decoration: const InputDecoration(labelText: 'Series ID')),
+        TextField(controller: sideCtrl, decoration: const InputDecoration(labelText: 'Side (buy/sell)')),
+        TextField(controller: contractsCtrl, decoration: const InputDecoration(labelText: 'Contracts'), keyboardType: TextInputType.number),
+        ElevatedButton(onPressed: _open, child: const Text('Open Options Position')),
+        TextField(controller: closeIdCtrl,, decoration: const InputDecoration(labelText: 'Position ID to close')),
+        ElevatedButton(onPressed: _close, child: const Text('Close Options Position')),
+        if (status.isNotEmpty) Text(status),
+      ]),
+    );
+  }
+}
+
 class EarnScreen extends StatelessWidget {
   final UserWalletService api;
   const EarnScreen({super.key, required this.api});
@@ -401,16 +530,77 @@ class NftScreen extends StatelessWidget {
       );
 }
 
-class IdentityScreen extends StatelessWidget {
+class IdentityScreen extends StatefulWidget {
   final UserWalletService api;
   const IdentityScreen({super.key, required this.api});
+
   @override
-  Widget build(BuildContext context) => ListScreen(
-        title: 'Identity',
-        api: api,
-        fetch: (a) => a.kycStatus(),
-        itemBuilder: (i) => i.toString(),
-      );
+  State<IdentityScreen> createState() => _IdentityScreenState();
+}
+
+class _IdentityScreenState extends State<IdentityScreen> {
+  Map<String, dynamic>? _status;
+  bool _loading = true;
+  String? _error;
+  final _sessionCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.api.kycStatus();
+      if (!mounted) return;
+      setState(() {
+        _status = s;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _session() async {
+    final id = _sessionCtrl.text.trim();
+    if (id.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Enter a KYC session id'))); return; }
+    try {
+      final res = await widget.api.kycSession(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Session: ${res?['status'] ?? res}')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Session lookup failed: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Identity / KYC'), actions: [
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+      ]),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Padding(padding: const EdgeInsets.all(16), child: ErrorCard(_error!))
+              : ListView(padding: const EdgeInsets.all(12), children: [
+                  const Text('KYC status', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${_status}',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                  const SizedBox(height: 12),
+                  TextField(controller: _sessionCtrl, decoration: const InputDecoration(labelText: 'KYC session id', prefixText: '/kyc/session/')),
+                  ElevatedButton(onPressed: _session, child: const Text('Look up session')),
+                ]),
+    );
+  }
 }
 
 class PaymentsScreen extends StatelessWidget {
@@ -437,16 +627,76 @@ class SecurityScreen extends StatelessWidget {
       );
 }
 
-class TerminalScreen extends StatelessWidget {
+class TerminalScreen extends StatefulWidget {
   final UserWalletService api;
   const TerminalScreen({super.key, required this.api});
+
   @override
-  Widget build(BuildContext context) => ListScreen(
-        title: 'Terminal',
-        api: api,
-        fetch: (a) => a.getTerminalTicker('BTCUSDT'),
-        itemBuilder: (i) => i.toString(),
-      );
+  State<TerminalScreen> createState() => _TerminalScreenState();
+}
+
+class _TerminalScreenState extends State<TerminalScreen> {
+  List<dynamic> _candles = [];
+  Map<String, dynamic>? _ticker;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final k = await widget.api.getTerminalKline('BTCUSDT', days: 7);
+      final t = await widget.api.getTerminalTicker('BTCUSDT');
+      final list = (k?['candles'] as List?) ?? (k?['data'] as List?) ?? const [];
+      if (!mounted) return;
+      setState(() {
+        _candles = list;
+        _ticker = t;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = _ticker ?? const {};
+    return Scaffold(
+      appBar: AppBar(title: const Text('Terminal'), actions: [
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+      ]),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Padding(padding: const EdgeInsets.all(16), child: ErrorCard(_error!))
+              : ListView(padding: const EdgeInsets.all(12), children: [
+                  const Text('Ticker (BTCUSDT)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('last: ${t['last'] ?? t['price'] ?? '-'} · 24h change: ${t['change_24h'] ?? t['changePercent'] ?? '-'}% · high: ${t['high_24h'] ?? '-'} · low: ${t['low_24h'] ?? '-'}',
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                  const SizedBox(height: 12),
+                  const Text('Candles (1d', style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (_candles.isEmpty) const Text('No candle data'),
+                  ..._candles.take(40).map((c) {
+                    final t0 = DateTime.fromMillisecondsSinceEpoch((((c['timestamp'] ?? c['open_time'] ?? 0) as num).toInt()) * ((c['timestamp'] != null || c['open_time'] != null) ? 1000 : 1));
+                    return ListTile(
+                      dense: true,
+                      title: Text(t0.toIso8601String().substring(0, 10), style: const TextStyle(fontSize: 12)),
+                      subtitle: Text('O ${c['open']} H ${c['high']} L ${c['low']} C ${c['close']} V ${c['volume'] ?? '-'}',
+                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: (c['close'] ?? 0) >= (c['open'] ?? 0) ? Colors.green : Colors.red)));
+                  }).toList(),
+                ]),
+    );
+  }
 }
 
 class FeesScreen extends StatelessWidget {
@@ -497,16 +747,90 @@ class NonEvmScreen extends StatelessWidget {
       );
 }
 
-class ApprovalsScreen extends StatelessWidget {
+class ApprovalsScreen extends StatefulWidget {
   final UserWalletService api;
   const ApprovalsScreen({super.key, required this.api});
+
   @override
-  Widget build(BuildContext context) => ListScreen(
-        title: 'Approvals',
-        api: api,
-        fetch: (a) => a.getApprovals('', 1),
-        itemBuilder: (i) => i.toString(),
-      );
+  State<ApprovalsScreen> createState() => _ApprovalsScreenState();
+}
+
+class _ApprovalsScreenState extends State<ApprovalsScreen> {
+  List<dynamic> _items = [];
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await widget.api.getApprovals('', 1);
+      final list = (res?['approvals'] as List?) ?? (res?['data'] as List?) ?? const [];
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _revoke(String id) async {
+    try {
+      await widget.api.revokeApproval(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Approval $id revoked')));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Revoke failed: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Approvals'), actions: [
+        IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+      ]),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Padding(padding: const EdgeInsets.all(16), child: ErrorCard(_error!))
+              : _items.isEmpty
+                  ? const Center(child: Text('No approvals'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _items.length,
+                      itemBuilder: (c, i) {
+                        final id = '${_items[i]['id'] ?? '?'}';
+                        return Card(
+                          child: ListTile(
+                            dense: true,
+                            title: Text('${_items[i]['asset'] ?? _items[i]['token'] ?? 'token'}: ${_items[i]['spender'] ?? _items[i]['spender_address'] ?? ''}',
+                                style: const TextStyle(fontSize: 12)),
+                            subtitle: Text('$id · ${_items[i]['amount'] ?? _items[i]['allowance'] ?? ''}'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              tooltip: 'Revoke approval',
+                              onPressed:: () => _revoke(id),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
 }
 
 class MultisigScreen extends StatelessWidget {

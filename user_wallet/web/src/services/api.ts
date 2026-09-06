@@ -1113,6 +1113,64 @@ class ApiService {
     return data;
   }
 
+  // ==================== Options engine (wallet_api /options/*) ====================
+  // GET /options/series — active, unexpired series (filterable by underlying).
+  async getOptionsSeries(underlying?: string): Promise<{ series: Array<{
+    id: string; underlying: string; quote_asset: string; strike: string;
+    expiry_unix: number; style: string; iv_bps: number; contract_size: string; status: string;
+  }> }> {
+    const { data } = await this.client.get('/options/series', {
+      params: underlying ? { underlying } : {},
+    });
+    return data;
+  }
+
+  // GET /options/quote — live Black-Scholes premium for a series.
+
+  async getOptionsQuote(seriesId: string): Promise<{
+    series_id: string; underlying_price: number; premium_per_contract: number;
+    style: string; strike: string; expiry_unix: number;
+  }> {
+    const { data } = await this.client.get('/options/quote', { params: { series_id: seriesId } });
+    return data;
+  }
+
+  // GET /options/positions — the caller's open/closed option positions.
+
+  async getOptionsPositions(): Promise<{ positions: Array<{
+    id: string; series_id: string; underlying: string; strike: string;
+    expiry_unix: number; style: string; side: string; contracts: string;
+    premium: string; status: string; pnl: string | null;
+    opened_at: string; closed_at: string | null;
+  }> }> {
+    const { data } = await this.client.get('/options/positions');
+    return data;
+  }
+
+  // POST /options/positions — open a buy/sell position on a series.
+
+
+  async openOptionsPosition(params: { seriesId: string; side: 'buy' | 'sell'; contracts: string }): Promise<{
+    id: string; premium_per_contract: number; status: string;
+  }> {
+    const { data } = await this.client.post('/options/positions', {
+      series_id: params.seriesId,
+      side: params.side,
+      contracts: params.contracts,
+    });
+    return data;
+  }
+
+  // POST /options/positions/:id/close — settle and close an open position.
+
+
+  async closeOptionsPosition(positionId: string): Promise<{
+    id: string; status: string; intrinsic_per_contract: number; pnl: number;
+  }> {
+    const { data } = await this.client.post(`/options/positions/${positionId}/close`, {});
+    return data;
+  }
+
   // Prediction markets (go/prediction_service, /api/v1/prediction/*)
   async getPredictionMarkets(): Promise<{ markets: unknown[] }> {
     const { data } = await this.client.get('/prediction/markets');

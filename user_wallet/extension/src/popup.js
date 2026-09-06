@@ -155,6 +155,8 @@ function bindEvents() {
   document.getElementById('tradeOpenMarginBtn')?.addEventListener('click', () => handleTradeOpen(false));
   document.getElementById('tradeClosePerpBtn')?.addEventListener('click', () => handleTradeClose(true));
   document.getElementById('tradeCloseMarginBtn')?.addEventListener('click', () => handleTradeClose(false));
+  document.getElementById('optOpenBtn')?.addEventListener('click', handleOptionsOpen);
+  document.getElementById('optCloseBtn')?.addEventListener('click', handleOptionsClose);
   document.getElementById('predBetBtn')?.addEventListener('click', handlePredictionBet);
   document.getElementById('copyFollowBtn')?.addEventListener('click', handleCopyFollow);
   document.getElementById('copyStopBtn')?.addEventListener('click', handleCopyStop);
@@ -601,6 +603,15 @@ const WalletAPI = {
   closeMarginPosition: (positionId) =>
     api(`/margin/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' }),
 
+  // Options engine (wallet_api /options/*).
+  getOptionsSeries: (underlying) => api(underlying ? `/options/series?underlying=${encodeURIComponent(underlying)}` : '/options/series'),
+  getOptionsQuote: (seriesId) => api(`/options/quote?series_id=${encodeURIComponent(seriesId)}`),
+  getOptionsPositions: () => api('/options/positions'),
+  openOptionsPosition: ({ seriesId, side, contracts }) =>
+    api('/options/positions', { method: 'POST', body: { series_id: seriesId, side, contracts } }),
+  closeOptionsPosition: (positionId) =>
+    api(`/options/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST' }),
+
   // Prediction markets.
   getPredictionMarkets: () => api('/prediction/markets'),
   placePredictionBet: ({ marketId, side, amount }) =>
@@ -689,6 +700,13 @@ const WalletAPI = {
     api('/margin/positions', { method: 'POST', body: { pair, side, size, leverage, chain_id: chainId } }),
   closeMarginPosition: (positionId) =>
     api(`/margin/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST', body: {} }),
+  getOptionsSeries: (underlying) => api(underlying ? `/options/series?underlying=${encodeURIComponent(underlying)}` : '/options/series'),
+  getOptionsQuote: (seriesId) => api(`/options/quote?series_id=${encodeURIComponent(seriesId)}`),
+  getOptionsPositions: () => api('/options/positions'),
+  openOptionsPosition: (seriesId, side, contracts) =>
+    api('/options/positions', { method: 'POST', body: { series_id: seriesId, side, contracts } }),
+  closeOptionsPosition:(positionId) =>
+    api(`/options/positions/${encodeURIComponent(positionId)}/close`, { method: 'POST', body: {} }),
   getPredictionMarkets: () => api('/prediction/markets'),
   placePredictionBet: (marketId, side, amount) =>
     api(`/prediction/markets/${encodeURIComponent(marketId)}/bet`, { method: 'POST', body: { side, amount } }),
@@ -1218,7 +1236,9 @@ async function loadTradingPositions() {
   } catch (e) {
     renderList(el, [], null, 'Positions unavailable.');
   }
+  loadOptionsData();
 }
+
 
 async function handleTradeOpen(perp) {
   const pair = (document.getElementById('tradePair')?.value || '').trim();
@@ -1253,6 +1273,60 @@ async function handleTradeClose(perp) {
   }
 }
 
+async function loadOptionsData() {
+  const sel = document.getElementById('optionsSeries');
+  const posEl = document.getElementById('optionsPositions');
+  if (!sel || !posEl) return;
+  try {
+    const res = await WalletAPI.getOptionsSeries();
+    const list = Array.isArray(res) ? res : (res.series || res.data || []);
+    renderList(sel, list, (row, s) => {
+      row.textContent = `• ${s.underlying || '?'}-${s.strike || '?'} ${(s.style || '').toUpperCase()} exp ${new Date((s.expiry_unix || 0) * 1000).toISOString().slice(0, 10)} id:${s.id || '?'}`;
+    }, 'No active options series.');
+  } catch (e) {
+    renderList(sel, [], null, 'Options series unavailable.');
+  }
+  try {
+    const pos = await WalletAPI.getOptionsPositions();
+    const plist = Array.isArray(pos) ? pos : (pos.positions || pos.data || []);
+    renderList(posEl, plist, (row, p) => {
+      row.textContent = `• ${p.id || '?'}: ${p.underlying || '?'}-${p.strike || '?'} ${(p.style || '').toUpperCase()} ${p.side || '?'} x${p.contracts || '?'} ${p.status || '?'} pnl:${p.pnl ?? '?'}`;
+    }, 'No options positions.');
+  } catch (e) {
+    renderList(posEl, [], null, 'Options positions unavailable.');
+  }
+}
+
+async function handleOptionsOpen() {
+  const seriesId = (document.getElementById('optSeriesId')?.value || '').trim();
+  const side = (document.getElementById('optSide')?.value || '').trim().toLowerCase();
+  const contracts = (document.getElementById('optContracts')?.value || '').trim();
+  if (!seriesId || !side || !contracts) { setStatus('optStatus', 'Enter series ID, side and contracts.'); return; }
+ if (side !== 'buy' && side !== 'sell') { setStatus('optStatus', 'Side must be buy or sell.'); return; }
+ setStatus('optStatus', 'Opening options position…');
+ try {
+   const res = await WalletAPI.openOptionsPosition({ seriesId, side, contracts });
+   const tx = res.tx_hash || '';
+   setStatus('optStatus', tx ? `Transaction submitted to the blockchain network: ${tx}` : `Options position opened: ${res.id || res.status || 'ok'}`);
+   loadOptionsData();
+ } catch (e) {
+   setStatus('optStatus', `Open failed: ${e.message}`);
+ }
+ }
+
+async function handleOptionsClose() {
+  const id = (document.getElementById('optCloseId')?.value || '').trim();
+ if (!id) { setStatus('optStatus', 'Enter a position ID.'); return; }
+ setStatus('optStatus', 'Closing options position…');
+ try {
+   const res = await WalletAPI.closeOptionsPosition(id);
+   const tx = res.tx_hash || '';
+   setStatus('optStatus', tx ? `Transaction submitted to the blockchain network: ${tx}` : `Options position closed: ${res.id || res.status || 'ok'}`);
+   loadOptionsData();
+ } catch (e) {
+   setStatus('optStatus', `Close failed: ${e.message}`);
+ }
+ }
 async function loadPredictionMarkets() {
   const el = document.getElementById('predictionMarkets');
   if (!el) return;

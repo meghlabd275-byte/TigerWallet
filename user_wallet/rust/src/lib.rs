@@ -1574,6 +1574,47 @@ impl UserWalletClient {
         self.post(&path, &serde_json::json!({})).await
     }
 
+    // ---- Options engine ----
+
+    pub async fn get_options_series(&self, underlying: Option<String>) -> Result<serde_json::Value, WalletError> {
+        match underlying {
+            Some(u) => {
+                let path = format!("/options/series?underlying={}", url_encode(&u));
+                self.get(&path).await
+            }
+            None => self.get("/options/series").await,
+        }
+    }
+
+    pub async fn get_options_quote(&self, series_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/options/quote?series_id={}", url_encode(&series_id));
+        self.get(&path).await
+    }
+
+    pub async fn get_options_positions(&self) -> Result<serde_json::Value, WalletError> {
+        self.get("/options/positions").await
+    }
+
+    pub async fn open_options_position(
+        &self,
+        series_id: String,
+        side: String,
+        contracts: i64,
+    ) -> Result<serde_json::Value, WalletError> {
+        #[derive(Serialize)]
+        struct Req {
+            series_id: String,
+            side: String,
+            contracts: i64,
+        }
+        self.post("/options/positions", &Req { series_id, side, contracts }).await
+    }
+
+    pub async fn close_options_position(&self, position_id: String) -> Result<serde_json::Value, WalletError> {
+        let path = format!("/options/positions/{}/close", url_encode(&position_id));
+        self.post(&path, &serde_json::json!({})).await
+    }
+
     // ---- Prediction markets ----
 
     pub async fn get_prediction_markets(&self) -> Result<serde_json::Value, WalletError> {

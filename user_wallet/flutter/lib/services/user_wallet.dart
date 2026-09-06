@@ -163,10 +163,10 @@ class UserWalletService {
       get('/api/v1/chart/history?symbol=$symbol&range=$range');
 
   // ==================== TERMINAL ====================
-  Future<Map<String, dynamic>?> getTerminalKline(String symbol, {String interval = '1h'}) =>
-      get('/api/v1/terminal/kline?symbol=$symbol&interval=$interval');
+  Future<Map<String, dynamic>?> getTerminalKline(String symbol, {int days = 1}) =>
+      get('/api/v1/terminal/kline/${Uri.encodeComponent(symbol)}?days=$days');
   Future<Map<String, dynamic>?> getTerminalTicker(String symbol) =>
-      get('/api/v1/terminal/ticker?symbol=$symbol');
+      get('/api/v1/terminal/ticker/${Uri.encodeComponent(symbol)}');
 
   // ==================== SWAP / AMM ====================
   Future<Map<String, dynamic>?> getSwapQuote(String from, String to, String amount) =>
@@ -209,6 +209,30 @@ class UserWalletService {
   Future<Map<String, dynamic>?> closeMarginPosition(String id) =>
       post('/api/v1/margin/positions/$id/close');
 
+  // ==================== OPTIONS ENGINE (wallet_api /options/*) ====================
+  /// GET /options/series — active, unexpired series (filterable by underlying).
+  Future<Map<String, dynamic>?> getOptionsSeries({String? underlying}) =>
+      get(underlying != null ? '/api/v1/options/series?underlying=${Uri.encodeComponent(underlying)}' : '/api/v1/options/series');
+  /// GET /options/quote — live Black-Scholes premium for a series.
+
+  Future<Map<String, dynamic>?> getOptionsQuote(String seriesId) =>
+      get('/api/v1/options/quote?series_id=${Uri.encodeComponent(seriesId)}');
+  /// GET /options/positions — the caller's open/closed option positions.
+
+
+  Future<Map<String, dynamic>?> getOptionsPositions() => get('/api/v1/options/positions');
+  /// POST /options/positions — open a buy/sell position on a series.
+
+
+
+  Future<Map<String, dynamic>?> openOptionsPosition(Map<String, dynamic> req) =>
+      post('/api/v1/options/positions', req);
+  /// POST /options/positions/:id/close — settle and close an open position.10
+
+
+  Future<Map<String, dynamic>?> closeOptionsPosition(String id) =>
+      post('/api/v1/options/positions/$id/close');
+
   // ==================== EARN (LAUNCHPOOL / TOKEN SALES) ====================
   Future<Map<String, dynamic>?> getLaunchpool() => get('/api/v1/launchpool');
   Future<Map<String, dynamic>?> getLaunchpoolStakes() => get('/api/v1/launchpool/stakes');
@@ -229,7 +253,7 @@ class UserWalletService {
   Future<Map<String, dynamic>?> createP2POrder(Map<String, dynamic> req) => post('/api/v1/p2p/orders', req);
   Future<Map<String, dynamic>?> getDaoProposals() => get('/api/v1/dao/proposals');
   Future<Map<String, dynamic>?> daoVote(String proposalId, Map<String, dynamic> req) =>
-      post('/api/v1/dao/$proposalId/vote', req);
+      post('/api/v1/dao/proposals/$proposalId/vote', req);
   Future<Map<String, dynamic>?> getDaoDelegates() => get('/api/v1/dao/delegates');
   Future<Map<String, dynamic>?> getPredictionMarkets() => get('/api/v1/prediction/markets');
   Future<Map<String, dynamic>?> predictionBet(String marketId, Map<String, dynamic> req) =>
@@ -245,6 +269,7 @@ class UserWalletService {
   Future<Map<String, dynamic>?> kycSubmit(Map<String, dynamic> req) => post('/api/v1/kyc/submit', req);
   Future<Map<String, dynamic>?> kycStatus() => get('/api/v1/kyc/status');
   Future<Map<String, dynamic>?> kycDocument(Map<String, dynamic> req) => post('/api/v1/kyc/document', req);
+  Future<Map<String, dynamic>?> kycSession(String id) => get('/api/v1/kyc/session/$id');
 
   // ==================== CARDS / RAMP ====================
   Future<Map<String, dynamic>?> getCardBalance(String cardId) => get('/api/v1/cards/$cardId/balance');
@@ -310,6 +335,10 @@ class UserWalletService {
 
   /// GET /finance/deposit-addresses — deterministic per-user deposit addresses.
   Future<Map<String, dynamic>?> getDepositAddresses() => get('/api/v1/finance/deposit-addresses');
+  Future<Map<String, dynamic>?> getDepositAddress(String asset) =>
+      get('/api/v1/finance/deposit-addresses/${Uri.encodeComponent(asset)}');
+  Future<Map<String, dynamic>?> getDepositAddressQr(String asset) =>
+      get('/api/v1/finance/deposit-addresses/${Uri.encodeComponent(asset)}/qr');
 
   /// POST /finance/withdrawals — risk-scored, HMAC-signed withdrawal request.
   Future<Map<String, dynamic>?> createWithdrawal(
@@ -327,6 +356,11 @@ class UserWalletService {
   Future<Map<String, dynamic>?> financeConvert(String from, String to, String amount) =>
       post('/api/v1/finance/convert',
           {'from_currency': from, 'to_currency': to, 'amount': amount});
+  /// GET /finance/convert/history — the caller's settled conversions.
+
+
+
+  Future<Map<String, dynamic>?> getConvertHistory() => get('/api/v1/finance/convert/history');
 
   /// POST /finance/transfer — atomic KYC-gated internal transfer.
   Future<Map<String, dynamic>?> financeTransfer(String toEmail, String currency, String amount) =>
@@ -366,6 +400,9 @@ class UserWalletService {
   // ==================== APPROVALS / MULTISIG ====================
   Future<Map<String, dynamic>?> getApprovals(String address, int chainId) =>
       get('/api/v1/approvals?address=$address&chain_id=$chainId');
+  /// DELETE /approvals/:id — revoke a token approval.10
+  Future<Map<String, dynamic>?> revokeApproval(String id) =>
+      delete('/api/v1/approvals/$id');
   Future<Map<String, dynamic>?> multisigWallets() => get('/api/v1/multisig/wallets');
   Future<Map<String, dynamic>?> createMultisig(Map<String, dynamic> req) => post('/api/v1/multisig/wallets', req);
 

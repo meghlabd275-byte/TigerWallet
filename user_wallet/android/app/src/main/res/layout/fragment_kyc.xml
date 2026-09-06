@@ -90,4 +90,19 @@
         android:text="Refresh status"
         android:visibility="gone" />
 
+    <EditText
+        android:id="@+id/kycSessionInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="KYC session id (lookup)"
+        android:layout_marginTop="12dp"
+        android:inputType="text" />
+
+    <Button
+        android:id="@+id/kycSessionButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Look up session" />
+
 </LinearLayout>

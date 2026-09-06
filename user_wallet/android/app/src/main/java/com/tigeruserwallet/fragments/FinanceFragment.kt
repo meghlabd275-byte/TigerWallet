@@ -107,6 +107,7 @@ class FinanceFragment : Fragment() {
                 try {
                     val accounts = UserWalletApiService.getFinanceAccounts()
                     val history = UserWalletApiService.getFinanceHistory()
+                    val convertHistory = UserWalletApiService.getConvertHistory()
                     withContext(Dispatchers.Main) {
                         val arr = accounts.optJSONArray("accounts")
                         accountsTv.text = if (arr == null || arr.length() == 0) "No accounts yet"
@@ -119,6 +120,13 @@ class FinanceFragment : Fragment() {
                         else (0 until minOf(h.length(), 30)).joinToString("\n") { i ->
                             val e = h.getJSONObject(i)
                             "${e.optString("kind")} ${if (e.optString("direction") == "debit") "−" else "+"}${e.optString("amount")} ${e.optString("currency")}"
+                        }
+                        val ch = convertHistory.optJSONArray("conversions")
+                        val convTv = view.findViewById<TextView>(R.id.finConvertHistoryText)
+                        convTv.text = if (ch == null || ch.length() == 0) "No conversions yet"
+                        else (0 until minOf(ch.length(), 20)).joinToString("\n") { i ->
+                            val c = ch.getJSONObject(i)
+                            "${c.optString("from_currency")} ${c.optString("from_amount")} → ${c.optString("to_currency")} ${c.optString("to_amount")} @ ${c.optString("rate")}"
                         }
                     }
                 } catch (e: Exception) {

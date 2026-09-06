@@ -1286,6 +1286,10 @@ object UserWalletApiService {
     fun submitKyc(body: JSONObject): JSONObject =
         execute(requestBuilder("/kyc/submit").post(body.toString().toRequestBody(jsonMediaType)).build())
 
+    /** GET /kyc/session/:id — fetch a KYC session status. */
+    fun getKycSession(id: String): JSONObject =
+        execute(requestBuilder("/kyc/session/${URLEncoder.encode(id,"UTF-8")").get().build())
+
     // ==================== Address book ====================
     fun getAddressBookContacts(): List<JSONObject> =
         executeList(requestBuilder("/address-book/contacts").get().build(), "contacts")
@@ -1469,6 +1473,36 @@ object UserWalletApiService {
     fun closeMarginPosition(positionId: String): JSONObject =
         execute(requestBuilder("/margin/positions/$positionId/close").post("{}".toRequestBody(jsonMediaType)).build())
 
+    // ==================== Options engine (wallet_api /options/*) ====================
+    /** GET /options/series — active, unexpired series (filterable by underlying). */
+    fun getOptionsSeries(underlying: String? = null): List<JSONObject> {
+        val path = if (underlying.isNullOrEmpty()) "/options/series"
+            else "/options/series?underlying=${URLEncoder.encode(underlying, "UTF-8")}"
+        return executeList(requestBuilder(path).get().build(), "series")
+    }
+
+    /** GET /options/quote — live Black-Scholes premium for a series. */
+    fun getOptionsQuote(seriesId: String): JSONObject =
+        execute(requestBuilder("/options/quote?series_id=${URLEncoder.encode(seriesId, "UTF-8")}").get().build())
+
+    /** GET /options/positions — the caller's open/closed option positions. */
+    fun getOptionsPositions(): List<JSONObject> =
+        executeList(requestBuilder("/options/positions").get().build(), "positions")
+
+    /** POST /options/positions — open a buy/sell position on a series. */
+    fun openOptionsPosition(seriesId: String, side: String, contracts: String): JSONObject {
+        val body = JSONObject().apply {
+            put("series_id", seriesId)
+            put("side", side)
+            put("contracts", contracts)
+        }.toString()
+        return execute(requestBuilder("/options/positions").post(body.toRequestBody(jsonMediaType)).build())
+    }
+
+    /** POST /options/positions/:id/close — settle and close an open position. */
+    fun closeOptionsPosition(positionId: String): JSONObject =
+        execute(requestBuilder("/options/positions/$positionId/close").post("{}".toRequestBody(jsonMediaType)).build())
+
     // ==================== Prediction markets (go/prediction_service proxy) ====================
     fun getPredictionMarkets(): List<JSONObject> =
         executeList(requestBuilder("/prediction/markets").get().build(), "markets")
@@ -1521,6 +1555,35 @@ object UserWalletApiService {
         val passkeyCredentialId: String? = null,
         val passkeyPublicKey: String? = null
     )
+
+    /**
+     * POST /passkey/wallet — create a wallet whose entropy is wrapped by a
+     * WebAuthn credential. Mirrors web `passkeyCreateWallet`; credentialId +
+     * publicKey are the base64url strings from the platform
+     * `CreatePublicKeyCredentialRequest` flow (CredentialManagerHelper).
+     */
+    fun passkeyCreateWallet(
+        label: String,
+        credentialId: String,
+        publicKey: String,
+        chainId: Int = 1,
+        accountIndex: Int = 0,
+        entropyBits: Int = 0,
+        signCount: Long? = null,
+        attestation: String? = null
+    ): JSONObject {
+        val body = JSONObject().apply {
+            put("label", label)
+            put("chain_id", chainId)
+            put("account_index", accountIndex)
+            put("entropy_bits", if (entropyBits == 0) 256 else entropyBits)
+            put("credential_id", credentialId)
+            put("public_key", publicKey)
+            if (signCount != null) put("sign_count", signCount)
+            if (!attestation.isNullOrEmpty()) put("attestation", attestation)
+        }.toString()
+        return execute(requestBuilder("/passkey/wallet").post(body.toRequestBody(jsonMediaType)).build())
+    }
 
     fun setupLock(walletId: String, params: LockSetupParams): JSONObject {
         val body = JSONObject().apply {
@@ -1745,6 +1808,14 @@ object UserWalletApiService {
     /** GET /finance/deposit-addresses — deterministic per-user deposit addresses. */
     fun getDepositAddresses(): JSONObject =
         execute(requestBuilder("/finance/deposit-addresses").get().build())
+
+    /** GET /finance/deposit-addresses/:asset — per-asset deterministic deposit address. */
+    fun getDepositAddressByAsset(asset: String): JSONObject =
+        execute(requestBuilder("/finance/deposit-addresses/${URLEncoder.encode(asset,"UTF-8")").get().build())
+
+    /** GET /finance/convert/history — the caller's settled conversions. */
+    fun getConvertHistory(): JSONObject =
+        execute(requestBuilder("/finance/convert/history").get().build())
 
     /** Authenticated QR PNG bytes for a deposit address (server-rendered). */
     fun getDepositQr(asset: String): ByteArray {

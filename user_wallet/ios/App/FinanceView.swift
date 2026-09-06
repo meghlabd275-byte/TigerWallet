@@ -9,6 +9,9 @@ struct FinanceView: View {
     @State private var ratesText = ""
     @State private var escrow: [[String: Any]] = []
     @State private var historyText = ""
+    @State private var convertHistoryText = ""
+    @State private var assetDetail: [String: Any]? = nil
+    @State private var assetQrB64 = ""
     @State private var currency = "BTC"
     @State private var transferTo = ""
     @State private var amount = ""
@@ -32,6 +35,23 @@ struct FinanceView: View {
                         Spacer()
                         Button("Copy") { UIPasteboard.general.string = d["address"] as? String }
                             .font(.caption)
+                        Button("QR / details") { showAssetDetail(d["asset"] as? String ?? "") }
+                            .font(.caption)
+                    }
+                }
+                .sheet(isPresented: Binding(get: { assetDetail != nil }, set: { if !$0 { assetDetail = nil } }))) {
+                    if let det = assetDetail {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Deposit \(det["asset"] as? String ?? "")").font(.headline)
+                            Text(det["address"] as? String ?? "Unavailable")
+                                .font(.system(.caption2, design: .monospaced))
+                            if let qr = det["qr_png_b64"] as? String, let data = Data(base64Encoded: qr), let img = UIImage(data: data) {
+                                Image(uiImage: img).resizable().scaledToFit().frame(maxHeight: 220)
+                            } else {
+                                Text("QR unavailable").font(.caption)
+                            }
+                            Button("Copy address") { UIPasteboard.general.string = det["address"] as? String ?? "" }
+                        }.padding()
                     }
                 }
 
@@ -54,6 +74,9 @@ struct FinanceView: View {
 
                 Text("Convert rates").font(.headline)
                 Text(ratesText).font(.system(.caption, design: .monospaced))
+
+                Text("Convert history").font(.headline)
+                Text(convertHistoryText).font(.system(.caption, design: .monospaced))
 
                 Text("P2P escrow market").font(.headline)
                 ForEach(escrow.indices, id: \.self) { i in
@@ -111,6 +134,13 @@ struct FinanceView: View {
                 "\($0["from_currency"] as? String ?? "")/\($0["to_currency"] as? String ?? ""): \($0["rate"] as? String ?? "")"
             }.joined(separator: "\n")
         } catch { ratesText = "Rates unavailable" }
+        do {
+            let res = try await UserWalletApiService.shared.getConvertHistory()
+            let arr = res["conversions"] as? [[String: Any]] ?? []
+            convertHistoryText = arr.isEmpty ? "No conversions yet" : arr.prefix(20.map {
+                "\($0["from_currency"] as? String ?? "") \($0["from_amount"] as? String ?? "") → \($0["to_currency"] as? String ?? "") \($0["to_amount"] as? String ?? "") @ \($0["rate"] as? String ?? "")"
+            }.joined(separator: "\n")
+        } catch { convertHistoryText = "Convert history unavailable" }
         await loadEscrow()
         await loadHistory()
     }
@@ -131,6 +161,21 @@ struct FinanceView: View {
                 return "\($0["kind"] as? String ?? "") \(dir)\($0["amount"] as? String ?? "") \($0["currency"] as? String ?? "")"
             }.joined(separator: "\n")
         } catch { historyText = "History unavailable" }
+    }
+
+    private func showAssetDetail(_ asset: String) {
+        Task {
+            do {
+                var det = try await UserWalletApiService.shared.getDepositAddress(asset: asset)
+                do {
+                    let qr = try await UserWalletApiService.shared.getDepositAddressQr(asset: asset)
+                    det["qr_png_b64"] = qr["qr_png_b64"] as? String ?? ""
+                } catch {}
+                assetDetail = det
+            } catch {
+                assetDetail = ["asset": asset, "address": "Detail unavailable: \(error.localizedDescription)"]
+            }
+        }
     }
 
     private func transfer() {

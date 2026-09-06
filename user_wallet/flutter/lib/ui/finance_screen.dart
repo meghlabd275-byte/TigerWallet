@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -26,6 +28,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
   Map<String, dynamic>? rates;
   Map<String, dynamic>? escrow;
   Map<String, dynamic>? history;
+  Map<String, dynamic>? converts;
+  Map<String, dynamic>? switches;
 
   @override
   void initState() {
@@ -39,6 +43,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
     final r = await widget.api.getConvertRates();
     final e = await widget.api.getEscrowOrders();
     final h = await widget.api.getFinanceHistory();
+    final c = await widget.api.getConvertHistory();
+    final sw = await widget.api.getFinanceSwitches();
     if (!mounted) return;
     setState(() {
       accounts = a;
@@ -46,6 +52,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
       rates = r;
       escrow = e;
       history = h;
+      converts = c;
+      switches = sw;
     });
   }
 
@@ -94,6 +102,38 @@ class _FinanceScreenState extends State<FinanceScreen> {
     _load();
   }
 
+  Future<void> _assetDepositDetail(String asset) async {
+    final detail = await widget.api.getDepositAddressByAsset(asset);
+    final qr = await widget.api.getDepositAddressQr(asset);
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Deposit $asset'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Address: ${detail?['address'] ?? 'unavailable'}',
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+          const SizedBox(height: 8),
+          if (qr?['qr_png_b64'] != null)
+            Image.memory(base64Decode(qr!['qr_png_b64'] as String), width: 180, height: 180, gaplessPlayback: true)
+          else
+            const Text('QR unavailable', style: TextStyle(fontSize: 11)),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: '${detail?['address'] ?? ''}'));
+              Navigator.of(ctx).pop();
+              _toast('Address copied');
+            },
+            child: const Text('Copy'),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _escrowRows() {
     final orders = (escrow?['orders'] as List?) ?? const [];
     if (orders.isEmpty) return [const Text('No open orders')];
@@ -126,6 +166,8 @@ class _FinanceScreenState extends State<FinanceScreen> {
     final deps = (deposits?['addresses'] as List?) ?? const [];
     final rateList = (rates?['rates'] as List?) ?? const [];
     final hist = (history?['history'] as List?) ?? const [];
+    final convList = (converts?['conversions'] as List?) ?? const [];
+    final swList = (switches?['switches'] as List?) ?? const [];
     return Scaffold(
       appBar: AppBar(title: const Text('Wallet & Finance')),
       body: ListView(padding: const EdgeInsets.all(12), children: [
@@ -140,12 +182,22 @@ class _FinanceScreenState extends State<FinanceScreen> {
               dense: true,
               title: Text('${d['asset']}: ${d['address']}',
                   style: const TextStyle(fontSize: 11, fontFamily: 'monospace'), overflow: TextOverflow.ellipsis),
-              trailing: IconButton(
-                icon: const Icon(Icons.copy, size: 16),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: '${d['address']}'));
-                  _toast('Address copied');
-                },
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.qr_code, size: 16),
+                    tooltip: 'QR / details',
+                    onPressed: () => _assetDepositDetail('${d['asset']}'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 16),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: '${d['address']}'));
+                      _toast('Address copied');
+                    },
+                  ),
+                ],
               ),
             )),
         const SizedBox(height: 12),
@@ -177,6 +229,17 @@ class _FinanceScreenState extends State<FinanceScreen> {
         ...hist.take(30).map((h) => Text(
             '${h['kind']} ${h['direction'] == 'debit' ? '−' : '+'}${h['amount']} ${h['currency']}',
             style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+        const SizedBox(height: 12),
+        const Text('Convert history', style: TextStyle(fontWeight: FontWeight.bold)),
+        if (convList.isEmpty) const Text('No conversions yet'),
+        ...convList.take(20).map((cv) => Text(
+            '${cv['from_currency']} ${cv['from_amount']} → ${cv['to_currency']} ${cv['to_amount']} @ ${cv['rate']}',
+            style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+        const SizedBox(height: 12),
+        const Text('Feature switches', style: TextStyle(fontWeight: FontWeight.bold)),
+        if (swList.isEmpty) const Text('No feature switches'),
+        ...swList.map((sw) => Text('${sw['token'] ?? sw['asset']}: ${sw['enabled'] == true || sw['on'] == true ? 'on' : 'off'}',
+            style: const TextStyle(fontSize: 12))),
         if (status.isNotEmpty) Text(status),
       ]),
     );

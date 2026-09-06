@@ -512,7 +512,23 @@
         <button id="tradeClosePerpBtn">Close Perp</button>
         <button id="tradeCloseMarginBtn" class="secondary">Close Margin</button>
       </div>
-      <div id="tradeStatus" style="font-size:12px;color:var(--text-secondary);margin-top:6px;"></div>
+      <hr />
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">Options Engine</div>
+      <div id="optionsSeries" style="max-height:110px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
+      <div id="optionsPositions" style="max-height:110px;overflow-y:auto;font-size:12px;margin-bottom:8px;"></div>
+      <label for="optSeriesId">Series ID</label>
+      <input type="text" id="optSeriesId" placeholder="series id" />
+      <label for="optSide">Side</label>
+      <input type="text" id="optSide" placeholder="buy / sell" />
+      <label for="optContracts">Contracts</label>
+      <input type="text" id="optContracts" placeholder="1" />
+      <button id="optOpenBtn">Open Options</button>
+      <div style="margin-top:8px;">
+        <label for="optCloseId">Position ID</label>
+        <input type="text" id="optCloseId" placeholder="position id" />
+        <button id="optCloseBtn" class="secondary">Close Options</button>
+      </div>
+      <div id="optStatus" style="font-size:12px;color:var(--text-secondary);margin-top:6px;"></div>
     </div>
 
     <!-- Prediction tab -->

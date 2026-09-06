@@ -39,6 +39,7 @@ class FeaturesFragment : Fragment() {
             "P2P Trading" to ::P2PFragment,
             "Price Alerts" to ::PriceAlertsFragment,
             "Trading (Perp & Margin)" to ::TradingFragment,
+            "Options Engine" to ::OptionsFragment,
             "DAO Governance" to ::DaoFragment,
             "Launchpool" to ::LaunchpoolFragment,
             "Token Sales" to ::TokenSalesFragment,

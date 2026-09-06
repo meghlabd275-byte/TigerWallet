@@ -40,6 +40,8 @@ class KycFragment : Fragment() {
     private lateinit var documentNumberInput: EditText
     private lateinit var startKycButton: Button
     private lateinit var refreshKycButton: Button
+    private lateinit var sessionInput: EditText
+    private lateinit var sessionButton: Button
 
     private val documentTypes = arrayOf("passport", "national_id", "drivers_license")
 
@@ -61,12 +63,15 @@ class KycFragment : Fragment() {
         documentNumberInput = view.findViewById(R.id.kycDocumentNumberInput)
         startKycButton = view.findViewById(R.id.startKycButton)
         refreshKycButton = view.findViewById(R.id.refreshKycButton)
+        sessionInput = view.findViewById(R.id.kycSessionInput)
+        sessionButton = view.findViewById(R.id.kycSessionButton)
 
         documentTypeSpinner.adapter =
             ArrayAdapter(requireContext(), android.R.layout.simple_spinner_dropdown_item, documentTypes)
 
         startKycButton.setOnClickListener { submitKyc() }
         refreshKycButton.setOnClickListener { loadStatus() }
+        sessionButton.setOnClickListener { lookupSession() }
 
         loadStatus()
     }
@@ -118,6 +123,28 @@ class KycFragment : Fragment() {
         }
         refreshKycButton.visibility = View.VISIBLE
         setLoading(false)
+    }
+
+    private fun lookupSession() {
+        val id = sessionInput.text.toString().trim()
+        if (id.isEmpty()) {
+            Toast.makeText(requireContext(), "Enter a KYC session id", Toast.LENGTH_SHORT).show()
+            return
+        }
+        statusTextView.text = "Looking up session..."
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val json = UserWalletApiService.getKycSession(id)
+                val status = json.optString("status", json.toString())
+                withContext(Dispatchers.Main) {
+                    statusTextView.text = "Session: $status"
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    statusTextView.text = "✗ ${e.message ?: "Session lookup failed"}"
+                }
+            }
+        }
     }
 
     private fun submitKyc() {

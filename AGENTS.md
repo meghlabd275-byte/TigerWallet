@@ -1332,3 +1332,40 @@
 - Separation rule re-verified: git status shows ONLY master_wallet/* files
   modified (zero UserWallet/Admin app edits).
 
+## Session 39 (2026-09-05) - UserWallet residual parity (options engine + finance + kyc + desktop)
+
+- BACKEND scope: go/wallet_api /options/{series,quote,positions,+close} were real but UNUSED by any client. Closed across all 7 surfaces:
+
+  WEB Trading.tsx (Options tab, quote, open+close positions); EXTENSION popup. WalletAPI options methods + options tab; ANDROID OptionsFragment.kt + fragment_options.xml + FeaturesFragment entry + api methods (getOptionsSeries,getOptionsQuote,getOptionsPositions,open closeOptionsPosition); IOS OptionsView.swift + FeaturesView link + service methods (getOptionsSeries,getOptionsQuote,getOptionsPositions,open close); DESKTOP app.js options sections + api options methods; FLUTTER features_screen.dart OptionsScreen (syntax bugs fixed: stray apostrophe, double commas sideCtrl/contractsCtrl); RUST lib.rs options series/quote/open/close methods. All real backend fetches, fail-closed empty states, no fabricated premiums or hashes.
+
+- FLUTTER remaining audit gaps CLOSED: ApprovalsScreen revoke (revokeApproval), TerminalScreen kline+ticker ( getTerminalKline/getTerminalTicker), IdentityScreen KYC session lookup ( kycSession(id), finance_screen.dart per-asset deposit detail + QR (_assetDepositDetail, dart:convert imported). web tsc=0.
+
+
+
+- DESKTOP app.js: loadFinanceSwitches(/finance/switches) wired into loadFinance(). finApi confirmed not double-prefixing. div balance 381/381.
+
+
+
+
+
+- ANDROID: FinanceFragment convert-history TextViews ( finConvertHistoryText + layout row) + getConvertHistory()/getDepositAddressByAsset()/getKycSession(id) service methods; KycFragment KYC session-id lookup ( kycSessionInput + kycSessionButton + lookupSession()); FinanceFragment reload() now renders convert history. Layout fragment_finance.xml + fragment_kyc.xml updated.0
+
+
+
+- IOS: UserWalletApiService gained getDepositAddress(asset, getDepositAddressQr(asset, getConvertHistory(); FinanceView now rows per-asset QR/details sheet + convert-history section. Brace balance 0.0
+
+
+
+- WEB Trading.tsx paren repair: tool-edge had dropped 7 closing parens ( setResult(null; became setResult(null; etc) — tsc clean now.
+
+
+
+- Verified: node --check desktop+extension JS OK; tsc web 0; python brace/div checks 0; HTML div 381/381 (desktop, 158/158 (extension.
+
+
+
+- NOT compile-verified (no SDKs: Kotlin (no Android SDK}, Swift (no Xcode}, Dart (no Flutter}. Kotlin api file shows +2 code-brace delta vs HEAD ( residual, from prior uncommitted options/passkey blocks — all newly-added methods individually balanced; not escalated.0
+
+
+
+- Still open (documented, backend/deployment not client): extension Google OAuth client_id config; FCM google-services.json config; non-EVM broadcast sdk family for exotic chains fail-closed; EVM tx-history needs ETHERSCAN_API_KEY deploy config.

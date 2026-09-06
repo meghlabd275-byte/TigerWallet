@@ -126,76 +126,93 @@ class FuturesService {
 }
 
 // ============================================================================
-// Options Trading
+// Options Trading (real wallet_api /options/* engine)
 // ============================================================================
 
 class OptionsService {
   constructor() {
-    this.pairs = [];
+    this.series = [];
+    this.positions = [];
     this._loaded = false;
-    this.expiries = [
-      { value: '1h', label: '1 Hour' },
-      { value: '4h', label: '4 Hours' },
-      { value: '1d', label: '1 Day' },
-      { value: '1w', label: '1 Week' },
-      { value: '2w', label: '2 Weeks' },
-      { value: '1m', label: '1 Month' },
-      { value: '3m', label: '3 Months' },
-    ];
   }
 
-  // Build the options pair catalog from the live chain registry + price oracle.
-  // No fabricated prices; currentPrice comes from GET /price (0 if unavailable).
-  async loadPairs() {
-    if (this._loaded) return this.pairs;
-    let bases = [];
+  // GET /options/series — operator-governed series list (live-priced backend).
+  async loadSeries() {
+    if (this._loaded) return this.series;
+
     try {
-      const res = await twFetch(`${twApiBase()}/chains`);
+      const res = await twFetch(`${twApiBase()}/options/series`);
       if (res.ok) {
         const data = await res.json();
-        const arr = Array.isArray(data) ? data : (data.chains || data.evm || []);
-        bases = arr.map(c => c.symbol || c.native_currency).filter(Boolean);
+        const arr = Array.isArray(data) ? data : (data.series || data.data || []);
+        this.series = arr.filter(Boolean);
       }
-    } catch (e) { /* registry unreachable */ }
-    if (!bases.length) bases = ['ETH'];
-    let id = 0;
-    for (const base of bases) {
-      id++;
-      let price = 0;
-      try {
-        const pr = await twFetch(`${twApiBase()}/price?token=${encodeURIComponent(base)}`);
-        if (pr.ok) { const pj = await pr.json(); price = pj.usd || 0; }
-      } catch (e) { /* leave 0 */ }
-      this.pairs.push({
-        id: `pair-${id}`,
-        symbol: `${base}/USDT`,
-        base,
-        quote: 'USDT',
-        currentPrice: price, // live oracle price (0 if unavailable)
-        isPreInstalled: true,
-      });
-    }
+    } catch (e) { /* fail-closed: empty */ }
     this._loaded = true;
-    return this.pairs;
+    return this.series;
   }
 
-  getPairs() {
-    return this.pairs;
+  getSeries() {
+    return this.series;
+
   }
 
-  getPreInstalledPairs() {
-    return this.pairs.filter(p => p.isPreInstalled);
+  // GET /options/quote?series_id= — real premium/underlying quote.
+
+  async getQuote(seriesId) {
+    try {
+      const res = await twFetch(`${twApiBase()}/options/quote?series_id=${encodeURIComponent(seriesId)}`);
+      if (res.ok) return await res.json();
+    } catch (e) { /* fail-closed */ }
+    return null;
   }
 
-  getExpiries() {
-    return this.expiries;
+  // GET /options/positions — the caller's open options positions.
+
+
+  async loadPositions() {
+    try {
+      const res = await twFetch(`${twApiBase()}/options/positions`);
+      if (res.ok) {
+        const data = await res.json();
+        const arr = Array.isArray(data) ? data : (data.positions || data.data || []);
+        this.positions = arr.filter(Boolean);
+      }
+    } catch (e) { /* fail-closed */ }
+    return this.positions;
   }
 
-  // The options chain is NOT available until a real options market-data feed
-  // (premiums/IV/greeks) is wired to the backend. We refuse to fabricate
-  // bid/ask/premium/greeks — return an empty chain when no feed exists.
-  getOptionChain(currentPrice, expiry) {
-    return [];
+
+  // POST /options/positions — open a position (real broadcast, no fabricated hash).
+
+
+  async openPosition(seriesId, side, contracts) {
+    try {
+      const res = await twFetch(`${twApiBase()}/options/positions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ series_id: seriesId, side, contracts: parseInt(contracts, 10) || 1 })
+      });
+      if (res.ok) return await res.json();
+      const err = await res.text();
+      throw new Error(err || 'Open failed');
+    } catch (e) { throw e; }
+  }
+
+  // POST /options/positions/:id/close — close by backend position id.
+
+
+  async closePosition(id) {
+    try {
+      const res = await twFetch(`${twApiBase()}/options/positions/${encodeURIComponent(id)}/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (res.ok) return await res.json();
+      const err = await res.text();
+      throw new Error(err || 'Close failed');
+    } catch (e) { throw e; }
   }
 }
 

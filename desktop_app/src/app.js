@@ -141,6 +141,7 @@ class TigerWalletApp {
         
         // Send transaction
         document.getElementById('simulate-btn')?.addEventListener('click', () => this.simulateTransaction());
+        document.getElementById('gas-estimate-btn')?.addEventListener('click', () => this.estimateGas());
         document.getElementById('send-btn')?.addEventListener('click', () => this.sendTransaction());
 
         // Swap — live quote on input change + execute on button click.
@@ -175,6 +176,8 @@ class TigerWalletApp {
         // New feature pages
         document.getElementById('trading-open-btn')?.addEventListener('click', () => this.openTradingPosition());
         document.getElementById('trading-market')?.addEventListener('change', () => this.loadTradingPositions());
+        document.getElementById('options-open-btn')?.addEventListener('click', () => this.openOptions());
+        document.getElementById('options-close-btn')?.addEventListener('click', () => this.closeOptions(document.getElementById('options-close-id')?.value));
         document.getElementById('launchpool-stake-btn')?.addEventListener('click', () => this.launchpoolAction('stake'));
         document.getElementById('launchpool-unstake-btn')?.addEventListener('click', () => this.launchpoolAction('unstake'));
         document.getElementById('p2p-order-btn')?.addEventListener('click', () => this.createP2POrder());
@@ -193,6 +196,7 @@ class TigerWalletApp {
         document.getElementById('alert-create-btn')?.addEventListener('click', () => this.createPriceAlert());
         document.getElementById('contact-add-btn')?.addEventListener('click', () => this.addContact());
         document.getElementById('ens-resolve-btn')?.addEventListener('click', () => this.resolveENS());
+        document.getElementById('ens-reverse-btn')?.addEventListener('click', () => this.reverseENS());
         document.getElementById('nft-transfer-btn')?.addEventListener('click', () => this.transferNFT());
         document.getElementById('security-check-btn')?.addEventListener('click', () => this.securityCheck());
         document.getElementById('security-scan-btn')?.addEventListener('click', () => this.securityScan());
@@ -233,6 +237,7 @@ class TigerWalletApp {
         // Non-EVM
         document.getElementById('nevm-derive-btn')?.addEventListener('click', () => this.deriveNonEvmAddress());
         document.getElementById('nevm-send-btn')?.addEventListener('click', () => this.sendNonEvm());
+        document.getElementById('nevm-sign-btn')?.addEventListener('click', () => this.signNonEvm());
 
         // Lending + prediction
         document.getElementById('lending-action-btn')?.addEventListener('click', () => this.lendingAction());
@@ -420,6 +425,8 @@ class TigerWalletApp {
             this.loadTradingPositions();
             this.loadFuturesPairs();
             this.loadCopyTraders();
+            this.loadOptionsSeries();
+            this.loadOptionsPositions();
         } else if (page === 'launchpool') {
             this.loadLaunchpool();
         } else if (page === 'token-sales') {
@@ -758,6 +765,34 @@ class TigerWalletApp {
         `).join('');
     }
     
+    async estimateGas() {
+        const to = document.getElementById('send-to').value;
+        const amount = document.getElementById('send-amount').value;
+        const wallet = this.wallets[0];
+        const out = document.getElementById('gas-estimate-result');
+        if (!to || !amount) { alert('Please fill in recipient and amount'); return; }
+        if (!wallet) { alert('No wallet loaded'); return; }
+        out.innerHTML = '<span style="color:var(--text-secondary)">Estimating gas…</span>';
+        try {
+            const res = await twFetch(`${twApiBase()}/gas/estimate?chain_id=${encodeURIComponent(this.currentNetwork)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: wallet.address,
+                    to: to,
+                    value: amount,
+                    data: '',
+                    chain_id: this.currentNetwork
+                })
+            });
+            if (!res.ok) { throw new Error(await res.text()); }
+            const est = await res.json();
+            out.innerHTML = `<strong>Gas estimate:</strong> ${this.escapeHtml(String(est.gas_estimate ?? est.gas ?? est.estimate ?? ''))} units · gas price: ${this.escapeHtml(String(est.gas_price ?? ''))}`;
+        } catch (e) {
+            out.innerHTML = `<span style="color: var(--danger)">Gas estimate error: ${this.escapeHtml(e.message)}</span>`;
+        }
+    }
+
     async simulateTransaction() {
         const to = document.getElementById('send-to').value;
         const amount = document.getElementById('send-amount').value;
@@ -1335,6 +1370,24 @@ class TigerWalletApp {
         }
     }
 
+    // ---- ENS reverse lookup (real /ens/lookup) ----
+    async reverseENS() {
+        const input = document.getElementById('ens-reverse-input');
+        const out = document.getElementById('ens-reverse-result');
+        if (!input || !out) return;
+        const address = input.value.trim();
+        if (!address) { out.textContent = 'Enter an address'; return; }
+        out.textContent = 'Looking up...';
+        try {
+            const res = await twFetch(`${twApiBase()}/ens/lookup?address=${encodeURIComponent(address)}`);
+            if (!res.ok) { out.textContent = `Lookup failed (HTTP ${res.status})`; return; }
+            const data = await res.json();
+            out.textContent = data.name ? `${this.escapeHtml(address)} → ${this.escapeHtml(data.name)}` : 'No ENS name found';
+        } catch (e) {
+            out.textContent = 'Lookup failed (backend unreachable)';
+        }
+    }
+
     // ---- KYC status (proxied to listing_service via /api/v1/wallet/kyc/status) ----
     async loadKYCStatus() {
         const box = document.getElementById('kyc-status');
@@ -1785,6 +1838,92 @@ class TigerWalletApp {
         }
     }
 
+    // ---- Options engine (/api/v1/options/*) ----
+    async loadOptionsSeries() {
+        const box = document.getElementById('options-series');
+        if (!box) return;
+        if (!this._options) this._options = new OptionsService();
+        try {
+            const series = await this._options.loadSeries();
+            box.innerHTML = series.length
+                ? series.map(s => `
+                    <div class="asset-item">
+                        <div class="asset-info">
+                            <div class="asset-name">${this.escapeHtml((s.underlying || '') + '-' + (s.strike ?? '') + ' ' + (s.style || ''))}</div>
+                            <div class="asset-address">id: ${this.escapeHtml(s.id)} · exp ${this.escapeHtml(s.expiry_unix ? new Date(s.expiry_unix * 1000).toISOString().slice(0, 10) : '')}</div>
+                        </div>
+                        <button class="btn-secondary" onclick="window.app.quoteOptions('${this.escapeHtml(s.id)}')">Quote</button>
+                    </div>`).join('')
+                : '<div class="no-transactions">No active options series. An operator must add series first.</div>';
+        } catch (e) {
+            box.innerHTML = '<div class="no-transactions">Options series unavailable</div>';
+        }
+    }
+
+    async quoteOptions(seriesId,) {
+        const box = document.getElementById('options-quote');
+        if (!box) return;
+        try {
+            const q = await this._options?.getQuote(seriesId) || await new OptionsService().getQuote(seriesId);
+            box.innerHTML = q
+                ? `<div class="asset-item"><div class="asset-info"><div class="asset-name">Quote</div><div class="asset-address">premium/contract: ${this.escapeHtml(q.premium_per_contract ?? '')} ${this.escapeHtml(q.quote_asset ?? '')} · underlying: ${this.escapeHtml(q.underlying_price ?? '')}</div></div></div>`
+                : '<div class="no-transactions">Quote unavailable</div>';
+        } catch (e) {
+            box.innerHTML = '<div class="no-transactions">Quote unavailable</div>';
+        }
+    }
+
+    async loadOptionsPositions() {
+        const box = document.getElementById('options-positions');
+        if (!box) return;
+        if (!this._options) this._options = new OptionsService();
+        try {
+            const positions = await this._options.loadPositions();
+            box.innerHTML = positions.length
+                ? positions.map(p => `
+                    <div class="asset-item">
+                        <div class="asset-info">
+                            <div class="asset-name">${this.escapeHtml(p.id + ':' + ((p.underlying || '') + '-' + (p.strike ?? '')) + ' ' + (p.side || ''))}</div>
+                            <div class="asset-address">${this.escapeHtml('x' + (p.contracts ?? 0) + ' ' + (p.status || '') + ' pnl:' + (p.pnl ?? 0))}</div>
+                        </div>
+                        <button class="btn-secondary" onclick="window.app.closeOptions('${this.escapeHtml(p.id)}')">Close</button>
+                    </div>`).join('')
+                : '<div class="no-transactions">No open options positions</div>';
+        } catch (e) {
+            box.innerHTML = '<div class="no-transactions">Options positions unavailable</div>';
+        }
+    }
+
+    async openOptions() {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const seriesId = document.getElementById('options-series-id')?.value;
+        const side = document.getElementById('options-side')?.value || 'buy';
+        const contracts = document.getElementById('options-contracts')?.value || '1';
+        if (!seriesId) { alert('Enter an options series id'); return; }
+        if (!this._options) this._options = new OptionsService();
+        try {
+            const res = await this._options.openPosition(seriesId, side, contracts);
+            const tx = res?.tx_hash;
+            alert(tx ? 'Transaction submitted to the blockchain network: ' + tx : 'Options position opened: ' + JSON.stringify(res?.id || res?.status || res));
+            this.loadOptionsPositions();
+            this.loadOptionsSeries();
+        } catch (e) {
+            alert('Open options error: ' + e.message);
+        }
+    }
+
+    async closeOptions(id,) {
+        try {
+            if (!this._options) this._options = new OptionsService();
+            const res = await this._options.closePosition(id);
+            const tx = res?.tx_hash;
+            alert(tx ? 'Transaction submitted to the blockchain network: ' + tx : 'Options position close submitted');
+            this.loadOptionsPositions();
+        } catch (e) {
+            alert('Close options error: ' + e.message);
+        }
+    }
+
     // ---- Launchpool (/api/v1/launchpool/*) ----
     async loadLaunchpool() {
         const poolsBox = document.getElementById('launchpool-pools');
@@ -1947,6 +2086,7 @@ class TigerWalletApp {
         this.loadFinanceRates();
         this.loadFinanceEscrow();
         this.loadFinanceHistory();
+        this.loadFinanceSwitches();
         this.loadPaymentMethods();
     }
 
@@ -2113,6 +2253,18 @@ class TigerWalletApp {
             const list = data.history || [];
             el.innerHTML = list.length === 0 ? '<div class="no-transactions">No ledger history yet</div>'
                 : list.map(h => `<div class="transaction-item"><div><strong>${this.escapeHtml(h.kind)}</strong> ${h.direction === 'debit' ? '−' : '+'}${this.escapeHtml(h.amount)} ${this.escapeHtml(h.currency)}<p class="muted">balance after ${this.escapeHtml(h.balance_after)}${h.memo ? ' · ' + this.escapeHtml(h.memo) : ''}</p></div></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+    }
+
+    async loadFinanceSwitches() {
+        const el = document.getElementById('fin-switches');
+        if (!el) return;
+        try {
+            const data = await this.finApi('/finance/switches');
+            const obj = data.switches || data.data || data;
+            const entries = obj && typeof obj === 'object' ? Object.entries(obj) : [];
+            el.innerHTML = entries.length === 0 ? '<div class="no-transactions">No per-token switches configured</div>'
+                : entries.map(([k, v]) => `<div class="transaction-item"><div><strong>${this.escapeHtml(k)}</strong></div><p class="muted">${this.escapeHtml(String(v))}</p></div></div>`).join('');
         } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
     }
 
@@ -2830,6 +2982,25 @@ class TigerWalletApp {
             if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signed payload</div><div class="asset-address">' + this.escapeHtml((data.raw_tx || data.signature || '') + '') + '</div></div></div>';
             alert('Signed. ' + (data.action || 'Transaction submitted to the blockchain network'));
         } catch (e) { alert('Non-EVM send error: ' + e.message); }
+    }
+
+    async signNonEvm() {
+        if (this.isLocked || !this.wallets.length) { alert('Unlock a wallet first'); return; }
+        const chain = (document.getElementById('nevm-sign-chain')?.value || '').trim().toLowerCase();
+        const message = (document.getElementById('nevm-sign-message')?.value || '').trim();
+        const password = (document.getElementById('nevm-sign-password')?.value || '').trim();
+        if (!chain || !message || !password) { alert('Enter chain, message and password'); return; }
+        const wallet = this.wallets[0];
+        const out = document.getElementById('nevm-sign-result');
+        try {
+            const res = await twFetch(`${twApiBase()}/non_evm/sign`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wallet_id: wallet.wallet_id ?? wallet.id, password, chain_type: chain, message })
+            });
+            if (!res.ok) { alert('Sign failed: ' + await res.text()); return; }
+            const data = await res.json();
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + this.escapeHtml(chain) + '</div><div class="asset-address">' + this.escapeHtml(data.signature || data.signed_message || JSON.stringify(data)) + '</div></div></div>';
+        } catch (e) { alert('Sign error: ' + e.message); }
     }
 
     // ---- Lending (proxied to lending_service :8009 via /lending/*) ----

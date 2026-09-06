@@ -329,6 +329,8 @@
                             <input type="checkbox" id="auto-send-toggle"> Auto-sign via MasterWallet (no manual approval)
                         </label>
                         <button id="simulate-btn" class="btn-secondary">Simulate First</button>
+                        <button id="gas-estimate-btn" class="btn-secondary">Estimate Gas</button>
+                        <div id="gas-estimate-result" class="simulation-result"></div>
                         <button id="send-btn" class="btn-primary">Send</button>
                     </div>
                 </div>
@@ -578,6 +580,38 @@
                         <button id="copy-follow-btn" class="btn-primary">Follow Trader</button>
                     </div>
                     <div id="copy-follow-result" class="assets-list"></div>
+                    <h4 style="margin-top:16px">Options Engine</h4>
+                    <div id="options-series" class="assets-list">
+                        <div class="no-transactions">Loading options series…</div>
+                    </div>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Series ID</label>
+                            <input type="text" id="options-series-id" placeholder="series id">
+                        </div>
+                        <div class="input-group">
+                            <label>Side</label>
+                            <select id="options-side">
+                                <option value="buy">Buy</option>
+                                <option value="sell">Sell</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Contracts</label>
+                            <input type="number" id="options-contracts" value="1" min="1">
+                        </div>
+                        <button id="options-open-btn" class="btn-primary">Open Options Position</button>
+                        <div class="input-group">
+                            <label>Position ID to close</label>
+                            <input type="text" id="options-close-id" placeholder="position id">
+                        </div>
+                        <button id="options-close-btn" class="btn-secondary">Close Options Position</button>
+                        <div id="options-quote" class="assets-list"></div>
+                    </div>
+                    <h4 style="margin-top:16px">Your Options Positions</h4>
+                    <div id="options-positions" class="assets-list">
+                        <div class="no-transactions">No open options positions</div>
+                    </div>
                 </div>
 
                 <!-- Launchpool Page -->
@@ -688,6 +722,14 @@
                         </div>
                         <button id="ens-resolve-btn" class="btn-primary">Resolve</button>
                         <div id="ens-result" class="bridge-info" style="margin-top:12px"></div>
+                    </div>
+                    <div class="send-form">
+                        <div class="input-group">
+                            <label>Address (reverse lookup)</label>
+                            <input type="text" id="ens-reverse-input" placeholder="0x…">
+                        </div>
+                        <button id="ens-reverse-btn" class="btn-primary">Reverse Lookup</button>
+                        <div id="ens-reverse-result" class="bridge-info" style="margin-top:12px"></div>
                     </div>
                 </div>
 
@@ -921,9 +963,24 @@
                         <button id="nevm-send-btn" class="btn-primary">Send</button>
                     </div>
                     <div id="nevm-send-result" class="assets-list"></div>
+                    <div class="send-form">
+                        <h4>Sign non-EVM message</h4>
+                        <div class="input-group">
+                            <label>Chain</label>
+                            <input type="text" id="nevm-sign-chain" placeholder="solana">
+                        </div>
+                        <div class="input-group">
+                            <label>Message</label>
+                            <input type="text" id="nevm-sign-message" placeholder="message to sign">
+                        </div>
+                        <div class="input-group">
+                            <label>Wallet password</label>
+                            <input type="password" id="nevm-sign-password">
+                        </div>
+                        <button id="nevm-sign-btn" class="btn-primary">Sign</button>
+                    </div>
+                    <div id="nevm-sign-result" class="assets-list"></div>
                 </div>
-
-                <!-- Lending Page -->
                 <div id="lending-page" class="page hidden">
                     <h4>Markets</h4>
                     <div id="lending-markets" class="assets-list"></div>
@@ -1105,6 +1162,7 @@
                         <button class="secondary-btn fin-subtab" data-fin="transfer">Transfer</button>
                         <button class="secondary-btn fin-subtab" data-fin="p2p">P2P Market</button>
                         <button class="secondary-btn fin-subtab" data-fin="history">History</button>
+                        <button class="secondary-btn fin-subtab" data-fin="switches">Switches</button>
                     </div>
                     <div id="fin-message" class="success-banner hidden"></div>
 
@@ -1159,6 +1217,8 @@
                     </div>
 
                     <div id="fin-history" class="fin-section transactions-list hidden"><div class="no-transactions">No ledger history yet</div></div>
+
+                    <div id="fin-switches" class="fin-section assets-list hidden"><div class="no-transactions">Loading feature switches…</div></div>
                 </div>
 
                 <!-- Settings Page -->

@@ -15,6 +15,7 @@ import com.google.android.material.textfield.TextInputLayout
 import com.tigeruserwallet.MainActivity
 import com.tigeruserwallet.R
 import com.tigeruserwallet.api.UserWalletApiService
+import com.tigeruserwallet.util.CredentialManagerHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +41,7 @@ class CreateWalletFragment : Fragment() {
     private lateinit var confirmInput: TextInputEditText
     private lateinit var confirmLayout: TextInputLayout
     private lateinit var createButton: MaterialButton
+    private lateinit var passkeyCreateButton: MaterialButton
     private lateinit var progress: CircularProgressIndicator
 
     override fun onCreateView(
@@ -60,6 +62,7 @@ class CreateWalletFragment : Fragment() {
         confirmInput = view.findViewById(R.id.confirmInput)
         confirmLayout = view.findViewById(R.id.confirmLayout)
         createButton = view.findViewById(R.id.createButton)
+        passkeyCreateButton = view.findViewById(R.id.passkeyCreateButton)
         progress = view.findViewById(R.id.createProgress)
 
         val chains = UserWalletApiService.CHAINS
@@ -70,6 +73,60 @@ class CreateWalletFragment : Fragment() {
         )
 
         createButton.setOnClickListener { onSubmit() }
+        passkeyCreateButton.setOnClickListener { onCreateWithPasskey() }
+    }
+
+    private fun onCreateWithPasskey() {
+        val label = nameInput.text?.toString().orEmpty().trim()
+        if (label.isEmpty()) {
+            nameLayout.error = getString(R.string.err_name)
+            return
+        }
+        setBusy(true)
+        // Real platform WebAuthn ceremony (Credential Manager); main-thread call.
+        CredentialManagerHelper.createPasskeyForWallet(this) { cred ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    UserWalletApiService.ensureSession()
+                    val wallet = UserWalletApiService.passkeyCreateWallet(
+                        label = label,
+                        credentialId = cred.credentialId,
+                        publicKey = cred.publicKey,
+                        chainId = UserWalletApiService.CHAINS[networkSpinner.selectedItemPosition].id
+                    )
+                    UserWalletApiService.rememberWallet(wallet.id)
+                    withContext(Dispatchers.Main) {
+                        setBusy(false)
+                        if (wallet.mnemonic != null) {
+                            parentFragmentManager.beginTransaction()
+                                .replace(
+                                    R.id.fragmentContainer,
+                                    BackupMnemonicFragment.newInstance(
+                                        wallet.id,
+                                        wallet.mnemonic,
+                                        wallet.chainId,
+                                        label,
+                                        ""
+                                    )
+                                )
+                                .addToBackStack(null)
+                                .commit()
+                        } else {
+                            (activity as? MainActivity)?.enterApp()
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        setBusy(false)
+                        Toast.makeText(
+                            requireContext(),
+                            e.message ?: getString(R.string.err_create_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
     }
 
     private fun onSubmit() {
