@@ -113,7 +113,7 @@ type Recovery struct {
 // Global variables
 var (
 	db     *pgxpool.Pool
-	redis  *redis.Client
+	redisClient  *redis.Client
 	config Config
 	logger *log.Logger
 )
@@ -237,8 +237,8 @@ func initRedis() error {
 		return err
 	}
 
-	redis = redis.NewClient(opt)
-	return redis.Ping(context.Background()).Err()
+	redisClient = redis.NewClient(opt)
+	return redisClient.Ping(context.Background()).Err()
 }
 
 // Handlers
@@ -661,7 +661,7 @@ func HealthCheck(c *gin.Context) {
 	}
 	
 	redisStatus := "healthy"
-	if err := redis.Ping(ctx).Err(); err != nil {
+	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
@@ -780,6 +780,6 @@ func main() {
 	}
 
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }

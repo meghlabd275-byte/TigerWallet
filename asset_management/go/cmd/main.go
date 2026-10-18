@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -83,7 +82,7 @@ type Transaction struct {
 // Global variables
 var (
 	db     *pgxpool.Pool
-	redis  *redis.Client
+	redisClient  *redis.Client
 	config Config
 	logger *log.Logger
 )
@@ -176,8 +175,8 @@ func initRedis() error {
 		return err
 	}
 
-	redis = redis.NewClient(opt)
-	return redis.Ping(context.Background()).Err()
+	redisClient = redis.NewClient(opt)
+	return redisClient.Ping(context.Background()).Err()
 }
 
 // Handlers
@@ -560,7 +559,7 @@ func HealthCheck(c *gin.Context) {
 	}
 
 	redisStatus := "healthy"
-	if err := redis.Ping(ctx).Err(); err != nil {
+	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
@@ -576,14 +575,14 @@ func HealthCheck(c *gin.Context) {
 func CachePrice(assetID uuid.UUID, price string) error {
 	ctx := context.Background()
 	key := fmt.Sprintf("asset:price:%s", assetID.String())
-	return redis.Set(ctx, key, price, 5*time.Minute).Err()
+	return redisClient.Set(ctx, key, price, 5*time.Minute).Err()
 }
 
 // Get cached price from Redis
 func GetCachedPrice(assetID uuid.UUID) (string, error) {
 	ctx := context.Background()
 	key := fmt.Sprintf("asset:price:%s", assetID.String())
-	return redis.Get(ctx, key).Result()
+	return redisClient.Get(ctx, key).Result()
 }
 
 func getEnv(key, defaultValue string) string {
@@ -696,6 +695,6 @@ func main() {
 	}
 
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }

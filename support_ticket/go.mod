@@ -37,3 +37,8 @@ require (
 	google.golang.org/protobuf v1.32.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+require (
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/ugorji/go/codec v1.2.11 // indirect
+)

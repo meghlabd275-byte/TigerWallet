@@ -19,7 +19,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -29,7 +28,6 @@ import (
 	"os/signal"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -882,20 +880,18 @@ func enable2FAForUser(userID, secret string) {
 }
 
 func generate2FASecret() string {
-	bytes := make([]byte, 20)
-	rand.Read(bytes)
-	return base64.StdEncoding.EncodeToString(bytes)[:16]
+	// Real base32 secret (RFC 4226 recommended 160 bits) so the value is a
+	// valid TOTP seed that authenticator apps can consume. See totp.go.
+	secret, err := generateTOTPSecret()
+	if err != nil {
+		return ""
+	}
+	return secret
 }
 
 func verify2FACode(secret, code string) bool {
-	// In production, use proper TOTP validation
-	// For now, simple validation
-	return len(code) == 6 && isNumeric(code)
-}
-
-func isNumeric(s string) bool {
-	_, err := strconv.Atoi(s)
-	return err == nil
+	// Real RFC 6238 TOTP verification (see totp.go). Never a length check.
+	return verifyTOTP(secret, code)
 }
 
 // =============================================================================

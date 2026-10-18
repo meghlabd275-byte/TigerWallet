@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	dsecp "github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 const (
@@ -36,7 +36,7 @@ const (
 
 // CurveParameters represents the elliptic curve for MPC
 type CurveParameters struct {
-	Curve  *secp256k1.BitCurve
+	Curve  *dsecp.KoblitzCurve
 	Name   string
 	Prefix string
 	P      *big.Int
@@ -46,7 +46,7 @@ type CurveParameters struct {
 
 // GetSecp256k1Curve returns secp256k1 curve parameters (the curve used by Ethereum).
 func GetSecp256k1Curve() *CurveParameters {
-	c := secp256k1.S256()
+	c := dsecp.S256()
 	return &CurveParameters{
 		Curve:  c,
 		Name:   "secp256k1",
@@ -218,7 +218,7 @@ func (s *KeyGenerationSession) GenerateShare(signerID string) (*KeyShare, error)
 	// Verifier is the public point (public key) corresponding to this share:
 	// V = share * G, computed on the real secp256k1 curve.
 	vx, vy := s.Curve.Curve.ScalarBaseMult(share.Bytes())
-	verifierBytes := secp256k1.CompressPubkey(vx, vy)
+	verifierBytes := compressPoint(vx, vy)
 	verifier := new(big.Int).SetBytes(verifierBytes)
 	
 	// Generate chain code
@@ -273,7 +273,7 @@ func (s *KeyGenerationSession) ComputePublicKey(commitments map[string]string) (
 		// No shares yet: fall back to the generator point.
 		sumX, sumY = s.Curve.Curve.ScalarBaseMult(big.NewInt(1).Bytes())
 	}
-	pubBytes := secp256k1.CompressPubkey(sumX, sumY)
+	pubBytes := compressPoint(sumX, sumY)
 	s.PublicKey = new(big.Int).SetBytes(pubBytes)
 	
 	return s.PublicKey, nil
@@ -326,7 +326,7 @@ func (s *KeyGenerationSession) VerifyShare(share *KeyShare) bool {
 	// stored in share.Verifier). This is a real EC point comparison on
 	// secp256k1, not a modular multiplication hack.
 	actualX, actualY := s.Curve.Curve.ScalarBaseMult(share.Share.Bytes())
-	actualCompressed := secp256k1.CompressPubkey(actualX, actualY)
+	actualCompressed := compressPoint(actualX, actualY)
 	expectedCompressed := share.Verifier.Bytes()
 	if len(expectedCompressed) == 0 {
 		return false
@@ -490,6 +490,22 @@ func DeserializeKeyShare(data string) (*KeyShare, error) {
 
 // ctEqual performs a constant-time comparison of two byte slices and reports
 // whether they are equal in length and content.
+
+// compressPoint returns the SEC1 compressed (33-byte) encoding of the
+// secp256k1 point (x, y): a 0x02/0x03 parity prefix followed by the 32-byte
+// big-endian X coordinate.
+func compressPoint(x, y *big.Int) []byte {
+	out := make([]byte, 33)
+	if y.Bit(0) == 1 {
+		out[0] = 0x03
+	} else {
+		out[0] = 0x02
+	}
+	xb := x.Bytes()
+	copy(out[33-len(xb):], xb)
+	return out
+}
+
 func ctEqual(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false

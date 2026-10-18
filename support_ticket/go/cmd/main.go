@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -70,7 +69,7 @@ type TicketReply struct {
 }
 
 var db *pgxpool.Pool
-var redis *redis.Client
+var redisClient *redis.Client
 var config Config
 var logger *log.Logger
 
@@ -90,8 +89,8 @@ func main() {
 	logger.Println("Database connected")
 
 	opt, _ := redis.ParseURL(config.RedisURL)
-	redis = redis.NewClient(opt)
-	redis.Ping(context.Background())
+	redisClient = redis.NewClient(opt)
+	redisClient.Ping(context.Background())
 	logger.Println("Redis connected")
 
 	gin.SetMode(gin.ReleaseMode)
@@ -148,7 +147,7 @@ func main() {
 	defer cancel()
 	srv.Shutdown(ctx)
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }
 
@@ -195,7 +194,7 @@ func createTicket(c *gin.Context) {
 	}
 
 	// Update stats
-	redis.Incr(context.Background(), "tickets:open")
+	redisClient.Incr(context.Background(), "tickets:open")
 
 	c.JSON(http.StatusCreated, ticket)
 }
@@ -317,8 +316,8 @@ func updateStatus(c *gin.Context) {
 
 	// Update stats
 	if req.Status == StatusResolved {
-		redis.Decr(context.Background(), "tickets:open")
-		redis.Incr(context.Background(), "tickets:resolved")
+		redisClient.Decr(context.Background(), "tickets:open")
+		redisClient.Incr(context.Background(), "tickets:resolved")
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "status updated"})

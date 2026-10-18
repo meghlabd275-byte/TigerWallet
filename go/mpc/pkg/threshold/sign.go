@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	dsecp "github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 const (
@@ -32,7 +32,7 @@ const (
 
 // TSSParameters represents threshold signature parameters
 type TSSParameters struct {
-	Curve       *secp256k1.BitCurve
+	Curve       *dsecp.KoblitzCurve
 	Scheme      string
 	Threshold   int
 	TotalShares int
@@ -118,7 +118,7 @@ type NoncePair struct {
 }
 
 // NewSigningSession creates a new signing session
-func NewSigningSession(req *SigningRequest, curve *secp256k1.BitCurve) *SigningSession {
+func NewSigningSession(req *SigningRequest, curve *dsecp.KoblitzCurve) *SigningSession {
 	// Compute message hash if not provided
 	var msgHash *big.Int
 	if req.MessageHash != "" {
@@ -174,7 +174,7 @@ func (s *SigningSession) AddSigner(signerID string) error {
 }
 
 // GenerateNonce generates a nonce contribution for a signer
-func (s *SigningSession) GenerateNonce(signerID string, curve *secp256k1.BitCurve) (*NoncePair, error) {
+func (s *SigningSession) GenerateNonce(signerID string, curve *dsecp.KoblitzCurve) (*NoncePair, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	
@@ -233,7 +233,7 @@ func (s *SigningSession) AddPartialSignature(ps *PartialSignature) error {
 }
 
 // CombineSignatures combines partial signatures into final threshold signature
-func (s *SigningSession) CombineSignatures(curve *secp256k1.BitCurve) (*ThresholdSignature, error) {
+func (s *SigningSession) CombineSignatures(curve *dsecp.KoblitzCurve) (*ThresholdSignature, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -298,7 +298,7 @@ func (s *SigningSession) CombineSignatures(curve *secp256k1.BitCurve) (*Threshol
 		if err != nil || len(pub) == 0 {
 			continue
 		}
-		compressed := secp256k1.CompressPubkey(big.NewInt(0).SetBytes(pub[1:33]), big.NewInt(0).SetBytes(pub[33:65]))
+		compressed := compressPoint(big.NewInt(0).SetBytes(pub[1:33]), big.NewInt(0).SetBytes(pub[33:65]))
 		if len(s.GroupPublicKey) == 0 || ctEqualBytes(compressed, s.GroupPublicKey) {
 			recoveredPub = compressed
 			v = trial
@@ -311,7 +311,7 @@ func (s *SigningSession) CombineSignatures(curve *secp256k1.BitCurve) (*Threshol
 			sig65[64] = trial
 			pub, err := crypto.Ecrecover(msgHashBytes, sig65)
 			if err == nil && len(pub) > 0 {
-				recoveredPub = secp256k1.CompressPubkey(big.NewInt(0).SetBytes(pub[1:33]), big.NewInt(0).SetBytes(pub[33:65]))
+				recoveredPub = compressPoint(big.NewInt(0).SetBytes(pub[1:33]), big.NewInt(0).SetBytes(pub[33:65]))
 				v = trial
 				break
 			}
@@ -344,7 +344,7 @@ func (s *SigningSession) CombineSignatures(curve *secp256k1.BitCurve) (*Threshol
 }
 
 // VerifySignature verifies a threshold signature
-func VerifySignature(sig *ThresholdSignature, message []byte, curve *secp256k1.BitCurve) bool {
+func VerifySignature(sig *ThresholdSignature, message []byte, curve *dsecp.KoblitzCurve) bool {
 	// Decode R and S.
 	rBytes, err := hex.DecodeString(sig.R)
 	if err != nil {
@@ -396,7 +396,7 @@ func VerifySignature(sig *ThresholdSignature, message []byte, curve *secp256k1.B
 		if err != nil {
 			return false
 		}
-		recovered := secp256k1.CompressPubkey(new(big.Int).SetBytes(pubBytes[1:33]), new(big.Int).SetBytes(pubBytes[33:65]))
+		recovered := compressPoint(new(big.Int).SetBytes(pubBytes[1:33]), new(big.Int).SetBytes(pubBytes[33:65]))
 		if !ctEqualBytes(recovered, expected) {
 			return false
 		}
@@ -409,7 +409,7 @@ func VerifySignature(sig *ThresholdSignature, message []byte, curve *secp256k1.B
 type TSSManager struct {
 	mu            sync.RWMutex
 	sessions      map[string]*SigningSession
-	curve         *secp256k1.BitCurve
+	curve         *dsecp.KoblitzCurve
 	defaultScheme string
 }
 
@@ -417,7 +417,7 @@ type TSSManager struct {
 func NewTSSManager() *TSSManager {
 	return &TSSManager{
 		sessions:      make(map[string]*SigningSession),
-		curve:         secp256k1.S256(),
+		curve:         dsecp.S256(),
 		defaultScheme: SchemeECDSA,
 	}
 }
@@ -481,6 +481,22 @@ func leftPad(b []byte, size int) []byte {
 }
 
 // ctEqualBytes compares two byte slices in constant time.
+
+// compressPoint returns the SEC1 compressed (33-byte) encoding of the
+// secp256k1 point (x, y): a 0x02/0x03 parity prefix followed by the 32-byte
+// big-endian X coordinate.
+func compressPoint(x, y *big.Int) []byte {
+	out := make([]byte, 33)
+	if y.Bit(0) == 1 {
+		out[0] = 0x03
+	} else {
+		out[0] = 0x02
+	}
+	xb := x.Bytes()
+	copy(out[33-len(xb):], xb)
+	return out
+}
+
 func ctEqualBytes(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
@@ -493,7 +509,7 @@ func ctEqualBytes(a, b []byte) bool {
 }
 
 
-func computeCommitment(r, gamma *big.Int, curve *secp256k1.BitCurve) string {
+func computeCommitment(r, gamma *big.Int, curve *dsecp.KoblitzCurve) string {
 	// Real commitment: bind the nonce point R = r*G and the gamma value
 	// together with a Keccak-256 commitment hash.
 	rx, _ := curve.ScalarBaseMult(r.Bytes())
@@ -591,7 +607,7 @@ func HashMessage(message []byte) []byte {
 // SignWithTSS creates a threshold signature (coordinator function)
 func SignWithTSS(
 	partialSigs map[string]*PartialSignature,
-	curve *secp256k1.BitCurve,
+	curve *dsecp.KoblitzCurve,
 ) (*ThresholdSignature, error) {
 	if len(partialSigs) < 2 {
 		return nil, fmt.Errorf("need at least 2 partial signatures")
@@ -635,7 +651,7 @@ func SignWithTSS(
 		sig65[64] = trial
 		pub, err := crypto.Ecrecover(msgHash, sig65)
 		if err == nil && len(pub) > 0 {
-			recoveredPub = secp256k1.CompressPubkey(new(big.Int).SetBytes(pub[1:33]), new(big.Int).SetBytes(pub[33:65]))
+			recoveredPub = compressPoint(new(big.Int).SetBytes(pub[1:33]), new(big.Int).SetBytes(pub[33:65]))
 			v = trial
 			break
 		}

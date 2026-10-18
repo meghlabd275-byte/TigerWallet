@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,7 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
 	"golang.org/x/crypto/bcrypt"
@@ -31,28 +31,28 @@ import (
 // ============================================================================
 
 var (
-	logger        zerolog.Logger
-	redisClient   *redis.Client
-	dbPool        *pgxpool.Pool
-	wsHub         *WebSocketHub
+	logger           zerolog.Logger
+	redisClient      *redis.Client
+	dbPool           *pgxpool.Pool
+	wsHub            *WebSocketHub
 	marketplaceCache *MarketplaceCache
 )
 
 // Configuration
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	RedisURL            string
-	JWTSecret           string
-	SMTPHost            string
-	SMTPPort            string
-	SMTPUsername        string
-	SMTPPassword        string
-	AdminEmail          string
-	EnableWebSocket     bool
-	MaxRequestSize      int64
-	RateLimitRequests   int
-	RateLimitWindow     time.Duration
+	Port              string
+	DatabaseURL       string
+	RedisURL          string
+	JWTSecret         string
+	SMTPHost          string
+	SMTPPort          string
+	SMTPUsername      string
+	SMTPPassword      string
+	AdminEmail        string
+	EnableWebSocket   bool
+	MaxRequestSize    int64
+	RateLimitRequests int
+	RateLimitWindow   time.Duration
 }
 
 // Marketplace Package Types
@@ -62,7 +62,7 @@ type ServicePackage struct {
 	Description     string    `json:"description"`
 	Type            string    `json:"type"` // starter, professional, enterprise, custom
 	Price           float64   `json:"price"`
-	Currency        string    `json:"currency"` // USD, USDT, USDC
+	Currency        string    `json:"currency"`     // USD, USDT, USDC
 	BillingCycle    string    `json:"billingCycle"` // monthly, yearly, lifetime
 	Features        []string  `json:"features"`
 	MaxUsers        int       `json:"maxUsers"`
@@ -106,67 +106,67 @@ type MarketplaceListing struct {
 
 // Partner Profile
 type PartnerProfile struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"userId"`
-	CompanyName     string    `json:"companyName"`
-	LogoURL         string    `json:"logoUrl"`
-	BannerURL       string    `json:"bannerUrl"`
-	Description     string    `json:"description"`
-	Website         string    `json:"website"`
-	ContactEmail    string    `json:"contactEmail"`
-	Phone           string    `json:"phone"`
-	Location        string    `json:"location"`
-	Established     int       `json:"established"`
-	EmployeeCount   string    `json:"employeeCount"`
-	BusinessType    string    `json:"businessType"` // software, financial, blockchain, other
-	Certifications  []string  `json:"certifications"`
-	SocialLinks     map[string]string `json:"socialLinks"`
-	Rating          float64   `json:"rating"`
-	ReviewCount     int       `json:"reviewCount"`
-	TotalInstalls   int       `json:"totalInstalls"`
-	ActiveWhiteLabels int     `json:"activeWhiteLabels"`
-	Status          string    `json:"status"` // pending, active, suspended
-	Verified        bool      `json:"verified"`
-	KYCCompleted     bool      `json:"kycCompleted"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID                string            `json:"id"`
+	UserID            string            `json:"userId"`
+	CompanyName       string            `json:"companyName"`
+	LogoURL           string            `json:"logoUrl"`
+	BannerURL         string            `json:"bannerUrl"`
+	Description       string            `json:"description"`
+	Website           string            `json:"website"`
+	ContactEmail      string            `json:"contactEmail"`
+	Phone             string            `json:"phone"`
+	Location          string            `json:"location"`
+	Established       int               `json:"established"`
+	EmployeeCount     string            `json:"employeeCount"`
+	BusinessType      string            `json:"businessType"` // software, financial, blockchain, other
+	Certifications    []string          `json:"certifications"`
+	SocialLinks       map[string]string `json:"socialLinks"`
+	Rating            float64           `json:"rating"`
+	ReviewCount       int               `json:"reviewCount"`
+	TotalInstalls     int               `json:"totalInstalls"`
+	ActiveWhiteLabels int               `json:"activeWhiteLabels"`
+	Status            string            `json:"status"` // pending, active, suspended
+	Verified          bool              `json:"verified"`
+	KYCCompleted      bool              `json:"kycCompleted"`
+	CreatedAt         time.Time         `json:"createdAt"`
+	UpdatedAt         time.Time         `json:"updatedAt"`
 }
 
 // Review
 type Review struct {
-	ID            string    `json:"id"`
-	ListingID     string    `json:"listingId"`
-	UserID        string    `json:"userId"`
-	UserName      string    `json:"userName"`
-	Rating        int       `json:"rating"` // 1-5
-	Title         string    `json:"title"`
-	Content       string    `json:"content"`
-	Pros          []string  `json:"pros"`
-	Cons          []string  `json:"cons"`
-	HelpfulCount  int       `json:"helpfulCount"`
-	Response      string    `json:"response,omitempty"`
-	ResponseAt    *time.Time `json:"responseAt,omitempty"`
-	Status        string    `json:"status"` // pending, approved, flagged, removed
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID           string     `json:"id"`
+	ListingID    string     `json:"listingId"`
+	UserID       string     `json:"userId"`
+	UserName     string     `json:"userName"`
+	Rating       int        `json:"rating"` // 1-5
+	Title        string     `json:"title"`
+	Content      string     `json:"content"`
+	Pros         []string   `json:"pros"`
+	Cons         []string   `json:"cons"`
+	HelpfulCount int        `json:"helpfulCount"`
+	Response     string     `json:"response,omitempty"`
+	ResponseAt   *time.Time `json:"responseAt,omitempty"`
+	Status       string     `json:"status"` // pending, approved, flagged, removed
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
 // Transaction Record
 type Transaction struct {
-	ID              string    `json:"id"`
-	Type            string    `json:"type"` // purchase, subscription, upgrade, refund
-	ListingID       string    `json:"listingId,omitempty"`
-	PackageID       string    `json:"packageId,omitempty"`
-	BuyerID         string    `json:"buyerId"`
-	SellerID        string    `json:"sellerId"`
-	Amount          float64   `json:"amount"`
-	Currency        string    `json:"currency"`
-	Status          string    `json:"status"` // pending, completed, failed, refunded
-	PaymentMethod   string    `json:"paymentMethod"` // stripe, crypto, bank
-	PaymentID       string    `json:"paymentId"`
-	Metadata        map[string]interface{} `json:"metadata"`
-	CompletedAt     *time.Time `json:"completedAt,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
+	ID            string                 `json:"id"`
+	Type          string                 `json:"type"` // purchase, subscription, upgrade, refund
+	ListingID     string                 `json:"listingId,omitempty"`
+	PackageID     string                 `json:"packageId,omitempty"`
+	BuyerID       string                 `json:"buyerId"`
+	SellerID      string                 `json:"sellerId"`
+	Amount        float64                `json:"amount"`
+	Currency      string                 `json:"currency"`
+	Status        string                 `json:"status"`        // pending, completed, failed, refunded
+	PaymentMethod string                 `json:"paymentMethod"` // stripe, crypto, bank
+	PaymentID     string                 `json:"paymentId"`
+	Metadata      map[string]interface{} `json:"metadata"`
+	CompletedAt   *time.Time             `json:"completedAt,omitempty"`
+	CreatedAt     time.Time              `json:"createdAt"`
 }
 
 // WebSocket Hub for real-time updates
@@ -217,9 +217,9 @@ func (h *WebSocketHub) Run() {
 
 // Marketplace Cache
 type MarketplaceCache struct {
-	redis     *redis.Client
-	ctx       context.Context
-	TTL       time.Duration
+	redis *redis.Client
+	ctx   context.Context
+	TTL   time.Duration
 }
 
 func NewMarketplaceCache(redisClient *redis.Client) *MarketplaceCache {
@@ -650,7 +650,7 @@ func CreateListing(c *gin.Context) {
 	}
 
 	userID := c.GetString("userID")
-	
+
 	// Get partner profile
 	var partner PartnerProfile
 	err := dbPool.QueryRow(context.Background(), `
@@ -701,7 +701,7 @@ func CreateListing(c *gin.Context) {
 // Get partner profile
 func GetPartnerProfile(c *gin.Context) {
 	userID := c.GetString("userID")
-	
+
 	var profile PartnerProfile
 	var certificationsJSON, socialLinksJSON sql.NullString
 
@@ -877,7 +877,6 @@ func PurchasePackage(c *gin.Context) {
 
 	// Get package details
 	var pkg ServicePackage
-	var featuresJSON sql.NullString
 	err := dbPool.QueryRow(context.Background(), `
 		SELECT id, name, type, price, currency FROM service_packages WHERE id = $1
 	`, req.PackageID).Scan(&pkg.ID, &pkg.Name, &pkg.Type, &pkg.Price, &pkg.Currency)
@@ -926,7 +925,7 @@ func GetMarketplaceStats(c *gin.Context) {
 		ActivePartners    int     `json:"activePartners"`
 		TotalTransactions float64 `json:"totalTransactions"`
 		TotalRevenue      float64 `json:"totalRevenue"`
-		AverageRating    float64 `json:"averageRating"`
+		AverageRating     float64 `json:"averageRating"`
 	}
 
 	dbPool.QueryRow(context.Background(), `
@@ -1013,7 +1012,12 @@ func SearchListings(c *gin.Context) {
 // Helper functions
 func generateUUID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	// RFC 4122 version 4 and variant bits.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
@@ -1029,13 +1033,17 @@ func checkPassword(password, hash string) bool {
 
 func generateAPIKey() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	return hex.EncodeToString(b)
 }
 
 func generateAPISecret() string {
 	b := make([]byte, 64)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -1111,11 +1119,11 @@ func main() {
 
 	// Load configuration
 	config := Config{
-		Port:         getEnv("PORT", "8085"),
-		DatabaseURL:  getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
-		RedisURL:     getEnv("REDIS_URL", "localhost:6379"),
-		JWTSecret:    getEnv("JWT_SECRET", ""),
-		AdminEmail:   getEnv("ADMIN_EMAIL", "admin@tigerwallet.com"),
+		Port:        getEnv("PORT", "8085"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
+		RedisURL:    getEnv("REDIS_URL", "localhost:6379"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
+		AdminEmail:  getEnv("ADMIN_EMAIL", "admin@tigerwallet.com"),
 	}
 
 	// Initialize database

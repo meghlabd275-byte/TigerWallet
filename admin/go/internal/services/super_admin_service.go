@@ -14,11 +14,13 @@
 package services
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/smtp"
 	"os"
 	"time"
@@ -894,17 +896,23 @@ func generateTempPassword() string {
 
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+	out := make([]byte, n)
+	// crypto/rand.Int draws uniformly, avoiding the modulo bias that
+	// `b[i] % len(letters)` introduces for non-power-of-two alphabets.
+	max := big.NewInt(int64(len(letters)))
+	for i := range out {
+		idx, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return ""
+		}
+		out[i] = letters[idx.Int64()]
 	}
-	return string(b)
+	return string(out)
 }
 
 func (s *SuperAdminService) verifyTwoFactor(secret, code string) bool {
-	// In production, use proper TOTP verification
-	// This is a simplified version
-	return len(code) == 6
+	// Real RFC 6238 TOTP verification (see totp.go). Never a length check.
+	return verifyTOTPCode(secret, code)
 }
 
 // Send Email Notification (simplified)

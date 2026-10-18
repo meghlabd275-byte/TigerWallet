@@ -16,6 +16,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -26,7 +27,7 @@ import (
 	"time"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	dsecp "github.com/decred/dcrd/dcrec/secp256k1/v4"
 )
 
 // =============================================================================
@@ -209,8 +210,8 @@ func DeriveAddress(pubKey []byte) Address {
 	case 65:
 		addr = ethcrypto.Keccak256(pubKey[1:])[12:]
 	case 33:
-		if x, y := secp256k1.DecompressPubkey(pubKey); x != nil && y != nil {
-			uncompressed := append([]byte{0x04}, append(x.Bytes(), y.Bytes()...)...)
+		if pk, err := ethcrypto.DecompressPubkey(pubKey); err == nil && pk != nil {
+			uncompressed := elliptic.Marshal(dsecp.S256(), pk.X, pk.Y)
 			addr = ethcrypto.Keccak256(uncompressed[1:])[12:]
 		}
 	case 64:
@@ -425,7 +426,7 @@ func NewZKProver() *ZKProver {
 // arbitrary secret by hashing it into the scalar field (rejection-free via a
 // domain-separated hash-try loop).
 func secretToPrivateKey(secret []byte) (*ecdsa.PrivateKey, error) {
-	n := secp256k1.S256().Params().N
+	n := dsecp.S256().Params().N
 	if len(secret) == 0 {
 		return nil, fmt.Errorf("empty secret")
 	}
@@ -445,7 +446,7 @@ func secretToPrivateKey(secret []byte) (*ecdsa.PrivateKey, error) {
 			continue
 		}
 		priv, err := ethcrypto.ToECDSA(ethcrypto.FromECDSA(&ecdsa.PrivateKey{
-			PublicKey: ecdsa.PublicKey{Curve: secp256k1.S256()},
+			PublicKey: ecdsa.PublicKey{Curve: dsecp.S256()},
 			D:         d,
 		}))
 		if err == nil {
@@ -674,14 +675,30 @@ func NewTSSEngine(threshold, totalParties uint32) *TSSEngine {
 	}
 }
 
-// secp256k1Order returns the curve order N.
-func secp256k1Order() *big.Int {
-	return secp256k1.S256().Params().N
+// curveOrderN returns the curve order N.
+
+// compressPoint returns the SEC1 compressed (33-byte) encoding of the
+// secp256k1 point (x, y): a 0x02/0x03 parity prefix followed by the 32-byte
+// big-endian X coordinate.
+func compressPoint(x, y *big.Int) []byte {
+	out := make([]byte, 33)
+	if y.Bit(0) == 1 {
+		out[0] = 0x03
+	} else {
+		out[0] = 0x02
+	}
+	xb := x.Bytes()
+	copy(out[33-len(xb):], xb)
+	return out
+}
+
+func curveOrderN() *big.Int {
+	return dsecp.S256().Params().N
 }
 
 // randScalar returns a uniformly random scalar in [1, N-1].
 func randScalar() (*big.Int, error) {
-	n := secp256k1Order()
+	n := curveOrderN()
 	for {
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
@@ -709,7 +726,7 @@ func scalarBytes(d *big.Int) []byte {
 
 // pubKeyForScalar returns the 65-byte uncompressed public key for scalar d.
 func pubKeyForScalar(d *big.Int) []byte {
-	x, y := secp256k1.S256().ScalarBaseMult(scalarBytes(d))
+	x, y := dsecp.S256().ScalarBaseMult(scalarBytes(d))
 	return ellipticMarshal(x, y)
 }
 
@@ -731,7 +748,7 @@ func shamirSplit(s *big.Int, t, n uint32) (map[uint32]*big.Int, error) {
 	if t == 0 || n == 0 || t > n {
 		return nil, fmt.Errorf("invalid threshold/parties: t=%d n=%d", t, n)
 	}
-	modN := secp256k1Order()
+	modN := curveOrderN()
 	coeffs := make([]*big.Int, t)
 	coeffs[0] = new(big.Int).Mod(s, modN)
 	for i := uint32(1); i < t; i++ {
@@ -763,7 +780,7 @@ func lagrangeRecover(pts map[uint32]*big.Int) (*big.Int, error) {
 	if len(pts) == 0 {
 		return nil, fmt.Errorf("no shares")
 	}
-	modN := secp256k1Order()
+	modN := curveOrderN()
 	ids := make([]uint32, 0, len(pts))
 	for id := range pts {
 		ids = append(ids, id)
@@ -817,11 +834,11 @@ func (e *TSSEngine) GenerateKeyShares() []KeyShare {
 	out := make([]KeyShare, 0, len(shares))
 	for partyID, share := range shares {
 		d := new(big.Int).SetBytes(scalarBytes(share))
-		x, y := secp256k1.S256().ScalarBaseMult(scalarBytes(d))
+		x, y := dsecp.S256().ScalarBaseMult(scalarBytes(d))
 		out = append(out, KeyShare{
 			PartyID:     partyID,
 			Share:       scalarBytes(share),
-			PublicShare: secp256k1.CompressPubkey(x, y), // real public key of this share
+			PublicShare: compressPoint(x, y), // real public key of this share
 			CreatedAt:   currentTimestamp(),
 			IsActive:    true,
 		})
@@ -846,11 +863,11 @@ func (e *TSSEngine) SignWithShare(partyID uint32, messageHash []byte) ([]byte, e
 		return nil, fmt.Errorf("unknown party %d", partyID)
 	}
 	priv := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{Curve: secp256k1.S256()},
+		PublicKey: ecdsa.PublicKey{Curve: dsecp.S256()},
 		D:         share,
 	}
 	// Ensure the public key is populated consistently.
-	x, y := secp256k1.S256().ScalarBaseMult(scalarBytes(share))
+	x, y := dsecp.S256().ScalarBaseMult(scalarBytes(share))
 	priv.PublicKey.X, priv.PublicKey.Y = x, y
 	if len(messageHash) != 32 {
 		return nil, fmt.Errorf("message hash must be 32 bytes")
@@ -898,10 +915,10 @@ func (e *TSSEngine) CombineShares(shares []SignatureShare, wallet Address, messa
 	}
 
 	priv := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{Curve: secp256k1.S256()},
+		PublicKey: ecdsa.PublicKey{Curve: dsecp.S256()},
 		D:         secret,
 	}
-	x, y := secp256k1.S256().ScalarBaseMult(scalarBytes(secret))
+	x, y := dsecp.S256().ScalarBaseMult(scalarBytes(secret))
 	priv.PublicKey.X, priv.PublicKey.Y = x, y
 
 	sig, err := ethcrypto.Sign(messageHash, priv)

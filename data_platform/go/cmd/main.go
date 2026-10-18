@@ -41,14 +41,14 @@ type AnalyticsEvent struct {
 }
 
 type UserActivity struct {
-	ID          uuid.UUID `json:"id"`
-	UserID      uuid.UUID `json:"user_id"`
-	Action      string    `json:"action"`
-	Resource    string    `json:"resource"`
-	ResourceID  string    `json:"resource_id"`
-	Metadata    string    `json:"metadata"`
-	IPAddress   string    `json:"ip_address"`
-	Timestamp   time.Time `json:"timestamp"`
+	ID          uuid.UUID              `json:"id"`
+	UserID      uuid.UUID              `json:"user_id"`
+	Action      string                 `json:"action"`
+	Resource    string                 `json:"resource"`
+	ResourceID  string                 `json:"resource_id"`
+	Properties  map[string]interface{} `json:"properties"`
+	IPAddress   string                 `json:"ip_address"`
+	Timestamp   time.Time              `json:"timestamp"`
 }
 
 type Report struct {
@@ -99,7 +99,7 @@ type DataSource struct {
 // Global variables
 var (
 	db     *pgxpool.Pool
-	redis  *redis.Client
+	redisClient *redis.Client
 	config Config
 	logger *log.Logger
 )
@@ -208,8 +208,8 @@ func initRedis() error {
 		return err
 	}
 
-	redis = redis.NewClient(opt)
-	return redis.Ping(context.Background()).Err()
+	redisClient = redis.NewClient(opt)
+	return redisClient.Ping(context.Background()).Err()
 }
 
 // Handlers
@@ -549,7 +549,7 @@ func HealthCheck(c *gin.Context) {
 	}
 	
 	redisStatus := "healthy"
-	if err := redis.Ping(ctx).Err(); err != nil {
+	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
@@ -663,6 +663,6 @@ func main() {
 	}
 
 	db.Close()
-	redis.Close()
+	redisClient.Close()
 	logger.Println("Server exited")
 }

@@ -1332,8 +1332,8 @@ func generateMFAQRCode(userID, secret string) string {
 }
 
 func verifyMFACode(secret, code string) bool {
-	// In production, use proper TOTP verification
-	return len(code) == 6
+	// Real RFC 6238 TOTP verification (see totp.go). Never a length check.
+	return verifyTOTP(secret, code)
 }
 
 func generateBackupCodes(userID string) []string {

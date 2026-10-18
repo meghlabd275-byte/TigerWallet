@@ -164,7 +164,7 @@ func (s *BackupService) dumpSchema(ctx context.Context, conn *pgx.Conn, tables [
 
 	// Get sequence definitions
 	rows, err := conn.Query(ctx, `
-		SELECT sequence_name FROM information_schema.sequences 
+		SELECT sequence_name FROM information_schema.sequences
 		WHERE sequence_schema = 'public'
 	`)
 	if err != nil {
@@ -177,33 +177,124 @@ func (s *BackupService) dumpSchema(ctx context.Context, conn *pgx.Conn, tables [
 		if err := rows.Scan(&seq); err != nil {
 			return "", err
 		}
-		schema.WriteString(fmt.Sprintf("SELECT last_value FROM %s;\n\n", seq))
+		schema.WriteString(fmt.Sprintf("SELECT last_value FROM %s;\n\n", quoteIdent(seq)))
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
 	}
 
-	// Get table schemas
+	// pg_get_ddl() does not exist in PostgreSQL. Reconstruct each CREATE TABLE
+	// from the catalog instead.
 	for _, table := range tables {
-		rows, err := conn.Query(ctx, fmt.Sprintf("SELECT pg_get_ddl('%s')", table))
+		ddl, err := tableDDL(ctx, conn, table)
 		if err != nil {
 			return "", err
 		}
-		for rows.Next() {
-			var ddl string
-			if err := rows.Scan(&ddl); err != nil {
-				return "", err
-			}
-			schema.WriteString(ddl)
-			schema.WriteString("\n\n")
-		}
-		rows.Close()
+		schema.WriteString(ddl)
+		schema.WriteString("\n\n")
 	}
 
 	return schema.String(), nil
 }
 
+// quoteIdent quotes a SQL identifier, doubling embedded double quotes so the
+// value cannot break out of the identifier context.
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// tableDDL reconstructs a CREATE TABLE statement for a public table from the
+// PostgreSQL catalog.
+func tableDDL(ctx context.Context, conn *pgx.Conn, table string) (string, error) {
+	rows, err := conn.Query(ctx, `
+		SELECT column_name, data_type, character_maximum_length,
+		       numeric_precision, numeric_scale, is_nullable, column_default
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = $1
+		ORDER BY ordinal_position
+	`, table)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var (
+			name, dataType, isNullable string
+			maxLen, numPrec, numScale  *int64
+			colDefault                 *string
+		)
+		if err := rows.Scan(&name, &dataType, &maxLen, &numPrec, &numScale, &isNullable, &colDefault); err != nil {
+			return "", err
+		}
+
+		typ := dataType
+		switch dataType {
+		case "character varying":
+			if maxLen != nil {
+				typ = fmt.Sprintf("varchar(%d)", *maxLen)
+			} else {
+				typ = "varchar"
+			}
+		case "character":
+			if maxLen != nil {
+				typ = fmt.Sprintf("char(%d)", *maxLen)
+			}
+		case "numeric":
+			if numPrec != nil && numScale != nil {
+				typ = fmt.Sprintf("numeric(%d,%d)", *numPrec, *numScale)
+			}
+		case "timestamp with time zone":
+			typ = "timestamptz"
+		case "timestamp without time zone":
+			typ = "timestamp"
+		case "USER-DEFINED":
+			typ = "text"
+		}
+
+		col := fmt.Sprintf("    %s %s", quoteIdent(name), typ)
+		if colDefault != nil && *colDefault != "" {
+			col += " DEFAULT " + *colDefault
+		}
+		if isNullable == "NO" {
+			col += " NOT NULL"
+		}
+		cols = append(cols, col)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+
+	// Primary key constraint, when present.
+	pkRows, err := conn.Query(ctx, `
+		SELECT a.attname
+		FROM pg_index i
+		JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+		WHERE i.indrelid = $1::regclass AND i.indisprimary
+		ORDER BY array_position(i.indkey, a.attnum)
+	`, quoteIdent(table))
+	if err == nil {
+		var pkCols []string
+		for pkRows.Next() {
+			var name string
+			if err := pkRows.Scan(&name); err == nil {
+				pkCols = append(pkCols, quoteIdent(name))
+			}
+		}
+		pkRows.Close()
+		if len(pkCols) > 0 {
+			cols = append(cols, fmt.Sprintf("    PRIMARY KEY (%s)", strings.Join(pkCols, ", ")))
+		}
+	}
+
+	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n%s\n);", quoteIdent(table), strings.Join(cols, ",\n")), nil
+}
+
 func (s *BackupService) dumpTableData(ctx context.Context, conn *pgx.Conn, table string) (string, error) {
 	var data strings.Builder
 
-	rows, err := conn.Query(ctx, fmt.Sprintf("SELECT * FROM %s", table))
+	rows, err := conn.Query(ctx, fmt.Sprintf("SELECT * FROM %s", quoteIdent(table)))
 	if err != nil {
 		return "", err
 	}
@@ -214,6 +305,10 @@ func (s *BackupService) dumpTableData(ctx context.Context, conn *pgx.Conn, table
 	for i, fd := range fieldDescriptions {
 		columns[i] = string(fd.Name)
 	}
+	quotedColumns := make([]string, len(columns))
+	for i, c := range columns {
+		quotedColumns[i] = quoteIdent(c)
+	}
 
 	for rows.Next() {
 		values, err := rows.Values()
@@ -222,9 +317,9 @@ func (s *BackupService) dumpTableData(ctx context.Context, conn *pgx.Conn, table
 		}
 
 		data.WriteString("INSERT INTO ")
-		data.WriteString(table)
+		data.WriteString(quoteIdent(table))
 		data.WriteString(" (")
-		data.WriteString(strings.Join(columns, ", "))
+		data.WriteString(strings.Join(quotedColumns, ", "))
 		data.WriteString(") VALUES (")
 
 		for i, v := range values {
@@ -237,12 +332,15 @@ func (s *BackupService) dumpTableData(ctx context.Context, conn *pgx.Conn, table
 			case string:
 				data.WriteString(fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''")))
 			case []byte:
-				data.WriteString(fmt.Sprintf("'\\x%x'", fmt.Sprintf("%x", v)))
+				data.WriteString(fmt.Sprintf("'\\x%x'", v))
 			default:
 				data.WriteString(fmt.Sprintf("%v", v))
 			}
 		}
 		data.WriteString(");\n")
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
 	}
 
 	return data.String(), nil

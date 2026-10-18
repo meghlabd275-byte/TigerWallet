@@ -1,7 +1,7 @@
 /**
  * TigerWallet Transaction Shield Service
  * AI-Powered Fraud Detection & Prevention System
- * 
+ *
  * Features:
  * - Real-time transaction monitoring
  * - ML-based fraud detection
@@ -17,19 +17,13 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -65,16 +59,16 @@ type Config struct {
 func LoadConfig() *Config {
 	return &Config{
 		ServerPort:      getEnv("TRANSACTION_SHIELD_PORT", "9095"),
-		DBHost:         getEnv("DB_HOST", "localhost"),
-		DBPort:         getEnv("DB_PORT", "5432"),
-		DBUser:         getEnv("DB_USER", "tigerwallet"),
+		DBHost:          getEnv("DB_HOST", "localhost"),
+		DBPort:          getEnv("DB_PORT", "5432"),
+		DBUser:          getEnv("DB_USER", "tigerwallet"),
 		DBPassword:      getEnv("DB_PASSWORD", "password"),
-		DBName:         getEnv("DB_NAME", "tigerwallet"),
-		RedisHost:      getEnv("REDIS_HOST", "localhost"),
-		RedisPort:      getEnv("REDIS_PORT", "6379"),
-		AIEndpoint:     getEnv("AI_ENDPOINT", "http://localhost:8080"),
-		AIAPIKey:       getEnv("AI_API_KEY", ""),
-		BlockThreshold: 0.85,
+		DBName:          getEnv("DB_NAME", "tigerwallet"),
+		RedisHost:       getEnv("REDIS_HOST", "localhost"),
+		RedisPort:       getEnv("REDIS_PORT", "6379"),
+		AIEndpoint:      getEnv("AI_ENDPOINT", "http://localhost:8080"),
+		AIAPIKey:        getEnv("AI_API_KEY", ""),
+		BlockThreshold:  0.85,
 		ReviewThreshold: 0.60,
 		AlertThreshold:  0.40,
 	}
@@ -101,18 +95,18 @@ type Transaction struct {
 	UserID          uint           `gorm:"index" json:"user_id"`
 	User            User           `gorm:"foreignKey:UserID" json:"-"`
 	ChainID         int            `json:"chain_id"`
-	FromAddress     string          `gorm:"index" json:"from_address"`
-	ToAddress       string          `gorm:"index" json:"to_address"`
+	FromAddress     string         `gorm:"index" json:"from_address"`
+	ToAddress       string         `gorm:"index" json:"to_address"`
 	Amount          string         `json:"amount"`
 	Token           string         `json:"token"`
-	TokenAddress    string          `json:"token_address"`
+	TokenAddress    string         `json:"token_address"`
 	GasUsed         string         `json:"gas_used"`
 	GasPrice        string         `json:"gas_price"`
-	Status          string          `json:"status"` // pending, confirmed, failed, blocked
+	Status          string         `json:"status"` // pending, confirmed, failed, blocked
 	BlockNumber     int64          `json:"block_number"`
 	Timestamp       time.Time      `json:"timestamp"`
 	RiskScore       float64        `json:"risk_score"`
-	RiskLevel       string         `json:"risk_level"` // low, medium, high, critical
+	RiskLevel       string         `json:"risk_level"`   // low, medium, high, critical
 	RiskReasons     string         `json:"risk_reasons"` // JSON array
 	ReviewedBy      *uint          `json:"reviewed_by"`
 	ReviewedAt      *time.Time     `json:"reviewed_at"`
@@ -120,15 +114,15 @@ type Transaction struct {
 }
 
 type User struct {
-	ID                uint           `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
-	UUID              string         `gorm:"uniqueIndex;size:36" json:"uuid"`
-	Email             string         `gorm:"index" json:"email"`
-	Username          string         `gorm:"uniqueIndex" json:"username"`
-	WalletAddresses   []WalletAddress `json:"wallet_addresses"`
-	RiskProfile       RiskProfile    `json:"risk_profile"`
+	ID              uint            `gorm:"primarykey" json:"id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt  `gorm:"index" json:"-"`
+	UUID            string          `gorm:"uniqueIndex;size:36" json:"uuid"`
+	Email           string          `gorm:"index" json:"email"`
+	Username        string          `gorm:"uniqueIndex" json:"username"`
+	WalletAddresses []WalletAddress `json:"wallet_addresses"`
+	RiskProfile     RiskProfile     `json:"risk_profile"`
 }
 
 type WalletAddress struct {
@@ -150,58 +144,58 @@ type WalletAddress struct {
 }
 
 type RiskProfile struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	UserID           uint      `gorm:"uniqueIndex" json:"user_id"`
-	User             User      `gorm:"foreignKey:UserID" json:"-"`
-	OverallScore     float64   `json:"overall_score"` // 0-1
-	VelocityScore    float64   `json:"velocity_score"`
-	AmountScore      float64   `json:"amount_score"`
-	PatternScore     float64   `json:"pattern_score"`
-	BehavioralScore  float64   `json:"behavioral_score"`
-	ReputationScore  float64   `json:"reputation_score"`
-	LastUpdated      time.Time `json:"last_updated"`
-	Flags            string    `json:"flags"` // JSON array
-	RiskLevel        string    `json:"risk_level"` // low, medium, high, critical
-	ReviewStatus     string    `json:"review_status"` // none, pending, approved, flagged
-	ManualOverride   bool      `json:"manual_override"`
-	OverrideBy       *uint     `json:"override_by"`
-	OverrideAt       *time.Time `json:"override_at"`
-	OverrideReason   string    `json:"override_reason"`
+	ID              uint       `gorm:"primarykey" json:"id"`
+	UserID          uint       `gorm:"uniqueIndex" json:"user_id"`
+	User            *User      `gorm:"foreignKey:UserID" json:"-"`
+	OverallScore    float64    `json:"overall_score"` // 0-1
+	VelocityScore   float64    `json:"velocity_score"`
+	AmountScore     float64    `json:"amount_score"`
+	PatternScore    float64    `json:"pattern_score"`
+	BehavioralScore float64    `json:"behavioral_score"`
+	ReputationScore float64    `json:"reputation_score"`
+	LastUpdated     time.Time  `json:"last_updated"`
+	Flags           string     `json:"flags"`         // JSON array
+	RiskLevel       string     `json:"risk_level"`    // low, medium, high, critical
+	ReviewStatus    string     `json:"review_status"` // none, pending, approved, flagged
+	ManualOverride  bool       `json:"manual_override"`
+	OverrideBy      *uint      `json:"override_by"`
+	OverrideAt      *time.Time `json:"override_at"`
+	OverrideReason  string     `json:"override_reason"`
 }
 
 type Alert struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	AlertID       string    `gorm:"uniqueIndex;size:36" json:"alert_id"`
-	UserID        uint      `gorm:"index" json:"user_id"`
-	User          User      `gorm:"foreignKey:UserID" json:"-"`
-	TransactionID *uint     `json:"transaction_id"`
+	ID            uint        `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time   `json:"created_at"`
+	AlertID       string      `gorm:"uniqueIndex;size:36" json:"alert_id"`
+	UserID        uint        `gorm:"index" json:"user_id"`
+	User          User        `gorm:"foreignKey:UserID" json:"-"`
+	TransactionID *uint       `json:"transaction_id"`
 	Transaction   Transaction `gorm:"foreignKey:TransactionID" json:"-"`
-	AlertType    string    `json:"alert_type"` // high_risk, unusual_activity, pattern_violation, velocity_exceeded
-	Severity     string    `json:"severity"` // low, medium, high, critical
-	Title        string    `json:"title"`
-	Description   string    `json:"description"`
-	RiskFactors  string    `json:"risk_factors"` // JSON array
-	Amount       string    `json:"amount"`
-	Timestamp    time.Time `json:"timestamp"`
-	Status       string    `json:"status"` // new, acknowledged, resolved, false_positive
-	ResolvedBy   *uint     `json:"resolved_by"`
-	ResolvedAt   *time.Time `json:"resolved_at"`
-	Resolution   string    `json:"resolution"`
+	AlertType     string      `json:"alert_type"` // high_risk, unusual_activity, pattern_violation, velocity_exceeded
+	Severity      string      `json:"severity"`   // low, medium, high, critical
+	Title         string      `json:"title"`
+	Description   string      `json:"description"`
+	RiskFactors   string      `json:"risk_factors"` // JSON array
+	Amount        string      `json:"amount"`
+	Timestamp     time.Time   `json:"timestamp"`
+	Status        string      `json:"status"` // new, acknowledged, resolved, false_positive
+	ResolvedBy    *uint       `json:"resolved_by"`
+	ResolvedAt    *time.Time  `json:"resolved_at"`
+	Resolution    string      `json:"resolution"`
 }
 
 type BlockedAddress struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	Address       string    `gorm:"uniqueIndex;size:44" json:"address"`
-	AddressType   string    `json:"address_type"` // evm, bitcoin, solana, etc.
-	ChainID       int       `json:"chain_id"`
-	BlockedReason string    `json:"blocked_reason"`
-	BlockedAt     time.Time `json:"blocked_at"`
-	BlockedBy     string    `json:"blocked_by"` // system, admin, oracle
+	ID            uint       `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time  `json:"created_at"`
+	Address       string     `gorm:"uniqueIndex;size:44" json:"address"`
+	AddressType   string     `json:"address_type"` // evm, bitcoin, solana, etc.
+	ChainID       int        `json:"chain_id"`
+	BlockedReason string     `json:"blocked_reason"`
+	BlockedAt     time.Time  `json:"blocked_at"`
+	BlockedBy     string     `json:"blocked_by"` // system, admin, oracle
 	Expiry        *time.Time `json:"expiry"`
-	IsPermanent   bool      `json:"is_permanent"`
-	Metadata      string    `json:"metadata"` // JSON
+	IsPermanent   bool       `json:"is_permanent"`
+	Metadata      string     `json:"metadata"` // JSON
 }
 
 type TransactionPattern struct {
@@ -212,7 +206,7 @@ type TransactionPattern struct {
 	Description       string    `json:"description"`
 	RiskWeight        float64   `json:"risk_weight"`
 	DetectionRules    string    `json:"detection_rules"` // JSON
-	Action            string    `json:"action"` // block, review, alert
+	Action            string    `json:"action"`          // block, review, alert
 	MinTransactions   int       `json:"min_transactions"`
 	TimeWindowSeconds int       `json:"time_window_seconds"`
 	AmountThreshold   string    `json:"amount_threshold"`
@@ -222,14 +216,14 @@ type TransactionPattern struct {
 }
 
 type ReviewQueue struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	TransactionID uint      `gorm:"uniqueIndex" json:"transaction_id"`
+	ID            uint        `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time   `json:"created_at"`
+	TransactionID uint        `gorm:"uniqueIndex" json:"transaction_id"`
 	Transaction   Transaction `gorm:"foreignKey:TransactionID" json:"-"`
-	Priority      int       `json:"priority"` // 1-5, 1 is highest
-	AssignedTo   *uint     `json:"assigned_to"`
-	Status       string    `json:"status"` // pending, in_review, resolved
-	Notes        string    `json:"notes"`
+	Priority      int         `json:"priority"` // 1-5, 1 is highest
+	AssignedTo    *uint       `json:"assigned_to"`
+	Status        string      `json:"status"` // pending, in_review, resolved
+	Notes         string      `json:"notes"`
 }
 
 // ============================================================================
@@ -245,28 +239,28 @@ type RiskScore struct {
 }
 
 type RiskFactor struct {
-	Factor   string  `json:"factor"`
-	Weight   float64 `json:"weight"`
-	Score    float64 `json:"score"`
-	Reason   string  `json:"reason"`
-	Details  string  `json:"details"`
+	Factor  string  `json:"factor"`
+	Weight  float64 `json:"weight"`
+	Score   float64 `json:"score"`
+	Reason  string  `json:"reason"`
+	Details string  `json:"details"`
 }
 
 type TransactionFeatures struct {
 	// User features
-	UserTxCount          int     `json:"user_tx_count"`
-	UserAvgAmount        float64 `json:"user_avg_amount"`
-	UserMaxAmount        float64 `json:"user_max_amount"`
-	UserAccountAgeDays   int     `json:"user_account_age_days"`
-	UserKYCLevel        int     `json:"user_kyc_level"`
-	UserRiskProfile     float64 `json:"user_risk_profile"`
-	
+	UserTxCount        int     `json:"user_tx_count"`
+	UserAvgAmount      float64 `json:"user_avg_amount"`
+	UserMaxAmount      float64 `json:"user_max_amount"`
+	UserAccountAgeDays int     `json:"user_account_age_days"`
+	UserKYCLevel       int     `json:"user_kyc_level"`
+	UserRiskProfile    float64 `json:"user_risk_profile"`
+
 	// Transaction features
-	Amount              float64 `json:"amount"`
-	AmountInUSD         float64 `json:"amount_in_usd"`
-	IsLargeAmount       bool    `json:"is_large_amount"`
-	TokenIsStablecoin   bool    `json:"token_is_stablecoin"`
-	
+	Amount            float64 `json:"amount"`
+	AmountInUSD       float64 `json:"amount_in_usd"`
+	IsLargeAmount     bool    `json:"is_large_amount"`
+	TokenIsStablecoin bool    `json:"token_is_stablecoin"`
+
 	// Address features
 	FromAddressAge      int     `json:"from_address_age"`
 	FromAddressTxCount  int     `json:"from_address_tx_count"`
@@ -279,21 +273,21 @@ type TransactionFeatures struct {
 	ToAddressTrusted    bool    `json:"to_address_trusted"`
 	ToAddressRisk       float64 `json:"to_address_risk"`
 	ToAddressIsContract bool    `json:"to_address_is_contract"`
-	
+
 	// Velocity features
-	TxLast1Hour         int     `json:"tx_last_1_hour"`
-	TxLast24Hours       int     `json:"tx_last_24_hours"`
-	AmountLast24Hours   float64 `json:"amount_last_24_hours"`
-	
+	TxLast1Hour       int     `json:"tx_last_1_hour"`
+	TxLast24Hours     int     `json:"tx_last_24_hours"`
+	AmountLast24Hours float64 `json:"amount_last_24_hours"`
+
 	// Pattern features
-	IsNewDestination    bool    `json:"is_new_destination"`
-	IsUnusualTime      bool    `json:"is_unusual_time"`
-	IsCrossChain       bool    `json:"is_cross_chain"`
-	
+	IsNewDestination bool `json:"is_new_destination"`
+	IsUnusualTime    bool `json:"is_unusual_time"`
+	IsCrossChain     bool `json:"is_cross_chain"`
+
 	// Reputation features
-	ToAddressBlacklisted bool    `json:"to_address_blacklisted"`
-	ToAddressWhitelisted bool    `json:"to_address_whitelisted"`
-	FromAddressWhitelisted bool  `json:"from_address_whitelisted"`
+	ToAddressBlacklisted   bool `json:"to_address_blacklisted"`
+	ToAddressWhitelisted   bool `json:"to_address_whitelisted"`
+	FromAddressWhitelisted bool `json:"from_address_whitelisted"`
 }
 
 // ============================================================================
@@ -301,42 +295,42 @@ type TransactionFeatures struct {
 // ============================================================================
 
 type FraudDetectionEngine struct {
-	db          *gorm.DB
-	redis       *redis.Client
-	config      *Config
-	patterns    []TransactionPattern
-	mu          sync.RWMutex
+	db       *gorm.DB
+	redis    *redis.Client
+	config   *Config
+	patterns []TransactionPattern
+	mu       sync.RWMutex
 }
 
 func NewFraudDetectionEngine(cfg *Config, db *gorm.DB) *FraudDetectionEngine {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: "",
-		DB: 0,
+		DB:       0,
 	})
-	
+
 	engine := &FraudDetectionEngine{
 		db:     db,
 		redis:  rdb,
 		config: cfg,
 		patterns: []TransactionPattern{
 			{
-				PatternID:   "velocity-001",
-				PatternName: "High Velocity Transactions",
-				PatternType: "velocity",
-				Description: "Detects unusually high transaction frequency",
-				RiskWeight:  0.3,
-				Action:      "review",
-				MinTransactions: 10,
+				PatternID:         "velocity-001",
+				PatternName:       "High Velocity Transactions",
+				PatternType:       "velocity",
+				Description:       "Detects unusually high transaction frequency",
+				RiskWeight:        0.3,
+				Action:            "review",
+				MinTransactions:   10,
 				TimeWindowSeconds: 3600,
 			},
 			{
-				PatternID:   "amount-001",
-				PatternName: "Large Amount Transfer",
-				PatternType: "amount",
-				Description: "Detects transfers exceeding user's normal amount",
-				RiskWeight:  0.4,
-				Action:      "review",
+				PatternID:       "amount-001",
+				PatternName:     "Large Amount Transfer",
+				PatternType:     "amount",
+				Description:     "Detects transfers exceeding user's normal amount",
+				RiskWeight:      0.4,
+				Action:          "review",
 				AmountThreshold: "10000",
 			},
 			{
@@ -357,7 +351,7 @@ func NewFraudDetectionEngine(cfg *Config, db *gorm.DB) *FraudDetectionEngine {
 			},
 		},
 	}
-	
+
 	return engine
 }
 
@@ -366,37 +360,37 @@ func (e *FraudDetectionEngine) AnalyzeTransaction(tx *Transaction) (*RiskScore, 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Calculate component scores
 	componentScores := make(map[string]float64)
 	riskFactors := []RiskFactor{}
-	
+
 	// 1. Velocity Score
 	velocityScore := e.calculateVelocityScore(features)
 	componentScores["velocity"] = velocityScore
 	if velocityScore > 0.6 {
 		riskFactors = append(riskFactors, RiskFactor{
-			Factor: "velocity",
-			Weight: 0.25,
-			Score:  velocityScore,
-			Reason: "High transaction velocity detected",
+			Factor:  "velocity",
+			Weight:  0.25,
+			Score:   velocityScore,
+			Reason:  "High transaction velocity detected",
 			Details: fmt.Sprintf("%d transactions in last 24 hours", features.TxLast24Hours),
 		})
 	}
-	
+
 	// 2. Amount Score
 	amountScore := e.calculateAmountScore(features)
 	componentScores["amount"] = amountScore
 	if amountScore > 0.6 {
 		riskFactors = append(riskFactors, RiskFactor{
-			Factor: "amount",
-			Weight: 0.25,
-			Score:  amountScore,
-			Reason: "Unusually large transaction amount",
+			Factor:  "amount",
+			Weight:  0.25,
+			Score:   amountScore,
+			Reason:  "Unusually large transaction amount",
 			Details: fmt.Sprintf("Amount: %s USD", fmt.Sprintf("%.2f", features.AmountInUSD)),
 		})
 	}
-	
+
 	// 3. Pattern Score
 	patternScore := e.calculatePatternScore(tx, features)
 	componentScores["pattern"] = patternScore
@@ -408,7 +402,7 @@ func (e *FraudDetectionEngine) AnalyzeTransaction(tx *Transaction) (*RiskScore, 
 			Reason: "Transaction matches suspicious pattern",
 		})
 	}
-	
+
 	// 4. Behavioral Score
 	behavioralScore := e.calculateBehavioralScore(features)
 	componentScores["behavioral"] = behavioralScore
@@ -420,7 +414,7 @@ func (e *FraudDetectionEngine) AnalyzeTransaction(tx *Transaction) (*RiskScore, 
 			Reason: "Unusual behavioral patterns detected",
 		})
 	}
-	
+
 	// 5. Reputation Score
 	reputationScore := e.calculateReputationScore(features)
 	componentScores["reputation"] = reputationScore
@@ -432,21 +426,21 @@ func (e *FraudDetectionEngine) AnalyzeTransaction(tx *Transaction) (*RiskScore, 
 			Reason: "Address has poor reputation",
 		})
 	}
-	
+
 	// Calculate overall score
 	weights := map[string]float64{
-		"velocity":    0.25,
-		"amount":      0.25,
-		"pattern":     0.20,
-		"behavioral":  0.15,
-		"reputation":  0.15,
+		"velocity":   0.25,
+		"amount":     0.25,
+		"pattern":    0.20,
+		"behavioral": 0.15,
+		"reputation": 0.15,
 	}
-	
+
 	overallScore := 0.0
 	for component, score := range componentScores {
 		overallScore += score * weights[component]
 	}
-	
+
 	// Determine risk level
 	riskLevel := "low"
 	if overallScore >= e.config.BlockThreshold {
@@ -456,10 +450,10 @@ func (e *FraudDetectionEngine) AnalyzeTransaction(tx *Transaction) (*RiskScore, 
 	} else if overallScore >= e.config.ReviewThreshold {
 		riskLevel = "medium"
 	}
-	
+
 	// Generate recommendations
 	recommendations := e.generateRecommendations(overallScore, riskFactors)
-	
+
 	return &RiskScore{
 		OverallScore:    overallScore,
 		ComponentScores: componentScores,
@@ -471,10 +465,10 @@ func (e *FraudDetectionEngine) AnalyzeTransaction(tx *Transaction) (*RiskScore, 
 
 func (e *FraudDetectionEngine) extractFeatures(tx *Transaction) (*TransactionFeatures, error) {
 	features := &TransactionFeatures{
-		Amount:    parseAmount(tx.Amount),
+		Amount:      parseAmount(tx.Amount),
 		AmountInUSD: parseAmount(tx.Amount), // In production, convert to USD
 	}
-	
+
 	// Get user info
 	var user User
 	if err := e.db.Preload("RiskProfile").First(&user, tx.UserID).Error; err == nil {
@@ -487,7 +481,7 @@ func (e *FraudDetectionEngine) extractFeatures(tx *Transaction) (*TransactionFea
 			features.UserRiskProfile = user.RiskProfile.OverallScore
 		}
 	}
-	
+
 	// Get from address info
 	var fromAddr WalletAddress
 	if err := e.db.Where("address = ? AND address_type = ?", tx.FromAddress, "evm").First(&fromAddr).Error; err == nil {
@@ -497,7 +491,7 @@ func (e *FraudDetectionEngine) extractFeatures(tx *Transaction) (*TransactionFea
 		features.FromAddressTrusted = fromAddr.IsTrusted
 		features.FromAddressRisk = fromAddr.RiskScore
 	}
-	
+
 	// Get to address info
 	var toAddr WalletAddress
 	if err := e.db.Where("address = ? AND address_type = ?", tx.ToAddress, "evm").First(&toAddr).Error; err == nil {
@@ -507,56 +501,56 @@ func (e *FraudDetectionEngine) extractFeatures(tx *Transaction) (*TransactionFea
 		features.ToAddressTrusted = toAddr.IsTrusted
 		features.ToAddressRisk = toAddr.RiskScore
 	}
-	
+
 	// Check if blacklisted
 	var blocked BlockedAddress
 	features.ToAddressBlacklisted = e.db.Where("address = ?", tx.ToAddress).First(&blocked).Error == nil
-	
+
 	// Check velocity
 	features.TxLast1Hour = 5
 	features.TxLast24Hours = 25
 	features.AmountLast24Hours = 50000.0
-	
+
 	// Check if new destination
 	features.IsNewDestination = features.ToAddressAge < 7
-	
+
 	// Check time
 	hour := time.Now().Hour()
 	features.IsUnusualTime = hour < 6 || hour > 22
-	
+
 	return features, nil
 }
 
 func (e *FraudDetectionEngine) calculateVelocityScore(f *TransactionFeatures) float64 {
 	score := 0.0
-	
+
 	// Check 1-hour velocity
 	if f.TxLast1Hour > 10 {
 		score += 0.4
 	} else if f.TxLast1Hour > 5 {
 		score += 0.2
 	}
-	
+
 	// Check 24-hour velocity
 	if f.TxLast24Hours > 50 {
 		score += 0.4
 	} else if f.TxLast24Hours > 20 {
 		score += 0.2
 	}
-	
+
 	// Check amount velocity
 	if f.AmountLast24Hours > 100000 {
 		score += 0.2
 	} else if f.AmountLast24Hours > 50000 {
 		score += 0.1
 	}
-	
+
 	return math.Min(score, 1.0)
 }
 
 func (e *FraudDetectionEngine) calculateAmountScore(f *TransactionFeatures) float64 {
 	score := 0.0
-	
+
 	// Large amount check
 	if f.AmountInUSD > 100000 {
 		score += 0.5
@@ -565,7 +559,7 @@ func (e *FraudDetectionEngine) calculateAmountScore(f *TransactionFeatures) floa
 	} else if f.AmountInUSD > 10000 {
 		score += 0.2
 	}
-	
+
 	// Compare to user's average
 	if f.UserAvgAmount > 0 {
 		ratio := f.AmountInUSD / f.UserAvgAmount
@@ -577,23 +571,23 @@ func (e *FraudDetectionEngine) calculateAmountScore(f *TransactionFeatures) floa
 			score += 0.1
 		}
 	}
-	
+
 	// First large transaction
 	if f.UserMaxAmount < 10000 && f.AmountInUSD > 10000 {
 		score += 0.3
 	}
-	
+
 	return math.Min(score, 1.0)
 }
 
 func (e *FraudDetectionEngine) calculatePatternScore(tx *Transaction, f *TransactionFeatures) float64 {
 	score := 0.0
-	
+
 	for _, pattern := range e.patterns {
 		if !pattern.IsActive {
 			continue
 		}
-		
+
 		switch pattern.PatternType {
 		case "velocity":
 			if f.TxLast1Hour >= pattern.MinTransactions {
@@ -613,69 +607,69 @@ func (e *FraudDetectionEngine) calculatePatternScore(tx *Transaction, f *Transac
 			}
 		}
 	}
-	
+
 	return math.Min(score, 1.0)
 }
 
 func (e *FraudDetectionEngine) calculateBehavioralScore(f *TransactionFeatures) float64 {
 	score := 0.0
-	
+
 	// Unusual time
 	if f.IsUnusualTime {
 		score += 0.3
 	}
-	
+
 	// New destination
 	if f.IsNewDestination {
 		score += 0.2
 	}
-	
+
 	// Low KYC
 	if f.UserKYCLevel < 2 {
 		score += 0.3
 	}
-	
+
 	// New account with large transaction
 	if f.UserAccountAgeDays < 30 && f.AmountInUSD > 10000 {
 		score += 0.4
 	}
-	
+
 	return math.Min(score, 1.0)
 }
 
 func (e *FraudDetectionEngine) calculateReputationScore(f *TransactionFeatures) float64 {
 	score := 0.0
-	
+
 	// From address risk
 	score += f.FromAddressRisk * 0.3
-	
+
 	// To address risk
 	score += f.ToAddressRisk * 0.3
-	
+
 	// Blacklist check
 	if f.ToAddressBlacklisted {
 		score += 0.4
 	}
-	
+
 	// Trust check
 	if !f.FromAddressTrusted && !f.ToAddressTrusted {
 		score += 0.1
 	}
-	
+
 	return math.Min(score, 1.0)
 }
 
 func (e *FraudDetectionEngine) generateRecommendations(score float64, factors []RiskFactor) []string {
 	recommendations := []string{}
-	
+
 	if score >= e.config.BlockThreshold {
 		recommendations = append(recommendations, "Block this transaction - critical risk detected")
 	}
-	
+
 	if score >= e.config.ReviewThreshold {
 		recommendations = append(recommendations, "Add to review queue for manual verification")
 	}
-	
+
 	for _, factor := range factors {
 		switch factor.Factor {
 		case "velocity":
@@ -686,11 +680,11 @@ func (e *FraudDetectionEngine) generateRecommendations(score float64, factors []
 			recommendations = append(recommendations, "Review address reputation before processing")
 		}
 	}
-	
+
 	if len(recommendations) == 0 {
 		recommendations = append(recommendations, "Transaction appears normal - proceed with standard processing")
 	}
-	
+
 	return recommendations
 }
 
@@ -699,42 +693,42 @@ func (e *FraudDetectionEngine) generateRecommendations(score float64, factors []
 // ============================================================================
 
 type TransactionShieldServer struct {
-	config  *Config
-	db      *gorm.DB
-	redis   *redis.Client
-	engine  *FraudDetectionEngine
-	router  *gin.Engine
+	config *Config
+	db     *gorm.DB
+	redis  *redis.Client
+	engine *FraudDetectionEngine
+	router *gin.Engine
 }
 
 func NewTransactionShieldServer(cfg *Config) *TransactionShieldServer {
 	// Setup database
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
-	
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	
+
 	// Auto migrate
 	db.AutoMigrate(&Transaction{}, &User{}, &WalletAddress{}, &RiskProfile{}, &Alert{}, &BlockedAddress{}, &TransactionPattern{}, &ReviewQueue{})
-	
+
 	rdb := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: "",
-		DB: 0,
+		DB:       0,
 	})
-	
+
 	engine := NewFraudDetectionEngine(cfg, db)
-	
+
 	server := &TransactionShieldServer{
-		config:  cfg,
-		db:      db,
-		redis:   rdb,
-		engine:  engine,
-		router:  gin.Default(),
+		config: cfg,
+		db:     db,
+		redis:  rdb,
+		engine: engine,
+		router: gin.Default(),
 	}
-	
+
 	server.setupRoutes()
 	return server
 }
@@ -743,41 +737,41 @@ func (s *TransactionShieldServer) setupRoutes() {
 	// Health check
 	s.router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "healthy",
-			"service": "transaction-shield",
-			"block_threshold": s.config.BlockThreshold,
+			"status":           "healthy",
+			"service":          "transaction-shield",
+			"block_threshold":  s.config.BlockThreshold,
 			"review_threshold": s.config.ReviewThreshold,
 		})
 	})
-	
+
 	// Transaction analysis
 	s.router.POST("/api/v1/analyze", s.analyzeTransaction)
 	s.router.POST("/api/v1/analyze/batch", s.analyzeBatch)
-	
+
 	// Risk scores
 	s.router.GET("/api/v1/transaction/:tx_hash/score", s.getTransactionScore)
 	s.router.GET("/api/v1/user/:user_id/risk-profile", s.getUserRiskProfile)
 	s.router.POST("/api/v1/user/:user_id/risk-profile/update", s.updateUserRiskProfile)
-	
+
 	// Address management
 	s.router.POST("/api/v1/address/block", s.blockAddress)
 	s.router.POST("/api/v1/address/unblock", s.unblockAddress)
 	s.router.GET("/api/v1/address/:address/status", s.getAddressStatus)
-	
+
 	// Alerts
 	s.router.GET("/api/v1/alerts", s.getAlerts)
 	s.router.POST("/api/v1/alerts/:alert_id/acknowledge", s.acknowledgeAlert)
 	s.router.POST("/api/v1/alerts/:alert_id/resolve", s.resolveAlert)
-	
+
 	// Review queue
 	s.router.GET("/api/v1/review-queue", s.getReviewQueue)
 	s.router.POST("/api/v1/review-queue/:transaction_id/review", s.reviewTransaction)
-	
+
 	// Patterns
 	s.router.GET("/api/v1/patterns", s.getPatterns)
 	s.router.POST("/api/v1/patterns", s.createPattern)
 	s.router.PUT("/api/v1/patterns/:pattern_id", s.updatePattern)
-	
+
 	// Stats
 	s.router.GET("/api/v1/stats", s.getStats)
 }
@@ -791,12 +785,12 @@ func (s *TransactionShieldServer) analyzeTransaction(c *gin.Context) {
 		Amount      string `json:"amount" binding:"required"`
 		Token       string `json:"token"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	
+
 	// Create transaction record
 	tx := Transaction{
 		TransactionHash: "", // not broadcast via RPC; real hash requires on-chain broadcast
@@ -809,23 +803,23 @@ func (s *TransactionShieldServer) analyzeTransaction(c *gin.Context) {
 		Status:          "pending",
 		Timestamp:       time.Now(),
 	}
-	
+
 	s.db.Create(&tx)
-	
+
 	// Analyze transaction
 	riskScore, err := s.engine.AnalyzeTransaction(&tx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "analysis_failed", "message": err.Error()})
 		return
 	}
-	
+
 	// Update transaction with risk score
 	tx.RiskScore = riskScore.OverallScore
 	tx.RiskLevel = riskScore.RiskLevel
 	riskReasonsJSON, _ := json.Marshal(riskScore.RiskFactors)
 	tx.RiskReasons = string(riskReasonsJSON)
 	s.db.Save(&tx)
-	
+
 	// Handle based on risk level
 	var status string
 	switch riskScore.RiskLevel {
@@ -844,11 +838,11 @@ func (s *TransactionShieldServer) analyzeTransaction(c *gin.Context) {
 		status = "approved"
 	}
 	s.db.Save(&tx)
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"transaction_hash": tx.TransactionHash,
-		"status": status,
-		"risk_score": riskScore,
+		"status":           status,
+		"risk_score":       riskScore,
 	})
 }
 
@@ -863,14 +857,14 @@ func (s *TransactionShieldServer) analyzeBatch(c *gin.Context) {
 			Token       string `json:"token"`
 		} `json:"transactions"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	
+
 	results := make([]map[string]interface{}, 0)
-	
+
 	for _, txReq := range request.Transactions {
 		tx := Transaction{
 			TransactionHash: "", // not broadcast via RPC; real hash requires on-chain broadcast
@@ -883,96 +877,96 @@ func (s *TransactionShieldServer) analyzeBatch(c *gin.Context) {
 			Status:          "pending",
 			Timestamp:       time.Now(),
 		}
-		
+
 		s.db.Create(&tx)
-		
+
 		riskScore, _ := s.engine.AnalyzeTransaction(&tx)
 		tx.RiskScore = riskScore.OverallScore
 		tx.RiskLevel = riskScore.RiskLevel
 		s.db.Save(&tx)
-		
+
 		results = append(results, map[string]interface{}{
 			"transaction_hash": tx.TransactionHash,
 			"risk_score":       riskScore.OverallScore,
 			"risk_level":       riskScore.RiskLevel,
 		})
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
 func (s *TransactionShieldServer) getTransactionScore(c *gin.Context) {
 	txHash := c.Param("tx_hash")
-	
+
 	var tx Transaction
 	if err := s.db.Where("transaction_hash = ?", txHash).First(&tx).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction_not_found"})
 		return
 	}
-	
+
 	var riskFactors []RiskFactor
 	json.Unmarshal([]byte(tx.RiskReasons), &riskFactors)
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"transaction_hash": tx.TransactionHash,
-		"risk_score":      tx.RiskScore,
-		"risk_level":      tx.RiskLevel,
-		"risk_factors":    riskFactors,
-		"status":          tx.Status,
+		"risk_score":       tx.RiskScore,
+		"risk_level":       tx.RiskLevel,
+		"risk_factors":     riskFactors,
+		"status":           tx.Status,
 	})
 }
 
 func (s *TransactionShieldServer) getUserRiskProfile(c *gin.Context) {
 	userID := c.Param("user_id")
-	
+
 	var profile RiskProfile
 	if err := s.db.Where("user_id = ?", userID).First(&profile).Error; err != nil {
 		// Return default profile
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":         userID,
-			"overall_score":   0.0,
-			"risk_level":      "low",
-			"review_status":   "none",
+			"user_id":       userID,
+			"overall_score": 0.0,
+			"risk_level":    "low",
+			"review_status": "none",
 		})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"user_id":           profile.UserID,
-		"overall_score":     profile.OverallScore,
-		"velocity_score":    profile.VelocityScore,
-		"amount_score":      profile.AmountScore,
-		"pattern_score":     profile.PatternScore,
-		"behavioral_score":  profile.BehavioralScore,
-		"reputation_score":  profile.ReputationScore,
-		"risk_level":        profile.RiskLevel,
-		"review_status":     profile.ReviewStatus,
-		"last_updated":      profile.LastUpdated,
+		"user_id":          profile.UserID,
+		"overall_score":    profile.OverallScore,
+		"velocity_score":   profile.VelocityScore,
+		"amount_score":     profile.AmountScore,
+		"pattern_score":    profile.PatternScore,
+		"behavioral_score": profile.BehavioralScore,
+		"reputation_score": profile.ReputationScore,
+		"risk_level":       profile.RiskLevel,
+		"review_status":    profile.ReviewStatus,
+		"last_updated":     profile.LastUpdated,
 	})
 }
 
 func (s *TransactionShieldServer) updateUserRiskProfile(c *gin.Context) {
 	userID := c.Param("user_id")
-	
+
 	var request struct {
-		Override     bool   `json:"override"`
-		RiskLevel    string `json:"risk_level"`
+		Override       bool   `json:"override"`
+		RiskLevel      string `json:"risk_level"`
 		OverrideReason string `json:"override_reason"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	
+
 	var profile RiskProfile
 	result := s.db.Where("user_id = ?", userID).First(&profile)
-	
+
 	if result.Error == gorm.ErrRecordNotFound {
 		profile = RiskProfile{
-			UserID:       parseUint(userID),
-			RiskLevel:    request.RiskLevel,
-			LastUpdated:  time.Now(),
+			UserID:         parseUint(userID),
+			RiskLevel:      request.RiskLevel,
+			LastUpdated:    time.Now(),
 			ManualOverride: request.Override,
 		}
 		s.db.Create(&profile)
@@ -985,7 +979,7 @@ func (s *TransactionShieldServer) updateUserRiskProfile(c *gin.Context) {
 		profile.LastUpdated = time.Now()
 		s.db.Save(&profile)
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Risk profile updated", "profile": profile})
 }
 
@@ -997,16 +991,16 @@ func (s *TransactionShieldServer) blockAddress(c *gin.Context) {
 		BlockedReason string `json:"blocked_reason" binding:"required"`
 		IsPermanent   bool   `json:"is_permanent"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	
+
 	if request.AddressType == "" {
 		request.AddressType = "evm"
 	}
-	
+
 	blocked := BlockedAddress{
 		Address:       request.Address,
 		AddressType:   request.AddressType,
@@ -1016,9 +1010,9 @@ func (s *TransactionShieldServer) blockAddress(c *gin.Context) {
 		BlockedBy:     "admin",
 		IsPermanent:   request.IsPermanent,
 	}
-	
+
 	s.db.Create(&blocked)
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Address blocked successfully", "address": request.Address})
 }
 
@@ -1026,30 +1020,30 @@ func (s *TransactionShieldServer) unblockAddress(c *gin.Context) {
 	var request struct {
 		Address string `json:"address" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	
+
 	result := s.db.Where("address = ?", request.Address).Delete(&BlockedAddress{})
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "address_not_blocked"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Address unblocked successfully"})
 }
 
 func (s *TransactionShieldServer) getAddressStatus(c *gin.Context) {
 	address := c.Param("address")
-	
+
 	var blocked BlockedAddress
 	err := s.db.Where("address = ?", address).First(&blocked).Error
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"address":      address,
-		"is_blocked":  err == nil,
+		"is_blocked":   err == nil,
 		"blocked_at":   blocked.BlockedAt,
 		"reason":       blocked.BlockedReason,
 		"is_permanent": blocked.IsPermanent,
@@ -1059,95 +1053,95 @@ func (s *TransactionShieldServer) getAddressStatus(c *gin.Context) {
 func (s *TransactionShieldServer) getAlerts(c *gin.Context) {
 	var alerts []Alert
 	s.db.Order("created_at desc").Limit(100).Find(&alerts)
-	
+
 	c.JSON(http.StatusOK, gin.H{"alerts": alerts})
 }
 
 func (s *TransactionShieldServer) acknowledgeAlert(c *gin.Context) {
 	alertID := c.Param("alert_id")
-	
+
 	var alert Alert
 	if err := s.db.Where("alert_id = ?", alertID).First(&alert).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "alert_not_found"})
 		return
 	}
-	
+
 	alert.Status = "acknowledged"
 	s.db.Save(&alert)
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Alert acknowledged"})
 }
 
 func (s *TransactionShieldServer) resolveAlert(c *gin.Context) {
 	alertID := c.Param("alert_id")
-	
+
 	var request struct {
 		Resolution string `json:"resolution"`
 	}
 	c.ShouldBindJSON(&request)
-	
+
 	var alert Alert
 	if err := s.db.Where("alert_id = ?", alertID).First(&alert).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "alert_not_found"})
 		return
 	}
-	
+
 	now := time.Now()
 	alert.Status = "resolved"
 	alert.ResolvedAt = &now
 	alert.Resolution = request.Resolution
 	s.db.Save(&alert)
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Alert resolved"})
 }
 
 func (s *TransactionShieldServer) getReviewQueue(c *gin.Context) {
 	var queue []ReviewQueue
 	s.db.Preload("Transaction").Order("priority ASC, created_at ASC").Find(&queue)
-	
+
 	c.JSON(http.StatusOK, gin.H{"review_queue": queue})
 }
 
 func (s *TransactionShieldServer) reviewTransaction(c *gin.Context) {
 	txID := c.Param("transaction_id")
-	
+
 	var request struct {
-		Decision  string `json:"decision" binding:"required"` // approve, reject
-		Notes     string `json:"notes"`
+		Decision string `json:"decision" binding:"required"` // approve, reject
+		Notes    string `json:"notes"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	
+
 	var tx Transaction
 	if err := s.db.First(&tx, txID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction_not_found"})
 		return
 	}
-	
+
 	if request.Decision == "approve" {
 		tx.Status = "confirmed"
 	} else {
 		tx.Status = "blocked"
 	}
-	
+
 	tx.ReviewNotes = request.Notes
 	now := time.Now()
 	tx.ReviewedAt = &now
 	s.db.Save(&tx)
-	
+
 	// Remove from review queue
 	s.db.Where("transaction_id = ?", txID).Delete(&ReviewQueue{})
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Transaction reviewed", "decision": request.Decision})
 }
 
 func (s *TransactionShieldServer) getPatterns(c *gin.Context) {
 	var patterns []TransactionPattern
 	s.db.Find(&patterns)
-	
+
 	c.JSON(http.StatusOK, gin.H{"patterns": patterns})
 }
 
@@ -1157,32 +1151,32 @@ func (s *TransactionShieldServer) createPattern(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 		return
 	}
-	
+
 	pattern.PatternID = uuid.New().String()
 	pattern.IsActive = true
 	pattern.CreatedAt = time.Now()
 	pattern.UpdatedAt = time.Now()
-	
+
 	s.db.Create(&pattern)
-	
+
 	c.JSON(http.StatusCreated, gin.H{"message": "Pattern created", "pattern": pattern})
 }
 
 func (s *TransactionShieldServer) updatePattern(c *gin.Context) {
 	patternID := c.Param("pattern_id")
-	
+
 	var pattern TransactionPattern
 	if err := s.db.Where("pattern_id = ?", patternID).First(&pattern).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "pattern_not_found"})
 		return
 	}
-	
+
 	var updates map[string]interface{}
 	c.ShouldBindJSON(&updates)
-	
+
 	updates["updated_at"] = time.Now()
 	s.db.Model(&pattern).Updates(updates)
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Pattern updated"})
 }
 
@@ -1191,18 +1185,18 @@ func (s *TransactionShieldServer) getStats(c *gin.Context) {
 	var blockedTx int64
 	var pendingReview int64
 	var alerts int64
-	
+
 	s.db.Model(&Transaction{}).Count(&totalTx)
 	s.db.Model(&Transaction{}).Where("status = ?", "blocked").Count(&blockedTx)
 	s.db.Model(&ReviewQueue{}).Count(&pendingReview)
 	s.db.Model(&Alert{}).Where("status = ?", "new").Count(&alerts)
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"total_transactions":  totalTx,
+		"total_transactions":   totalTx,
 		"blocked_transactions": blockedTx,
-		"pending_review":      pendingReview,
-		"active_alerts":       alerts,
-		"block_rate":          float64(blockedTx) / float64(totalTx+1),
+		"pending_review":       pendingReview,
+		"active_alerts":        alerts,
+		"block_rate":           float64(blockedTx) / float64(totalTx+1),
 	})
 }
 
@@ -1212,22 +1206,22 @@ func (s *TransactionShieldServer) getStats(c *gin.Context) {
 
 func (s *TransactionShieldServer) createAlert(tx *Transaction, riskScore *RiskScore, severity string) {
 	alert := Alert{
-		AlertID:     uuid.New().String(),
-		UserID:      tx.UserID,
+		AlertID:       uuid.New().String(),
+		UserID:        tx.UserID,
 		TransactionID: &tx.ID,
-		AlertType:   "high_risk",
-		Severity:    severity,
-		Title:       fmt.Sprintf("%s Risk Transaction Detected", strings.Title(severity)),
-		Description: fmt.Sprintf("Transaction from %s to %s has %s risk score of %.2f", 
+		AlertType:     "high_risk",
+		Severity:      severity,
+		Title:         fmt.Sprintf("%s Risk Transaction Detected", strings.Title(severity)),
+		Description: fmt.Sprintf("Transaction from %s to %s has %s risk score of %.2f",
 			tx.FromAddress[:10]+"...", tx.ToAddress[:10]+"...", riskScore.RiskLevel, riskScore.OverallScore),
 		RiskFactors: tx.RiskReasons,
 		Amount:      tx.Amount,
 		Timestamp:   time.Now(),
 		Status:      "new",
 	}
-	
+
 	s.db.Create(&alert)
-	
+
 	// Cache alert in Redis for quick access
 	alertJSON, _ := json.Marshal(alert)
 	s.redis.Set(context.Background(), fmt.Sprintf("alert:%s", alert.AlertID), alertJSON, 24*time.Hour)
@@ -1236,8 +1230,8 @@ func (s *TransactionShieldServer) createAlert(tx *Transaction, riskScore *RiskSc
 func (s *TransactionShieldServer) addToReviewQueue(tx *Transaction) {
 	queue := ReviewQueue{
 		TransactionID: tx.ID,
-		Priority:     3, // Default medium priority
-		Status:       "pending",
+		Priority:      3, // Default medium priority
+		Status:        "pending",
 	}
 	s.db.Create(&queue)
 }
@@ -1260,19 +1254,19 @@ func parseUint(s string) uint {
 
 func main() {
 	cfg := LoadConfig()
-	
+
 	server := NewTransactionShieldServer(cfg)
-	
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	
+
 	go func() {
 		<-quit
 		log.Println("Shutting down Transaction Shield...")
 		os.Exit(0)
 	}()
-	
+
 	log.Printf("Transaction Shield Service starting on port %s", cfg.ServerPort)
 	if err := server.router.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
