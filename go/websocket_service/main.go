@@ -145,39 +145,52 @@ func (h *Hub) run() {
 			log.Printf("❌ Client disconnected: %s (%s)", client.userID, client.conn.RemoteAddr().String())
 
 		case message := <-h.broadcast:
-			h.mu.RLock()
+			// The client set is mutated while removing slow consumers, so this
+			// must hold the exclusive lock (not RLock).
+			h.mu.Lock()
 			for client := range h.clients {
 				if shouldSendToClient(client, message) {
 					select {
 					case client.send <- encodeMessage(message):
 					default:
-						close(client.send)
 						delete(h.clients, client)
+						if client.userID != "" && h.clientsByUser[client.userID] != nil {
+							delete(h.clientsByUser[client.userID], client)
+						}
+						channelsMux.Lock()
+						for _, subscribers := range channels {
+							delete(subscribers, client)
+						}
+						channelsMux.Unlock()
+						close(client.send)
+						_ = client.conn.Close()
 					}
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
 		}
 	}
 }
 
 func shouldSendToClient(client *Client, message *Message) bool {
-	// Admin receives all
+	// User-targeted messages must never be broadcast to other connections.
+	if message.UserID != "" {
+		return client.userID != "" && client.userID == message.UserID
+	}
+	// Empty channel is the explicit broadcast-all case.
+	if message.Channel == "" {
+		return true
+	}
 	if client.isAdmin {
 		return true
 	}
 
-	// Check if user is subscribed to channel
 	channelsMux.RLock()
 	defer channelsMux.RUnlock()
-
-	// Get subscribers for this channel
 	subs, ok := channels[message.Channel]
 	if !ok {
-		return true // No restriction on this channel
+		return false // unknown/private channels are deny-by-default
 	}
-
-	// Check if client is subscribed
 	_, subscribed := subs[client]
 	return subscribed
 }
