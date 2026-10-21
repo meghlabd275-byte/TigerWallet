@@ -99,10 +99,37 @@ func SignEVMTransaction(chainID *big.Int, nonce uint64, to common.Address,
 	value *big.Int, gasLimit uint64, gasPrice, maxFee, maxPrioFee *big.Int,
 	data []byte, privateKey *ecdsa.PrivateKey) (string, error) {
 
-	signer := types.NewLondonSigner(chainID)
+	// Validate all signing inputs before constructing a transaction. Invalid
+	// values must fail closed rather than panic or produce an unusable signature.
+	if chainID == nil || chainID.Sign() <= 0 {
+		return "", errors.New("chain ID must be positive")
+	}
+	if privateKey == nil || privateKey.D == nil || privateKey.D.Sign() <= 0 {
+		return "", errors.New("private key is required")
+	}
+	if value == nil || value.Sign() < 0 {
+		return "", errors.New("transaction value must be non-negative")
+	}
+	if gasLimit == 0 {
+		return "", errors.New("gas limit must be positive")
+	}
+
+	eip1559 := maxFee != nil || maxPrioFee != nil
+	if eip1559 {
+		if maxFee == nil || maxPrioFee == nil || maxFee.Sign() <= 0 || maxPrioFee.Sign() < 0 {
+			return "", errors.New("EIP-1559 fee cap must be positive and priority fee must be non-negative")
+		}
+		if maxPrioFee.Cmp(maxFee) > 0 {
+			return "", errors.New("priority fee cannot exceed fee cap")
+		}
+	} else if gasPrice == nil || gasPrice.Sign() <= 0 {
+		return "", errors.New("legacy gas price must be positive")
+	}
+
+	signer := types.LatestSignerForChainID(chainID)
 
 	var tx *types.Transaction
-	if maxFee != nil && maxPrioFee != nil && maxFee.Cmp(big.NewInt(0)) > 0 {
+	if eip1559 {
 		// EIP-1559
 		tx = types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
@@ -117,8 +144,8 @@ func SignEVMTransaction(chainID *big.Int, nonce uint64, to common.Address,
 	} else {
 		// Legacy
 		gp := gasPrice
-		if gp == nil || gp.Cmp(big.NewInt(0)) == 0 {
-			gp = maxFee
+		if gp == nil || gp.Sign() <= 0 {
+			return "", errors.New("legacy gas price must be positive")
 		}
 		tx = types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
@@ -173,12 +200,22 @@ func SignPersonalMessage(privateKey *ecdsa.PrivateKey, message []byte) ([]byte, 
 	return sig, nil
 }
 
-// SignTypedDataV4 signs an EIP-712 typed data hash.
-func SignTypedDataV4(privateKey *ecdsa.PrivateKey, domainSeparatorHash []byte) ([]byte, error) {
-	sig, err := crypto.Sign(domainSeparatorHash, privateKey)
+// SignTypedDataV4 signs an EIP-712 message using its domain separator and
+// struct hash. EIP-712 requires keccak256(0x1901 || domainSeparator || hashStruct);
+// signing the domain separator alone is not a valid typed-data signature.
+func SignTypedDataV4(privateKey *ecdsa.PrivateKey, domainSeparatorHash, structHash []byte) ([]byte, error) {
+	if privateKey == nil || privateKey.D == nil || privateKey.D.Sign() <= 0 {
+		return nil, errors.New("private key is required")
+	}
+	if len(domainSeparatorHash) != 32 || len(structHash) != 32 {
+		return nil, errors.New("EIP-712 domain separator and struct hash must each be 32 bytes")
+	}
+	digest := crypto.Keccak256([]byte{0x19, 0x01}, domainSeparatorHash, structHash)
+	sig, err := crypto.Sign(digest, privateKey)
 	if err != nil {
 		return nil, err
 	}
+	// Ethereum JSON-RPC typed-data signatures conventionally encode v as 27/28.
 	if len(sig) == 65 {
 		sig[64] += 27
 	}
