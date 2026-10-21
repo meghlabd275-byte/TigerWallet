@@ -287,21 +287,10 @@ func (c *Client) handleMessage(msg *Message) {
 		c.unsubscribe(sub.Channel)
 
 	case "auth":
-		var auth AuthPayload
-		if err := json.Unmarshal(msg.Payload, &auth); err != nil {
-			c.send <- []byte(fmt.Sprintf(`{"type":"error","error":"%s"}`, err.Error()))
-			return
-		}
-		c.userID = auth.UserID
-		c.email = auth.Email
-		c.roles = auth.Roles
-		for _, role := range auth.Roles {
-			if role == "admin" || role == "super_admin" {
-				c.isAdmin = true
-				break
-			}
-		}
-		c.send <- []byte(`{"type":"auth","status":"authenticated"}`)
+		// Identity and roles must come from server-validated credentials, never
+		// from client-supplied JSON. JWT validation is not configured in this
+		// service, so fail closed instead of granting a forged identity.
+		c.send <- []byte(`{"type":"error","error":"server-side authentication is not configured"}`)
 
 	case "ping":
 		c.send <- []byte(`{"type":"pong","timestamp":` + strconv.FormatInt(time.Now().UnixMilli(), 10) + `}`)
@@ -312,6 +301,14 @@ func (c *Client) handleMessage(msg *Message) {
 }
 
 func (c *Client) subscribe(channel string) {
+	// Public market streams only. Private/user/admin channels require a
+	// server-verified identity; this service currently has no JWT verifier.
+	switch channel {
+	case ChannelTicker, ChannelOrderBook, ChannelTrade:
+	default:
+		c.send <- []byte(`{"type":"error","error":"channel requires server-verified authentication"}`)
+		return
+	}
 	channelsMux.Lock()
 	defer channelsMux.Unlock()
 
@@ -382,10 +379,12 @@ func mustMarshal(v interface{}) json.RawMessage {
 // ============================================================================
 
 func handleWebSocket(c *gin.Context) {
-	// Get token from query or header
-	token := c.Query("token")
-	if token == "" {
-		token = c.GetHeader("Authorization")
+	// Do not accept credentials in query strings: URLs are commonly logged.
+	// This endpoint exposes only public market streams until a server-side
+	// credential verifier is configured.
+	if token := c.Query("token"); token != "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "query-string tokens are not accepted"})
+		return
 	}
 
 	// Upgrade connection
@@ -777,7 +776,16 @@ func main() {
 	// Configure upgrader
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins in development
+			origin := r.Header.Get("Origin")
+			if origin == "" { // native clients may omit Origin
+				return true
+			}
+			for _, configured := range strings.Split(os.Getenv("TIGERWALLET_ALLOWED_ORIGINS"), ",") {
+				if candidate := strings.TrimSpace(configured); candidate != "" && candidate == origin {
+					return true
+				}
+			}
+			return false
 		},
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
@@ -791,11 +799,26 @@ func main() {
 
 	// CORS
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		origin := c.Request.Header.Get("Origin")
+		if origin != "" {
+			allowed := false
+			for _, configured := range strings.Split(os.Getenv("TIGERWALLET_ALLOWED_ORIGINS"), ",") {
+				if candidate := strings.TrimSpace(configured); candidate != "" && candidate == origin {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 		c.Next()
