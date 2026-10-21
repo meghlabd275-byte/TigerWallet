@@ -15,29 +15,42 @@ impl StakingService {
         Self { chain_id }
     }
     
-    /// Deposit to liquid staking
+    /// Deposit to liquid staking. This adapter deliberately fails closed until a
+    /// chain-specific contract client, signer, and receipt verifier are configured.
     pub async fn deposit(&self, amount: u64) -> Result<StakingReceipt, StakingError> {
-        Ok(StakingReceipt { shares: amount, amount, tx_hash: "".to_string() })
+        if amount == 0 {
+            return Err(StakingError::InvalidAmount);
+        }
+        Err(StakingError::ProviderNotConfigured)
     }
-    
-    /// Withdraw from liquid staking
+
+    /// Withdraw from liquid staking. Never report success without a verified tx.
     pub async fn withdraw(&self, shares: u64) -> Result<String, StakingError> {
-        Ok("".to_string())
+        if shares == 0 {
+            return Err(StakingError::InvalidAmount);
+        }
+        Err(StakingError::ProviderNotConfigured)
     }
-    
-    /// Stake to validator
+
+    /// Stake to a validator only when a real chain adapter is configured.
     pub async fn stake_to_validator(&self, validator: &str, amount: u64) -> Result<(), StakingError> {
-        Ok(())
+        if validator.trim().is_empty() || amount == 0 {
+            return Err(StakingError::InvalidAmount);
+        }
+        Err(StakingError::ProviderNotConfigured)
     }
-    
-    /// Restake (EigenLayer)
+
+    /// Restake only when a real restaking contract adapter is configured.
     pub async fn restake(&self, amount: u64) -> Result<(), StakingError> {
-        Ok(())
+        if amount == 0 {
+            return Err(StakingError::InvalidAmount);
+        }
+        Err(StakingError::ProviderNotConfigured)
     }
-    
-    /// Get share price
+
+    /// A share price must come from an on-chain contract read, not a constant.
     pub async fn get_share_price(&self) -> Result<u64, StakingError> {
-        Ok(1000000000000000000)
+        Err(StakingError::ProviderNotConfigured)
     }
 }
 
@@ -50,7 +63,9 @@ pub struct StakingReceipt {
 
 #[derive(Debug, thiserror::Error)]
 pub enum StakingError {
-    #[error("Invalid amount")]
+    #[error("Invalid amount or validator")]
     InvalidAmount,
+    #[error("Staking provider is not configured; no transaction was submitted")]
+    ProviderNotConfigured,
 }
 use thiserror;
