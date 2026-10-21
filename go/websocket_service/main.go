@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -737,6 +738,30 @@ func GetChannelSubscribers(c *gin.Context) {
 	})
 }
 
+
+// requireAdminAPIToken protects operational endpoints. Configure a high-entropy
+// TIGERWALLET_WS_ADMIN_TOKEN through the deployment secret manager.
+func requireAdminAPIToken() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		expected := os.Getenv("TIGERWALLET_WS_ADMIN_TOKEN")
+		if expected == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "admin API is not configured"})
+			return
+		}
+		provided := strings.TrimSpace(c.GetHeader("Authorization"))
+		if strings.HasPrefix(provided, "Bearer ") {
+			provided = strings.TrimPrefix(provided, "Bearer ")
+		} else {
+			provided = ""
+		}
+		if len(provided) != len(expected) || subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Next()
+	}
+}
+
 // ============================================================================
 // MAIN
 // ============================================================================
@@ -750,10 +775,22 @@ func main() {
 	startTime = time.Now()
 
 	// Initialize Redis
+	redisAddr := strings.TrimSpace(os.Getenv("REDIS_ADDR"))
+	if redisAddr == "" {
+		redisAddr = "127.0.0.1:6379"
+	}
+	redisDB := 0
+	if rawDB := strings.TrimSpace(os.Getenv("REDIS_DB")); rawDB != "" {
+		parsed, parseErr := strconv.Atoi(rawDB)
+		if parseErr != nil || parsed < 0 {
+			log.Fatalf("REDIS_DB must be a non-negative integer")
+		}
+		redisDB = parsed
+	}
 	redisClient = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
-		DB:       0,
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+		DB:       redisDB,
 	})
 
 	ctx := context.Background()
@@ -836,11 +873,15 @@ func main() {
 	// WebSocket endpoint
 	r.GET("/ws", handleWebSocket)
 
-	// REST endpoints for broadcasting
+	// Operational endpoints are protected by a dedicated bearer secret.
+	// If the secret is unset, they fail closed instead of exposing broadcast
+	// controls to unauthenticated callers.
 	r.GET("/api/stats", GetStats)
-	r.POST("/api/broadcast/channel", SendTestMessage)
-	r.POST("/api/broadcast/user", SendToUser)
-	r.GET("/api/channels/:channel/subscribers", GetChannelSubscribers)
+	internalAPI := r.Group("/api")
+	internalAPI.Use(requireAdminAPIToken())
+	internalAPI.POST("/broadcast/channel", SendTestMessage)
+	internalAPI.POST("/broadcast/user", SendToUser)
+	internalAPI.GET("/channels/:channel/subscribers", GetChannelSubscribers)
 
 	// Channels info
 	r.GET("/api/channels", func(c *gin.Context) {
