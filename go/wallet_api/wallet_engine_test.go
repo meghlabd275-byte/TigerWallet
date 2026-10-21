@@ -8,6 +8,8 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // TestBIP39MnemonicGeneration verifies a real mnemonic is generated and valid.
@@ -213,5 +215,85 @@ func TestSupportedChains(t *testing.T) {
 		if c.IsTestnet {
 			t.Errorf("static registry must be mainnet-only; found testnet: %s", c.Name)
 		}
+	}
+}
+
+
+// TestSignTypedDataV4UsesEIP712Digest ensures signatures recover against the
+// EIP-712 digest (0x1901 || domain separator || struct hash), not the domain
+// separator alone.
+func TestSignTypedDataV4UsesEIP712Digest(t *testing.T) {
+	mnemonic := "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+	priv, err := DeriveEVMPrivateKey(mnemonic, ChainConfig{ID: 1, DerivationPath: "m/44'/60'/0'/0/0"}, 0)
+	if err != nil {
+		t.Fatalf("derive key: %v", err)
+	}
+	domain := crypto.Keccak256([]byte("test-domain"))
+	structHash := crypto.Keccak256([]byte("test-struct"))
+	sig, err := SignTypedDataV4(priv, domain, structHash)
+	if err != nil {
+		t.Fatalf("SignTypedDataV4: %v", err)
+	}
+	if len(sig) != 65 || (sig[64] != 27 && sig[64] != 28) {
+		t.Fatalf("unexpected signature format")
+	}
+	recoverySig := append([]byte(nil), sig...)
+	recoverySig[64] -= 27
+	digest := crypto.Keccak256([]byte{0x19, 0x01}, domain, structHash)
+	pub, err := crypto.SigToPub(digest, recoverySig)
+	if err != nil {
+		t.Fatalf("recover signature: %v", err)
+	}
+	if crypto.PubkeyToAddress(*pub) != crypto.PubkeyToAddress(priv.PublicKey) {
+		t.Fatal("typed-data signature recovered a different signer")
+	}
+}
+
+func TestSignTypedDataV4RejectsMalformedHashes(t *testing.T) {
+	priv, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SignTypedDataV4(priv, []byte{1}, make([]byte, 32)); err == nil {
+		t.Fatal("expected malformed domain separator to be rejected")
+	}
+	if _, err := SignTypedDataV4(priv, make([]byte, 32), []byte{1}); err == nil {
+		t.Fatal("expected malformed struct hash to be rejected")
+	}
+}
+
+func TestSignEVMTransactionRejectsInvalidInputs(t *testing.T) {
+	priv, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	validChain := big.NewInt(1)
+	validValue := big.NewInt(0)
+	validFee := big.NewInt(1_000_000_000)
+	tests := []struct {
+		name string
+		chainID, value, gasPrice, maxFee, tip *big.Int
+		gas uint64
+		keyPresent bool
+	}{
+		{name: "nil chain id", value: validValue, gasPrice: validFee, gas: 21000, keyPresent: true},
+		{name: "negative chain id", chainID: big.NewInt(-1), value: validValue, gasPrice: validFee, gas: 21000, keyPresent: true},
+		{name: "nil value", chainID: validChain, gasPrice: validFee, gas: 21000, keyPresent: true},
+		{name: "zero gas", chainID: validChain, value: validValue, gasPrice: validFee, gas: 0, keyPresent: true},
+		{name: "missing legacy gas price", chainID: validChain, value: validValue, gas: 21000, keyPresent: true},
+		{name: "priority exceeds fee cap", chainID: validChain, value: validValue, maxFee: big.NewInt(1), tip: big.NewInt(2), gas: 21000, keyPresent: true},
+		{name: "nil private key", chainID: validChain, value: validValue, gasPrice: validFee, gas: 21000},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			key := priv
+			if !tc.keyPresent {
+				key = nil
+			}
+			_, err := SignEVMTransaction(tc.chainID, 0, crypto.PubkeyToAddress(priv.PublicKey), tc.value, tc.gas, tc.gasPrice, tc.maxFee, tc.tip, nil, key)
+			if err == nil {
+				t.Fatal("expected invalid signing input to be rejected")
+			}
+		})
 	}
 }
