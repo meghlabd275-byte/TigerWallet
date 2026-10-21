@@ -56,8 +56,15 @@ function twSetAuthToken(token) {
 function twDeviceId() {
     let id = localStorage.getItem(TW_DEVICE_ID_KEY);
     if (!id) {
-        id = (crypto.randomUUID ? crypto.randomUUID()
-            : 'dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        if (crypto.randomUUID) {
+            id = crypto.randomUUID();
+        } else {
+            // Keep the legacy fallback compatible with the backend's UUID
+            // validation, and use a CSPRNG rather than Math.random for identity.
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+        }
         localStorage.setItem(TW_DEVICE_ID_KEY, id);
     }
     return id;
