@@ -124,10 +124,21 @@ func handleRegister(c *gin.Context) {
 // sentinel password hash), so this is not a privilege-escalation vector.
 func handleGuestAuth(c *gin.Context) {
 	var req struct {
-		DeviceID string `json:"device_id"`
+		DeviceID string `json:"device_id" binding:"required"`
 	}
-	_ = c.ShouldBindJSON(&req) // device_id optional; empty -> random
-	uid, err := store.CreateGuestUser(c.Request.Context(), req.DeviceID)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid device_id is required"})
+		return
+	}
+	// Guest IDs are the credential used to resume an anonymous account. Reject
+	// missing or malformed identifiers rather than silently creating a new
+	// account for every empty request, which permits trivial database exhaustion.
+	deviceID := strings.TrimSpace(req.DeviceID)
+	if _, err := uuid.Parse(deviceID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id must be a UUID"})
+		return
+	}
+	uid, err := store.CreateGuestUser(c.Request.Context(), deviceID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision guest account"})
 		return
