@@ -109,7 +109,11 @@ func handleRegister(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
-	token, _ := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
+	token, err := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "authentication service unavailable"})
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"user_id": uid, "token": token})
 }
 
@@ -128,7 +132,11 @@ func handleGuestAuth(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to provision guest account"})
 		return
 	}
-	token, _ := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
+	token, err := IssueJWT(appConfig.JWTSecret, uid.String(), "user")
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "authentication service unavailable"})
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"user_id": uid, "token": token, "guest": true})
 }
 
@@ -147,7 +155,11 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token, _ := IssueJWT(appConfig.JWTSecret, user.ID.String(), user.Role)
+	token, err := IssueJWT(appConfig.JWTSecret, user.ID.String(), user.Role)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "authentication service unavailable"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"token": token, "user": user})
 }
 
