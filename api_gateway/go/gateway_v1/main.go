@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"os/signal"
 	"syscall"
 	"time"
@@ -30,7 +31,12 @@ var (
 	redisClient *redis.Client
 	cfg         Config
 	upgrader    = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			// Native clients may omit Origin. Browser clients must match an
+			// explicit deployment allowlist; never trust arbitrary origins.
+			return origin == "" || allowedOrigin(origin)
+		},
 	}
 )
 
@@ -186,18 +192,40 @@ func setupRouter(cfg *Config) *gin.Engine {
 // MIDDLEWARE
 // ============================================================================
 
+// allowedOrigin checks an exact origin against TIGERWALLET_ALLOWED_ORIGINS
+// (comma-separated origins, e.g. https://wallet.example.com). Wildcards are
+// deliberately unsupported because credentials and wildcard origins are unsafe.
+func allowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, item := range strings.Split(os.Getenv("TIGERWALLET_ALLOWED_ORIGINS"), ",") {
+		if candidate := strings.TrimSpace(item); candidate != "" && candidate == origin {
+			return true
+		}
+	}
+	return false
+}
+
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		origin := c.Request.Header.Get("Origin")
+		if origin != "" {
+			if !allowedOrigin(origin) {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
-
 		c.Next()
 	}
 }
