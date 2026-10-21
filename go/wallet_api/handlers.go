@@ -223,7 +223,20 @@ func handleCreateWallet(c *gin.Context) {
 		req.AccountIndex = 0
 	}
 
-	privKey, err := DeriveEVMPrivateKey(mnemonic, *chain, uint32(req.AccountIndex))
+	// Persist the exact path used for derivation. Previously the requested
+	// account index was used to derive the key, but the base path (often index
+	// zero) was stored, making non-zero accounts impossible to restore reliably.
+	derivationPath := chain.DerivationPath
+	if !strings.HasPrefix(derivationPath, "m/44'/60'/") {
+		derivationPath = "m/44'/60'/0'/0/" + strconv.Itoa(req.AccountIndex)
+	} else {
+		parts := strings.Split(derivationPath, "/")
+		if len(parts) >= 6 {
+			parts[len(parts)-1] = strconv.Itoa(req.AccountIndex)
+			derivationPath = strings.Join(parts, "/")
+		}
+	}
+	privKey, err := DerivePrivateKeyFromPath(MnemonicToSeed(mnemonic, ""), derivationPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "key derivation failed: " + err.Error()})
 		return
@@ -250,7 +263,7 @@ func handleCreateWallet(c *gin.Context) {
 		ChainID:        req.ChainID,
 		Address:        address,
 		EncryptedSeed:  encSeed,
-		DerivationPath: chain.DerivationPath,
+		DerivationPath: derivationPath,
 		AccountIndex:   req.AccountIndex,
 		IsPrimary:      false,
 	}
