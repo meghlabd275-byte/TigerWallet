@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -35,17 +35,17 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string
-	DBHost        string
-	DBPort        string
-	DBUser        string
-	DBPassword    string
-	DBName        string
-	RedisHost     string
-	RedisPort     string
-	StripeKey     string
-	PayPalClient  string
-	PayPalSecret  string
+	ServerPort   string
+	DBHost       string
+	DBPort       string
+	DBUser       string
+	DBPassword   string
+	DBName       string
+	RedisHost    string
+	RedisPort    string
+	StripeKey    string
+	PayPalClient string
+	PayPalSecret string
 }
 
 func LoadConfig() *Config {
@@ -76,68 +76,70 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type PaymentMethod struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	MethodID        string    `gorm:"uniqueIndex;size:36" json:"method_id"`
-	UserID          uint      `gorm:"index" json:"user_id"`
-	MethodType      string    `json:"method_type"` // card, bank, wallet, crypto
-	Provider        string    `json:"provider"` // stripe, paypal, coinbase
-	CardLast4       string    `json:"card_last4"`
-	CardBrand       string    `json:"card_brand"`
-	CardExpMonth    int       `json:"card_exp_month"`
-	CardExpYear     int       `json:"card_exp_year"`
-	BankName        string    `json:"bank_name"`
-	BankCode        string    `json:"bank_code"`
-	IsDefault       bool      `json:"is_default"`
-	IsVerified      bool      `json:"is_verified"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                 uint      `gorm:"primarykey" json:"id"`
+	MethodID           string    `gorm:"uniqueIndex;size:36" json:"method_id"`
+	UserID             uint      `gorm:"index" json:"user_id"`
+	MethodType         string    `json:"method_type"` // card, bank, wallet, crypto
+	Provider           string    `json:"provider"`    // stripe, paypal, coinbase
+	CardLast4          string    `json:"card_last4"`
+	CardBrand          string    `json:"card_brand"`
+	CardExpMonth       int       `json:"card_exp_month"`
+	CardExpYear        int       `json:"card_exp_year"`
+	ProviderCustomerID string    `json:"provider_customer_id"`
+	ProviderMethodID   string    `json:"provider_method_id"`
+	BankName           string    `json:"bank_name"`
+	BankCode           string    `json:"bank_code"`
+	IsDefault          bool      `json:"is_default"`
+	IsVerified         bool      `json:"is_verified"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type Transaction struct {
-	ID                uint           `gorm:"primarykey" json:"id"`
-	TransactionID    string         `gorm:"uniqueIndex;size:36" json:"transaction_id"`
-	UserID            uint           `gorm:"index" json:"user_id"`
-	OrderID          string         `gorm:"index" json:"order_id"`
-	Amount           float64        `json:"amount"`
-	Currency         string         `json:"currency"`
-	PaymentMethod    string         `json:"payment_method"`
-	Provider         string         `json:"provider"`
-	Status           string         `json:"status"` // pending, processing, completed, failed, refunded
-	Type             string         `json:"type"` // deposit, withdrawal, payment
-	ProviderRef      string         `json:"provider_ref"`
-	ProviderResponse string         `json:"provider_response"`
-	Metadata         string         `json:"metadata"`
-	FeeAmount        float64        `json:"fee_amount"`
-	NetAmount        float64        `json:"net_amount"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	CompletedAt      *time.Time     `json:"completed_at"`
+	ID               uint       `gorm:"primarykey" json:"id"`
+	TransactionID    string     `gorm:"uniqueIndex;size:36" json:"transaction_id"`
+	UserID           uint       `gorm:"index" json:"user_id"`
+	OrderID          string     `gorm:"index" json:"order_id"`
+	Amount           float64    `json:"amount"`
+	Currency         string     `json:"currency"`
+	PaymentMethod    string     `json:"payment_method"`
+	Provider         string     `json:"provider"`
+	Status           string     `json:"status"` // pending, processing, completed, failed, refunded
+	Type             string     `json:"type"`   // deposit, withdrawal, payment
+	ProviderRef      string     `json:"provider_ref"`
+	ProviderResponse string     `json:"provider_response"`
+	Metadata         string     `json:"metadata"`
+	FeeAmount        float64    `json:"fee_amount"`
+	NetAmount        float64    `json:"net_amount"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	CompletedAt      *time.Time `json:"completed_at"`
 }
 
 type Refund struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	RefundID        string    `gorm:"uniqueIndex;size:36" json:"refund_id"`
-	TransactionID   string    `gorm:"index" json:"transaction_id"`
-	Amount          float64   `json:"amount"`
-	Reason          string    `json:"reason"`
-	Status          string    `json:"status"` // pending, completed, failed
-	ProviderRef     string    `json:"provider_ref"`
-	CreatedAt       time.Time `json:"created_at"`
-	CompletedAt     *time.Time `json:"completed_at"`
+	ID            uint       `gorm:"primarykey" json:"id"`
+	RefundID      string     `gorm:"uniqueIndex;size:36" json:"refund_id"`
+	TransactionID string     `gorm:"index" json:"transaction_id"`
+	Amount        float64    `json:"amount"`
+	Reason        string     `json:"reason"`
+	Status        string     `json:"status"` // pending, completed, failed
+	ProviderRef   string     `json:"provider_ref"`
+	CreatedAt     time.Time  `json:"created_at"`
+	CompletedAt   *time.Time `json:"completed_at"`
 }
 
 type Invoice struct {
-	ID              uint           `gorm:"primarykey" json:"id"`
-	InvoiceID       string         `gorm:"uniqueIndex;size:36" json:"invoice_id"`
-	UserID          uint           `gorm:"index" json:"user_id"`
-	Amount          float64        `json:"amount"`
-	Currency        string         `json:"currency"`
-	Description     string         `json:"description"`
-	Status          string         `json:"status"` // draft, pending, paid, cancelled, expired
-	DueDate         time.Time      `json:"due_date"`
-	PaidAt          *time.Time     `json:"paid_at"`
-	Transactions    string         `json:"transactions"` // JSON array
-	CreatedAt       time.Time      `json:"created_at"`
+	ID           uint       `gorm:"primarykey" json:"id"`
+	InvoiceID    string     `gorm:"uniqueIndex;size:36" json:"invoice_id"`
+	UserID       uint       `gorm:"index" json:"user_id"`
+	Amount       float64    `json:"amount"`
+	Currency     string     `json:"currency"`
+	Description  string     `json:"description"`
+	Status       string     `json:"status"` // draft, pending, paid, cancelled, expired
+	DueDate      time.Time  `json:"due_date"`
+	PaidAt       *time.Time `json:"paid_at"`
+	Transactions string     `json:"transactions"` // JSON array
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // ============================================================================
@@ -145,9 +147,10 @@ type Invoice struct {
 // ============================================================================
 
 type PaymentGateway struct {
-	config *Config
-	db     *gorm.DB
-	redis  *redis.Client
+	config   *Config
+	db       *gorm.DB
+	redis    *redis.Client
+	provider *StripeClient
 }
 
 func NewPaymentGateway(cfg *Config) (*PaymentGateway, error) {
@@ -167,10 +170,18 @@ func NewPaymentGateway(cfg *Config) (*PaymentGateway, error) {
 		DB:       0,
 	})
 
+	// A provider key is required: without one the gateway cannot charge a card,
+	// and accepting a payment it cannot settle would be worse than failing.
+	provider, err := NewStripeClient()
+	if err != nil {
+		return nil, err
+	}
+
 	return &PaymentGateway{
-		config: cfg,
-		db:     db,
-		redis:  rdb,
+		config:   cfg,
+		db:       db,
+		redis:    rdb,
+		provider: provider,
 	}, nil
 }
 
@@ -190,26 +201,47 @@ func (p *PaymentGateway) AddCard(userID uint, cardNumber, expMonth, expYear, cvv
 	// Detect card brand
 	brand := detectCardBrand(cardNumber)
 
-	// In production, this would tokenize with payment provider
-	methodID := uuid.New().String()
+	// The card is exchanged for a provider token. The number, expiry and CVC
+	// go straight to the provider and are never written to this database.
+	ctx, cancel := context.WithTimeout(context.Background(), providerTimeout)
+	defer cancel()
 
-	method := PaymentMethod{
-		MethodID:      methodID,
-		UserID:        userID,
-		MethodType:    "card",
-		Provider:      "stripe",
-		CardLast4:     last4,
-		CardBrand:     brand,
-		CardExpMonth:  p.parseInt(expMonth),
-		CardExpYear:   p.parseInt(expYear),
-		IsDefault:     false,
-		IsVerified:    true,
-		CreatedAt:     time.Now(),
-		UpdatedAt:      time.Now(),
+	token, err := p.provider.TokenizeCard(ctx, cardNumber, expMonth, expYear, cvv)
+	if err != nil {
+		return nil, err
 	}
 
-	err := p.db.Create(&method).Error
-	return &method, err
+	customerID, err := p.provider.CreateCustomer(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	providerMethodID, err := p.provider.AttachPaymentMethod(ctx, customerID, token)
+	if err != nil {
+		return nil, err
+	}
+
+	method := PaymentMethod{
+		MethodID:           uuid.New().String(),
+		UserID:             userID,
+		MethodType:         "card",
+		Provider:           "stripe",
+		CardLast4:          last4,
+		CardBrand:          brand,
+		CardExpMonth:       p.parseInt(expMonth),
+		CardExpYear:        p.parseInt(expYear),
+		ProviderCustomerID: customerID,
+		ProviderMethodID:   providerMethodID,
+		IsDefault:          false,
+		IsVerified:         true,
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+	}
+
+	if err := p.db.Create(&method).Error; err != nil {
+		return nil, err
+	}
+	return &method, nil
 }
 
 func (p *PaymentGateway) AddBankAccount(userID uint, bankName, accountNumber, routingNumber, country string) (*PaymentMethod, error) {
@@ -221,16 +253,16 @@ func (p *PaymentGateway) AddBankAccount(userID uint, bankName, accountNumber, ro
 	methodID := uuid.New().String()
 
 	method := PaymentMethod{
-		MethodID:    methodID,
-		UserID:      userID,
-		MethodType:  "bank",
-		Provider:    "stripe",
-		BankName:    bankName,
-		BankCode:    routingNumber,
-		IsDefault:   false,
-		IsVerified:  false,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		MethodID:   methodID,
+		UserID:     userID,
+		MethodType: "bank",
+		Provider:   "stripe",
+		BankName:   bankName,
+		BankCode:   routingNumber,
+		IsDefault:  false,
+		IsVerified: false,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	err := p.db.Create(&method).Error
@@ -286,7 +318,7 @@ func (p *PaymentGateway) CreatePayment(userID uint, amount float64, currency, pa
 		FeeAmount:     fee,
 		NetAmount:     netAmount,
 		CreatedAt:     time.Now(),
-		UpdatedAt:      time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	err := p.db.Create(&txn).Error
@@ -303,17 +335,40 @@ func (p *PaymentGateway) ProcessPayment(transactionID string) (*Transaction, err
 		return nil, fmt.Errorf("transaction not in pending status")
 	}
 
-	// In production, this would call the payment provider
-	// For now, simulate successful payment
-	providerRef := generateProviderRef()
+	// Resolve the stored payment method. Only the provider token is held
+	// locally; the card details live with the provider.
+	var method PaymentMethod
+	if err := p.db.Where("method_id = ? AND user_id = ?", txn.PaymentMethod, txn.UserID).First(&method).Error; err != nil {
+		return nil, fmt.Errorf("payment method not found for this user")
+	}
+	if method.ProviderMethodID == "" {
+		return nil, fmt.Errorf("payment method has no provider token; re-add the card")
+	}
+
+	amountMinor, err := toMinorUnits(txn.Amount)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), providerTimeout)
+	defer cancel()
+
+	providerRef, providerResponse, err := p.provider.CreateCharge(ctx, amountMinor, txn.Currency, method.ProviderMethodID, txn.OrderID)
+	if err != nil {
+		// A refused charge is recorded as failed, never as completed.
+		txn.Status = "failed"
+		txn.ProviderResponse = providerResponse
+		p.db.Save(&txn)
+		return &txn, err
+	}
 
 	txn.Status = "completed"
 	txn.ProviderRef = providerRef
-	txn.ProviderResponse = `{"status": "succeeded"}`
+	txn.ProviderResponse = providerResponse
 	txn.CompletedAt = new(time.Time)
 	*txn.CompletedAt = time.Now()
 
-	err := p.db.Save(&txn).Error
+	err = p.db.Save(&txn).Error
 	return &txn, err
 }
 
@@ -384,16 +439,44 @@ func (p *PaymentGateway) ProcessRefund(refundID string) (*Refund, error) {
 		return nil, fmt.Errorf("refund not in pending status")
 	}
 
-	// Process refund with provider
-	providerRef := generateProviderRef()
+	var txn Transaction
+	if err := p.db.Where("transaction_id = ?", refund.TransactionID).First(&txn).Error; err != nil {
+		return nil, fmt.Errorf("refund has no matching transaction")
+	}
+	if txn.ProviderRef == "" {
+		return nil, fmt.Errorf("transaction %s has no provider reference to refund", txn.TransactionID)
+	}
+
+	amountMinor, err := toMinorUnits(refund.Amount)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), providerTimeout)
+	defer cancel()
+
+	providerRef, err := p.provider.Refund(ctx, txn.ProviderRef, amountMinor)
+	if err != nil {
+		refund.Status = "failed"
+		p.db.Save(&refund)
+		return &refund, err
+	}
 
 	refund.Status = "completed"
 	refund.ProviderRef = providerRef
 	refund.CompletedAt = new(time.Time)
 	*refund.CompletedAt = time.Now()
 
-	err := p.db.Save(&refund).Error
-	return &refund, err
+	if err := p.db.Save(&refund).Error; err != nil {
+		return nil, err
+	}
+
+	// A refunded charge is no longer completed revenue.
+	txn.Status = "refunded"
+	if err := p.db.Save(&txn).Error; err != nil {
+		return nil, err
+	}
+	return &refund, nil
 }
 
 // ============================================================================
@@ -459,11 +542,11 @@ func (p *PaymentGateway) GetInvoice(invoiceID string) (*Invoice, error) {
 // ============================================================================
 
 type CryptoPayment struct {
-	Address     string  `json:"address"`
-	Amount      float64 `json:"amount"`
-	Network     string  `json:"network"`
-	Currency    string  `json:"currency"`
-	ExpiresAt   int64   `json:"expires_at"`
+	Address   string  `json:"address"`
+	Amount    float64 `json:"amount"`
+	Network   string  `json:"network"`
+	Currency  string  `json:"currency"`
+	ExpiresAt int64   `json:"expires_at"`
 }
 
 func (p *PaymentGateway) CreateCryptoPayment(userID uint, amount float64, currency, network string) (*CryptoPayment, error) {
@@ -496,7 +579,7 @@ func (p *PaymentGateway) CreateCryptoPayment(userID uint, amount float64, curren
 		Status:        "pending",
 		Type:          "deposit",
 		CreatedAt:     time.Now(),
-		UpdatedAt:      time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 	p.db.Create(&txn)
 
@@ -595,10 +678,10 @@ func (p *PaymentGateway) validateCurrency(currency string) bool {
 
 func (p *PaymentGateway) calculateFee(amount float64, methodType string) float64 {
 	feeRates := map[string]float64{
-		"card":        0.029,
-		"bank":        0.01,
-		"crypto":      0.01,
-		"wallet":      0.0,
+		"card":   0.029,
+		"bank":   0.01,
+		"crypto": 0.01,
+		"wallet": 0.0,
 	}
 
 	rate := feeRates[methodType]
@@ -620,11 +703,12 @@ func (p *PaymentGateway) parseInt(s string) int {
 
 func (p *PaymentGateway) setupRoutes(router *gin.Engine) {
 	api := router.Group("/api/v1")
+	api.Use(RequireAuth())
 	{
 		// Payment methods
 		api.POST("/payment-methods/card", p.addCard)
 		api.POST("/payment-methods/bank", p.addBankAccount)
-		api.GET("/payment-methods/:user_id", p.getPaymentMethods)
+		api.GET("/payment-methods/:user_id", requireSelf, p.getPaymentMethods)
 		api.POST("/payment-methods/:method_id/default", p.setDefaultMethod)
 		api.DELETE("/payment-methods/:method_id", p.deleteMethod)
 
@@ -632,7 +716,7 @@ func (p *PaymentGateway) setupRoutes(router *gin.Engine) {
 		api.POST("/payments", p.createPayment)
 		api.POST("/payments/:transaction_id/process", p.processPayment)
 		api.GET("/payments/:transaction_id", p.getTransaction)
-		api.GET("/payments/user/:user_id", p.getUserTransactions)
+		api.GET("/payments/user/:user_id", requireSelf, p.getUserTransactions)
 		api.POST("/payments/:transaction_id/cancel", p.cancelPayment)
 
 		// Refunds
@@ -656,11 +740,10 @@ func (p *PaymentGateway) setupRoutes(router *gin.Engine) {
 
 func (p *PaymentGateway) addCard(c *gin.Context) {
 	var req struct {
-		UserID    uint   `json:"user_id" binding:"required"`
 		CardNumber string `json:"card_number" binding:"required"`
-		ExpMonth  string `json:"exp_month" binding:"required"`
-		ExpYear   string `json:"exp_year" binding:"required"`
-		CVV       string `json:"cvv" binding:"required"`
+		ExpMonth   string `json:"exp_month" binding:"required"`
+		ExpYear    string `json:"exp_year" binding:"required"`
+		CVV        string `json:"cvv" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -668,7 +751,7 @@ func (p *PaymentGateway) addCard(c *gin.Context) {
 		return
 	}
 
-	method, err := p.AddCard(req.UserID, req.CardNumber, req.ExpMonth, req.ExpYear, req.CVV)
+	method, err := p.AddCard(currentUserID(c), req.CardNumber, req.ExpMonth, req.ExpYear, req.CVV)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -679,11 +762,11 @@ func (p *PaymentGateway) addCard(c *gin.Context) {
 
 func (p *PaymentGateway) addBankAccount(c *gin.Context) {
 	var req struct {
-		UserID       uint   `json:"user_id" binding:"required"`
-		BankName     string `json:"bank_name" binding:"required"`
+		UserID        uint   `json:"user_id" binding:"required"`
+		BankName      string `json:"bank_name" binding:"required"`
 		AccountNumber string `json:"account_number" binding:"required"`
 		RoutingNumber string `json:"routing_number" binding:"required"`
-		Country      string `json:"country" binding:"required"`
+		Country       string `json:"country" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -715,12 +798,7 @@ func (p *PaymentGateway) getPaymentMethods(c *gin.Context) {
 func (p *PaymentGateway) setDefaultMethod(c *gin.Context) {
 	methodID := c.Param("method_id")
 
-	var req struct {
-		UserID uint `json:"user_id" binding:"required"`
-	}
-	c.ShouldBindJSON(&req)
-
-	err := p.SetDefaultPaymentMethod(req.UserID, methodID)
+	err := p.SetDefaultPaymentMethod(currentUserID(c), methodID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -743,12 +821,12 @@ func (p *PaymentGateway) deleteMethod(c *gin.Context) {
 
 func (p *PaymentGateway) createPayment(c *gin.Context) {
 	var req struct {
-		UserID       uint   `json:"user_id" binding:"required"`
-		Amount       float64 `json:"amount" binding:"required"`
-		Currency     string  `json:"currency" binding:"required"`
-		PaymentMethod string `json:"payment_method" binding:"required"`
-		MethodType   string  `json:"method_type" binding:"required"`
-		Description  string  `json:"description"`
+		UserID        uint    `json:"user_id" binding:"required"`
+		Amount        float64 `json:"amount" binding:"required"`
+		Currency      string  `json:"currency" binding:"required"`
+		PaymentMethod string  `json:"payment_method" binding:"required"`
+		MethodType    string  `json:"method_type" binding:"required"`
+		Description   string  `json:"description"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -853,7 +931,7 @@ func (p *PaymentGateway) createInvoice(c *gin.Context) {
 		Amount      float64   `json:"amount" binding:"required"`
 		Currency    string    `json:"currency" binding:"required"`
 		Description string    `json:"description"`
-		DueDate    time.Time `json:"due_date"`
+		DueDate     time.Time `json:"due_date"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -906,7 +984,7 @@ func (p *PaymentGateway) payInvoice(c *gin.Context) {
 
 func (p *PaymentGateway) createCryptoPayment(c *gin.Context) {
 	var req struct {
-		UserID   uint   `json:"user_id" binding:"required"`
+		UserID   uint    `json:"user_id" binding:"required"`
 		Amount   float64 `json:"amount" binding:"required"`
 		Currency string  `json:"currency" binding:"required"`
 		Network  string  `json:"network" binding:"required"`
@@ -945,10 +1023,34 @@ func (p *PaymentGateway) verifyCryptoPayment(c *gin.Context) {
 // Helper Functions
 // ============================================================================
 
-func generateProviderRef() string {
-	data := fmt.Sprintf("%d:%s", time.Now().UnixNano(), uuid.New().String())
-	hash := sha256.Sum256([]byte(data))
-	return "pay_" + hex.EncodeToString(hash[:])[:24]
+// toMinorUnits converts a decimal amount into the currency's smallest unit
+// using integer arithmetic. Multiplying the float directly truncates small
+// values (0.000001 * 1e6 is 0.9999999999999999) and would undercharge.
+func toMinorUnits(amount float64) (int64, error) {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+		return 0, fmt.Errorf("amount must be positive")
+	}
+
+	// FormatFloat with precision -1 yields the shortest decimal that
+	// round-trips, and 'f' never uses exponent notation.
+	value := strconv.FormatFloat(amount, 'f', -1, 64)
+	whole, fraction, hasFraction := strings.Cut(value, ".")
+	if !hasFraction {
+		fraction = ""
+	}
+	if len(fraction) > 2 {
+		fraction = fraction[:2]
+	}
+	fraction += strings.Repeat("0", 2-len(fraction))
+
+	minor, err := strconv.ParseInt(whole+fraction, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("amount %q is not a valid decimal: %w", value, err)
+	}
+	if minor <= 0 {
+		return 0, fmt.Errorf("amount must be positive")
+	}
+	return minor, nil
 }
 
 func generateCryptoAddress(currency, network string) string {
