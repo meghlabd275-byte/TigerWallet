@@ -1,0 +1,18 @@
+[package]
+name = "tiger-cross-chain-aggregator"
+version = "0.1.0"
+edition = "2021"
+description = "TigerWallet Cross-Chain Aggregator - real on-chain quotes over operator-configured RPC endpoints"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1.0", features = ["full"] }
+hex = "0.4"
+log = "0.4"
+
+[lib]
+name = "tiger_cross_chain_aggregator"
+path = "src/lib.rs"

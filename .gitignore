@@ -193,3 +193,4 @@ perpetual_trading
 protection_fund/go/protection-fund
 payments/go/cmd/payment-gateway/payment-gateway
 payments/go/payment-gateway
+cross_chain_aggregator/go/cross-chain-aggregator
