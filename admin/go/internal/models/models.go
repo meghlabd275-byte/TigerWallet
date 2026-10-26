@@ -229,30 +229,30 @@ type TransactionLog struct {
 
 // WhiteLabel represents a white label client
 type WhiteLabel struct {
-	ID             uint            `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	DeletedAt      sql.NullTime    `gorm:"index" json:"-"`
-	Name           string          `gorm:"not null" json:"name"`
-	Slug           string          `gorm:"uniqueIndex;not null" json:"slug"`
-	Domain         string          `gorm:"uniqueIndex" json:"domain"`
-	LogoURL        string          `json:"logo_url"`
-	FaviconURL     string          `json:"favicon_url"`
-	PrimaryColor   string          `json:"primary_color"`
-	SecondaryColor string          `json:"secondary_color"`
-	Status         string          `gorm:"not null;default:'active'" json:"status"` // active, suspended, pending
-	ContactEmail   string          `json:"contact_email"`
-	ContactPhone   string          `json:"contact_phone"`
-	Address        string          `json:"address"`
-	Description    string          `json:"description"`
-	CustomCSS      sql.NullString  `gorm:"type:text" json:"custom_css"`
-	CustomJS       sql.NullString  `gorm:"type:text" json:"custom_js"`
+	ID              uint            `gorm:"primarykey" json:"id"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+	DeletedAt       sql.NullTime    `gorm:"index" json:"-"`
+	Name            string          `gorm:"not null" json:"name"`
+	Slug            string          `gorm:"uniqueIndex;not null" json:"slug"`
+	Domain          string          `gorm:"uniqueIndex" json:"domain"`
+	LogoURL         string          `json:"logo_url"`
+	FaviconURL      string          `json:"favicon_url"`
+	PrimaryColor    string          `json:"primary_color"`
+	SecondaryColor  string          `json:"secondary_color"`
+	Status          string          `gorm:"not null;default:'active'" json:"status"` // active, suspended, pending
+	ContactEmail    string          `json:"contact_email"`
+	ContactPhone    string          `json:"contact_phone"`
+	Address         string          `json:"address"`
+	Description     string          `json:"description"`
+	CustomCSS       sql.NullString  `gorm:"type:text" json:"custom_css"`
+	CustomJS        sql.NullString  `gorm:"type:text" json:"custom_js"`
 	Features        json.RawMessage `gorm:"type:jsonb" json:"features"`
 	AllowedProducts json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"allowed_products"` // SuperAdmin-governed: which WL products (master_wallet, user_wallet, bots, project_party) this client may run
-	FeeStructure   json.RawMessage `gorm:"type:jsonb" json:"fee_structure"`
-	ApprovedAt     *time.Time      `json:"approved_at"`
-	ApprovedBy     *uint           `json:"approved_by"`
-	ExpiresAt      *time.Time      `json:"expires_at"`
+	FeeStructure    json.RawMessage `gorm:"type:jsonb" json:"fee_structure"`
+	ApprovedAt      *time.Time      `json:"approved_at"`
+	ApprovedBy      *uint           `json:"approved_by"`
+	ExpiresAt       *time.Time      `json:"expires_at"`
 }
 
 // SystemConfig represents system configuration
@@ -755,25 +755,65 @@ type TradingPair struct {
 // Blockchain represents a supported blockchain/chain managed from the admin UI.
 // Persisted in PostgreSQL via GORM (replaces the orphan admin_service in-memory map).
 type Blockchain struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Name          string    `gorm:"not null;uniqueIndex" json:"name"`
-	Symbol        string    `gorm:"not null;index" json:"symbol"`
-	ChainID       int64     `gorm:"not null;uniqueIndex" json:"chainId"`
-	Type          string    `json:"type"`
-	RPCURL        string    `gorm:"column:rpc_url" json:"rpcUrl"`
-	WSRPCURL      string    `gorm:"column:ws_rpc_url" json:"wsRpcUrl"`
-	ExplorerURL   string    `gorm:"column:explorer_url" json:"explorerUrl"`
-	ExplorerAPI   string    `gorm:"column:explorer_api" json:"explorerApi"`
-	NativeToken   string    `json:"nativeToken"`
-	Decimals      int       `gorm:"default:18" json:"decimals"`
-	LogoURL       string    `json:"logoUrl"`
-	IsTestnet     bool      `gorm:"default:false" json:"isTestnet"`
-	IsActive      bool      `gorm:"default:true" json:"isActive"`
-	Status        string    `gorm:"not null;default:'active'" json:"status"` // active, inactive, maintenance
-	AvgBlockTime  int       `gorm:"column:avg_block_time" json:"avgBlockTime"` // milliseconds
-	GasToken      string    `json:"gasToken"`
-	IsDefault     bool      `gorm:"default:false" json:"isDefault"`
-	CreatedBy     uint      `json:"createdBy"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Name         string    `gorm:"not null;uniqueIndex" json:"name"`
+	Symbol       string    `gorm:"not null;index" json:"symbol"`
+	ChainID      int64     `gorm:"not null;uniqueIndex" json:"chainId"`
+	Type         string    `json:"type"`
+	RPCURL       string    `gorm:"column:rpc_url" json:"rpcUrl"`
+	WSRPCURL     string    `gorm:"column:ws_rpc_url" json:"wsRpcUrl"`
+	ExplorerURL  string    `gorm:"column:explorer_url" json:"explorerUrl"`
+	ExplorerAPI  string    `gorm:"column:explorer_api" json:"explorerApi"`
+	NativeToken  string    `json:"nativeToken"`
+	Decimals     int       `gorm:"default:18" json:"decimals"`
+	LogoURL      string    `json:"logoUrl"`
+	IsTestnet    bool      `gorm:"default:false" json:"isTestnet"`
+	IsActive     bool      `gorm:"default:true" json:"isActive"`
+	Status       string    `gorm:"not null;default:'active'" json:"status"`   // active, inactive, maintenance
+	AvgBlockTime int       `gorm:"column:avg_block_time" json:"avgBlockTime"` // milliseconds
+	GasToken     string    `json:"gasToken"`
+	IsDefault    bool      `gorm:"default:false" json:"isDefault"`
+	CreatedBy    uint      `json:"createdBy"`
+}
+
+// NotificationTemplate stores a reusable notification body with named
+// placeholders. Admins create templates here; SendTemplateNotification renders
+// them with the caller-supplied variables instead of emitting placeholder text.
+type NotificationTemplate struct {
+	ID          uint      `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Code        string    `gorm:"uniqueIndex;not null" json:"code"`
+	Name        string    `gorm:"not null" json:"name"`
+	Subject     string    `json:"subject"`
+	Body        string    `gorm:"not null" json:"body"`
+	Type        string    `gorm:"not null;default:'info'" json:"type"`
+	Priority    string    `gorm:"default:'normal'" json:"priority"`
+	ActionURL   string    `json:"action_url"`
+	IsActive    bool      `gorm:"default:true" json:"is_active"`
+	CreatedByID uint      `json:"created_by_id"`
+}
+
+// CryptoCard is an issued virtual/physical crypto card. CardNumber holds the
+// AES-256-GCM encrypted PAN and is never serialised to JSON; API responses use
+// a masked last-4 view.
+type CryptoCard struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	UserID     uint      `gorm:"index" json:"user_id"`
+	UserName   string    `json:"user_name"`
+	CardNumber string    `gorm:"uniqueIndex" json:"-"`
+	Currency   string    `json:"currency"`
+	Balance    float64   `json:"balance"`
+	Limit      float64   `json:"limit"`
+	Status     string    `gorm:"default:'pending'" json:"status"` // active, blocked, pending
+	CardType   string    `json:"card_type"`                       // virtual, physical
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// TableName pins the table name used by the card handler.
+func (CryptoCard) TableName() string {
+	return "crypto_cards"
 }

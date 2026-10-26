@@ -1,9 +1,15 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tigerwallet/admin/internal/config"
@@ -14,23 +20,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // SuperAdminHandler handles super admin specific operations
 type SuperAdminHandler struct {
-	db      *database.PostgresDB
-	redis   *redis.RedisClient
-	cfg     *config.Config
-	authSvc *auth.AuthService
+	db                 *database.PostgresDB
+	redis              *redis.RedisClient
+	cfg                *config.Config
+	authSvc            *auth.AuthService
+	masterWalletClient *http.Client
 }
 
 // NewSuperAdminHandler creates a new super admin handler
 func NewSuperAdminHandler(db *database.PostgresDB, redisClient *redis.RedisClient, cfg *config.Config, authSvc *auth.AuthService) *SuperAdminHandler {
 	return &SuperAdminHandler{
-		db:      db,
-		redis:   redisClient,
-		cfg:     cfg,
-		authSvc: authSvc,
+		db:                 db,
+		redis:              redisClient,
+		cfg:                cfg,
+		authSvc:            authSvc,
+		masterWalletClient: &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -394,27 +403,70 @@ func (h *SuperAdminHandler) UpdateSystemConfig(c *gin.Context) {
 		return
 	}
 
-	// Note: In production, you'd want to persist these to database
-	// For now, we just log the changes
-	updates := make(map[string]interface{})
-
+	// Persist each provided setting as a SystemConfig row so the value survives
+	// restarts. Keys are fixed identifiers, so there is no injection surface.
+	type setting struct {
+		key   string
+		value interface{}
+		kind  string
+	}
+	var settings []setting
 	if req.MaintenanceMode != nil {
-		updates["maintenance_mode"] = *req.MaintenanceMode
+		settings = append(settings, setting{"maintenance_mode", *req.MaintenanceMode, "bool"})
 	}
 	if req.RegistrationEnabled != nil {
-		updates["registration_enabled"] = *req.RegistrationEnabled
+		settings = append(settings, setting{"registration_enabled", *req.RegistrationEnabled, "bool"})
 	}
 	if req.MaxLoginAttempts != nil {
-		updates["max_login_attempts"] = *req.MaxLoginAttempts
+		settings = append(settings, setting{"max_login_attempts", *req.MaxLoginAttempts, "int"})
 	}
 	if req.JWTExpirationHours != nil {
-		updates["jwt_expiration_hours"] = *req.JWTExpirationHours
+		settings = append(settings, setting{"jwt_expiration_hours", *req.JWTExpirationHours, "int"})
 	}
 	if req.PasswordMinLength != nil {
-		updates["password_min_length"] = *req.PasswordMinLength
+		settings = append(settings, setting{"password_min_length", *req.PasswordMinLength, "int"})
+	}
+	if req.PasswordRequireNumber != nil {
+		settings = append(settings, setting{"password_require_number", *req.PasswordRequireNumber, "bool"})
+	}
+	if req.PasswordRequireSpecial != nil {
+		settings = append(settings, setting{"password_require_special", *req.PasswordRequireSpecial, "bool"})
 	}
 
-	h.logActivity(c.GetUint("admin_id"), "update_config", "config", "", "Updated system configuration", c.ClientIP(), c.Request.UserAgent(), "success", "")
+	adminID := c.GetUint("admin_id")
+	updates := make(map[string]interface{}, len(settings))
+
+	for _, s := range settings {
+		encoded := fmt.Sprintf("%v", s.value)
+		var existing models.SystemConfig
+		err := h.db.Where("key = ?", s.key).First(&existing).Error
+		switch {
+		case err == gorm.ErrRecordNotFound:
+			row := models.SystemConfig{
+				Key:       s.key,
+				Value:     encoded,
+				Type:      s.kind,
+				Category:  "security",
+				UpdatedBy: &adminID,
+			}
+			if err := h.db.Create(&row).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist configuration"})
+				return
+			}
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load configuration"})
+			return
+		default:
+			if err := h.db.Model(&models.SystemConfig{}).Where("key = ?", s.key).
+				Updates(map[string]interface{}{"value": encoded, "type": s.kind, "updated_by": adminID}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist configuration"})
+				return
+			}
+		}
+		updates[s.key] = s.value
+	}
+
+	h.logActivity(adminID, "update_config", "config", "", "Updated system configuration", c.ClientIP(), c.Request.UserAgent(), "success", "")
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Configuration updated successfully",
@@ -586,58 +638,97 @@ func (h *SuperAdminHandler) UpdateRateLimits(c *gin.Context) {
 
 // ==================== MASTER WALLET ACCESS ====================
 
-// ListMasterWallets lists all master wallets
-// GET /api/v1/superadmin/masterwallets
+// ListMasterWallets lists all master wallets.
+// GET /api/v1/superadmin/system/master-wallets
+//
+// The MasterWallet backend (:8450) is the only authority on wallet state, so
+// this proxies the request rather than synthesising an inventory. A dead or
+// unconfigured upstream returns 502/503 — never an empty success.
 func (h *SuperAdminHandler) ListMasterWallets(c *gin.Context) {
-	var wallets []struct {
-		ID        uint      `json:"id"`
-		Name      string    `json:"name"`
-		Address   string    `json:"address"`
-		Chain     string    `json:"chain"`
-		Balance   string    `json:"balance"`
-		IsActive  bool      `json:"is_active"`
-		CreatedAt time.Time `json:"created_at"`
-	}
-
-	// In production, this would query the master wallet service
-	// For now, return empty list
-	c.JSON(http.StatusOK, gin.H{
-		"data":  wallets,
-		"total": 0,
-	})
+	h.proxyMasterWallet(c, http.MethodGet, "/api/v1/master-wallet", nil)
 }
 
 // GetMasterWallet gets master wallet details
-// GET /api/v1/superadmin/masterwallets/:id
+// GET /api/v1/superadmin/system/master-wallets/:id
 func (h *SuperAdminHandler) GetMasterWallet(c *gin.Context) {
-	id := c.Param("id")
-
-	wallet := map[string]interface{}{
-		"id":      id,
-		"name":    "Main Hot Wallet",
-		"address": "0x742d35Cc6634C0532925a3b844Bc9e7595f",
-		"chain":   "ethereum",
-		"balance": "0.0",
+	id, ok := masterWalletPathID(c)
+	if !ok {
+		return
 	}
-
-	c.JSON(http.StatusOK, wallet)
+	h.proxyMasterWallet(c, http.MethodGet, "/api/v1/master-wallet/"+id, nil)
 }
 
 // GetMasterWalletBalance gets master wallet balance
-// GET /api/v1/superadmin/masterwallets/:id/balance
+// GET /api/v1/superadmin/system/master-wallets/:id/balance
 func (h *SuperAdminHandler) GetMasterWalletBalance(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := masterWalletPathID(c)
+	if !ok {
+		return
+	}
+	h.proxyMasterWallet(c, http.MethodGet, "/api/v1/master-wallet/"+id+"/balance", nil)
+}
 
-	balances := []map[string]interface{}{
-		{"token": "ETH", "balance": "0.0", "usd_value": "0.0"},
-		{"token": "USDT", "balance": "0.0", "usd_value": "0.0"},
-		{"token": "BTC", "balance": "0.0", "usd_value": "0.0"},
+// masterWalletPathID extracts and validates the wallet id path parameter.
+func masterWalletPathID(c *gin.Context) (string, bool) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "master wallet id is required"})
+		return "", false
+	}
+	return url.PathEscape(id), true
+}
+
+// proxyMasterWallet forwards a request to the canonical MasterWallet backend,
+// attaching the service token and passing the upstream status and body through
+// unchanged.
+func (h *SuperAdminHandler) proxyMasterWallet(c *gin.Context, method, path string, body []byte) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"wallet_id": id,
-		"balances":  balances,
-	})
+	req, err := http.NewRequestWithContext(c.Request.Context(), method, masterWalletBaseURL()+path, reader)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to build upstream request"})
+		return
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token := strings.TrimSpace(os.Getenv("SERVICE_AUTH_TOKEN")); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := h.masterWalletClient
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error":  "master wallet backend unavailable",
+			"detail": err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read master wallet response"})
+		return
+	}
+
+	c.Data(resp.StatusCode, "application/json", respBody)
+}
+
+// masterWalletBaseURL resolves the MasterWallet backend base URL.
+func masterWalletBaseURL() string {
+	if v := strings.TrimSpace(os.Getenv("MASTER_WALLET_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "http://localhost:8450"
 }
 
 // ==================== AUDIT LOGS ====================

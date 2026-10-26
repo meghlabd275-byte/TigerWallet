@@ -329,20 +329,49 @@ func (h *NotificationHandler) SendTemplateNotification(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_ids must not be empty"})
+		return
+	}
 
-	// In production, fetch from database
-	// For now, use placeholder
-	title := "Notification: " + req.TemplateID
-	message := "Template notification"
+	var tmpl models.NotificationTemplate
+	if err := h.db.Where("code = ?", req.TemplateID).First(&tmpl).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Notification template not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load notification template"})
+		return
+	}
+	if !tmpl.IsActive {
+		c.JSON(http.StatusConflict, gin.H{"error": "Notification template is disabled"})
+		return
+	}
+
+	title, err := renderTemplate(tmpl.Subject, req.Variables)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid subject template: %v", err)})
+		return
+	}
+	message, err := renderTemplate(tmpl.Body, req.Variables)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid body template: %v", err)})
+		return
+	}
+	if title == "" {
+		title = tmpl.Name
+	}
 
 	notifiedCount := 0
 	for _, userID := range req.UserIDs {
 		notification := models.Notification{
-			AdminID: userID,
-			Title:   title,
-			Message: message,
-			Type:    "info",
-			IsRead:  false,
+			AdminID:   userID,
+			Title:     title,
+			Message:   message,
+			Type:      tmpl.Type,
+			Priority:  tmpl.Priority,
+			ActionURL: tmpl.ActionURL,
+			IsRead:    false,
 		}
 
 		if err := h.db.Create(&notification).Error; err == nil {
@@ -351,7 +380,9 @@ func (h *NotificationHandler) SendTemplateNotification(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"notified": notifiedCount,
+		"notified":      notifiedCount,
+		"template_code": tmpl.Code,
+		"title":         title,
 	})
 }
 
@@ -495,3 +526,54 @@ func (h *NotificationHandler) dispatchNotificationWebhook(channel string, n mode
 	}
 	return nil
 }
+
+// renderTemplate substitutes {{name}} placeholders in a notification template
+// with the supplied variables. Unknown placeholders are rejected so a template
+// typo surfaces as an error rather than leaking literal braces to end users.
+func renderTemplate(body string, vars map[string]string) (string, error) {
+	if !strings.Contains(body, "{{") {
+		return body, nil
+	}
+
+	var (
+		out      strings.Builder
+		missing  []string
+		position int
+	)
+	for {
+		open := strings.Index(body[position:], "{{")
+		if open < 0 {
+			out.WriteString(body[position:])
+			break
+		}
+		open += position
+		close := strings.Index(body[open:], "}}")
+		if close < 0 {
+			return "", fmt.Errorf("unclosed placeholder at offset %d", open)
+		}
+		close += open
+
+		out.WriteString(body[position:open])
+
+		key := strings.TrimSpace(body[open+2 : close])
+		if key == "" {
+			return "", fmt.Errorf("empty placeholder at offset %d", open)
+		}
+		value, ok := vars[key]
+		if !ok {
+			missing = append(missing, key)
+			out.WriteString(body[open : close+2])
+		} else {
+			out.WriteString(value)
+		}
+
+		position = close + 2
+	}
+
+	if len(missing) > 0 {
+		return "", fmt.Errorf("missing template variables: %s", strings.Join(missing, ", "))
+	}
+
+	return out.String(), nil
+}
+

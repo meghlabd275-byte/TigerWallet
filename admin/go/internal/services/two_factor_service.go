@@ -140,26 +140,19 @@ func (s *TwoFactorService) Verify2FA(c *gin.Context, req Verify2FARequest) (bool
 		return false, "", fmt.Errorf("2FA not enabled for this user")
 	}
 
-	// Check if using backup code
-	if len(req.Code) == 8 {
-		// Verify backup code
+	// Check if using backup code. Codes are formatted "XXXX-XXXX-XXXX-XXXX";
+	// accept them with or without the dashes.
+	if normalized := normalizeBackupCode(req.Code); len(normalized) == backupCodeGroupLen*4 {
 		codeHash := s.hashCode(req.Code)
-		if twoFactor.BackupCodesHashed == "" {
-			return false, "Invalid code", nil
+
+		hashes := s.storedBackupCodeHashes(twoFactor)
+		used, found := hashes[codeHash]
+		if !found || used {
+			return false, "Invalid backup code", nil
 		}
 
-		// Check if backup code is valid and not used
-		backupCodes := s.getStoredBackupCodes(c, req.UserID, req.UserType)
-		var usedCodes map[string]bool
-		json.Unmarshal([]byte(twoFactor.UsedBackupCodes), &usedCodes)
-		for _, code := range backupCodes {
-			if s.hashCode(code) == codeHash && !usedCodes[strings.ToUpper(req.Code)] {
-				// Mark backup code as used
-				s.markBackupCodeUsed(c, req.UserID, req.UserType, req.Code)
-				return true, "", nil
-			}
-		}
-		return false, "Invalid backup code", nil
+		s.markBackupCodeUsed(c, req.UserID, req.UserType, req.Code)
+		return true, "", nil
 	}
 
 	// Verify TOTP code
@@ -201,12 +194,15 @@ func (s *TwoFactorService) Enable2FA(c *gin.Context, req Enable2FARequest) error
 		return fmt.Errorf("invalid verification code")
 	}
 
-	// Hash backup codes
+	// Hash backup codes before persisting them.
 	backupCodesHashed := make(map[string]bool)
 	for _, code := range backupCodes {
-		backupCodesHashed[strings.ToUpper(code.(string))] = false
+		backupCodesHashed[s.hashCode(code.(string))] = false
 	}
-	backupCodesJSON, _ := json.Marshal(backupCodesHashed)
+	backupCodesJSON, err := json.Marshal(backupCodesHashed)
+	if err != nil {
+		return fmt.Errorf("failed to encode backup codes: %w", err)
+	}
 
 	// Create or update 2FA record
 	now := time.Now()
@@ -281,21 +277,10 @@ func (s *TwoFactorService) Disable2FA(c *gin.Context, req Disable2FARequest) err
 	// Verify password (or code if provided)
 	var passwordValid bool
 	if req.BackupCode != "" {
-		// Verify backup code
-		codeHash := s.hashCode(strings.ToUpper(req.BackupCode))
-		var usedCodes map[string]bool
-		json.Unmarshal([]byte(twoFactor.UsedBackupCodes), &usedCodes)
-		if usedCodes[codeHash] {
-			passwordValid = false
-		} else {
-			backupCodes := s.getStoredBackupCodes(c, req.UserID, req.UserType)
-			for _, code := range backupCodes {
-				if s.hashCode(code) == codeHash {
-					passwordValid = true
-					break
-				}
-			}
-		}
+		codeHash := s.hashCode(req.BackupCode)
+		hashes := s.storedBackupCodeHashes(twoFactor)
+		used, found := hashes[codeHash]
+		passwordValid = found && !used
 	} else if req.Code != "" {
 		// Verify TOTP code
 		passwordValid = totp.Validate(req.Code, twoFactor.Secret)
@@ -387,14 +372,18 @@ func (s *TwoFactorService) Get2FAStatus(c *gin.Context, userID uint, userType st
 	// Parse methods
 	json.Unmarshal([]byte(twoFactor.Methods), &status.Methods)
 
-	// Count backup codes left
-	if twoFactor.BackupCodesHashed != "" {
-		var usedCodes map[string]bool
-		json.Unmarshal([]byte(twoFactor.UsedBackupCodes), &usedCodes)
-		var totalCodes int
-		json.Unmarshal([]byte(twoFactor.BackupCodesHashed), &totalCodes)
-		status.BackupCodesLeft = totalCodes - len(usedCodes)
-		status.RecoveryCodesLeft = status.BackupCodesLeft
+	// Count backup codes left. BackupCodesHashed is a map of code hash -> used
+	// flag; the previous implementation unmarshalled it into an int, which
+	// always failed and reported zero remaining codes.
+	if hashes := s.storedBackupCodeHashes(twoFactor); len(hashes) > 0 {
+		remaining := 0
+		for _, used := range hashes {
+			if !used {
+				remaining++
+			}
+		}
+		status.BackupCodesLeft = remaining
+		status.RecoveryCodesLeft = remaining
 	}
 
 	if twoFactor.LastVerifiedAt != nil {
@@ -423,8 +412,14 @@ func (s *TwoFactorService) RegenerateBackupCodes(c *gin.Context, userID uint, us
 		storedPassword = user.PasswordHash
 	}
 
-	inputHash := fmt.Sprintf("%x", sha256.Sum256([]byte(password)))
-	if inputHash != storedPassword {
+	// Verify password with bcrypt (+ pepper for admin), matching the login
+	// hashing path. Comparing a sha256 hex digest against a bcrypt hash always
+	// fails, which would make backup-code regeneration impossible.
+	inputPassword := password
+	if userType == "admin" {
+		inputPassword = password + s.cfg.PasswordPepper
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(inputPassword)); err != nil {
 		return nil, fmt.Errorf("invalid password")
 	}
 
@@ -434,14 +429,16 @@ func (s *TwoFactorService) RegenerateBackupCodes(c *gin.Context, userID uint, us
 	// Hash and store
 	backupCodesHashed := make(map[string]bool)
 	for _, code := range newCodes {
-		backupCodesHashed[strings.ToUpper(code)] = false
+		backupCodesHashed[s.hashCode(code)] = false
 	}
-	backupCodesJSON, _ := json.Marshal(backupCodesHashed)
+	backupCodesJSON, err := json.Marshal(backupCodesHashed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode backup codes: %w", err)
+	}
 
 	// Update database
 	var twoFactor models.TwoFactorAuth
-	err := s.db.Where("user_id = ? AND user_type = ?", userID, userType).First(&twoFactor).Error
-	if err != nil {
+	if err := s.db.Where("user_id = ? AND user_type = ?", userID, userType).First(&twoFactor).Error; err != nil {
 		return nil, fmt.Errorf("2FA not enabled")
 	}
 
@@ -485,64 +482,89 @@ func (s *TwoFactorService) ValidateRateLimit(c *gin.Context, userID uint, userTy
 
 // helper functions
 
+// backupCodeGroupLen is the number of base32 characters per group in a backup
+// code. Ten groups of four characters (before the grouping dash) yields 40
+// base32 symbols ≈ 200 bits of entropy — the previous 4-character codes carried
+// only ~20 bits and were trivially brute-forced.
+const backupCodeGroupLen = 4
+
+// generateBackupCodes returns count cryptographically random backup codes in
+// canonical "XXXX-XXXX-XXXX-XXXX" form.
 func (s *TwoFactorService) generateBackupCodes(count int) []string {
+	const groups = 4
+
 	codes := make([]string, count)
-	encoded := base32.StdEncoding.EncodeToString(randBytes(count * 4))
-	cleaned := strings.ReplaceAll(encoded, "=", "")
-
 	for i := 0; i < count; i++ {
-		start := i * 4
-		end := start + 4
-		if end > len(cleaned) {
-			end = len(cleaned)
+		raw := make([]byte, groups*backupCodeGroupLen*5/8)
+		if _, err := rand.Read(raw); err != nil {
+			// crypto/rand must never fail on a healthy system; refuse to emit a
+			// predictable code rather than silently degrade.
+			panic(fmt.Sprintf("backup code entropy unavailable: %v", err))
 		}
-		code := cleaned[start:end]
-		codes[i] = fmt.Sprintf("%s-%s", code[:4], code[4:])
+		encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw)
+
+		parts := make([]string, groups)
+		for g := 0; g < groups; g++ {
+			parts[g] = encoded[g*backupCodeGroupLen : (g+1)*backupCodeGroupLen]
+		}
+		codes[i] = strings.Join(parts, "-")
 	}
 
 	return codes
 }
 
-func randBytes(n int) []byte {
-	b := make([]byte, n)
-	rand.Read(b)
-	return b
+// normalizeBackupCode canonicalises user input so formatting differences
+// (case, spaces, dashes) do not cause a valid code to be rejected.
+func normalizeBackupCode(code string) string {
+	cleaned := strings.ToUpper(strings.TrimSpace(code))
+	cleaned = strings.ReplaceAll(cleaned, " ", "")
+	cleaned = strings.ReplaceAll(cleaned, "-", "")
+	return cleaned
 }
 
+// hashCode returns a salted hash of a backup code. Codes are low-entropy
+// secrets, so a bare digest is guessable; the per-install pepper makes an
+// offline dump of the hash column useless on its own.
 func (s *TwoFactorService) hashCode(code string) string {
-	hash := sha256.Sum256([]byte(strings.ToUpper(code)))
-	return base64.StdEncoding.EncodeToString(hash[:])
+	normalized := normalizeBackupCode(code)
+	sum := sha256.Sum256([]byte(s.cfg.PasswordPepper + "|" + normalized))
+	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-func (s *TwoFactorService) getStoredBackupCodes(c *gin.Context, userID uint, userType string) []string {
-	var twoFactor models.TwoFactorAuth
-	err := s.db.Where("user_id = ? AND user_type = ?", userID, userType).First(&twoFactor).Error
-	if err != nil {
-		return []string{}
+// storedBackupCodeHashes parses the persisted map of code-hash -> used flag.
+func (s *TwoFactorService) storedBackupCodeHashes(twoFactor models.TwoFactorAuth) map[string]bool {
+	hashes := map[string]bool{}
+	if twoFactor.BackupCodesHashed == "" {
+		return hashes
 	}
-
-	var hashedCodes map[string]bool
-	json.Unmarshal([]byte(twoFactor.BackupCodesHashed), &hashedCodes)
-
-	codes := make([]string, 0, len(hashedCodes))
-	for code := range hashedCodes {
-		// Decode from hash (in production, store in reversible way)
-		codes = append(codes, code)
+	if err := json.Unmarshal([]byte(twoFactor.BackupCodesHashed), &hashes); err != nil {
+		return map[string]bool{}
 	}
-
-	return codes
+	return hashes
 }
 
+// markBackupCodeUsed records a consumed code so it cannot be replayed.
 func (s *TwoFactorService) markBackupCodeUsed(c *gin.Context, userID uint, userType string, code string) {
+	codeHash := s.hashCode(code)
+
 	var twoFactor models.TwoFactorAuth
-	s.db.Where("user_id = ? AND user_type = ?", userID, userID, userType).First(&twoFactor)
+	if err := s.db.Where("user_id = ? AND user_type = ?", userID, userType).First(&twoFactor).Error; err != nil {
+		return
+	}
 
-	var usedCodes map[string]bool
-	json.Unmarshal([]byte(twoFactor.UsedBackupCodes), &usedCodes)
-	usedCodes[strings.ToUpper(code)] = true
+	hashes := s.storedBackupCodeHashes(twoFactor)
+	if _, ok := hashes[codeHash]; !ok {
+		return
+	}
+	hashes[codeHash] = true
 
-	usedJSON, _ := json.Marshal(usedCodes)
-	s.db.Model(&twoFactor).Update("used_backup_codes", string(usedJSON))
+	usedJSON, err := json.Marshal(hashes)
+	if err != nil {
+		return
+	}
+	s.db.Model(&models.TwoFactorAuth{}).
+		Where("user_id = ? AND user_type = ?", userID, userType).
+		Update("used_backup_codes", string(usedJSON))
 }
 
 func (s *TwoFactorService) logFailedAttempt(c *gin.Context, userID uint, userType string, ipAddress string) {

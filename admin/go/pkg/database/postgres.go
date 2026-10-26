@@ -100,7 +100,9 @@ func autoMigrate(db *gorm.DB) error {
 		&models.APIKey{},
 		&models.AuditLog{},
 		&models.Notification{},
+		&models.NotificationTemplate{},
 		&models.Blockchain{},
+		&models.CryptoCard{},
 	)
 }
 

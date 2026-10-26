@@ -6,20 +6,27 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/net/http2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -276,8 +283,19 @@ type PushService struct {
 	queue      chan *PushNotification
 	workers    sync.WaitGroup
 	stopCh     chan struct{}
-	fcmToken   string
 	rateLimiter *RateLimiter
+
+	// Provider credentials parsed once at start-up. Empty means the provider is
+	// unconfigured, and delivery for that provider fails closed.
+	fcmServiceAccount map[string]interface{}
+	apnsPrivateKey     *ecdsa.PrivateKey
+
+	// tokenMu guards the cached provider access tokens and their expiries.
+	tokenMu       sync.Mutex
+	fcmToken      string
+	fcmTokenExp   time.Time
+	apnsToken     string
+	apnsTokenExp  time.Time
 }
 
 // NewPushService - Create new push notification service
@@ -313,17 +331,32 @@ func NewPushService(cfg PushConfig) (*PushService, error) {
 		Timeout: 30 * time.Second,
 	}
 	
-	// Create APNS client
+	// Create APNS client. The APNs provider API requires HTTP/2.
 	apnsClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout:   30 * time.Second,
+		Transport: &http2.Transport{},
 	}
 	
-	// Get FCM token
-	fcmToken := ""
+	// Parse provider credentials once. A provider whose credentials are absent
+	// or malformed stays unconfigured so its sends fail closed rather than
+	// silently reporting success.
+	fcmServiceAccount := map[string]interface{}{}
 	if cfg.FCMCredentials != "" {
-		fcmToken, err = getFCMAccessToken(cfg.FCMCredentials)
+		decoded, decErr := base64.StdEncoding.DecodeString(cfg.FCMCredentials)
+		if decErr != nil {
+			log.Printf("Warning: FCM credentials are not valid base64: %v", decErr)
+		} else if unmarshalErr := json.Unmarshal(decoded, &fcmServiceAccount); unmarshalErr != nil {
+			log.Printf("Warning: FCM credentials are not valid JSON: %v", unmarshalErr)
+			fcmServiceAccount = map[string]interface{}{}
+		}
+	}
+
+	var apnsPrivateKey *ecdsa.PrivateKey
+	if cfg.APNSKeyPath != "" {
+		apnsPrivateKey, err = loadAPNSPrivateKey(cfg.APNSKeyPath)
 		if err != nil {
-			log.Printf("Warning: Failed to get FCM token: %v", err)
+			log.Printf("Warning: could not load APNS signing key: %v", err)
+			apnsPrivateKey = nil
 		}
 	}
 	
@@ -344,15 +377,16 @@ func NewPushService(cfg PushConfig) (*PushService, error) {
 	}
 	
 	service := &PushService{
-		config:      cfg,
-		db:          db,
-		redis:       rdb,
-		fcmClient:   fcmClient,
-		apnsClient:  apnsClient,
-		queue:       make(chan *PushNotification, queueSize),
-		stopCh:      make(chan struct{}),
-		fcmToken:    fcmToken,
-		rateLimiter: NewRateLimiter(rateLimit),
+		config:            cfg,
+		db:                db,
+		redis:             rdb,
+		fcmClient:         fcmClient,
+		apnsClient:        apnsClient,
+		queue:             make(chan *PushNotification, queueSize),
+		stopCh:            make(chan struct{}),
+		rateLimiter:       NewRateLimiter(rateLimit),
+		fcmServiceAccount: fcmServiceAccount,
+		apnsPrivateKey:    apnsPrivateKey,
 	}
 	
 	// Seed default templates
@@ -440,23 +474,152 @@ func (s *PushService) seedDefaultTemplates() {
 	}
 }
 
-// getFCMAccessToken - Get FCM access token
-func getFCMAccessToken(credentialsBase64 string) (string, error) {
-	// Decode credentials
-	credentialsJSON, err := base64.StdEncoding.DecodeString(credentialsBase64)
+// errProviderNotConfigured is returned when a send targets a provider whose
+// credentials were never supplied. Callers surface it as a delivery failure
+// instead of a fabricated success.
+var errProviderNotConfigured = errors.New("push provider not configured")
+
+// loadAPNSPrivateKey reads a .p8 signing key (PKCS#8, EC P-256) from disk.
+func loadAPNSPrivateKey(path string) (*ecdsa.PrivateKey, error) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to decode credentials: %w", err)
+		return nil, fmt.Errorf("read APNS key: %w", err)
 	}
-	
-	// Parse credentials
-	var creds map[string]interface{}
-	if err := json.Unmarshal(credentialsJSON, &creds); err != nil {
-		return "", fmt.Errorf("failed to parse credentials: %w", err)
+
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("APNS key is not valid PEM")
 	}
-	
-	// In production, use Google OAuth2 to get access token
-	// For now, return a placeholder
-	return "fcm_access_token_placeholder", nil
+
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse APNS key: %w", err)
+	}
+
+	key, ok := parsed.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("APNS key must be an ECDSA private key")
+	}
+	return key, nil
+}
+
+// fcmAccessToken returns a Google OAuth2 access token for the FCM HTTP v1 API,
+// minting a new one when the cached token is absent or near expiry. The
+// assertion is a standard RS256 service-account JWT exchanged at
+// oauth2.googleapis.com, so no Google client library is needed.
+func (s *PushService) fcmAccessToken(ctx context.Context) (string, error) {
+	if len(s.fcmServiceAccount) == 0 {
+		return "", fmt.Errorf("FCM: %w", errProviderNotConfigured)
+	}
+
+	clientEmail, _ := s.fcmServiceAccount["client_email"].(string)
+	privateKeyPEM, _ := s.fcmServiceAccount["private_key"].(string)
+	tokenURI, _ := s.fcmServiceAccount["token_uri"].(string)
+	if tokenURI == "" {
+		tokenURI = "https://oauth2.googleapis.com/token"
+	}
+	if clientEmail == "" || privateKeyPEM == "" {
+		return "", errors.New("FCM: service account is missing client_email or private_key")
+	}
+
+	block, _ := pem.Decode([]byte(privateKeyPEM))
+	if block == nil {
+		return "", errors.New("FCM: service account private_key is not valid PEM")
+	}
+	signingKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("FCM: parse service account key: %w", err)
+	}
+
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+
+	// Refresh with a minute of headroom so an in-flight request cannot expire.
+	if s.fcmToken != "" && time.Now().Before(s.fcmTokenExp.Add(-time.Minute)) {
+		return s.fcmToken, nil
+	}
+
+	now := time.Now()
+	assertion := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss":   clientEmail,
+		"scope": "https://www.googleapis.com/auth/firebase.messaging",
+		"aud":   tokenURI,
+		"iat":   now.Unix(),
+		"exp":   now.Add(time.Hour).Unix(),
+	})
+	assertion.Header["kid"] = s.fcmServiceAccount["private_key_id"]
+
+	signed, err := assertion.SignedString(signingKey)
+	if err != nil {
+		return "", fmt.Errorf("FCM: sign assertion: %w", err)
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+	form.Set("assertion", signed)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURI, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := s.fcmClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("FCM: token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("FCM: token endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return "", fmt.Errorf("FCM: decode token response: %w", err)
+	}
+	if tokenResp.AccessToken == "" {
+		return "", errors.New("FCM: token endpoint returned an empty access token")
+	}
+
+	s.fcmToken = tokenResp.AccessToken
+	s.fcmTokenExp = now.Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	return s.fcmToken, nil
+}
+
+// apnsAuthToken returns the provider JWT required by the APNs HTTP/2 API,
+// refreshed well inside the one-hour window APNs enforces.
+func (s *PushService) apnsAuthToken() (string, error) {
+	if s.apnsPrivateKey == nil || s.config.APNSKeyID == "" || s.config.APNSTeamID == "" {
+		return "", fmt.Errorf("APNS: %w", errProviderNotConfigured)
+	}
+
+	s.tokenMu.Lock()
+	defer s.tokenMu.Unlock()
+
+	now := time.Now()
+	if s.apnsToken != "" && now.Before(s.apnsTokenExp) {
+		return s.apnsToken, nil
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"iss": s.config.APNSTeamID,
+		"iat": now.Unix(),
+	})
+	token.Header["kid"] = s.config.APNSKeyID
+
+	signed, err := token.SignedString(s.apnsPrivateKey)
+	if err != nil {
+		return "", fmt.Errorf("APNS: sign provider token: %w", err)
+	}
+
+	s.apnsToken = signed
+	s.apnsTokenExp = now.Add(50 * time.Minute)
+	return s.apnsToken, nil
 }
 
 // GenerateMessageID - Generate unique message ID
@@ -476,19 +639,21 @@ func (s *PushService) SendPush(userID, token, platform, title, body, data string
 	var err error
 	var provider string
 	
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	switch platform {
 	case "ios", "apple":
-		err = s.sendAPNS(token, title, body, data, sound, badge)
+		err = s.sendAPNS(ctx, token, title, body, data, sound, badge)
 		provider = "apns"
 	case "android":
-		err = s.sendFCM(token, title, body, data, sound, badge)
+		err = s.sendFCM(ctx, token, title, body, data, sound, badge)
 		provider = "fcm"
 	case "web":
-		err = s.sendWebPush(token, title, body, data, sound, badge)
+		err = s.sendWebPush(ctx, token, title, body, data, sound, badge)
 		provider = "fcm_web"
 	default:
-		// Try all platforms
-		err = s.sendFCM(token, title, body, data, sound, badge)
+		err = s.sendFCM(ctx, token, title, body, data, sound, badge)
 		provider = "fcm"
 	}
 	
@@ -505,8 +670,17 @@ func (s *PushService) SendPush(userID, token, platform, title, body, data string
 	return messageID, nil
 }
 
-// sendFCM - Send via FCM
-func (s *PushService) sendFCM(token, title, body, data, sound string, badge int) error {
+// sendFCM - Send via FCM HTTP v1
+func (s *PushService) sendFCM(ctx context.Context, token, title, body, data, sound string, badge int) error {
+	if s.config.FCMProjectID == "" {
+		return errors.New("FCM: project id is not configured")
+	}
+
+	accessToken, err := s.fcmAccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
 	fcmToken := FCMToken{
 		Token:    token,
 		Priority: "high",
@@ -524,100 +698,109 @@ func (s *PushService) sendFCM(token, title, body, data, sound string, badge int)
 			},
 		},
 	}
-	
+
 	if data != "" {
 		var dataMap map[string]string
-		json.Unmarshal([]byte(data), &dataMap)
+		if err := json.Unmarshal([]byte(data), &dataMap); err != nil {
+			return fmt.Errorf("FCM: data payload is not valid JSON: %w", err)
+		}
 		fcmToken.Data = dataMap
 		fcmToken.Android.Data = dataMap
 	}
-	
-	payload, _ := json.Marshal(fcmToken)
-	
-	req, err := http.NewRequest("POST", 
+
+	payload, err := json.Marshal(fcmToken)
+	if err != nil {
+		return fmt.Errorf("FCM: encode message: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		"https://fcm.googleapis.com/v1/projects/"+s.config.FCMProjectID+"/messages:send",
 		bytes.NewReader(payload))
-	
 	if err != nil {
 		return err
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.fcmToken)
-	
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
 	resp, err := s.fcmClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("FCM error: %s", string(respBody))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fmt.Errorf("FCM error %d: %s", resp.StatusCode, string(respBody))
 	}
-	
+
 	return nil
 }
 
-// sendAPNS - Send via APNS
-func (s *PushService) sendAPNS(token, title, body, data, sound string, badge int) error {
-	alert := &APNSAlert{
-		Title: title,
-		Body:  body,
+// sendAPNS - Send via the APNs HTTP/2 provider API
+func (s *PushService) sendAPNS(ctx context.Context, token, title, body, data, sound string, badge int) error {
+	if s.config.APNSBundleID == "" {
+		return errors.New("APNS: bundle id is not configured")
 	}
-	
+
+	authToken, err := s.apnsAuthToken()
+	if err != nil {
+		return err
+	}
+
 	notification := APNSNotification{
 		Aps: &APNSAps{
-			Alert:   alert,
-			Sound:   sound,
-			Badge:   badge,
+			Alert: &APNSAlert{Title: title, Body: body},
+			Sound: sound,
+			Badge: badge,
 		},
 	}
-	
+
 	if data != "" {
-		json.Unmarshal([]byte(data), &notification.CustomData)
+		if err := json.Unmarshal([]byte(data), &notification.CustomData); err != nil {
+			return fmt.Errorf("APNS: data payload is not valid JSON: %w", err)
+		}
 	}
-	
-	payload, _ := json.Marshal(notification)
-	
-	// APNS endpoint
+
+	payload, err := json.Marshal(notification)
+	if err != nil {
+		return fmt.Errorf("APNS: encode message: %w", err)
+	}
+
 	hostname := "api.push.apple.com"
 	if !s.config.UseProduction {
 		hostname = "api.sandbox.push.apple.com"
 	}
-	
-	req, err := http.NewRequest("POST", 
-		fmt.Sprintf("https://%s:443/3/device/%s", hostname, token),
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("https://%s/3/device/%s", hostname, token),
 		bytes.NewReader(payload))
-	
 	if err != nil {
 		return err
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("apns-priority", "10")
 	req.Header.Set("apns-topic", s.config.APNSBundleID)
-	
-	// In production, add APNS auth header
-	
+	req.Header.Set("Authorization", "bearer "+authToken)
+
 	resp, err := s.apnsClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("APNS error: %s", string(respBody))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fmt.Errorf("APNS error %d: %s", resp.StatusCode, string(respBody))
 	}
-	
+
 	return nil
 }
 
-// sendWebPush - Send Web Push notification
-func (s *PushService) sendWebPush(token, title, body, data, sound string, badge int) error {
-	// WebPush uses same FCM HTTP v1 API with webpush config
-	return s.sendFCM(token, title, body, data, sound, badge)
+// sendWebPush - Send a Web Push notification through the FCM HTTP v1 API.
+func (s *PushService) sendWebPush(ctx context.Context, token, title, body, data, sound string, badge int) error {
+	return s.sendFCM(ctx, token, title, body, data, sound, badge)
 }
 
 // logPush - Log push notification

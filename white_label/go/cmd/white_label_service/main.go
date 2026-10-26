@@ -7,21 +7,29 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
+
+// adminTokenTTL bounds how long a white-label admin access token stays valid.
+const adminTokenTTL = 12 * time.Hour
+
+// errInvalidCredentials is returned for every failed login attempt so callers
+// cannot distinguish a missing account from a wrong password.
+var errInvalidCredentials = fmt.Errorf("invalid credentials")
 
 // Configuration
 type Config struct {
@@ -129,7 +137,7 @@ type WhiteLabelAdmin struct {
 	ClientID       string    `json:"client_id"`
 	Email          string    `json:"email"`
 	Username       string    `json:"username"`
-	PasswordHash   string    `json:"password_hash"`
+	PasswordHash   string    `json:"-"` // never serialized to clients
 	Role           string    `json:"role"` // owner, admin, manager, support
 	Permissions    []string  `json:"permissions"`
 	Status         string    `json:"status"`
@@ -161,7 +169,8 @@ type WhiteLabelService struct {
 	clients     map[string]*WhiteLabelClient
 	admins      map[string]*WhiteLabelAdmin
 	subscriptions map[string]*Subscription
-	mu          sync.RWMutex
+	jwtSecret     []byte
+	mu            sync.RWMutex
 }
 
 // NewWhiteLabelService creates a new white label service
@@ -177,6 +186,7 @@ func NewWhiteLabelService(cfg Config) *WhiteLabelService {
 		clients:     make(map[string]*WhiteLabelClient),
 		admins:      make(map[string]*WhiteLabelAdmin),
 		subscriptions: make(map[string]*Subscription),
+		jwtSecret:     []byte(cfg.JWTSecret),
 	}
 }
 
@@ -426,9 +436,12 @@ func (s *WhiteLabelService) CreateClientAdmin(clientID string, admin *WhiteLabel
 	admin.CreatedAt = time.Now()
 	admin.UpdatedAt = time.Now()
 
-	// Generate password hash
-	h := sha256.Sum256([]byte(admin.PasswordHash))
-	admin.PasswordHash = hex.EncodeToString(h[:])
+	// Generate password hash with bcrypt (random salt, adaptive cost).
+	hash, err := bcrypt.GenerateFromPassword([]byte(admin.PasswordHash), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash admin password: %w", err)
+	}
+	admin.PasswordHash = string(hash)
 
 	s.admins[admin.AdminID] = admin
 
@@ -451,8 +464,6 @@ func (s *WhiteLabelService) GetClientAdmin(adminID string) (*WhiteLabelAdmin, er
 // Authenticate client admin
 func (s *WhiteLabelService) AuthenticateAdmin(email, password string) (*WhiteLabelAdmin, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var admin *WhiteLabelAdmin
 	for _, a := range s.admins {
 		if a.Email == email {
@@ -460,26 +471,34 @@ func (s *WhiteLabelService) AuthenticateAdmin(email, password string) (*WhiteLab
 			break
 		}
 	}
-
 	if admin == nil {
-		return nil, fmt.Errorf("invalid credentials")
+		s.mu.RUnlock()
+		return nil, errInvalidCredentials
+	}
+	passwordHash := admin.PasswordHash
+	status := admin.Status
+	adminID := admin.AdminID
+	s.mu.RUnlock()
+
+	// Verify against the bcrypt hash. Any stored digest in a different format is
+	// rejected, so a legacy unsalted SHA-256 record cannot authenticate.
+	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
+		return nil, errInvalidCredentials
 	}
 
-	// Verify password
-	h := sha256.Sum256([]byte(password))
-	passwordHash := hex.EncodeToString(h[:])
-
-	if admin.PasswordHash != passwordHash {
-		return nil, fmt.Errorf("invalid credentials")
-	}
-
-	if admin.Status != "active" {
+	if status != "active" {
 		return nil, fmt.Errorf("account is not active")
 	}
 
-	// Update last login
+	// Update last login under the write lock; the pointer returned to callers is
+	// the live map entry, so mutating it outside the lock would race.
 	now := time.Now()
-	admin.LastLogin = &now
+	s.mu.Lock()
+	if live, ok := s.admins[adminID]; ok {
+		live.LastLogin = &now
+		admin = live
+	}
+	s.mu.Unlock()
 
 	return admin, nil
 }
@@ -647,17 +666,45 @@ func (s *WhiteLabelService) LoginAdminHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
 	admin, err := s.AuthenticateAdmin(req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		// Identical response for unknown user, wrong password and inactive
+		// account so the reply cannot be used to enumerate admins.
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 
-	c.JSON(http.StatusOK, admin)
+	now := time.Now()
+	claims := jwt.MapClaims{
+		"sub":       admin.AdminID,
+		"client_id": admin.ClientID,
+		"email":     admin.Email,
+		"role":      admin.Role,
+		"iat":       now.Unix(),
+		"exp":       now.Add(adminTokenTTL).Unix(),
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not issue token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":      token,
+		"expires_in": int(adminTokenTTL.Seconds()),
+		"admin": gin.H{
+			"admin_id":  admin.AdminID,
+			"client_id": admin.ClientID,
+			"email":     admin.Email,
+			"username":  admin.Username,
+			"role":      admin.Role,
+			"status":    admin.Status,
+		},
+	})
 }
 
 func (s *WhiteLabelService) GetSubscriptionHandler(c *gin.Context) {
@@ -705,11 +752,37 @@ func (s *WhiteLabelService) SetupRoutes(r *gin.Engine) {
 func (s *WhiteLabelService) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		const prefix = "Bearer "
+		if len(authHeader) <= len(prefix) || !strings.EqualFold(authHeader[:len(prefix)], prefix) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "authorization required"})
 			c.Abort()
 			return
 		}
+
+		tokenString := strings.TrimSpace(authHeader[len(prefix):])
+		claims := jwt.MapClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method %q", t.Header["alg"])
+			}
+			return s.jwtSecret, nil
+		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			c.Abort()
+			return
+		}
+
+		if sub, ok := claims["sub"].(string); ok {
+			c.Set("admin_id", sub)
+		}
+		if clientID, ok := claims["client_id"].(string); ok {
+			c.Set("client_id", clientID)
+		}
+		if role, ok := claims["role"].(string); ok {
+			c.Set("admin_role", role)
+		}
+
 		c.Next()
 	}
 }
@@ -728,6 +801,9 @@ func main() {
 		ServerPort: getEnv("WHITELABEL_PORT", "8089"),
 		RedisAddr:  getEnv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret: getEnv("JWT_SECRET", ""),
+	}
+	if cfg.JWTSecret == "" {
+		log.Fatal("JWT_SECRET is required (refusing to start with an unsigned-token default)")
 	}
 
 	service := NewWhiteLabelService(cfg)

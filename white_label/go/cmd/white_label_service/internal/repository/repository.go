@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/tigerwallet/white_label_service/cmd/white_label_service/internal/models"
 )
@@ -338,8 +338,11 @@ func (r *Repository) CreateAdmin(ctx context.Context, req *models.CreateAdminReq
 	id := uuid.New()
 	now := time.Now()
 	
-	// Hash password using bcrypt (simplified - in production use proper bcrypt)
-	passwordHash := hashPassword(req.Password)
+	// Hash password with bcrypt (adaptive cost, per-password salt).
+	passwordHash, err := hashPassword(req.Password)
+	if err != nil {
+		return nil, fmt.Errorf("hash admin password: %w", err)
+	}
 	
 	query := `
 		INSERT INTO wl_admins (id, client_id, email, name, password_hash, role, permissions, status, created_at, updated_at)
@@ -355,7 +358,7 @@ func (r *Repository) CreateAdmin(ctx context.Context, req *models.CreateAdminReq
 	}
 	
 	var admin models.WhiteLabelAdmin
-	err := r.db.QueryRowContext(ctx, query,
+	err = r.db.QueryRowContext(ctx, query,
 		id, req.ClientID, req.Email, req.Name, passwordHash, role, permissionsJSON,
 		"active", now, now,
 	).Scan(
@@ -1421,22 +1424,69 @@ func (r *Repository) GetDashboardStats(ctx context.Context) (*models.DashboardSt
 	// Total users
 	r.db.GetContext(ctx, &stats.TotalUsers, "SELECT COALESCE(SUM(current_users), 0) FROM wl_clients")
 	
-	// Volume stats (placeholder - would come from analytics table)
-	stats.Volume24h = 12500000.0
-	stats.Volume7d = 87500000.0
-	stats.Volume30d = 375000000.0
-	
-	// Revenue stats
-	stats.Revenue24h = 125000.0
-	stats.Revenue7d = 875000.0
-	stats.Revenue30d = 3750000.0
-	
+	// Volume and revenue are aggregated from the persisted daily analytics
+	// rollup (wl_analytics_daily). A tenant with no recorded activity reports
+	// zero rather than a fabricated figure.
+	const windowSQL = `
+		SELECT
+			COALESCE(SUM(total_volume), 0),
+			COALESCE(SUM(fees_collected), 0)
+		FROM wl_analytics_daily
+		WHERE date >= CURRENT_DATE - ($1::int - 1)
+	`
+
+	windows := []struct {
+		days    int
+		volume  *float64
+		revenue *float64
+	}{
+		{1, &stats.Volume24h, &stats.Revenue24h},
+		{7, &stats.Volume7d, &stats.Revenue7d},
+		{30, &stats.Volume30d, &stats.Revenue30d},
+	}
+	for _, w := range windows {
+		if err := r.db.QueryRowContext(ctx, windowSQL, w.days).Scan(w.volume, w.revenue); err != nil {
+			return nil, fmt.Errorf("aggregate analytics window %dd: %w", w.days, err)
+		}
+	}
+
 	return stats, nil
 }
 
 // Helper functions
-func hashPassword(password string) string {
-	// In production, use bcrypt or argon2
-	// This is a simplified version
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(password)))
+
+const (
+	minAdminPasswordLen = 12
+	// bcrypt silently truncates input beyond 72 bytes.
+	maxPasswordBytes = 72
+)
+
+// hashPassword derives a bcrypt hash (random per-password salt, adaptive cost)
+// for a white-label admin password.
+func hashPassword(password string) (string, error) {
+	if len(password) < minAdminPasswordLen {
+		return "", fmt.Errorf("password must be at least %d characters", minAdminPasswordLen)
+	}
+	if len(password) > maxPasswordBytes {
+		return "", fmt.Errorf("password must be at most %d bytes", maxPasswordBytes)
+	}
+	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(h), nil
+}
+
+// verifyPassword reports whether password matches the stored bcrypt hash.
+// Only bcrypt-formatted hashes are accepted, so a stored digest in any other
+// format (including the unsalted SHA-256 this package used to emit) can never
+// authenticate.
+func verifyPassword(hash, password string) bool {
+	if hash == "" || len(password) > maxPasswordBytes {
+		return false
+	}
+	if _, err := bcrypt.Cost([]byte(hash)); err != nil {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }

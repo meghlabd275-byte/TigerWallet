@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 // NotificationService - Complete notification service with Email, SMS, Push
@@ -14,18 +17,33 @@ type NotificationService struct {
 	SMTPPort     int
 	SMTPUsername string
 	SMTPPassword string
-	SMSAPIKey    string
-	PushAPIKey   string
 	EmailFrom    string
+
+	// SMSProviderURL / PushProviderURL are the HTTP endpoints of the SMS and
+	// push gateways. When unset, delivery fails closed rather than silently
+	// reporting success.
+	SMSProviderURL  string
+	PushProviderURL string
+	SMSAPIKey       string
+	PushAPIKey      string
+
+	httpClient *http.Client
 }
 
-// NewNotificationService creates a new notification service
+// NewNotificationService creates a new notification service. SMTP and provider
+// settings come from the environment so no credentials are compiled in.
 func NewNotificationService() *NotificationService {
 	return &NotificationService{
-		SMTPHost:     "smtp.gmail.com",
-		SMTPPort:     587,
-		SMTPUsername: "noreply@tigerwallet.com",
-		EmailFrom:    "TigerWallet <noreply@tigerwallet.com>",
+		SMTPHost:        getEnv("SMTP_HOST", "smtp.gmail.com"),
+		SMTPPort:        getEnvInt("SMTP_PORT", 587),
+		SMTPUsername:    getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:    getEnv("SMTP_PASSWORD", ""),
+		EmailFrom:       getEnv("SMTP_FROM", ""),
+		SMSProviderURL:  getEnv("SMS_PROVIDER_URL", ""),
+		PushProviderURL: getEnv("PUSH_PROVIDER_URL", ""),
+		SMSAPIKey:       getEnv("SMS_API_KEY", ""),
+		PushAPIKey:      getEnv("PUSH_API_KEY", ""),
+		httpClient:      &http.Client{Timeout: 20 * time.Second},
 	}
 }
 
@@ -82,14 +100,22 @@ type SMSNotification struct {
 	Type    string
 }
 
-// SendSMS sends an SMS
+// SendSMS delivers an SMS through the configured provider. It fails closed when
+// no provider is configured instead of pretending the message was sent.
 func (s *NotificationService) SendSMS(notif SMSNotification) error {
-	if s.SMSAPIKey == "" {
-		return nil
+	if s.SMSAPIKey == "" || s.SMSProviderURL == "" {
+		return errNotificationProviderNotConfigured("sms")
 	}
-	jsonData, _ := json.Marshal(notif)
-	fmt.Printf("SMS would be sent: %s\n", string(jsonData))
-	return nil
+	if notif.To == "" {
+		return fmt.Errorf("sms recipient is required")
+	}
+
+	payload := map[string]interface{}{
+		"to":      notif.To,
+		"message": notif.Message,
+		"type":    notif.Type,
+	}
+	return s.postToProvider(s.SMSProviderURL, s.SMSAPIKey, payload)
 }
 
 // PushNotification represents a push notification
@@ -100,13 +126,61 @@ type PushNotification struct {
 	Data    map[string]interface{}
 }
 
-// SendPush sends a push notification
+// SendPush delivers a push notification through the configured provider. It
+// fails closed when no provider is configured.
 func (s *NotificationService) SendPush(notif PushNotification) error {
-	if s.PushAPIKey == "" {
-		return nil
+	if s.PushAPIKey == "" || s.PushProviderURL == "" {
+		return errNotificationProviderNotConfigured("push")
 	}
-	jsonData, _ := json.Marshal(notif)
-	fmt.Printf("Push would be sent: %s\n", string(jsonData))
+	if notif.Token == "" {
+		return fmt.Errorf("push device token is required")
+	}
+
+	payload := map[string]interface{}{
+		"token": notif.Token,
+		"title": notif.Title,
+		"body":  notif.Message,
+		"data":  notif.Data,
+	}
+	return s.postToProvider(s.PushProviderURL, s.PushAPIKey, payload)
+}
+
+// errNotificationProviderNotConfigured reports a missing provider configuration
+// so callers can distinguish "not set up" from "delivered".
+func errNotificationProviderNotConfigured(channel string) error {
+	return fmt.Errorf("%s provider is not configured", channel)
+}
+
+// postToProvider performs the provider HTTP call, surfacing upstream failures.
+func (s *NotificationService) postToProvider(endpoint, apiKey string, payload map[string]interface{}) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode notification payload: %w", err)
+	}
+
+	client := s.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build notification request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("notification provider request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fmt.Errorf("notification provider returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
 	return nil
 }
 

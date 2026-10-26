@@ -11,6 +11,8 @@ require (
 
 require (
 	firebase.google.com/go/v4 v4.21.0
+	github.com/golang-jwt/jwt/v5 v5.2.1
+	golang.org/x/net v0.55.0
 	google.golang.org/api v0.279.0
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.25.12
@@ -82,7 +84,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect

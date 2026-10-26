@@ -4,11 +4,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,13 +32,17 @@ type NotificationConfig struct {
 	DBName     string `json:"db_name"`
 	RedisHost  string `json:"redis_host"`
 	RedisPort  string `json:"redis_port"`
+
+	// PushServiceURL is the base URL of the push delivery service (FCM/APNs).
+	// When empty, push delivery fails closed.
+	PushServiceURL string `json:"push_service_url"`
 }
 
 // Notification types
 const (
-	TYPE_PRICE_ALERT   = "price_alert"
-	TYPE_TRANSACTION  = "transaction"
-	TYPE_STAKING      = "staking"
+	TYPE_PRICE_ALERT = "price_alert"
+	TYPE_TRANSACTION = "transaction"
+	TYPE_STAKING     = "staking"
 	TYPE_SWAP        = "swap"
 	TYPE_SECURITY    = "security"
 	TYPE_MARKET      = "market"
@@ -50,36 +58,37 @@ const (
 
 // Notification represents a notification
 type Notification struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	NotifID     string    `gorm:"uniqueIndex" json:"notif_id"`
-	UserAddress string    `gorm:"index" json:"user_address"`
-	Type       string    `json:"type"`
-	Priority   string    `json:"priority"`
-	Title      string    `json:"title"`
-	Message    string    `json:"message"`
-	Data       string    `gorm:"type:jsonb" json:"data"`
-	IsRead     bool      `json:"is_read"`
-	IsPushed   bool      `json:"is_pushed"`
-	CreatedAt  time.Time `json:"created_at"`
-	ReadAt     *time.Time `json:"read_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	NotifID     string     `gorm:"uniqueIndex" json:"notif_id"`
+	UserAddress string     `gorm:"index" json:"user_address"`
+	Type        string     `json:"type"`
+	Priority    string     `json:"priority"`
+	Title       string     `json:"title"`
+	Message     string     `json:"message"`
+	Data        string     `gorm:"type:jsonb" json:"data"`
+	IsRead      bool       `json:"is_read"`
+	IsPushed    bool       `json:"is_pushed"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ReadAt      *time.Time `json:"read_at"`
 }
 
 // DeviceToken represents a device token
 type DeviceToken struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	UserAddress string    `gorm:"index" json:"user_address"`
-	Token      string    `gorm:"uniqueIndex" json:"token"`
-	Platform   string    `json:"platform"` // ios, android, web
-	IsActive   bool      `json:"is_active"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Token       string    `gorm:"uniqueIndex" json:"token"`
+	Platform    string    `json:"platform"` // ios, android, web
+	IsActive    bool      `json:"is_active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NotificationService
 type NotificationService struct {
-	db      *gorm.DB
-	redis  *redis.Client
-	config NotificationConfig
+	db         *gorm.DB
+	redis      *redis.Client
+	config     NotificationConfig
+	pushClient *http.Client
 }
 
 // NewNotificationService creates new service
@@ -108,9 +117,12 @@ func NewNotificationService(cfg NotificationConfig) (*NotificationService, error
 	}
 
 	return &NotificationService{
-		db:      db,
+		db:     db,
 		redis:  rdb,
 		config: cfg,
+		pushClient: &http.Client{
+			Timeout: 20 * time.Second,
+		},
 	}, nil
 }
 
@@ -132,14 +144,14 @@ func (s *NotificationService) CreateNotification(userAddress, notifType, priorit
 	notif := &Notification{
 		NotifID:     notifID,
 		UserAddress: userAddress,
-		Type:       notifType,
-		Priority:   priority,
-		Title:      title,
-		Message:   message,
-		Data:      dataJSON,
-		IsRead:     false,
-		IsPushed:   false,
-		CreatedAt: time.Now(),
+		Type:        notifType,
+		Priority:    priority,
+		Title:       title,
+		Message:     message,
+		Data:        dataJSON,
+		IsRead:      false,
+		IsPushed:    false,
+		CreatedAt:   time.Now(),
 	}
 
 	s.db.Create(notif)
@@ -181,18 +193,18 @@ func (s *NotificationService) DeleteNotification(notifID string) error {
 func (s *NotificationService) RegisterDevice(userAddress, token, platform string) error {
 	result := s.db.Model(&DeviceToken{}).Where("token = ?", token).Updates(map[string]interface{}{
 		"user_address": userAddress,
-		"platform":   platform,
-		"is_active":  true,
-		"updated_at": time.Now(),
+		"platform":     platform,
+		"is_active":    true,
+		"updated_at":   time.Now(),
 	})
 
 	if result.RowsAffected == 0 {
 		device := DeviceToken{
 			UserAddress: userAddress,
-			Token:      token,
-			Platform:  platform,
-			IsActive:   true,
-			CreatedAt: time.Now(),
+			Token:       token,
+			Platform:    platform,
+			IsActive:    true,
+			CreatedAt:   time.Now(),
 		}
 		s.db.Create(&device)
 	}
@@ -212,20 +224,83 @@ func (s *NotificationService) GetDeviceTokens(userAddress string) ([]DeviceToken
 	return tokens, err
 }
 
-// SendPushNotification sends a push notification (placeholder - would integrate with FCM/APNS)
+// SendPushNotification delivers a push notification to every active device
+// registered for the user by calling the push service (FCM/APNs). It only
+// marks the notification as pushed when at least one device accepted it; an
+// unreachable or failing provider surfaces as an error instead of a silent
+// success.
 func (s *NotificationService) SendPushNotification(userAddress, title, message string) error {
 	tokens, err := s.GetDeviceTokens(userAddress)
-	if err != nil || len(tokens) == 0 {
-		return fmt.Errorf("no device tokens")
+	if err != nil {
+		return fmt.Errorf("load device tokens: %w", err)
+	}
+	if len(tokens) == 0 {
+		return fmt.Errorf("no active device tokens for user %s", userAddress)
 	}
 
-	// In production, integrate with FCM/APNS
+	if s.config.PushServiceURL == "" {
+		return fmt.Errorf("push service url is not configured")
+	}
+
+	var (
+		delivered int
+		lastErr   error
+	)
 	for _, token := range tokens {
-		fmt.Printf("Sending push to %s: %s - %s\n", token.Token, title, message)
+		if err := s.deliverToDevice(token, title, message); err != nil {
+			lastErr = err
+			continue
+		}
+		delivered++
 	}
 
-	// Mark as pushed
-	s.db.Model(&Notification{}).Where("user_address = ? AND title = ?", userAddress, title).Update("is_pushed", true)
+	if delivered == 0 {
+		return fmt.Errorf("push delivery failed for all %d device(s): %w", len(tokens), lastErr)
+	}
+
+	// Record the outcome on the most recent matching notification.
+	if err := s.db.Model(&Notification{}).
+		Where("user_address = ? AND title = ?", userAddress, title).
+		Update("is_pushed", true).Error; err != nil {
+		return fmt.Errorf("mark notification pushed: %w", err)
+	}
+
+	return nil
+}
+
+// deliverToDevice performs the real HTTP call to the push service.
+func (s *NotificationService) deliverToDevice(device DeviceToken, title, message string) error {
+	body, err := json.Marshal(map[string]interface{}{
+		"user_id":  device.UserAddress,
+		"token":    device.Token,
+		"platform": device.Platform,
+		"title":    title,
+		"body":     message,
+	})
+	if err != nil {
+		return fmt.Errorf("encode push payload: %w", err)
+	}
+
+	endpoint := strings.TrimRight(s.config.PushServiceURL, "/") + "/push"
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build push request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.pushClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("push request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fmt.Errorf("push service returned %d: %s", resp.StatusCode, string(respBody))
+	}
 
 	return nil
 }
@@ -234,11 +309,11 @@ func (s *NotificationService) SendPushNotification(userAddress, title, message s
 
 type CreateNotifRequest struct {
 	UserAddress string                 `json:"user_address" binding:"required"`
-	Type      string                 `json:"type" binding:"required"`
-	Priority string                 `json:"priority"`
-	Title    string                 `json:"title" binding:"required"`
-	Message  string                 `json:"message" binding:"required"`
-	Data     map[string]interface{} `json:"data"`
+	Type        string                 `json:"type" binding:"required"`
+	Priority    string                 `json:"priority"`
+	Title       string                 `json:"title" binding:"required"`
+	Message     string                 `json:"message" binding:"required"`
+	Data        map[string]interface{} `json:"data"`
 }
 
 func (s *NotificationService) CreateHandler(c *gin.Context) {
@@ -354,14 +429,15 @@ func parseInt(s string) int {
 
 func main() {
 	cfg := NotificationConfig{
-		ServerPort: getEnv("NOTIF_SERVER_PORT", "8086"),
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "postgres"),
-		DBPassword: getEnv("DB_PASSWORD", "password"),
-		DBName:     getEnv("DB_NAME", "notifications_db"),
-		RedisHost:  getEnv("REDIS_HOST", "localhost"),
-		RedisPort:  getEnv("REDIS_PORT", "6379"),
+		ServerPort:     getEnv("NOTIF_SERVER_PORT", "8086"),
+		DBHost:         getEnv("DB_HOST", "localhost"),
+		DBPort:         getEnv("DB_PORT", "5432"),
+		DBUser:         getEnv("DB_USER", "postgres"),
+		DBPassword:     getEnv("DB_PASSWORD", "password"),
+		DBName:         getEnv("DB_NAME", "notifications_db"),
+		RedisHost:      getEnv("REDIS_HOST", "localhost"),
+		RedisPort:      getEnv("REDIS_PORT", "6379"),
+		PushServiceURL: getEnv("PUSH_SERVICE_URL", ""),
 	}
 
 	service, err := NewNotificationService(cfg)
