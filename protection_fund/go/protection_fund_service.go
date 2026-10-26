@@ -1,7 +1,7 @@
 /**
  * TigerWallet Protection Fund Service
  * Production-ready user protection fund system
- * 
+ *
  * Features:
  * - User protection fund management
  * - Claim processing
@@ -15,8 +15,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -24,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -39,27 +38,27 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort      string
-	DBHost          string
-	DBPort          string
-	DBUser          string
-	DBPassword      string
-	DBName          string
-	
+	ServerPort string
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+
 	// Fund Configuration
-	InitialFundSize   float64   // Initial fund size in USD
-	MinCoverage      float64   // Minimum coverage per user
-	MaxCoverage      float64   // Maximum coverage per user
-	CoveragePercent  float64   // Coverage percentage (e.g., 100 = 100%)
-	
+	InitialFundSize float64 // Initial fund size in USD
+	MinCoverage     float64 // Minimum coverage per user
+	MaxCoverage     float64 // Maximum coverage per user
+	CoveragePercent float64 // Coverage percentage (e.g., 100 = 100%)
+
 	// Premium
-	MonthlyPremium   float64   // Monthly premium in USD
-	FreeTierLimit    float64   // Free tier coverage limit
-	
+	MonthlyPremium float64 // Monthly premium in USD
+	FreeTierLimit  float64 // Free tier coverage limit
+
 	// Claims
-	ClaimFee         float64   // Fee per claim
-	MaxClaimAmount  float64   // Maximum claim amount
-	ClaimTimeout     time.Duration // Time to process claims
+	ClaimFee       float64       // Fee per claim
+	MaxClaimAmount float64       // Maximum claim amount
+	ClaimTimeout   time.Duration // Time to process claims
 }
 
 func LoadConfig() *Config {
@@ -70,15 +69,15 @@ func LoadConfig() *Config {
 		DBUser:          getEnv("DB_USER", "tigerwallet"),
 		DBPassword:      getEnv("DB_PASSWORD", "password"),
 		DBName:          getEnv("DB_NAME", "tigerwallet"),
-		InitialFundSize: 10000000, // $10M
-		MinCoverage:     1000,     // $1K minimum
-		MaxCoverage:      100000,   // $100K maximum
-		CoveragePercent:  100,       // 100% coverage
-		MonthlyPremium:   9.99,     // $9.99/month
-		FreeTierLimit:   1000,     // $1K free coverage
-		ClaimFee:         10,        // $10 claim fee
-		MaxClaimAmount:  100000,   // $100K max
-		ClaimTimeout:     7 * 24 * time.Hour, // 7 days
+		InitialFundSize: 10000000,           // $10M
+		MinCoverage:     1000,               // $1K minimum
+		MaxCoverage:     100000,             // $100K maximum
+		CoveragePercent: 100,                // 100% coverage
+		MonthlyPremium:  9.99,               // $9.99/month
+		FreeTierLimit:   1000,               // $1K free coverage
+		ClaimFee:        10,                 // $10 claim fee
+		MaxClaimAmount:  100000,             // $100K max
+		ClaimTimeout:    7 * 24 * time.Hour, // 7 days
 	}
 }
 
@@ -94,159 +93,159 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type ProtectionFund struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	FundName         string    `json:"fund_name"`
-	TotalBalance     float64   `json:"total_balance"`
-	AvailableBalance float64   `json:"available_balance"`
-	ReservedBalance  float64   `json:"reserved_balance"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	FundName         string  `json:"fund_name"`
+	TotalBalance     float64 `json:"total_balance"`
+	AvailableBalance float64 `json:"available_balance"`
+	ReservedBalance  float64 `json:"reserved_balance"`
+
 	// Coverage
-	TotalCoverage    float64   `json:"total_coverage"`
-	ActiveUsers      int       `json:"active_users"`
-	
+	TotalCoverage float64 `json:"total_coverage"`
+	ActiveUsers   int     `json:"active_users"`
+
 	// Statistics
-	TotalClaimsPaid float64   `json:"total_claims_paid"`
-	TotalClaims     int       `json:"total_claims"`
-	SuccessRate     float64   `json:"success_rate"`
-	
-	Status          string    `json:"status"` // active, paused, depleted
+	TotalClaimsPaid float64 `json:"total_claims_paid"`
+	TotalClaims     int     `json:"total_claims"`
+	SuccessRate     float64 `json:"success_rate"`
+
+	Status string `json:"status"` // active, paused, depleted
 }
 
 type UserCoverage struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID           uint      `gorm:"uniqueIndex" json:"user_id"`
-	WalletAddress    string    `gorm:"index" json:"wallet_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID        uint   `gorm:"uniqueIndex" json:"user_id"`
+	WalletAddress string `gorm:"index" json:"wallet_address"`
+
 	// Coverage Details
-	CoverageType     string    `json:"coverage_type"` // free, premium, enterprise
-	CoverageAmount   float64   `json:"coverage_amount"`
-	CoveragePercent  float64   `json:"coverage_percent"`
-	
+	CoverageType    string  `json:"coverage_type"` // free, premium, enterprise
+	CoverageAmount  float64 `json:"coverage_amount"`
+	CoveragePercent float64 `json:"coverage_percent"`
+
 	// Premium
-	MonthlyPremium   float64   `json:"monthly_premium"`
-	IsActive         bool      `json:"is_active"`
-	StartDate        time.Time `json:"start_date"`
-	EndDate          *time.Time `json:"end_date"`
-	
+	MonthlyPremium float64    `json:"monthly_premium"`
+	IsActive       bool       `json:"is_active"`
+	StartDate      time.Time  `json:"start_date"`
+	EndDate        *time.Time `json:"end_date"`
+
 	// Auto-renewal
-	AutoRenew        bool      `json:"auto_renew"`
-	PaymentMethod    string    `json:"payment_method"`
+	AutoRenew     bool   `json:"auto_renew"`
+	PaymentMethod string `json:"payment_method"`
 }
 
 type Claim struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	ClaimID          string    `gorm:"uniqueIndex" json:"claim_id"`
-	UserID           uint      `gorm:"index" json:"user_id"`
-	WalletAddress    string    `gorm:"index" json:"wallet_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	ClaimID       string `gorm:"uniqueIndex" json:"claim_id"`
+	UserID        uint   `gorm:"index" json:"user_id"`
+	WalletAddress string `gorm:"index" json:"wallet_address"`
+
 	// Claim Details
-	ClaimType        string    `json:"claim_type"` // hack, theft, fraud, technical_error
-	IncidentDate     time.Time `json:"incident_date"`
-	Description      string    `json:"description"`
-	
+	ClaimType    string    `json:"claim_type"` // hack, theft, fraud, technical_error
+	IncidentDate time.Time `json:"incident_date"`
+	Description  string    `json:"description"`
+
 	// Amount
-	RequestedAmount   float64   `json:"requested_amount"`
-	ApprovedAmount   float64   `json:"approved_amount"`
-	CoverageAmount    float64   `json:"coverage_amount"`
-	
+	RequestedAmount float64 `json:"requested_amount"`
+	ApprovedAmount  float64 `json:"approved_amount"`
+	CoverageAmount  float64 `json:"coverage_amount"`
+
 	// Supporting Documents
-	Evidence          string    `json:"evidence"` // JSON array of URLs
-	PoliceReport     string    `json:"police_report"`
-	TransactionHash  string    `json:"transaction_hash"`
-	
+	Evidence        string `json:"evidence"` // JSON array of URLs
+	PoliceReport    string `json:"police_report"`
+	TransactionHash string `json:"transaction_hash"`
+
 	// Status
-	Status           string    `json:"status"` // submitted, under_review, approved, rejected, paid, closed
-	ReviewerID       *uint     `json:"reviewer_id"`
-	ReviewNotes      string    `json:"review_notes"`
-	ReviewedAt       *time.Time `json:"reviewed_at"`
-	
+	Status      string     `json:"status"` // submitted, under_review, approved, rejected, paid, closed
+	ReviewerID  *uint      `json:"reviewer_id"`
+	ReviewNotes string     `json:"review_notes"`
+	ReviewedAt  *time.Time `json:"reviewed_at"`
+
 	// Processing
-	AssignedTo       *uint     `json:"assigned_to"`
-	Priority         string    `json:"priority"` // low, medium, high, critical
-	DueDate          time.Time `json:"due_date"`
-	CompletedAt      *time.Time `json:"completed_at"`
-	
+	AssignedTo  *uint      `json:"assigned_to"`
+	Priority    string     `json:"priority"` // low, medium, high, critical
+	DueDate     time.Time  `json:"due_date"`
+	CompletedAt *time.Time `json:"completed_at"`
+
 	// Payment
-	PaymentTxHash    string    `json:"payment_tx_hash"`
-	PaymentDate      *time.Time `json:"payment_date"`
+	PaymentTxHash string     `json:"payment_tx_hash"`
+	PaymentDate   *time.Time `json:"payment_date"`
 }
 
 type FundTransaction struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	TransactionID    string    `gorm:"uniqueIndex" json:"transaction_id"`
-	Type             string    `json:"type"` // deposit, withdrawal, claim_paid, premium, investment, fee
-	
-	Amount           float64   `json:"amount"`
-	BalanceBefore    float64   `json:"balance_before"`
-	BalanceAfter     float64   `json:"balance_after"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	TransactionID string `gorm:"uniqueIndex" json:"transaction_id"`
+	Type          string `json:"type"` // deposit, withdrawal, claim_paid, premium, investment, fee
+
+	Amount        float64 `json:"amount"`
+	BalanceBefore float64 `json:"balance_before"`
+	BalanceAfter  float64 `json:"balance_after"`
+
 	// Reference
-	ClaimID          *string   `json:"claim_id"`
-	UserID           *uint     `json:"user_id"`
-	
+	ClaimID *string `json:"claim_id"`
+	UserID  *uint   `json:"user_id"`
+
 	// Details
-	Description      string    `json:"description"`
-	TransactionHash  string    `json:"transaction_hash"`
-	Status           string    `json:"status"` // pending, confirmed, failed
-	
-	Metadata         string    `json:"metadata"` // JSON
+	Description     string `json:"description"`
+	TransactionHash string `json:"transaction_hash"`
+	Status          string `json:"status"` // pending, confirmed, failed
+
+	Metadata string `json:"metadata"` // JSON
 }
 
 type CoveragePlan struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	PlanName         string    `gorm:"uniqueIndex" json:"plan_name"`
-	PlanType         string    `json:"plan_type"` // free, basic, premium, enterprise
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	PlanName string `gorm:"uniqueIndex" json:"plan_name"`
+	PlanType string `json:"plan_type"` // free, basic, premium, enterprise
+
 	// Coverage
-	MinCoverage      float64   `json:"min_coverage"`
-	MaxCoverage      float64   `json:"max_coverage"`
-	CoveragePercent  float64   `json:"coverage_percent"`
-	
+	MinCoverage     float64 `json:"min_coverage"`
+	MaxCoverage     float64 `json:"max_coverage"`
+	CoveragePercent float64 `json:"coverage_percent"`
+
 	// Price
-	MonthlyPrice     float64   `json:"monthly_price"`
-	YearlyPrice      float64   `json:"yearly_price"`
-	
+	MonthlyPrice float64 `json:"monthly_price"`
+	YearlyPrice  float64 `json:"yearly_price"`
+
 	// Features
-	Features         string    `json:"features"` // JSON array
-	
-	IsActive         bool      `json:"is_active"`
-	SortOrder        int       `json:"sort_order"`
+	Features string `json:"features"` // JSON array
+
+	IsActive  bool `json:"is_active"`
+	SortOrder int  `json:"sort_order"`
 }
 
 type GovernanceProposal struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	ProposalID       string    `gorm:"uniqueIndex" json:"proposal_id"`
-	Title            string    `json:"title"`
-	Description      string    `json:"description"`
-	
-	ProposalType     string    `json:"proposal_type"` // fund_allocation, policy_change, emergency
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	ProposalID  string `gorm:"uniqueIndex" json:"proposal_id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+
+	ProposalType string `json:"proposal_type"` // fund_allocation, policy_change, emergency
+
 	// Voting
-	ForVotes         float64   `json:"for_votes"`
-	AgainstVotes     float64   `json:"against_votes"`
-	AbstainVotes     float64   `json:"abstain_votes"`
-	
+	ForVotes     float64 `json:"for_votes"`
+	AgainstVotes float64 `json:"against_votes"`
+	AbstainVotes float64 `json:"abstain_votes"`
+
 	// Status
-	Status           string    `json:"status"` // draft, voting, passed, rejected, executed
-	VotingEndTime    time.Time `json:"voting_end_time"`
-	ExecutedAt       *time.Time `json:"executed_at"`
-	
-	CreatedBy        uint      `json:"created_by"`
+	Status        string     `json:"status"` // draft, voting, passed, rejected, executed
+	VotingEndTime time.Time  `json:"voting_end_time"`
+	ExecutedAt    *time.Time `json:"executed_at"`
+
+	CreatedBy uint `json:"created_by"`
 }
 
 // ============================================================================
@@ -261,20 +260,20 @@ type ProtectionFundService struct {
 func NewProtectionFundService(db *gorm.DB, config *Config) *ProtectionFundService {
 	return &ProtectionFundService{
 		db:     db,
-		config:  config,
+		config: config,
 	}
 }
 
 // InitializeFund initializes the protection fund
 func (s *ProtectionFundService) InitializeFund() error {
 	fund := &ProtectionFund{
-		FundName:       "TigerWallet Protection Fund",
-		TotalBalance:   s.config.InitialFundSize,
+		FundName:         "TigerWallet Protection Fund",
+		TotalBalance:     s.config.InitialFundSize,
 		AvailableBalance: s.config.InitialFundSize,
-		ReservedBalance: 0,
-		TotalCoverage:  0,
-		ActiveUsers:   0,
-		Status:        "active",
+		ReservedBalance:  0,
+		TotalCoverage:    0,
+		ActiveUsers:      0,
+		Status:           "active",
 	}
 
 	// Create default coverage plans
@@ -395,9 +394,9 @@ func (s *ProtectionFundService) SubmitClaim(userID uint, walletAddress, claimTyp
 		ClaimID:         uuid.New().String(),
 		UserID:          userID,
 		WalletAddress:   walletAddress,
-		ClaimType:      claimType,
+		ClaimType:       claimType,
 		IncidentDate:    time.Now(),
-		Description:    description,
+		Description:     description,
 		RequestedAmount: amount,
 		Status:          "submitted",
 		Priority:        "medium",
@@ -438,26 +437,26 @@ func (s *ProtectionFundService) ProcessClaim(claimID string, approved bool, revi
 
 	now := time.Now()
 	updates := map[string]interface{}{
-		"reviewer_id":   reviewerID,
-		"review_notes":  notes,
-		"reviewed_at":   now,
+		"reviewer_id":  reviewerID,
+		"review_notes": notes,
+		"reviewed_at":  now,
 	}
 
 	if approved {
 		// Calculate coverage amount
 		var coverage UserCoverage
 		s.db.Where("user_id = ? AND is_active = ?", claim.UserID, true).First(&coverage)
-		
+
 		coverageAmount := math.Min(approvedAmount, coverage.CoverageAmount)
-		
+
 		updates["status"] = "approved"
 		updates["approved_amount"] = approvedAmount
 		updates["coverage_amount"] = coverageAmount
-		
+
 		// Update fund
 		s.db.Model(&ProtectionFund{}).Updates(map[string]interface{}{
 			"available_balance": gorm.Expr("available_balance - ?", coverageAmount),
-			"reserved_balance": gorm.Expr("reserved_balance + ?", coverageAmount),
+			"reserved_balance":  gorm.Expr("reserved_balance + ?", coverageAmount),
 		})
 	} else {
 		updates["status"] = "rejected"
@@ -472,7 +471,7 @@ func (s *ProtectionFundService) ProcessClaim(claimID string, approved bool, revi
 	if !approved {
 		txType = "claim_rejected"
 	}
-	
+
 	tx := &FundTransaction{
 		TransactionID: uuid.New().String(),
 		Type:          txType,
@@ -487,19 +486,55 @@ func (s *ProtectionFundService) ProcessClaim(claimID string, approved bool, revi
 }
 
 // PayClaim processes payment for an approved claim
-func (s *ProtectionFundService) PayClaim(claimID, txHash string) (*Claim, error) {
+// PayClaim broadcasts a real on-chain payout for an approved claim and records
+// the resulting transaction hash.
+//
+// The hash is produced by the chain, never supplied by the caller: a client
+// could otherwise mark a claim paid while transferring nothing.
+func (s *ProtectionFundService) PayClaim(claimID string) (*Claim, error) {
 	var claim Claim
 	if err := s.db.Where("claim_id = ? AND status = ?", claimID, "approved").First(&claim).Error; err != nil {
 		return nil, fmt.Errorf("claim not found or not approved")
 	}
 
+	payoutAmount := claim.CoverageAmount
+	if payoutAmount <= 0 {
+		payoutAmount = claim.ApprovedAmount
+	}
+	if payoutAmount <= 0 {
+		return nil, fmt.Errorf("claim %s has no approved payout amount", claimID)
+	}
+
+	to, err := parseAddress(claim.WalletAddress)
+	if err != nil {
+		return nil, fmt.Errorf("claim %s: %w", claimID, err)
+	}
+
+	client, err := NewPayoutClient(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	txHash, err := client.Payout(context.Background(), to, payoutAmount)
+	if err != nil {
+		// A broadcast that was not confirmed still returns its hash; the claim
+		// stays approved so the payout can be reconciled or retried.
+		if txHash != "" {
+			s.db.Model(&FundTransaction{}).Where("claim_id = ?", claimID).Updates(map[string]interface{}{
+				"status":           "pending",
+				"transaction_hash": txHash,
+			})
+		}
+		return nil, fmt.Errorf("payout failed: %w", err)
+	}
+
 	now := time.Now()
-	
+
 	if err := s.db.Model(&claim).Updates(map[string]interface{}{
-		"status":           "paid",
-		"payment_tx_hash":   txHash,
-		"payment_date":      now,
-		"completed_at":     now,
+		"status":          "paid",
+		"payment_tx_hash": txHash,
+		"payment_date":    now,
+		"completed_at":    now,
 	}).Error; err != nil {
 		return nil, err
 	}
@@ -513,7 +548,7 @@ func (s *ProtectionFundService) PayClaim(claimID, txHash string) (*Claim, error)
 
 	// Update transaction
 	s.db.Model(&FundTransaction{}).Where("claim_id = ?", claimID).Updates(map[string]interface{}{
-		"status":          "confirmed",
+		"status":           "confirmed",
 		"transaction_hash": txHash,
 	})
 
@@ -564,7 +599,7 @@ func (s *ProtectionFundService) AddFunds(amount float64, txType, description str
 	}
 
 	newBalance := fund.TotalBalance + amount
-	
+
 	if err := s.db.Model(&fund).Updates(map[string]interface{}{
 		"total_balance":     newBalance,
 		"available_balance": fund.AvailableBalance + amount,
@@ -622,7 +657,7 @@ func (s *ProtectionFundService) EnrollUserHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":   coverage,
+		"data":    coverage,
 	})
 }
 
@@ -649,7 +684,7 @@ func (s *ProtectionFundService) SubmitClaimHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":   claim,
+		"data":    claim,
 	})
 }
 
@@ -676,7 +711,7 @@ func (s *ProtectionFundService) ProcessClaimHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":   claim,
+		"data":    claim,
 	})
 }
 
@@ -689,7 +724,7 @@ func (s *ProtectionFundService) GetPlansHandler(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":   plans,
+		"data":    plans,
 	})
 }
 
@@ -704,7 +739,7 @@ func (s *ProtectionFundService) GetTransactionsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
+		"success":      true,
 		"transactions": txs,
 	})
 }
@@ -760,17 +795,28 @@ func main() {
 	// Setup router
 	router := gin.Default()
 
-	// CORS middleware
+	// CORS middleware. A wildcard origin cannot be combined with credentials,
+	// so the allowed origins come from configuration.
+	allowedOrigins := map[string]bool{}
+	for _, origin := range strings.Split(os.Getenv("PROTECTION_FUND_ALLOWED_ORIGINS"), ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			allowedOrigins[origin] = true
+		}
+	}
 	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+		origin := c.GetHeader("Origin")
+		if origin != "" && allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
+
 		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusOK)
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
-		
+
 		c.Next()
 	})
 
@@ -781,11 +827,12 @@ func main() {
 
 	// API routes
 	api := router.Group("/api/v1/protection")
+	api.Use(RequireAuth())
 	{
 		api.GET("/fund", service.GetFundStatusHandler)
 		api.POST("/enroll", service.EnrollUserHandler)
 		api.POST("/claim", service.SubmitClaimHandler)
-		api.POST("/claim/:id/process", service.ProcessClaimHandler)
+		api.POST("/claim/:id/process", RequireRole("operator", "admin", "super_admin"), service.ProcessClaimHandler)
 		api.GET("/plans", service.GetPlansHandler)
 		api.GET("/transactions", service.GetTransactionsHandler)
 	}
@@ -812,13 +859,10 @@ func main() {
 	log.Println("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
 	log.Println("Server exited")
 }
-
-// Add strconv import
-import "strconv"

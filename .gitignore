@@ -188,3 +188,6 @@ api_gateway
 lending_borrowing
 perpetual_backend
 perpetual_trading
+
+# Go build outputs
+protection_fund/go/protection-fund

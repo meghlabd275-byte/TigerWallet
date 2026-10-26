@@ -24,6 +24,7 @@ import (
 	"github.com/tigerwallet/super-admin/internal/database"
 	"github.com/tigerwallet/super-admin/internal/middleware"
 	twredis "github.com/tigerwallet/super-admin/internal/redis"
+	"github.com/tigerwallet/super-admin/internal/services"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -2061,7 +2062,32 @@ func handleDeleteArchivePolicy(c *gin.Context) {
 }
 
 func handleRunArchive(c *gin.Context) {
-	c.JSON(http.StatusAccepted, gin.H{"message": "archive started"})
+	policyID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid policy id"})
+		return
+	}
+
+	actorID, err := uuid.Parse(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid admin identity"})
+		return
+	}
+
+	record, err := services.NewArchivalService().RunArchive(c.Request.Context(), policyID, actorID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"record_id":    record.ID,
+		"table":        record.TableName,
+		"record_count": record.RecordCount,
+		"archive_path": record.ArchivePath,
+		"status":       record.Status,
+		"completed_at": record.CompletedAt,
+	})
 }
 
 func handleGetArchiveRecords(c *gin.Context) {
