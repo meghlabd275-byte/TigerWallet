@@ -5,6 +5,9 @@ package main
 // for high-throughput distributed deployment.
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -38,11 +41,22 @@ func LoadConfig() *AppConfig {
 	if port == "" {
 		port = "8450"
 	}
-	jwtSecret := os.Getenv("MASTER_WALLET_JWT_SECRET")
-	if jwtSecret == "" {
-		// Fail closed: a random per-process secret means tokens never validate
-		// across restarts, which is safer than a hardcoded default for prod.
-		jwtSecret = "dev-only-change-me-" + strconv.FormatInt(int64(os.Getpid()), 10)
+	// A predictable secret would let anyone mint an operator token for this
+	// treasury backend, so an unset or placeholder value is fatal rather than
+	// silently substituted. MASTER_WALLET_ALLOW_INSECURE_DEV_SECRET exists only
+	// for local development and generates a random per-process key.
+	jwtSecret := strings.TrimSpace(os.Getenv("MASTER_WALLET_JWT_SECRET"))
+	if jwtSecret == "" || isPlaceholderSecret(jwtSecret) {
+		if strings.EqualFold(os.Getenv("MASTER_WALLET_ALLOW_INSECURE_DEV_SECRET"), "true") {
+			buf := make([]byte, 32)
+			if _, err := rand.Read(buf); err != nil {
+				log.Fatal("master wallet: failed to generate a development JWT secret: ", err)
+			}
+			jwtSecret = hex.EncodeToString(buf)
+			log.Println("WARNING: using a random development JWT secret; tokens will not survive a restart")
+		} else {
+			log.Fatal("master wallet: MASTER_WALLET_JWT_SECRET must be set to a non-placeholder value")
+		}
 	}
 	redisDB, _ := strconv.Atoi(getEnvDefault("MASTER_WALLET_REDIS_DB", "0"))
 	return &AppConfig{
@@ -144,3 +158,22 @@ func chainCoinGeckoID(chainID int64) string {
 
 // normalizeChain ensures a chain identifier is lowercased + trimmed.
 func normalizeChain(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// placeholderSecrets are values that appear in example configs and must never
+// be accepted as a real signing key.
+var placeholderSecrets = map[string]bool{
+	"tigerwallet-master-jwt-change-in-production": true,
+	"change-in-production":                        true,
+	"changeme":                                    true,
+	"change-me":                                   true,
+	"secret":                                      true,
+	"password":                                    true,
+	"your-secret-here":                            true,
+	"dev-only-change-me":                          true,
+}
+
+// isPlaceholderSecret reports whether a configured secret is a known
+// placeholder rather than a real key.
+func isPlaceholderSecret(value string) bool {
+	return placeholderSecrets[strings.ToLower(strings.TrimSpace(value))]
+}
