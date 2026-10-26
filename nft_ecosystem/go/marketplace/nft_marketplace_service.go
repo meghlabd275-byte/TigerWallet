@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -37,34 +35,34 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort  string `json:"server_port"`
-	DBHost      string `json:"db_host"`
-	DBPort      string `json:"db_port"`
-	DBUser      string `json:"db_user"`
-	DBPassword  string `json:"db_password"`
-	DBName      string `json:"db_name"`
-	RedisHost   string `json:"redis_host"`
-	RedisPort   string `json:"redis_port"`
-	JWTSecret   string `json:"jwt_secret"`
-	
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
+	JWTSecret  string `json:"jwt_secret"`
+
 	// NFT Settings
 	PlatformFeePercent float64 `json:"platform_fee_percent"`
-	MaxRoyaltyPercent float64 `json:"max_royalty_percent"`
+	MaxRoyaltyPercent  float64 `json:"max_royalty_percent"`
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort: getEnv("NFT_PORT", "9097"),
-		DBHost: getEnv("DB_HOST", "localhost"),
-		DBPort: getEnv("DB_PORT", "5432"),
-		DBUser: getEnv("DB_USER", "tigerwallet"),
-		DBPassword: getEnv("DB_PASSWORD", "password"),
-		DBName: getEnv("DB_NAME", "tigerwallet"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
-		JWTSecret: getEnv("JWT_SECRET", ""),
+		ServerPort:         getEnv("NFT_PORT", "9097"),
+		DBHost:             getEnv("DB_HOST", "localhost"),
+		DBPort:             getEnv("DB_PORT", "5432"),
+		DBUser:             getEnv("DB_USER", "tigerwallet"),
+		DBPassword:         getEnv("DB_PASSWORD", "password"),
+		DBName:             getEnv("DB_NAME", "tigerwallet"),
+		RedisHost:          getEnv("REDIS_HOST", "localhost"),
+		RedisPort:          getEnv("REDIS_PORT", "6379"),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
 		PlatformFeePercent: 2.5,
-		MaxRoyaltyPercent: 15.0,
+		MaxRoyaltyPercent:  15.0,
 	}
 }
 
@@ -81,153 +79,153 @@ func getEnv(key, defaultValue string) string {
 
 // Collection represents an NFT collection
 type NFTCollection struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	
-	CollectionID string    `gorm:"uniqueIndex" json:"collection_id"`
-	Name         string    `json:"name"`
-	Symbol       string    `json:"symbol"`
-	Description  string    `json:"description"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	CollectionID string `gorm:"uniqueIndex" json:"collection_id"`
+	Name         string `json:"name"`
+	Symbol       string `json:"symbol"`
+	Description  string `json:"description"`
+
 	// Contract
-	ContractAddress string    `json:"contract_address"`
-	ContractType   string    `json:"contract_type"` // ERC721, ERC1155
-	ChainID        uint      `json:"chain_id"`
-	
+	ContractAddress string `json:"contract_address"`
+	ContractType    string `json:"contract_type"` // ERC721, ERC1155
+	ChainID         uint   `json:"chain_id"`
+
 	// Creator
-	CreatorAddress string    `json:"creator_address"`
-	CreatorFee     float64   `json:"creator_fee"` // Royalty percentage
-	
+	CreatorAddress string  `json:"creator_address"`
+	CreatorFee     float64 `json:"creator_fee"` // Royalty percentage
+
 	// Media
-	LogoURL       string    `json:"logo_url"`
-	BannerURL     string    `json:"banner_url"`
-	FeaturedURL   string    `json:"featured_url"`
-	
+	LogoURL     string `json:"logo_url"`
+	BannerURL   string `json:"banner_url"`
+	FeaturedURL string `json:"featured_url"`
+
 	// Stats
-	TotalItems    uint      `json:"total_items"`
-	TotalOwners   uint      `json:"total_owners"`
-	FloorPrice    string    `json:"floor_price"` // In wei
-	        VolumeTraded  string    `json:"volume_traded"` // In wei
-	
+	TotalItems   uint   `json:"total_items"`
+	TotalOwners  uint   `json:"total_owners"`
+	FloorPrice   string `json:"floor_price"`   // In wei
+	VolumeTraded string `json:"volume_traded"` // In wei
+
 	// Status
-	IsVerified    bool      `json:"is_verified"`
-	IsActive      bool      `json:"is_active"`
-	Category      string    `json:"category"`
-	Tags          string    `json:"tags"` // JSON array
+	IsVerified bool   `json:"is_verified"`
+	IsActive   bool   `json:"is_active"`
+	Category   string `json:"category"`
+	Tags       string `json:"tags"` // JSON array
 }
 
 // NFT Item represents a single NFT
 type NFTItem struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	
-	ItemID       string    `gorm:"uniqueIndex" json:"item_id"`
-	CollectionID string    `gorm:"index" json:"collection_id"`
-	TokenID      string    `json:"token_id"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	ItemID       string `gorm:"uniqueIndex" json:"item_id"`
+	CollectionID string `gorm:"index" json:"collection_id"`
+	TokenID      string `json:"token_id"`
+
 	// Metadata
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	ExternalURL  string    `json:"external_url"`
-	ImageURL     string    `json:"image_url"`
-	AnimationURL string    `json:"animation_url"`
-	
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	ExternalURL  string `json:"external_url"`
+	ImageURL     string `json:"image_url"`
+	AnimationURL string `json:"animation_url"`
+
 	// Attributes
-	Attributes   string    `json:"attributes"` // JSON array of traits
-	
+	Attributes string `json:"attributes"` // JSON array of traits
+
 	// Ownership
-	OwnerAddress string    `json:"owner_address"`
-	CreatorAddress string  `json:"creator_address"`
-	
+	OwnerAddress   string `json:"owner_address"`
+	CreatorAddress string `json:"creator_address"`
+
 	// Supply (for ERC1155)
-	Supply       uint      `json:"supply"`
-	MaxSupply    uint      `json:"max_supply"`
-	
+	Supply    uint `json:"supply"`
+	MaxSupply uint `json:"max_supply"`
+
 	// Pricing
-	IsListed     bool      `json:"is_listed"`
-	ListingPrice string    `json:"listing_price"` // In wei
+	IsListed      bool       `json:"is_listed"`
+	ListingPrice  string     `json:"listing_price"` // In wei
 	ListingExpiry *time.Time `json:"listing_expiry"`
-	
+
 	// Status
-	IsActive     bool      `json:"is_active"`
-	MintedAt     *time.Time `json:"minted_at"`
-	BurnedAt     *time.Time `json:"burned_at"`
+	IsActive bool       `json:"is_active"`
+	MintedAt *time.Time `json:"minted_at"`
+	BurnedAt *time.Time `json:"burned_at"`
 }
 
 // Sale represents an NFT sale
 type NFTSale struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	SaleID       string    `gorm:"uniqueIndex" json:"sale_id"`
-	ItemID       string    `json:"item_id"`
-	CollectionID string    `json:"collection_id"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	SaleID       string `gorm:"uniqueIndex" json:"sale_id"`
+	ItemID       string `json:"item_id"`
+	CollectionID string `json:"collection_id"`
+
 	// Parties
-	SellerAddress string   `json:"seller_address"`
-	BuyerAddress  string   `json:"buyer_address"`
-	
+	SellerAddress string `json:"seller_address"`
+	BuyerAddress  string `json:"buyer_address"`
+
 	// Price
-	Price        string    `json:"price"` // In wei
-	PlatformFee   string    `json:"platform_fee"`
-	CreatorRoyalty string   `json:"creator_royalty"`
-	NetProceeds   string   `json:"net_proceeds"`
-	
+	Price          string `json:"price"` // In wei
+	PlatformFee    string `json:"platform_fee"`
+	CreatorRoyalty string `json:"creator_royalty"`
+	NetProceeds    string `json:"net_proceeds"`
+
 	// Transaction
-	TransactionHash string  `json:"transaction_hash"`
-	BlockNumber    uint64  `json:"block_number"`
-	
+	TransactionHash string `json:"transaction_hash"`
+	BlockNumber     uint64 `json:"block_number"`
+
 	// Status
-	Status        string   `json:"status"` // pending, completed, cancelled
+	Status string `json:"status"` // pending, completed, cancelled
 }
 
 // Offer represents a made offer
 type NFTOffer struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	OfferID      string    `gorm:"uniqueIndex" json:"offer_id"`
-	ItemID       string    `json:"item_id"`
-	CollectionID string    `json:"collection_id"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	OfferID      string `gorm:"uniqueIndex" json:"offer_id"`
+	ItemID       string `json:"item_id"`
+	CollectionID string `json:"collection_id"`
+
 	// Offerer
-	OffererAddress string  `json:"offerer_address"`
-	
+	OffererAddress string `json:"offerer_address"`
+
 	// Terms
-	Price         string   `json:"price"` // In wei
+	Price          string    `json:"price"` // In wei
 	ExpirationTime time.Time `json:"expiration_time"`
-	
+
 	// Status
-	Status        string   `json:"status"` // active, accepted, expired, cancelled
-	AcceptedAt    *time.Time `json:"accepted_at"`
+	Status     string     `json:"status"` // active, accepted, expired, cancelled
+	AcceptedAt *time.Time `json:"accepted_at"`
 }
 
 // User Collection (user's collected NFTs)
 type UserCollection struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	UserAddress  string    `gorm:"index" json:"user_address"`
-	ItemID       string    `json:"item_id"`
-	Quantity     uint      `json:"quantity"` // For ERC1155
-	
-	AcquiredAt   time.Time `json:"acquired_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	UserAddress string `gorm:"index" json:"user_address"`
+	ItemID      string `json:"item_id"`
+	Quantity    uint   `json:"quantity"` // For ERC1155
+
+	AcquiredAt time.Time `json:"acquired_at"`
 }
 
 // Activity tracks all NFT activities
 type NFTActivity struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	ItemID       string    `json:"item_id"`
-	CollectionID string    `json:"collection_id"`
-	
-	ActivityType string    `json:"activity_type"` // mint, transfer, sale, list, bid, offer
-	FromAddress  string    `json:"from_address"`
-	ToAddress    string    `json:"to_address"`
-	Price        string    `json:"price"` // In wei
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	ItemID       string `json:"item_id"`
+	CollectionID string `json:"collection_id"`
+
+	ActivityType    string `json:"activity_type"` // mint, transfer, sale, list, bid, offer
+	FromAddress     string `json:"from_address"`
+	ToAddress       string `json:"to_address"`
+	Price           string `json:"price"` // In wei
 	TransactionHash string `json:"transaction_hash"`
 }
 
@@ -236,9 +234,9 @@ type NFTActivity struct {
 // ============================================================================
 
 type NFTMarketplaceService struct {
-	db      *gorm.DB
-	redis   *redis.Client
-	config  *Config
+	db        *gorm.DB
+	redis     *redis.Client
+	config    *Config
 	jwtSecret []byte
 }
 
@@ -257,7 +255,7 @@ func NewNFTMarketplaceService(cfg *Config) (*NFTMarketplaceService, error) {
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		DB: 7,
+		DB:   7,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -265,9 +263,9 @@ func NewNFTMarketplaceService(cfg *Config) (*NFTMarketplaceService, error) {
 	rdb.Ping(ctx)
 
 	return &NFTMarketplaceService{
-		db: db,
-		redis: rdb,
-		config: cfg,
+		db:        db,
+		redis:     rdb,
+		config:    cfg,
 		jwtSecret: []byte(cfg.JWTSecret),
 	}, nil
 }
@@ -277,16 +275,16 @@ func NewNFTMarketplaceService(cfg *Config) (*NFTMarketplaceService, error) {
 // ============================================================================
 
 type CreateCollectionRequest struct {
-	Name          string  `json:"name" binding:"required"`
-	Symbol        string  `json:"symbol"`
-	Description   string  `json:"description"`
-	ContractType  string  `json:"contract_type"`
-	ChainID       uint    `json:"chain_id"`
-	LogoURL       string  `json:"logo_url"`
-	BannerURL     string  `json:"banner_url"`
-	Category      string  `json:"category"`
-	Tags          string  `json:"tags"`
-	CreatorFee    float64 `json:"creator_fee"` // Royalty percentage
+	Name         string  `json:"name" binding:"required"`
+	Symbol       string  `json:"symbol"`
+	Description  string  `json:"description"`
+	ContractType string  `json:"contract_type"`
+	ChainID      uint    `json:"chain_id"`
+	LogoURL      string  `json:"logo_url"`
+	BannerURL    string  `json:"banner_url"`
+	Category     string  `json:"category"`
+	Tags         string  `json:"tags"`
+	CreatorFee   float64 `json:"creator_fee"` // Royalty percentage
 }
 
 func (s *NFTMarketplaceService) CreateCollection(c *gin.Context) {
@@ -305,20 +303,20 @@ func (s *NFTMarketplaceService) CreateCollection(c *gin.Context) {
 	}
 
 	collection := NFTCollection{
-		CollectionID: "COL-" + uuid.New().String()[:10],
-		Name: req.Name,
-		Symbol: req.Symbol,
-		Description: req.Description,
-		ContractType: req.ContractType,
-		ChainID: req.ChainID,
+		CollectionID:    "COL-" + uuid.New().String()[:10],
+		Name:            req.Name,
+		Symbol:          req.Symbol,
+		Description:     req.Description,
+		ContractType:    req.ContractType,
+		ChainID:         req.ChainID,
 		ContractAddress: s.generateContractAddress(),
-		CreatorAddress: creatorAddress,
-		CreatorFee: req.CreatorFee,
-		LogoURL: req.LogoURL,
-		BannerURL: req.BannerURL,
-		Category: req.Category,
-		Tags: req.Tags,
-		IsActive: true,
+		CreatorAddress:  creatorAddress,
+		CreatorFee:      req.CreatorFee,
+		LogoURL:         req.LogoURL,
+		BannerURL:       req.BannerURL,
+		Category:        req.Category,
+		Tags:            req.Tags,
+		IsActive:        true,
 	}
 
 	s.db.Create(&collection)
@@ -372,7 +370,7 @@ func (s *NFTMarketplaceService) GetCollection(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"collection": collection,
-		"items": items,
+		"items":      items,
 	})
 }
 
@@ -381,15 +379,15 @@ func (s *NFTMarketplaceService) GetCollection(c *gin.Context) {
 // ============================================================================
 
 type MintNFTRequest struct {
-	CollectionID  string  `json:"collection_id" binding:"required"`
-	Name          string  `json:"name" binding:"required"`
-	Description   string  `json:"description"`
-	ExternalURL   string  `json:"external_url"`
-	ImageURL      string  `json:"image_url" binding:"required"`
-	AnimationURL  string  `json:"animation_url"`
-	Attributes    string  `json:"attributes"`
-	Supply        uint    `json:"supply"` // For ERC1155
-	MaxSupply     uint    `json:"max_supply"`
+	CollectionID string `json:"collection_id" binding:"required"`
+	Name         string `json:"name" binding:"required"`
+	Description  string `json:"description"`
+	ExternalURL  string `json:"external_url"`
+	ImageURL     string `json:"image_url" binding:"required"`
+	AnimationURL string `json:"animation_url"`
+	Attributes   string `json:"attributes"`
+	Supply       uint   `json:"supply"` // For ERC1155
+	MaxSupply    uint   `json:"max_supply"`
 }
 
 func (s *NFTMarketplaceService) MintNFT(c *gin.Context) {
@@ -413,21 +411,21 @@ func (s *NFTMarketplaceService) MintNFT(c *gin.Context) {
 	tokenID := uuid.New().String()
 
 	item := NFTItem{
-		ItemID: "NFT-" + tokenID[:10],
-		CollectionID: req.CollectionID,
-		TokenID: tokenID[:8],
-		Name: req.Name,
-		Description: req.Description,
-		ExternalURL: req.ExternalURL,
-		ImageURL: req.ImageURL,
-		AnimationURL: req.AnimationURL,
-		Attributes: req.Attributes,
-		OwnerAddress: creatorAddress,
+		ItemID:         "NFT-" + tokenID[:10],
+		CollectionID:   req.CollectionID,
+		TokenID:        tokenID[:8],
+		Name:           req.Name,
+		Description:    req.Description,
+		ExternalURL:    req.ExternalURL,
+		ImageURL:       req.ImageURL,
+		AnimationURL:   req.AnimationURL,
+		Attributes:     req.Attributes,
+		OwnerAddress:   creatorAddress,
 		CreatorAddress: creatorAddress,
-		Supply: req.Supply,
-		MaxSupply: req.MaxSupply,
-		IsActive: true,
-		MintedAt: func() *time.Time { t := time.Now(); return &t }(),
+		Supply:         req.Supply,
+		MaxSupply:      req.MaxSupply,
+		IsActive:       true,
+		MintedAt:       func() *time.Time { t := time.Now(); return &t }(),
 	}
 
 	s.db.Create(&item)
@@ -461,8 +459,8 @@ func (s *NFTMarketplaceService) GetNFT(c *gin.Context) {
 	s.db.Model(&UserCollection{}).Where("item_id = ?", itemID).Count(&ownerCount)
 
 	c.JSON(http.StatusOK, gin.H{
-		"item": item,
-		"collection": collection,
+		"item":        item,
+		"collection":  collection,
 		"owner_count": ownerCount,
 	})
 }
@@ -488,9 +486,9 @@ func (s *NFTMarketplaceService) GetUserNFTs(c *gin.Context) {
 // ============================================================================
 
 type ListNFTRequest struct {
-	ItemID   string  `json:"item_id" binding:"required"`
-	Price    string  `json:"price" binding:"required"` // In wei
-	Duration uint    `json:"duration"` // Hours, default 168 (7 days)
+	ItemID   string `json:"item_id" binding:"required"`
+	Price    string `json:"price" binding:"required"` // In wei
+	Duration uint   `json:"duration"`                 // Hours, default 168 (7 days)
 }
 
 func (s *NFTMarketplaceService) ListNFT(c *gin.Context) {
@@ -534,7 +532,7 @@ func (s *NFTMarketplaceService) ListNFT(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "NFT listed successfully",
-		"item": item,
+		"item":    item,
 	})
 }
 
@@ -590,16 +588,16 @@ func (s *NFTMarketplaceService) BuyNFT(c *gin.Context) {
 
 	// Create sale record
 	sale := NFTSale{
-		SaleID: "SALE-" + uuid.New().String()[:10],
-		ItemID: item.ItemID,
-		CollectionID: item.CollectionID,
-		SellerAddress: item.OwnerAddress,
-		BuyerAddress: buyerAddress,
-		Price: item.ListingPrice,
-		PlatformFee: platformFeeInt.String(),
-		CreatorRoyalty: creatorRoyaltyInt.String(),
-		NetProceeds: netProceeds.String(),
-		Status: "completed",
+		SaleID:          "SALE-" + uuid.New().String()[:10],
+		ItemID:          item.ItemID,
+		CollectionID:    item.CollectionID,
+		SellerAddress:   item.OwnerAddress,
+		BuyerAddress:    buyerAddress,
+		Price:           item.ListingPrice,
+		PlatformFee:     platformFeeInt.String(),
+		CreatorRoyalty:  creatorRoyaltyInt.String(),
+		NetProceeds:     netProceeds.String(),
+		Status:          "completed",
 		TransactionHash: "0x" + uuid.New().String(),
 	}
 	s.db.Create(&sale)
@@ -617,9 +615,9 @@ func (s *NFTMarketplaceService) BuyNFT(c *gin.Context) {
 	if result.Error != nil {
 		userCol = UserCollection{
 			UserAddress: buyerAddress,
-			ItemID: item.ItemID,
-			Quantity: 1,
-			AcquiredAt: time.Now(),
+			ItemID:      item.ItemID,
+			Quantity:    1,
+			AcquiredAt:  time.Now(),
 		}
 		s.db.Create(&userCol)
 	} else {
@@ -639,7 +637,7 @@ func (s *NFTMarketplaceService) BuyNFT(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Purchase successful",
-		"sale": sale,
+		"sale":    sale,
 	})
 }
 
@@ -674,9 +672,9 @@ func (s *NFTMarketplaceService) CancelListing(c *gin.Context) {
 // ============================================================================
 
 type MakeOfferRequest struct {
-	ItemID    string    `json:"item_id" binding:"required"`
-	Price     string    `json:"price" binding:"required"`
-	ExpiresIn uint      `json:"expires_in"` // Hours
+	ItemID    string `json:"item_id" binding:"required"`
+	Price     string `json:"price" binding:"required"`
+	ExpiresIn uint   `json:"expires_in"` // Hours
 }
 
 func (s *NFTMarketplaceService) MakeOffer(c *gin.Context) {
@@ -704,13 +702,13 @@ func (s *NFTMarketplaceService) MakeOffer(c *gin.Context) {
 	expiry := time.Now().Add(time.Hour * time.Duration(expiresIn))
 
 	offer := NFTOffer{
-		OfferID: "OFFER-" + uuid.New().String()[:10],
-		ItemID: req.ItemID,
-		CollectionID: item.CollectionID,
+		OfferID:        "OFFER-" + uuid.New().String()[:10],
+		ItemID:         req.ItemID,
+		CollectionID:   item.CollectionID,
 		OffererAddress: offererAddress,
-		Price: req.Price,
+		Price:          req.Price,
 		ExpirationTime: expiry,
-		Status: "active",
+		Status:         "active",
 	}
 
 	s.db.Create(&offer)
@@ -797,18 +795,18 @@ func (s *NFTMarketplaceService) GetTrending(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"trending_collections": collections,
-		"recent_sales": recentSales,
+		"recent_sales":         recentSales,
 	})
 }
 
 func (s *NFTMarketplaceService) recordActivity(itemID, collectionID, activityType, from, to, price string) {
 	activity := NFTActivity{
-		ItemID: itemID,
-		CollectionID: collectionID,
-		ActivityType: activityType,
-		FromAddress: from,
-		ToAddress: to,
-		Price: price,
+		ItemID:          itemID,
+		CollectionID:    collectionID,
+		ActivityType:    activityType,
+		FromAddress:     from,
+		ToAddress:       to,
+		Price:           price,
 		TransactionHash: "0x" + uuid.New().String(),
 	}
 	s.db.Create(&activity)
@@ -843,44 +841,156 @@ func (s *NFTMarketplaceService) Search(c *gin.Context) {
 		db = db.Where("listing_price <= ?", maxPrice)
 	}
 
+	// Trait filter: "trait_type:value,trait_type:value". Each pair becomes a
+	// JSONB containment term, so an item must carry every requested trait.
+	// Previously the parameter was read and then ignored, silently returning
+	// unfiltered results.
+	if traits, err := parseTraitFilter(attributes); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	} else if len(traits) > 0 {
+		for _, term := range traits {
+			db = db.Where("attributes::jsonb @> ?::jsonb", term)
+		}
+	}
+
 	pageNum, _ := strconv.Atoi(page)
 	limitNum, _ := strconv.Atoi(limit)
+	if pageNum < 1 {
+		pageNum = 1
+	}
+	if limitNum < 1 || limitNum > 100 {
+		limitNum = 20
+	}
 	offset := (pageNum - 1) * limitNum
 
-	db.Offset(offset).Limit(limitNum).Find(&items)
+	if err := db.Offset(offset).Limit(limitNum).Find(&items).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": items, "page": pageNum, "limit": limitNum})
+}
+
+// parseTraitFilter converts a "trait_type:value,trait_type:value" expression
+// into JSONB containment documents. An empty expression yields no terms.
+func parseTraitFilter(raw string) ([]string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	terms := make([]string, 0, 4)
+	for _, pair := range strings.Split(trimmed, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		name, value, found := strings.Cut(pair, ":")
+		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
+		if !found || name == "" || value == "" {
+			return nil, fmt.Errorf("invalid attribute filter %q: expected trait_type:value", pair)
+		}
+
+		doc, err := json.Marshal([]map[string]string{
+			{"trait_type": name, "value": value},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("encode attribute filter: %w", err)
+		}
+		terms = append(terms, string(doc))
+	}
+	return terms, nil
 }
 
 // ============================================================================
 // Middleware
 // ============================================================================
 
+// AuthMiddleware validates the bearer JWT and binds the authenticated wallet
+// address to the request context.
+//
+// Two hazards are handled explicitly:
+//   - The signing key must be configured and non-empty. An empty secret would
+//     let anyone mint a valid HS256 token.
+//   - The signing method is pinned to HMAC. Without that check, a token signed
+//     with "alg":"none" (or an asymmetric algorithm using the public key as the
+//     HMAC secret) would be accepted.
 func (s *NFTMarketplaceService) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if len(s.jwtSecret) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is not configured"})
+			c.Abort()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "no authorization"})
+			c.Abort()
+			return
+		}
+		tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+		if tokenString == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "no authorization"})
 			c.Abort()
 			return
 		}
 
-		tokenString := authHeader[7:]
 		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return s.jwtSecret, nil
 		})
-
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			c.Abort()
 			return
 		}
 
-		claims, _ := token.Claims.(jwt.MapClaims)
-		// In production, extract address from JWT
-		c.Set("address", "0x"+hex.EncodeToString([]byte(claims["sub"].(string)))[:40])
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			c.Abort()
+			return
+		}
+
+		sub, _ := claims["sub"].(string)
+		address, ok := normaliseEthAddress(sub)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "token subject is not a wallet address"})
+			c.Abort()
+			return
+		}
+
+		c.Set("address", address)
 		c.Next()
 	}
+}
+
+// normaliseEthAddress validates that raw is a 0x-prefixed 20-byte hex address
+// and returns it in lowercase. It reports false for anything else, so a caller
+// can never end up acting on a truncated or synthesised address.
+func normaliseEthAddress(raw string) (string, bool) {
+	addr := strings.TrimSpace(raw)
+	if !strings.HasPrefix(addr, "0x") && !strings.HasPrefix(addr, "0X") {
+		return "", false
+	}
+	hexPart := addr[2:]
+	if len(hexPart) != 40 {
+		return "", false
+	}
+	for _, r := range hexPart {
+		isDigit := r >= '0' && r <= '9'
+		isLower := r >= 'a' && r <= 'f'
+		isUpper := r >= 'A' && r <= 'F'
+		if !isDigit && !isLower && !isUpper {
+			return "", false
+		}
+	}
+	return "0x" + strings.ToLower(hexPart), true
 }
 
 // ============================================================================

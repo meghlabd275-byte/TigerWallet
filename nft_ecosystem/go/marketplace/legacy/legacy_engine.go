@@ -1,11 +1,11 @@
 /**
  * TigerWallet NFT Marketplace Service - Complete Implementation
- * 
+ *
  * Multi-marketplace NFT trading with OpenSea, MagicEden, Blur integration
  * High-performance Go service for worldwide distribution
  */
 
-package main
+package legacy
 
 import (
 	"context"
@@ -26,50 +26,50 @@ import (
 
 // NFT Collection
 type NFTCollection struct {
-	ID                string    `json:"id"`
-	Address           string    `json:"address"`
-	ChainID           uint64    `json:"chain_id"`
-	Name              string    `json:"name"`
-	Symbol            string    `json:"symbol"`
-	Description       string    `json:"description"`
-	ImageURL          string    `json:"image_url"`
-	BannerURL         string    `json:"banner_url"`
-	ExternalURL       string    `json:"external_url"`
-	Creator           string    `json:"creator"`
-	FloorPrice        string    `json:"floor_price"`
-	FloorPriceUSD     float64   `json:"floor_price_usd"`
-	TotalSupply       uint64    `json:"total_supply"`
-	OwnerCount        uint64    `json:"owner_count"`
-	Volume24h         string    `json:"volume_24h"`
-	Volume24hUSD      float64   `json:"volume_24h_usd"`
-	MarketCap         string    `json:"market_cap"`
-	MarketCapUSD      float64   `json:"market_cap_usd"`
-	RoyaltyBPS        uint16    `json:"royalty_bps"`
-	IsVerified        bool      `json:"is_verified"`
-	IsSuspicious      bool      `json:"is_suspicious"`
-	Marketplaces      []string  `json:"marketplaces"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	Address       string    `json:"address"`
+	ChainID       uint64    `json:"chain_id"`
+	Name          string    `json:"name"`
+	Symbol        string    `json:"symbol"`
+	Description   string    `json:"description"`
+	ImageURL      string    `json:"image_url"`
+	BannerURL     string    `json:"banner_url"`
+	ExternalURL   string    `json:"external_url"`
+	Creator       string    `json:"creator"`
+	FloorPrice    string    `json:"floor_price"`
+	FloorPriceUSD float64   `json:"floor_price_usd"`
+	TotalSupply   uint64    `json:"total_supply"`
+	OwnerCount    uint64    `json:"owner_count"`
+	Volume24h     string    `json:"volume_24h"`
+	Volume24hUSD  float64   `json:"volume_24h_usd"`
+	MarketCap     string    `json:"market_cap"`
+	MarketCapUSD  float64   `json:"market_cap_usd"`
+	RoyaltyBPS    uint16    `json:"royalty_bps"`
+	IsVerified    bool      `json:"is_verified"`
+	IsSuspicious  bool      `json:"is_suspicious"`
+	Marketplaces  []string  `json:"marketplaces"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // NFT Token
 type NFTToken struct {
-	ID              string    `json:"id"`
-	TokenID         string    `json:"token_id"`
-	Collection      string    `json:"collection"`
-	ChainID         uint64    `json:"chain_id"`
-	Owner           string    `json:"owner"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	ImageURL        string    `json:"image_url"`
-	AnimationURL    string    `json:"animation_url"`
-	Attributes      []Trait   `json:"attributes"`
-	MetadataURL     string    `json:"metadata_url"`
-	IsHidden        bool      `json:"is_hidden"`
-	IsFlagged       bool      `json:"is_flagged"`
-	LastSalePrice   string    `json:"last_sale_price"`
-	LastSalePriceUSD float64  `json:"last_sale_price_usd"`
-	LastSaleTime    time.Time `json:"last_sale_time"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	TokenID          string    `json:"token_id"`
+	Collection       string    `json:"collection"`
+	ChainID          uint64    `json:"chain_id"`
+	Owner            string    `json:"owner"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	ImageURL         string    `json:"image_url"`
+	AnimationURL     string    `json:"animation_url"`
+	Attributes       []Trait   `json:"attributes"`
+	MetadataURL      string    `json:"metadata_url"`
+	IsHidden         bool      `json:"is_hidden"`
+	IsFlagged        bool      `json:"is_flagged"`
+	LastSalePrice    string    `json:"last_sale_price"`
+	LastSalePriceUSD float64   `json:"last_sale_price_usd"`
+	LastSaleTime     time.Time `json:"last_sale_time"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Trait for NFT attributes
@@ -82,62 +82,62 @@ type Trait struct {
 
 // NFT Listing/Sale
 type NFTListing struct {
-	ID             string    `json:"id"`
-	TokenID        string    `json:"token_id"`
-	Collection     string    `json:"collection"`
-	ChainID        uint64    `json:"chain_id"`
-	Seller         string    `json:"seller"`
-	Price          string    `json:"price"`
-	PriceUSD       float64   `json:"price_usd"`
-	PaymentToken   string    `json:"payment_token"`
-	Quantity       uint64    `json:"quantity"`
-	Marketplace    string    `json:"marketplace"`
-	Status         string    `json:"status"`
-	StartTime      time.Time `json:"start_time"`
-	EndTime        time.Time `json:"end_time"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	TokenID      string    `json:"token_id"`
+	Collection   string    `json:"collection"`
+	ChainID      uint64    `json:"chain_id"`
+	Seller       string    `json:"seller"`
+	Price        string    `json:"price"`
+	PriceUSD     float64   `json:"price_usd"`
+	PaymentToken string    `json:"payment_token"`
+	Quantity     uint64    `json:"quantity"`
+	Marketplace  string    `json:"marketplace"`
+	Status       string    `json:"status"`
+	StartTime    time.Time `json:"start_time"`
+	EndTime      time.Time `json:"end_time"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // NFT Order/Offer
 type NFTOrder struct {
-	ID            string    `json:"id"`
-	TokenID       string    `json:"token_id"`
-	Collection    string    `json:"collection"`
-	ChainID       uint64    `json:"chain_id"`
-	OrderType     string    `json:"order_type"` // ask, bid
-	Maker         string    `json:"maker"`
-	Price         string    `json:"price"`
-	PriceUSD      float64   `json:"price_usd"`
-	PaymentToken  string    `json:"payment_token"`
-	Quantity      uint64    `json:"quantity"`
-	Marketplace   string    `json:"marketplace"`
-	Status        string    `json:"status"`
-	Signature     string    `json:"signature"`
-	StartTime     time.Time `json:"start_time"`
-	EndTime       time.Time `json:"end_time"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID           string    `json:"id"`
+	TokenID      string    `json:"token_id"`
+	Collection   string    `json:"collection"`
+	ChainID      uint64    `json:"chain_id"`
+	OrderType    string    `json:"order_type"` // ask, bid
+	Maker        string    `json:"maker"`
+	Price        string    `json:"price"`
+	PriceUSD     float64   `json:"price_usd"`
+	PaymentToken string    `json:"payment_token"`
+	Quantity     uint64    `json:"quantity"`
+	Marketplace  string    `json:"marketplace"`
+	Status       string    `json:"status"`
+	Signature    string    `json:"signature"`
+	StartTime    time.Time `json:"start_time"`
+	EndTime      time.Time `json:"end_time"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // NFT Transaction
 type NFTTransaction struct {
-	ID             string    `json:"id"`
-	Hash           string    `json:"hash"`
-	TokenID        string    `json:"token_id"`
-	Collection     string    `json:"collection"`
-	ChainID        uint64    `json:"chain_id"`
-	From           string    `json:"from"`
-	To             string    `json:"to"`
-	Price          string    `json:"price"`
-	PriceUSD       float64   `json:"price_usd"`
-	PaymentToken   string    `json:"payment_token"`
-	Marketplace    string    `json:"marketplace"`
-	Timestamp      time.Time `json:"timestamp"`
-	BlockNumber    uint64    `json:"block_number"`
+	ID           string    `json:"id"`
+	Hash         string    `json:"hash"`
+	TokenID      string    `json:"token_id"`
+	Collection   string    `json:"collection"`
+	ChainID      uint64    `json:"chain_id"`
+	From         string    `json:"from"`
+	To           string    `json:"to"`
+	Price        string    `json:"price"`
+	PriceUSD     float64   `json:"price_usd"`
+	PaymentToken string    `json:"payment_token"`
+	Marketplace  string    `json:"marketplace"`
+	Timestamp    time.Time `json:"timestamp"`
+	BlockNumber  uint64    `json:"block_number"`
 }
 
 // Collection Stats
 type CollectionStats struct {
-	CollectionID    string  `json:"collection_id"`
+	CollectionID   string  `json:"collection_id"`
 	FloorPrice     string  `json:"floor_price"`
 	FloorPriceUSD  float64 `json:"floor_price_usd"`
 	Volume24h      string  `json:"volume_24h"`
@@ -175,11 +175,11 @@ type SearchFilters struct {
 
 // NFTMarketplaceService main service
 type NFTMarketplaceService struct {
-	mu          sync.RWMutex
-	collections map[string]*NFTCollection
-	tokens      map[string]*NFTToken
-	listings    map[string]*NFTListing
-	orders      map[string]*NFTOrder
+	mu           sync.RWMutex
+	collections  map[string]*NFTCollection
+	tokens       map[string]*NFTToken
+	listings     map[string]*NFTListing
+	orders       map[string]*NFTOrder
 	transactions map[string]*NFTTransaction
 	marketplaces []string
 }
@@ -263,20 +263,20 @@ func (s *NFTMarketplaceService) GetCollectionStats(collectionID string) (*Collec
 	}
 
 	stats := &CollectionStats{
-		CollectionID:    collectionID,
-		FloorPrice:       "0.1",
-		FloorPriceUSD:    350.0,
-		Volume24h:        "10.5",
-		Volume24hUSD:     3675.0,
-		Volume7d:         "75.0",
-		Volume7dUSD:      26250.0,
-		TotalVolume:      "1000.0",
-		TotalVolumeUSD:   350000.0,
-		Sales24h:         25,
-		Sales7d:          180,
-		TotalSales:       5000,
-		OwnerCount:       2500,
-		AveragePrice:     "0.2",
+		CollectionID:   collectionID,
+		FloorPrice:     "0.1",
+		FloorPriceUSD:  350.0,
+		Volume24h:      "10.5",
+		Volume24hUSD:   3675.0,
+		Volume7d:       "75.0",
+		Volume7dUSD:    26250.0,
+		TotalVolume:    "1000.0",
+		TotalVolumeUSD: 350000.0,
+		Sales24h:       25,
+		Sales7d:        180,
+		TotalSales:     5000,
+		OwnerCount:     2500,
+		AveragePrice:   "0.2",
 	}
 
 	return stats, nil
@@ -744,9 +744,9 @@ func (s *NFTMarketplaceService) handleGetCollections(w http.ResponseWriter, r *h
 }
 
 func (s *NFTMarketplaceService) handleGetCollection(w http.ResponseWriter, r *http.Request) {
-	addr := strings.TrimPrefix(path, "/api/v1/collection/")
+	addr := strings.TrimPrefix(r.URL.Path, "/api/v1/collection/")
 	addr = strings.TrimSuffix(addr, "/stats")
-	
+
 	col, err := s.GetCollection(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -756,9 +756,9 @@ func (s *NFTMarketplaceService) handleGetCollection(w http.ResponseWriter, r *ht
 }
 
 func (s *NFTMarketplaceService) handleGetCollectionStats(w http.ResponseWriter, r *http.Request) {
-	addr := strings.TrimPrefix(path, "/api/v1/collection/")
+	addr := strings.TrimPrefix(r.URL.Path, "/api/v1/collection/")
 	addr = strings.TrimSuffix(addr, "/stats")
-	
+
 	stats, err := s.GetCollectionStats(addr)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -770,7 +770,7 @@ func (s *NFTMarketplaceService) handleGetCollectionStats(w http.ResponseWriter, 
 func (s *NFTMarketplaceService) handleGetTokens(w http.ResponseWriter, r *http.Request) {
 	collection := r.URL.Query().Get("collection")
 	owner := r.URL.Query().Get("owner")
-	
+
 	var tokens []*NFTToken
 	if owner != "" {
 		tokens = s.GetTokensByOwner(owner)
@@ -781,12 +781,12 @@ func (s *NFTMarketplaceService) handleGetTokens(w http.ResponseWriter, r *http.R
 }
 
 func (s *NFTMarketplaceService) handleGetToken(w http.ResponseWriter, r *http.Request) {
-	parts := strings.SplitN(strings.TrimPrefix(path, "/api/v1/token/"), "/", 2)
+	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/api/v1/token/"), "/", 2)
 	if len(parts) != 2 {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
-	
+
 	token, err := s.GetToken(parts[0], parts[1])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -801,7 +801,7 @@ func (s *NFTMarketplaceService) handleCreateListing(w http.ResponseWriter, r *ht
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	result, err := s.CreateListing(r.Context(), &listing)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -822,7 +822,7 @@ func (s *NFTMarketplaceService) handleCreateOrder(w http.ResponseWriter, r *http
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	
+
 	result, err := s.CreateOrder(r.Context(), &order)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -856,12 +856,6 @@ func generateNFTID(prefix string) string {
 	data := fmt.Sprintf("%s%d", prefix, time.Now().UnixNano())
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:16])
-}
-
-func init() {
-	// Import path for unused variable
-	path := ""
-	_ = path
 }
 
 // ============================================================================

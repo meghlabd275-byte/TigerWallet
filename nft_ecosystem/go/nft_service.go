@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -175,13 +174,17 @@ func NewNFTService(cfg Config) (*NFTService, error) {
 	}
 
 	// Initialize signer (Rust bridge)
-	signer := NewRustNFTSigner(cfg.PrivateKey)
+	chainClient := NewEVMChainClient(cfg.ChainRPCURL)
+	if err := chainClient.ConfigureSigner(cfg.PrivateKey); err != nil {
+		return nil, fmt.Errorf("configure signer: %w", err)
+	}
+	signer := NewEVMSigner(chainClient)
 
 	return &NFTService{
 		db:          db,
 		redis:       rdb,
 		config:      cfg,
-		chainClient: NewEVMChainClient(cfg.ChainRPCURL),
+		chainClient: chainClient,
 		signer:      signer,
 	}, nil
 }
@@ -421,13 +424,14 @@ func (s *NFTService) AcceptOffer(c *gin.Context) {
 		return
 	}
 
-	// Execute transfer via Rust signer
-	txHash, err := s.signer.SignAndExecuteNFTSale(c.Request.Context(), offer.ContractAddress, offer.TokenID, offer.SellerAddress, buyerAddress, offer.Price, offer.PriceToken)
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
+        // Settle atomically on chain: the buyer pays the seller and receives
+        // the NFT in a single transaction, so neither side is left holding the
+        // short end if one leg fails.
+        txHash, err := s.settleNFTSale(c.Request.Context(), offer, buyerAddress)
+        if err != nil {
+                c.JSON(500, gin.H{"error": err.Error()})
+                return
+        }
 	// Update offer status
 	offer.Status = "completed"
 	offer.BuyerAddress = buyerAddress
@@ -578,44 +582,6 @@ func generateOfferID(contract, tokenID, seller string) string {
 	return hex.EncodeToString(hash[:])[:16]
 }
 
-// EVMChainClient implements ChainClient for EVM chains
-type EVMChainClient struct {
-	rpcURL string
-}
-
-func NewEVMChainClient(rpcURL string) *EVMChainClient {
-	return &EVMChainClient{rpcURL: rpcURL}
-}
-
-func (c *EVMChainClient) GetNFTMetadata(ctx context.Context, contractAddr, tokenID string) (*NFTMetadata, error) {
-	// This would make actual RPC calls to the blockchain
-	// For demo, return placeholder
-	return &NFTMetadata{
-		TokenID:       tokenID,
-		Name:         "NFT #" + tokenID,
-		Symbol:       "NFT",
-		Description:  "A unique digital asset",
-		Image:       "",
-		Attributes:   []map[string]interface{}{},
-	}, nil
-}
-
-func (c *EVMChainClient) GetOwnerOf(ctx context.Context, contractAddr, tokenID string) (string, error) {
-	return "", nil
-}
-
-func (c *EVMChainClient) TransferNFT(ctx context.Context, from, to, contractAddr, tokenID string, amount *big.Int) (string, error) {
-	return "", nil
-}
-
-func (c *EVMChainClient) MintNFT(ctx context.Context, to, contractAddr, uri string) (string, error) {
-	return "", nil
-}
-
-func (c *EVMChainClient) SetApprovalForAll(ctx context.Context, owner, operator string, approved bool) (string, error) {
-	return "", nil
-}
-
 // Main entry point
 func main() {
 	// Load configuration
@@ -646,7 +612,7 @@ func main() {
 	nft := r.Group("/api/v1/nfts")
 	{
 		nft.GET("/owner/:address", service.GetNFTsByOwner)
-		nft.GET("/:contract/:token_id", service.GetNFTsDetails)
+		nft.GET("/:contract/:token_id", service.GetNFTDetails)
 		nft.POST("/transfer", service.TransferNFT)
 		nft.POST("/mint", service.MintNFT)
 		nft.GET("/search", service.SearchNFTs)
