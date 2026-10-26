@@ -1,7 +1,7 @@
 //! Paymaster service for gas sponsorship
 
 use crate::{UserOperation, AAError, SponsoredOp};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -87,30 +87,72 @@ impl PaymasterService {
         self.owner = Some(owner);
     }
 
+    /// Replace the sponsor policy's sender whitelist.
+    ///
+    /// An empty list means every sender may be sponsored; a non-empty list
+    /// restricts sponsorship to the addresses it names.
+    pub fn set_whitelisted_senders(&mut self, senders: Vec<String>) {
+        if let Some(policy) = self.policies.get_mut(self.current_policy) {
+            policy.whitelisted_senders = senders;
+        }
+    }
+
+    /// The current sponsor policy, if one is configured.
+    pub fn current_policy(&self) -> Option<&SponsorPolicy> {
+        self.policies.get(self.current_policy)
+    }
+
     /// Deposit
-    pub async fn deposit(&self, account: &str, amount: u64) -> Result<(), AAError> {
+    pub async fn deposit(&mut self, account: &str, amount: u64) -> Result<(), AAError> {
+        if amount == 0 {
+            return Err(AAError::PaymasterError("Deposit must be greater than zero".to_string()));
+        }
         let deposit = self.deposits.entry(account.to_string()).or_insert(0);
         *deposit += amount;
         Ok(())
     }
 
     /// Withdraw
+    ///
+    /// Only the paymaster owner may move a deposit out.
     pub async fn withdraw(
-        &self,
+        &mut self,
         account: &str,
         amount: u64,
         recipient: &str,
     ) -> Result<(), AAError> {
-        let deposit = self.deposits.get(account)
-            .ok_or(AAError::PaymasterError("No deposit".to_string()))?;
-        
+        match &self.owner {
+            Some(owner) if owner == account => {}
+            _ => {
+                return Err(AAError::PaymasterError(
+                    "Only the paymaster owner may withdraw".to_string(),
+                ))
+            }
+        }
+
+        if recipient.is_empty() {
+            return Err(AAError::PaymasterError(
+                "A withdrawal recipient is required".to_string(),
+            ));
+        }
+
+        if amount == 0 {
+            return Err(AAError::PaymasterError(
+                "Withdrawal amount must be greater than zero".to_string(),
+            ));
+        }
+
+        let deposit = self
+            .deposits
+            .get_mut(account)
+            .ok_or_else(|| AAError::PaymasterError("No deposit".to_string()))?;
+
         if *deposit < amount {
             return Err(AAError::PaymasterError("Insufficient deposit".to_string()));
         }
-        
-        let deposit = self.deposits.get_mut(account).unwrap();
+
         *deposit -= amount;
-        
+
         Ok(())
     }
 
@@ -151,7 +193,7 @@ impl PaymasterService {
     }
 
     /// Sponsor user operation
-    pub async fn sponsor(&self, user_op: &UserOperation) -> Result<SponsoredOp, AAError> {
+    pub async fn sponsor(&mut self, user_op: &UserOperation) -> Result<SponsoredOp, AAError> {
         // Check policy
         let policy = self.policies.get(self.current_policy)
             .ok_or(AAError::PaymasterError("No policy".to_string()))?;
@@ -169,14 +211,25 @@ impl PaymasterService {
         }
         
         // Check whitelist if sender not whitelisted
-        if !policy.whitelisted_senders.is_empty() {
-            if !policy.whitelisted_senders.contains(&user_op.sender) {
-                return Err(AAError::PaymasterError("Not whitelisted".to_string()));
+        if !policy.whitelisted_senders.is_empty()
+            && !policy.whitelisted_senders.contains(&user_op.sender)
+        {
+            return Err(AAError::PaymasterError(
+                "This sender is not on the sponsorship whitelist".to_string(),
+            ));
+        }
+
+        // A per-sender limit, when set, caps the sponsorship for that sender.
+        if let Some(limit) = self.user_limits.get(&user_op.sender) {
+            if gas_cost > *limit {
+                return Err(AAError::PaymasterError(format!(
+                    "Sponsorship of {gas_cost} exceeds the limit of {limit} for this sender"
+                )));
             }
         }
+
         
-        // Update total sponsored
-        let total = self.total_sponsored + gas_cost;
+        self.total_sponsored = self.total_sponsored.saturating_add(gas_cost);
         
         Ok(SponsoredOp {
             user_op: user_op.clone(),

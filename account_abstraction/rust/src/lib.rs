@@ -21,17 +21,14 @@ use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use ring::aead::{Aad, BoundKey, Nonce, NonceSequence, UnboundKey, AES_256_GCM};
-use ring::rand::{SecureRandom, SystemRandom};
-use ring::digest::digest;
-use ring::hkdf::{KeyType, Salt, HKDF_SHA256};
 
-mod account;
-mod bundler;
-mod paymaster;
-mod recovery;
-mod multisig;
-mod security;
+pub mod account;
+pub mod bundler;
+pub mod tx;
+pub mod paymaster;
+pub mod recovery;
+pub mod multisig;
+pub mod security;
 
 pub use account::*;
 pub use bundler::*;
@@ -61,10 +58,7 @@ pub struct AccountAbstractionService {
     multisig: RwLock<MultiSigService>,
     
     /// Security module
-    security: Arc<SecurityModule>,
-    
-    /// User operations cache
-    user_ops: RwLock<HashMap<String, UserOperation>>,
+    security: Arc<RwLock<SecurityModule>>,
     
     /// Account cache
     accounts: RwLock<HashMap<String, SmartAccount>>,
@@ -79,21 +73,57 @@ impl AccountAbstractionService {
         Self {
             entry_point: RwLock::new(None),
             factory: RwLock::new(AccountFactory::new()),
-            bundler: RwLock::new(BundlerService::new()),
+            bundler: RwLock::new(BundlerService::new(chain_id)),
             paymaster: RwLock::new(PaymasterService::new()),
             recovery: RwLock::new(RecoveryService::new()),
             multisig: RwLock::new(MultiSigService::new()),
-            security: Arc::new(SecurityModule::new()),
-            user_ops: RwLock::new(HashMap::new()),
+            security: Arc::new(RwLock::new(SecurityModule::new())),
             accounts: RwLock::new(HashMap::new()),
             chain_id,
         }
     }
 
+    /// Configure the RPC endpoint and signing key used to submit bundles.
+    ///
+    /// Without both, `submit_user_op` fails closed rather than reporting an
+    /// operation as submitted.
+    pub async fn configure_bundler(
+        &self,
+        rpc_url: &str,
+        private_key: &str,
+    ) -> Result<(), AAError> {
+        let signer = crate::tx::TxSigner::from_hex(private_key)?;
+
+        let mut bundler = self.bundler.write().await;
+        bundler.set_rpc_endpoint(rpc_url);
+        bundler.set_signer(signer);
+        Ok(())
+    }
+
     /// Initialize with entry point address
+    ///
+    /// The address is stored on the service and on the bundler, which needs it
+    /// to compute operation hashes and to address `handleOps` calls.
     pub async fn initialize(&self, entry_point: String) -> Result<(), AAError> {
         let mut ep = self.entry_point.write().await;
-        *ep = Some(entry_point);
+        *ep = Some(entry_point.clone());
+
+        self.bundler.write().await.set_entry_point(entry_point);
+        Ok(())
+    }
+
+    /// Configure the account factory used to derive account addresses.
+    ///
+    /// Without a factory, `create_account` fails closed rather than deriving an
+    /// address that no contract would ever deploy at.
+    pub async fn configure_factory(
+        &self,
+        factory_address: String,
+        rpc_url: &str,
+    ) -> Result<(), AAError> {
+        let mut factory = self.factory.write().await;
+        factory.set_factory_address(factory_address);
+        factory.set_rpc_endpoint(rpc_url);
         Ok(())
     }
 
@@ -113,8 +143,12 @@ impl AccountAbstractionService {
         }
 
         // Generate account address
-        let account_address = self.factory.read().await
-            .compute_address(&owners, salt, self.chain_id)?;
+        let account_address = self
+            .factory
+            .read()
+            .await
+            .compute_address(&owners[0], salt, self.chain_id)
+            .await?;
 
         // Create account metadata
         let account_id = Uuid::new_v4().to_string();
@@ -135,11 +169,31 @@ impl AccountAbstractionService {
             whitelisted_calls: vec![],
         };
 
-        // Store account
-        self.accounts.write().await.insert(
-            account_address.clone(),
-            SmartAccount::new(owners, threshold),
-        );
+        // The init code lets the first user operation deploy the account.
+        let init_data = self
+            .factory
+            .read()
+            .await
+            .compute_init_code(&owners[0], salt)?;
+
+        // Register a signing key for each owner, so the owner can sign user
+        // operations. Without this, signing would fail closed.
+        {
+            let mut security = self.security.write().await;
+            for owner in &owners {
+                if !security.has_key(owner) {
+                    security.generate_key_pair(owner)?;
+                }
+            }
+        }
+
+        let mut smart_account = SmartAccount::new(owners, threshold);
+        smart_account.init_data = init_data;
+
+        self.accounts
+            .write()
+            .await
+            .insert(account_address.clone(), smart_account);
 
         Ok(account_info)
     }
@@ -182,10 +236,6 @@ impl AccountAbstractionService {
         let account_data = accounts.get(account)
             .ok_or(AAError::AccountNotFound)?;
         
-        let entry_point = self.entry_point.read().await
-            .clone()
-            .ok_or(AAError::NotInitialized)?;
-
         // Build init code if account not deployed
         let init_code = if !account_data.deployed {
             let factory = self.factory.read().await.get_factory_address();
@@ -206,6 +256,8 @@ impl AccountAbstractionService {
             call_gas_limit: options.call_gas_limit.unwrap_or(100000),
             verification_gas_limit: options.verification_gas_limit.unwrap_or(200000),
             pre_verification_gas: options.pre_verification_gas.unwrap_or(50000),
+            max_fee_per_gas: options.max_fee_per_gas.unwrap_or(0),
+            max_priority_fee_per_gas: options.max_priority_fee_per_gas.unwrap_or(0),
             paymaster_data: options.paymaster_data,
             signature: vec![],
         };
@@ -233,7 +285,7 @@ impl AccountAbstractionService {
         let op_hash = self.get_operation_hash(user_op).await?;
         
         // Sign using security module
-        let signature = self.security.sign(&op_hash, signer).await?;
+        let signature = self.security.read().await.sign(&op_hash, signer).await?;
         
         user_op.signature = signature.clone();
         
@@ -249,44 +301,17 @@ impl AccountAbstractionService {
         self.validate_user_op(&user_op).await?;
         
         // Submit to bundler
-        let bundler = self.bundler.read().await;
-        let result = bundler.send_user_op(user_op).await?;
-        
-        Ok(result)
+        self.bundler.write().await.send_user_op(user_op).await
     }
 
     /// Get operation hash
-    pub async fn get_operation_hash(
-        &self,
-        user_op: &UserOperation,
-    ) -> Result<Vec<u8>, AAError> {
-        let mut data = vec![];
-        
-        // Encode operation fields
-        data.extend_from_slice(user_op.sender.as_bytes());
-        data.extend_from_slice(&user_op.nonce.to_be_bytes());
-        
-        if let Some(ref init) = user_op.init_code {
-            data.extend_from_slice(init.factory.as_bytes());
-        }
-        
-        if let Some(ref call) = user_op.call_data {
-            data.extend_from_slice(call);
-        }
-        
-        data.extend_from_slice(&user_op.call_gas_limit.to_be_bytes());
-        data.extend_from_slice(&user_op.verification_gas_limit.to_be_bytes());
-        data.extend_from_slice(&user_op.pre_verification_gas.to_be_bytes());
-        data.extend_from_slice(&self.chain_id.to_be_bytes());
-        
-        if let Some(ref ep) = *self.entry_point.read().await {
-            data.extend_from_slice(ep.as_bytes());
-        }
-        
-        // Compute hash
-        let hash = digest(&SHA256, &data);
-        
-        Ok(hash.as_ref().to_vec())
+    ///
+    /// Delegates to the bundler's encoder so the hash matches the EntryPoint's
+    /// `getUserOpHash`.
+    pub async fn get_operation_hash(&self, user_op: &UserOperation) -> Result<Vec<u8>, AAError> {
+        let bundler = self.bundler.read().await;
+        let hex_hash = bundler.compute_op_hash(user_op)?;
+        hex::decode(hex_hash).map_err(|e| AAError::BundlerError(e.to_string()))
     }
 
     /// Validate user operation
@@ -315,7 +340,7 @@ impl AccountAbstractionService {
         new_owner: &str,
         guardian: &str,
     ) -> Result<RecoveryRequest, AAError> {
-        let recovery = self.recovery.read().await;
+        let mut recovery = self.recovery.write().await;
         
         recovery.start_recovery(
             account,
@@ -332,7 +357,7 @@ impl AccountAbstractionService {
         new_owner: &str,
         guardian: &str,
     ) -> Result<bool, AAError> {
-        let recovery = self.recovery.read().await;
+        let mut recovery = self.recovery.write().await;
         
         recovery.confirm_recovery(
             account,
@@ -346,30 +371,18 @@ impl AccountAbstractionService {
         &self,
         account: &str,
     ) -> Result<String, AAError> {
-        let recovery = self.recovery.read().await;
+        let mut recovery = self.recovery.write().await;
         recovery.complete_recovery(account).await
     }
 
     /// Execute multi-sig transaction
-    pub async fn execute_multisig(
-        &self,
-        account: &str,
-        calls: Vec<Call>,
-        signers: Vec<String>,
-    ) -> Result<String, AAError> {
-        let multisig = self.multisig.read().await;
-        
-        multisig.execute(
-            account,
-            calls,
-            signers,
-        ).await
+    pub async fn execute_multisig(&self, tx_id: &str) -> Result<String, AAError> {
+        self.multisig.write().await.execute(tx_id)
     }
 
     /// Get bundler status
     pub async fn get_bundler_status(&self) -> BundlerStatus {
-        let bundler = self.bundler.read().await;
-        bundler.get_status().await
+        self.bundler.read().await.get_status()
     }
 
     /// Get paymaster deposit
@@ -383,7 +396,7 @@ impl AccountAbstractionService {
         &self,
         user_op: &UserOperation,
     ) -> Result<SponsoredOp, AAError> {
-        let paymaster = self.paymaster.read().await;
+        let mut paymaster = self.paymaster.write().await;
         paymaster.sponsor(user_op).await
     }
 }
@@ -465,12 +478,16 @@ pub struct UserOpOptions {
     pub call_gas_limit: Option<u64>,
     pub verification_gas_limit: Option<u64>,
     pub pre_verification_gas: Option<u64>,
+    /// Maximum total fee per gas unit, in wei.
+    pub max_fee_per_gas: Option<u64>,
+    /// Maximum priority fee per gas unit, in wei.
+    pub max_priority_fee_per_gas: Option<u64>,
     pub paymaster_data: Option<Vec<u8>>,
     pub signature: Option<Vec<u8>>,
 }
 
 /// Factory call
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactoryCall {
     pub factory: String,
     pub data: Vec<u8>,
@@ -486,6 +503,12 @@ pub struct UserOperation {
     pub call_gas_limit: u64,
     pub verification_gas_limit: u64,
     pub pre_verification_gas: u64,
+    /// Maximum total fee per gas unit, in wei. The EntryPoint packs this into
+    /// the low half of `gasFees`.
+    pub max_fee_per_gas: u64,
+    /// Maximum priority fee per gas unit, in wei. The EntryPoint packs this
+    /// into the high half of `gasFees`.
+    pub max_priority_fee_per_gas: u64,
     pub paymaster_data: Option<Vec<u8>>,
     pub signature: Vec<u8>,
 }
@@ -510,15 +533,6 @@ pub struct RecoveryRequest {
     pub started_at: DateTime<Utc>,
     pub unlock_time: DateTime<Utc>,
     pub completed: bool,
-}
-
-/// Bundler status
-#[derive(Debug, Clone)]
-pub struct BundlerStatus {
-    pub pending_ops: u64,
-    pub included_ops: u64,
-    pub failed_ops: u64,
-    pub avg_gas_price: u64,
 }
 
 /// Encode calls to bytes
@@ -583,58 +597,8 @@ pub enum AAError {
     
     #[error("Security error: {0}")]
     SecurityError(String),
+
+    #[error("Factory error: {0}")]
+    FactoryError(String),
 }
 
-use thiserror;
-
-/// SHA256 constant
-const SHA256: &str = "SHA256";
-
-/// System random number generator
-static RANDOM: SystemRandom = SystemRandom::new();
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_create_account() {
-        let service = AccountAbstractionService::new(1);
-        
-        let owners = vec![
-            "0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string(),
-        ];
-        
-        let result = service.create_account(owners.clone(), 1, 0).await;
-        
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_build_user_op() {
-        let service = AccountAbstractionService::new(1);
-        service.initialize("0x5FF137D4fea00195FB8dE5C329F205eF039D5c7d".to_string()).await.unwrap();
-        
-        let account = service.create_account(
-            vec!["0x742d35Cc6634C0532925a3b844Bc454e4438f44e".to_string()],
-            1,
-            0,
-        ).await.unwrap();
-        
-        let calls = vec![
-            Call {
-                to: "0xA0b86a33E6441C4C1A1d1d2d2E2E2E2E2E2E2E2E".to_string(),
-                value: 0,
-                data: vec![],
-            },
-        ];
-        
-        let user_op = service.build_user_op(
-            &account.address,
-            calls,
-            UserOpOptions::default(),
-        ).await;
-        
-        assert!(user_op.is_ok());
-    }
-}

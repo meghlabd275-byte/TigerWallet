@@ -92,6 +92,11 @@ impl SecurityModule {
         Ok(info)
     }
 
+    /// Whether a key with this id is already registered.
+    pub fn has_key(&self, key_id: &str) -> bool {
+        self.keys.contains_key(key_id)
+    }
+
     /// Sign `data` with the stored secp256k1 private key for `key_id`, after
     /// hashing it with keccak256 (the Ethereum message-digest convention). The
     /// returned bytes are a fixed-size ECDSA signature (r || s, 64 bytes).

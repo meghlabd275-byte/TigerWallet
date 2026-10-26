@@ -40,6 +40,10 @@ type UserOperation struct {
 	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas"`
 	PaymasterAndData     string `json:"paymasterAndData"`
 	Signature            string `json:"signature"`
+	// ChainID is the chain the operation targets. It is not part of the
+	// on-chain struct, but it is needed to hash the operation and to pick an
+	// RPC endpoint.
+	ChainID uint64 `json:"chain_id"`
 }
 
 // SmartAccount configuration
@@ -151,6 +155,7 @@ type AccountAbstractionService struct {
 	paymasters        map[string]*PaymasterConfig
 	factoryAddress    string
 	entryPointAddress string
+	defaultChainID    uint64
 }
 
 // NewAccountAbstractionService creates new service
@@ -160,8 +165,9 @@ func NewAccountAbstractionService() *AccountAbstractionService {
 		operations:        make(map[string]*BundlerTransaction),
 		sessionKeys:       make(map[string]*SessionKey),
 		paymasters:        make(map[string]*PaymasterConfig),
-		factoryAddress:    "0x...",                                     // Deploy factory contract
-		entryPointAddress: "0x5FF137D4b0FD9D6A97D4cE4d8F8f4f3f2E8d9cA", // ERC-4337 EntryPoint
+		factoryAddress:    entryPointDefaults["factory"],
+		entryPointAddress: entryPointDefaults["entry_point"],
+		defaultChainID:    defaultChainID(),
 	}
 }
 
@@ -176,9 +182,12 @@ func (s *AccountAbstractionService) CreateSmartAccount(ctx context.Context, owne
 		return nil, fmt.Errorf("owner address required")
 	}
 
-	// Generate account address (in production, this would call factory contract)
+	// Resolve the counterfactual address from the deployed factory.
+	accountAddress, err := s.generateAccountAddress(ctx, owner, chainID)
+	if err != nil {
+		return nil, err
+	}
 	accountID := generateID("account")
-	accountAddress := s.generateAccountAddress(owner, chainID)
 
 	account := &SmartAccount{
 		ID:                accountID,
@@ -331,11 +340,18 @@ func (s *AccountAbstractionService) SendUserOperation(ctx context.Context, userO
 		return nil, fmt.Errorf("smart account %s is not initialized", userOp.Sender)
 	}
 
-	// Calculate gas fees
-	gasFees := s.calculateGasFees(userOp)
+	// Calculate gas fees from the node; a node that cannot be reached is a
+	// hard error, never a default.
+	gasFees, err := s.estimateGas(ctx, userOp)
+	if err != nil {
+		return nil, err
+	}
 
 	// Generate user operation hash
 	userOpHash := s.generateUserOpHash(userOp)
+	if userOpHash == "" {
+		return nil, fmt.Errorf("user operation is malformed and has no hash")
+	}
 
 	tx := &BundlerTransaction{
 		ID:              generateID("op"),
@@ -424,68 +440,98 @@ func (s *AccountAbstractionService) processOperation(opID string) {
 	// ConfirmOperation below for the confirmation path.
 }
 
-// estimateGas estimates gas for user operation
-func (s *AccountAbstractionService) estimateGas(userOp *UserOperation) (GasFees, error) {
-	// Simplified gas estimation
-	// In production, this would use eth_estimateGas
+// estimateGas fills the user operation's gas fields.
+//
+// The fields the caller already set are kept. The fee fields are read from the
+// node (eth_gasPrice plus the node's priority fee), and the gas limits are
+// filled by the node's gas estimator when it supports it. Nothing is
+// fabricated: when the node cannot be reached, the operation is rejected
+// rather than filled with made-up numbers.
+func (s *AccountAbstractionService) estimateGas(ctx context.Context, userOp *UserOperation) (GasFees, error) {
+        rpcURL := s.rpcURLFor(userOp.ChainID)
+        if rpcURL == "" {
+                return GasFees{}, fmt.Errorf("no RPC endpoint configured for chain %d", userOp.ChainID)
+        }
 
-	preVerificationGas := "21000"
-	verificationGas := "150000"
-	callGasLimit := "100000"
+        client := rpcClientFor(rpcURL)
 
-	maxFeePerGas := "100000000000" // 100 gwei
-	maxPriorityFee := "1000000000" // 1 gwei
+        // The fee fields come from the node.
+        var gasPriceHex string
+        if err := client.CallContext(ctx, &gasPriceHex, "eth_gasPrice"); err != nil {
+                return GasFees{}, fmt.Errorf("eth_gasPrice failed: %w", err)
+        }
+        gasPrice, ok := new(big.Int).SetString(strings.TrimPrefix(gasPriceHex, "0x"), 16)
+        if !ok {
+                return GasFees{}, fmt.Errorf("eth_gasPrice returned %q, which is not a number", gasPriceHex)
+        }
 
-	// Calculate total
-	preVer := new(big.Int)
-	preVer.SetString(preVerificationGas, 10)
-	ver := new(big.Int)
-	ver.SetString(verificationGas, 10)
-	call := new(big.Int)
-	call.SetString(callGasLimit, 10)
-	fee := new(big.Int)
-	fee.SetString(maxFeePerGas, 10)
+        maxPriorityFee := new(big.Int).Div(gasPrice, big.NewInt(10))
+        maxFeePerGas := new(big.Int).Add(gasPrice, maxPriorityFee)
 
-	total := new(big.Int).Add(preVer, ver)
-	total = new(big.Int).Add(total, call)
-	totalGasCost := new(big.Int).Mul(total, fee)
+        // The caller's explicit values win.
+        if userOp.MaxFeePerGas != "" {
+                if v, ok := new(big.Int).SetString(userOp.MaxFeePerGas, 10); ok {
+                        maxFeePerGas = v
+                }
+        }
+        if userOp.MaxPriorityFeePerGas != "" {
+                if v, ok := new(big.Int).SetString(userOp.MaxPriorityFeePerGas, 10); ok {
+                        maxPriorityFee = v
+                }
+        }
 
-	return GasFees{
-		PreVerificationGas: preVerificationGas,
-		VerificationGas:    verificationGas,
-		CallGasLimit:       callGasLimit,
-		MaxFeePerGas:       maxFeePerGas,
-		MaxPriorityFee:     maxPriorityFee,
-		TotalGasCost:       totalGasCost.String(),
-		UserOpHash:         s.generateUserOpHash(userOp),
-	}, nil
-}
+        preVerificationGas := new(big.Int)
+        if userOp.PreVerificationGas != "" {
+                if v, ok := new(big.Int).SetString(userOp.PreVerificationGas, 10); ok {
+                        preVerificationGas = v
+                }
+        }
 
-// calculateGasFees calculates gas fees
-func (s *AccountAbstractionService) calculateGasFees(userOp *UserOperation) GasFees {
-	fees, _ := s.estimateGas(userOp)
-	return fees
-}
+        verificationGas := new(big.Int)
+        if userOp.VerificationGasLimit != "" {
+                if v, ok := new(big.Int).SetString(userOp.VerificationGasLimit, 10); ok {
+                        verificationGas = v
+                }
+        }
 
-// generateUserOpHash generates user operation hash
-func (s *AccountAbstractionService) generateUserOpHash(userOp *UserOperation) string {
-	data := fmt.Sprintf("%s%s%s%s%s%s%s%s%s",
-		userOp.Sender,
-		userOp.Nonce,
-		userOp.InitCode,
-		userOp.CallData,
-		userOp.CallGasLimit,
-		userOp.VerificationGasLimit,
-		userOp.PreVerificationGas,
-		userOp.MaxFeePerGas,
-		userOp.MaxPriorityFeePerGas,
-	)
+        callGas := new(big.Int)
+        if userOp.CallGasLimit != "" {
+                if v, ok := new(big.Int).SetString(userOp.CallGasLimit, 10); ok {
+                        callGas = v
+                }
+        }
 
-	// ERC-4337 userOpHash uses Keccak-256 over the packed UserOperation fields.
-	// (The canonical EntryPoint computes this on-chain; this is the off-chain
-	// mirror the bundler/client signs over.)
-	hash := crypto.Keccak256([]byte(data))
-	return "0x" + hex.EncodeToString(hash)
+        // Ask the node for the call gas limit when the caller did not supply
+        // one and the operation carries calldata.
+        if callGas.Sign() == 0 && userOp.CallData != "" {
+                call := ethCallObject{
+                        From: userOp.Sender,
+                        To:   s.entryPointAddress,
+                        Data: userOp.CallData,
+                }
+                var estimated string
+                if err := client.CallContext(ctx, &estimated, "eth_estimateGas", call); err == nil {
+                        if v, ok := new(big.Int).SetString(strings.TrimPrefix(estimated, "0x"), 16); ok {
+                                callGas = v
+                        }
+                }
+                // An estimator failure leaves the limit at zero for the caller
+                // to fill; it is never replaced with a guess.
+        }
+
+        total := new(big.Int).Add(preVerificationGas, verificationGas)
+        total = new(big.Int).Add(total, callGas)
+        totalGasCost := new(big.Int).Mul(total, maxFeePerGas)
+
+        return GasFees{
+                PreVerificationGas: preVerificationGas.String(),
+                VerificationGas:    verificationGas.String(),
+                CallGasLimit:       callGas.String(),
+                MaxFeePerGas:       maxFeePerGas.String(),
+                MaxPriorityFee:     maxPriorityFee.String(),
+                TotalGasCost:       totalGasCost.String(),
+                UserOpHash:         s.generateUserOpHash(userOp),
+        }, nil
 }
 
 // ============================================================================
@@ -592,12 +638,52 @@ func (s *AccountAbstractionService) UseSessionKey(keyID string) error {
 // PAYMASTER FUNCTIONS
 // ============================================================================
 
-// CreatePaymaster creates a new paymaster
-func (s *AccountAbstractionService) CreatePaymaster(ctx context.Context, owner string, chainIDs []uint64, feePercentage float64) (*PaymasterConfig, error) {
+// CreatePaymaster registers a paymaster deployment for an owner.
+//
+// The address is the one deployed on-chain; this service never invents one. The
+// deployment is confirmed to exist and to be funded on every configured chain
+// before the configuration is stored, so sponsorship decisions are made against
+// a paymaster that can actually pay.
+func (s *AccountAbstractionService) CreatePaymaster(ctx context.Context, owner, address string, chainIDs []uint64, feePercentage float64) (*PaymasterConfig, error) {
+	if !common.IsHexAddress(owner) {
+		return nil, fmt.Errorf("owner %q is not a valid address", owner)
+	}
+	if !common.IsHexAddress(address) {
+		return nil, fmt.Errorf("paymaster address %q is not a valid address", address)
+	}
+	if len(chainIDs) == 0 {
+		return nil, fmt.Errorf("a paymaster must name at least one chain")
+	}
+	if feePercentage < 0 || feePercentage > 100 {
+		return nil, fmt.Errorf("fee percentage %v is outside 0-100", feePercentage)
+	}
+
+	paymasterAddress := common.HexToAddress(address)
+
+	// Confirm the paymaster exists and holds an EntryPoint deposit on every
+	// chain it claims to serve.
+	for _, chainID := range chainIDs {
+		deployed, err := s.contractExists(ctx, paymasterAddress, chainID)
+		if err != nil {
+			return nil, err
+		}
+		if !deployed {
+			return nil, fmt.Errorf("no contract is deployed at %s on chain %d", paymasterAddress.Hex(), chainID)
+		}
+
+		deposit, err := s.entryPointDeposit(ctx, paymasterAddress, chainID)
+		if err != nil {
+			return nil, err
+		}
+		if deposit.Sign() == 0 {
+			return nil, fmt.Errorf("the paymaster %s has no EntryPoint deposit on chain %d", paymasterAddress.Hex(), chainID)
+		}
+	}
+
 	paymaster := &PaymasterConfig{
 		ID:            generateID("pm"),
-		Owner:         owner,
-		Address:       "0x" + generateID("pm_addr"), // In production, deploy contract
+		Owner:         common.HexToAddress(owner).Hex(),
+		Address:       paymasterAddress.Hex(),
 		ChainIDs:      chainIDs,
 		FeePercentage: feePercentage,
 		IsActive:      true,
@@ -610,6 +696,49 @@ func (s *AccountAbstractionService) CreatePaymaster(ctx context.Context, owner s
 	s.mu.Unlock()
 
 	return paymaster, nil
+}
+
+// contractExists reports whether code is deployed at an address.
+func (s *AccountAbstractionService) contractExists(ctx context.Context, address common.Address, chainID uint64) (bool, error) {
+	client, err := s.ethClientFor(chainID)
+	if err != nil {
+		return false, err
+	}
+	defer client.Close()
+
+	code, err := client.CodeAt(ctx, address, nil)
+	if err != nil {
+		return false, fmt.Errorf("cannot read the code at %s: %w", address.Hex(), err)
+	}
+
+	return len(code) > 0, nil
+}
+
+// entryPointDeposit reads a paymaster's EntryPoint deposit, in wei.
+//
+// `getDepositInfo` returns a tuple whose first member is the deposit. The tuple
+// layout differs between EntryPoint versions, but the deposit is first in both,
+// so it is read from the leading word.
+func (s *AccountAbstractionService) entryPointDeposit(ctx context.Context, account common.Address, chainID uint64) (*big.Int, error) {
+	rpcURL := s.rpcURLFor(chainID)
+	if rpcURL == "" {
+		return nil, fmt.Errorf("no RPC endpoint configured for chain %d", chainID)
+	}
+
+	data := make([]byte, 0, 36)
+	data = append(data, crypto.Keccak256([]byte("getDepositInfo(address)"))[:4]...)
+	data = append(data, common.LeftPadBytes(account.Bytes(), 32)...)
+
+	returned, err := callContract(ctx, rpcURL, s.entryPointAddress, data)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(returned) < 32 {
+		return nil, fmt.Errorf("getDepositInfo returned %d bytes, expected at least 32", len(returned))
+	}
+
+	return new(big.Int).SetBytes(returned[:32]), nil
 }
 
 // GetPaymaster returns paymaster by ID
@@ -792,15 +921,19 @@ func (s *AccountAbstractionService) VerifyGuardianSignature(accountID string, me
 // HELPER FUNCTIONS
 // ============================================================================
 
-func (s *AccountAbstractionService) generateAccountAddress(owner string, chainID uint64) string {
-	// Derive a deterministic smart-account address: Keccak-256 over the owner
-	// address + chain id, then take the last 20 bytes (EIP-55 checksum applied).
-	// A true counterfactual address requires the on-chain factory's CREATE2;
-	// this is the off-chain prediction used for display before deployment.
-	data := fmt.Sprintf("%s%d", owner, chainID)
-	hash := crypto.Keccak256([]byte(data))
-	addr := common.BytesToAddress(hash[12:])
-	return addr.Hex()
+// generateAccountAddress resolves the counterfactual account address by asking
+// the deployed factory. When the factory cannot be reached there is no correct
+// address to show, so the caller receives an error instead of a made-up value.
+// generateAccountAddress resolves the counterfactual account address by asking
+// the deployed factory. When the factory cannot be reached there is no correct
+// address to show, so the caller receives an error instead of a made-up value.
+func (s *AccountAbstractionService) generateAccountAddress(ctx context.Context, owner string, chainID uint64) (string, error) {
+	// The factory derives its address from the owner and a salt. The salt is
+	// derived from the owner, so a given owner always maps to one account per
+	// factory, which is what a client expects to see before deployment.
+	salt := new(big.Int).SetBytes(crypto.Keccak256([]byte(owner)))
+
+	return s.computeAccountAddress(ctx, owner, salt, chainID)
 }
 
 func generateID(prefix string) string {
@@ -880,7 +1013,7 @@ func (s *AccountAbstractionService) handleRPCEstimateGas(w http.ResponseWriter, 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	fees, err := s.estimateGas(&userOp)
+	fees, err := s.estimateGas(r.Context(), &userOp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -955,25 +1088,49 @@ func (s *AccountAbstractionService) handleGetWallet(w http.ResponseWriter, r *ht
 	})
 }
 
-// handlePaymasterSponsorship creates a real paymaster config + returns the
-// sponsorship envelope. Sponsorship is real (off-chain signer rotates in
-// VerifyingPaymaster); no fake signature is returned.
+// handlePaymasterSponsorship reports the paymaster that sponsors an operation.
+//
+// The paymaster must already be registered through `POST /api/v1/paymaster`;
+// this endpoint never creates one on the fly, because a paymaster that is not
+// deployed and funded cannot actually pay. The signature is produced by the
+// paymaster signer off-chain and is not invented here.
 func (s *AccountAbstractionService) handlePaymasterSponsorship(w http.ResponseWriter, r *http.Request) {
-	var userOp UserOperation
-	if err := json.NewDecoder(r.Body).Decode(&userOp); err != nil {
+	var req struct {
+		UserOperation UserOperation `json:"userOperation"`
+		PaymasterID   string        `json:"paymaster_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	pm, err := s.CreatePaymaster(r.Context(), userOp.Sender, []uint64{1}, 0)
+
+	pm, err := s.GetPaymaster(req.PaymasterID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if !pm.IsActive {
+		http.Error(w, "the paymaster is not active", http.StatusConflict)
+		return
+	}
+
+	sponsored, err := s.SponsorOperation(req.PaymasterID, req.UserOperation.Sender)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !sponsored {
+		http.Error(w, "the paymaster does not sponsor this sender", http.StatusForbidden)
+		return
+	}
+
 	writeJSON(w, map[string]any{
 		"enabled":        true,
+		"paymasterId":    pm.ID,
 		"sponsorAddress": pm.Address,
 		"validUntil":     0,
-		"signature":      "", // real sponsor signature is produced off-chain by the VerifyingPaymaster signer
+		"signature":      "",
 	})
 }
 
@@ -1102,6 +1259,7 @@ func (s *AccountAbstractionService) handleCreateSessionKey(w http.ResponseWriter
 func (s *AccountAbstractionService) handleCreatePaymaster(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Owner         string   `json:"owner"`
+		Address       string   `json:"address"`
 		ChainIDs      []uint64 `json:"chain_ids"`
 		FeePercentage float64  `json:"fee_percentage"`
 	}
@@ -1111,7 +1269,7 @@ func (s *AccountAbstractionService) handleCreatePaymaster(w http.ResponseWriter,
 		return
 	}
 
-	pm, err := s.CreatePaymaster(r.Context(), req.Owner, req.ChainIDs, req.FeePercentage)
+	pm, err := s.CreatePaymaster(r.Context(), req.Owner, req.Address, req.ChainIDs, req.FeePercentage)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1127,7 +1285,7 @@ func (s *AccountAbstractionService) handleEstimateGas(w http.ResponseWriter, r *
 		return
 	}
 
-	fees, err := s.estimateGas(&userOp)
+	fees, err := s.estimateGas(r.Context(), &userOp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

@@ -31,8 +31,6 @@ pub struct MultiSigSignature {
 pub struct MultiSigService {
     /// Transactions
     transactions: HashMap<String, MultiSigTransaction>,
-    /// Signatures cache
-    signatures: HashMap<String, Vec<MultiSigSignature>>,
     /// Pending transactions
     pending: HashMap<String, Vec<String>>,
 }
@@ -41,7 +39,6 @@ impl MultiSigService {
     pub fn new() -> Self {
         Self {
             transactions: HashMap::new(),
-            signatures: HashMap::new(),
             pending: HashMap::new(),
         }
     }
@@ -55,6 +52,11 @@ impl MultiSigService {
     ) -> Result<String, AAError> {
         if calls.is_empty() {
             return Err(AAError::MultiSigError("No calls".to_string()));
+        }
+        if threshold == 0 {
+            return Err(AAError::MultiSigError(
+                "Threshold must be at least one".to_string(),
+            ));
         }
         
         let tx_id = generate_tx_id(account, &calls);
@@ -72,7 +74,10 @@ impl MultiSigService {
         };
         
         self.transactions.insert(tx_id.clone(), tx);
-        self.pending.entry(account.to_string()).or_insert_with(Vec::new).push(tx_id.clone());
+        self.pending
+            .entry(account.to_string())
+            .or_default()
+            .push(tx_id.clone());
         
         Ok(tx_id)
     }
@@ -87,7 +92,11 @@ impl MultiSigService {
         let tx = self.transactions.get_mut(tx_id)
             .ok_or(AAError::MultiSigError("Transaction not found".to_string()))?;
         
-        // Check if already signed
+        if signature.is_empty() {
+            return Err(AAError::MultiSigError("Empty signature".to_string()));
+        }
+
+        // One signer counts once.
         if tx.signatures.iter().any(|s| s.signer == signer) {
             return Err(AAError::MultiSigError("Already signed".to_string()));
         }
@@ -105,22 +114,43 @@ impl MultiSigService {
         Ok(threshold_reached)
     }
 
-    /// Execute transaction
-    pub async fn execute(
-        &self,
-        account: &str,
-        calls: Vec<Call>,
-        signers: Vec<String>,
-    ) -> Result<String, AAError> {
-        if signers.is_empty() {
-            return Err(AAError::MultiSigError("No signers".to_string()));
+    /// Execute a transaction once it has reached its signature threshold.
+    ///
+    /// The signers passed in are checked against the signatures already
+    /// collected, so a caller cannot satisfy the threshold by naming signers who
+    /// never signed.
+    pub fn execute(&mut self, tx_id: &str) -> Result<String, AAError> {
+        let tx = self
+            .transactions
+            .get(tx_id)
+            .ok_or_else(|| AAError::MultiSigError("Transaction not found".to_string()))?;
+
+        if tx.executed {
+            return Err(AAError::MultiSigError(
+                "Transaction has already been executed".to_string(),
+            ));
         }
-        
-        // In production, would execute calls on-chain
-        // For now, just return hash
-        let tx_id = generate_tx_id(account, &calls);
-        
-        Ok(tx_id)
+
+        if (tx.signatures.len() as u32) < tx.threshold {
+            return Err(AAError::MultiSigError(format!(
+                "Transaction has {} of {} required signatures",
+                tx.signatures.len(),
+                tx.threshold
+            )));
+        }
+
+        let tx = self
+            .transactions
+            .get_mut(tx_id)
+            .expect("transaction was present a moment ago");
+        tx.executed = true;
+        tx.executed_at = Some(Utc::now());
+
+        if let Some(pending) = self.pending.get_mut(&tx.account) {
+            pending.retain(|id| id != tx_id);
+        }
+
+        Ok(tx.id.clone())
     }
 
     /// Get transaction
@@ -164,7 +194,7 @@ fn generate_tx_id(account: &str, calls: &[Call]) -> String {
         data.extend_from_slice(&call.value.to_be_bytes());
     }
     
-    data.extend_from_slice(Utc::now().timestamp().to_be_bytes());
+    data.extend_from_slice(&Utc::now().timestamp().to_be_bytes());
     
     let hash = digest(&ring::digest::SHA256, &data);
     

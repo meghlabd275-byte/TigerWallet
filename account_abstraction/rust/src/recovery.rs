@@ -32,25 +32,21 @@ pub struct RecoveryRequestInternal {
 /// Anti-scam configuration
 #[derive(Debug, Clone)]
 pub struct AntiScamConfig {
-    /// Enable phishing detection
-    pub enable_phishing_detection: bool,
-    /// Enable domain verification
-    pub enable_domain_verification: bool,
-    /// Enable transaction simulation
-    pub enable_transaction_simulation: bool,
-    /// Known malicious domains
-    pub malicious_domains: Vec<String>,
-    /// Minimum guardian delay
+    /// Check a proposed new owner against the address denylist before a
+    /// recovery may start.
+    pub enable_address_denylist: bool,
+    /// Addresses that may never become the owner of an account, because they
+    /// are known to be controlled by an attacker. Compared case-insensitively.
+    pub blocked_addresses: Vec<String>,
+    /// Minimum guardian delay, in seconds.
     pub min_guardian_delay: u64,
 }
 
 impl Default for AntiScamConfig {
     fn default() -> Self {
         Self {
-            enable_phishing_detection: true,
-            enable_domain_verification: true,
-            enable_transaction_simulation: true,
-            malicious_domains: vec![],
+            enable_address_denylist: true,
+            blocked_addresses: vec![],
             min_guardian_delay: 24 * 3600, // 24 hours
         }
     }
@@ -104,6 +100,19 @@ impl RecoveryService {
         }
     }
 
+    /// Set the minimum delay a recovery must wait before it can complete.
+    ///
+    /// The delay is what gives an owner time to notice and cancel a recovery
+    /// they did not request, so lowering it weakens that protection.
+    pub fn set_min_guardian_delay(&mut self, seconds: u64) {
+        self.anti_scam.min_guardian_delay = seconds;
+    }
+
+    /// The configured minimum guardian delay, in seconds.
+    pub fn min_guardian_delay(&self) -> u64 {
+        self.anti_scam.min_guardian_delay
+    }
+
     /// Configure guardians for account
     pub fn configure_guardians(
         &mut self,
@@ -131,142 +140,260 @@ impl RecoveryService {
         Ok(())
     }
 
-    /// Start recovery
+    /// Start a recovery request.
+    ///
+    /// The request is recorded so later confirmations accumulate against it,
+    /// and the guardian starting it counts as the first confirmation.
     pub async fn start_recovery(
-        &self,
+        &mut self,
         account: &str,
         new_owner: &str,
         guardian: &str,
         chain_id: u64,
     ) -> Result<RecoveryRequest, AAError> {
-        // Validate guardian
-        let guardians = self.guardians.get(account)
-            .ok_or(AAError::RecoveryError("No guardians configured".to_string()))?;
-        
-        let guardian_info = guardians.iter()
-            .find(|g| g.address == guardian && g.active)
-            .ok_or(AAError::RecoveryError("Invalid guardian".to_string()))?;
-        
-        let threshold = self.thresholds.get(account)
-            .ok_or(AAError::RecoveryError("No threshold".to_string()))?;
-        
-        let delay = self.delays.get(account)
-            .ok_or(AAError::RecoveryError("No delay".to_string()))?;
-        
-        // Check anti-scam
-        if self.anti_scam.enable_phishing_detection {
-            self.check_phishing(account, new_owner)?;
+        if new_owner.is_empty() {
+            return Err(AAError::RecoveryError("A new owner is required".to_string()));
         }
-        
-        // Create recovery request
+
+        // A request already in flight must be completed or cancelled first,
+        // otherwise a second start would silently discard the first.
+        if let Some(existing) = self.requests.get(account) {
+            if !existing.completed && !existing.cancelled {
+                return Err(AAError::RecoveryError(
+                    "A recovery request is already in progress for this account".to_string(),
+                ));
+            }
+        }
+
+        let guardians = self
+            .guardians
+            .get(account)
+            .ok_or_else(|| AAError::RecoveryError("No guardians configured".to_string()))?;
+
+        if !guardians.iter().any(|g| g.address == guardian && g.active) {
+            return Err(AAError::RecoveryError(
+                "The account holder is not an active guardian".to_string(),
+            ));
+        }
+
+        let threshold = *self
+            .thresholds
+            .get(account)
+            .ok_or_else(|| AAError::RecoveryError("No threshold".to_string()))?;
+
+        let delay = *self
+            .delays
+            .get(account)
+            .ok_or_else(|| AAError::RecoveryError("No delay".to_string()))?;
+
+        if self.anti_scam.enable_address_denylist {
+            self.check_denylist(account, new_owner)?;
+        }
+
         let request_id = generate_request_id(account, new_owner, chain_id);
         let now = Utc::now();
-        
+        let unlock_time = now + Duration::seconds(delay as i64);
+
+        // The guardian who starts the recovery counts as its first confirmation.
         let request = RecoveryRequestInternal {
             id: request_id.clone(),
             account: account.to_string(),
             new_owner: new_owner.to_string(),
             guardians: vec![guardian.to_string()],
             confirmations: vec![guardian.to_string()],
-            threshold: *threshold,
+            threshold,
             started_at: now,
-            unlock_time: now + Duration::seconds(*delay as i64),
+            unlock_time,
             completed: false,
             cancelled: false,
         };
-        
+
+        self.requests.insert(account.to_string(), request);
+
         Ok(RecoveryRequest {
             id: request_id,
             account: account.to_string(),
             new_owner: new_owner.to_string(),
             guardians: vec![guardian.to_string()],
-            confirmations: *threshold,
-            threshold: *threshold,
+            confirmations: 1,
+            threshold,
             started_at: now,
-            unlock_time: now + Duration::seconds(*delay as i64),
+            unlock_time,
             completed: false,
         })
     }
 
-    /// Confirm recovery
+    /// Record a guardian's confirmation.
+    ///
+    /// Returns true once the request has reached its threshold. Each guardian
+    /// counts once, and only guardians configured for the account are accepted.
     pub async fn confirm_recovery(
-        &self,
+        &mut self,
         account: &str,
         new_owner: &str,
         guardian: &str,
     ) -> Result<bool, AAError> {
-        // Find existing request
-        let request = self.requests.get(account)
-            .ok_or(AAError::RecoveryError("No recovery request".to_string()))?;
-        
+        let guardians = self
+            .guardians
+            .get(account)
+            .ok_or_else(|| AAError::RecoveryError("No guardians".to_string()))?;
+
+        if !guardians.iter().any(|g| g.address == guardian && g.active) {
+            return Err(AAError::RecoveryError(
+                "The account holder is not an active guardian".to_string(),
+            ));
+        }
+
+        let request = self
+            .requests
+            .get_mut(account)
+            .ok_or_else(|| AAError::RecoveryError("No recovery request".to_string()))?;
+
+        if request.cancelled {
+            return Err(AAError::RecoveryError(
+                "The recovery request was cancelled".to_string(),
+            ));
+        }
+        if request.completed {
+            return Err(AAError::RecoveryError(
+                "The recovery request is already complete".to_string(),
+            ));
+        }
         if request.new_owner != new_owner {
-            return Err(AAError::RecoveryError("Different new owner".to_string()));
+            return Err(AAError::RecoveryError(
+                "This confirmation names a different new owner".to_string(),
+            ));
         }
-        
-        // Check guardian
-        let guardians = self.guardians.get(account)
-            .ok_or(AAError::RecoveryError("No guardians".to_string()))?;
-        
-        if !guardians.iter().any(|g| g.address == guardian) {
-            return Err(AAError::RecoveryError("Not guardian".to_string()));
+        if request.confirmations.iter().any(|g| g == guardian) {
+            return Err(AAError::RecoveryError(
+                "This guardian has already confirmed".to_string(),
+            ));
         }
-        
-        // Add confirmation
-        let threshold = self.thresholds.get(account)
-            .ok_or(AAError::RecoveryError("No threshold".to_string()))?;
-        
-        let confirmations = request.confirmations.len() as u32 + 1;
-        
-        Ok(confirmations >= *threshold)
+
+        request.confirmations.push(guardian.to_string());
+
+        Ok(request.confirmations.len() as u32 >= request.threshold)
     }
 
-    /// Complete recovery
-    pub async fn complete_recovery(
-        &self,
-        account: &str,
-    ) -> Result<String, AAError> {
-        let request = self.requests.get(account)
-            .ok_or(AAError::RecoveryError("No request".to_string()))?;
-        
-        // Check time lock
-        if Utc::now() < request.unlock_time {
-            return Err(AAError::RecoveryError("Time lock active".to_string()));
+    /// Complete a recovery once the threshold is met and the time lock expired.
+    ///
+    /// Returns the new owner, and only then records the change in history. A
+    /// request that has not reached its threshold cannot complete, so a single
+    /// guardian cannot seize an account.
+    pub async fn complete_recovery(&mut self, account: &str) -> Result<String, AAError> {
+        let request = self
+            .requests
+            .get(account)
+            .ok_or_else(|| AAError::RecoveryError("No request".to_string()))?;
+
+        if request.cancelled {
+            return Err(AAError::RecoveryError(
+                "The recovery request was cancelled".to_string(),
+            ));
         }
-        
-        // Record history
-        let history = RecoveryHistory {
+        if request.completed {
+            return Err(AAError::RecoveryError(
+                "The recovery request is already complete".to_string(),
+            ));
+        }
+        if (request.confirmations.len() as u32) < request.threshold {
+            return Err(AAError::RecoveryError(format!(
+                "Recovery has {} of {} required confirmations",
+                request.confirmations.len(),
+                request.threshold
+            )));
+        }
+        if Utc::now() < request.unlock_time {
+            return Err(AAError::RecoveryError(
+                "The recovery time lock has not expired".to_string(),
+            ));
+        }
+
+        let new_owner = request.new_owner.clone();
+        let guardians = request.guardians.clone();
+
+        let request = self
+            .requests
+            .get_mut(account)
+            .expect("request was present a moment ago");
+        request.completed = true;
+
+        self.history.push(RecoveryHistory {
             account: account.to_string(),
-            old_owner: "".to_string(),
-            new_owner: request.new_owner.clone(),
+            old_owner: String::new(),
+            new_owner: new_owner.clone(),
             timestamp: Utc::now(),
-            guardians: request.guardians.clone(),
+            guardians,
             method: RecoveryMethod::Social,
-        };
-        
-        Ok(request.new_owner.clone())
+        });
+
+        Ok(new_owner)
     }
 
     /// Cancel recovery
-    pub async fn cancel_recovery(&self, account: &str) -> Result<(), AAError> {
-        if let Some(request) = self.requests.get_mut(account) {
-            request.cancelled = true;
+    pub async fn cancel_recovery(&mut self, account: &str) -> Result<(), AAError> {
+        let request = self
+            .requests
+            .get_mut(account)
+            .ok_or_else(|| AAError::RecoveryError("No recovery request".to_string()))?;
+
+        if request.completed {
+            return Err(AAError::RecoveryError(
+                "A completed recovery cannot be cancelled".to_string(),
+            ));
         }
+
+        request.cancelled = true;
         Ok(())
     }
 
-    /// Check phishing
-    fn check_phishing(&self, _account: &str, new_owner: &str) -> Result<(), AAError> {
-        // Check if new owner is a known malicious address
-        if self.anti_scam.malicious_domains.contains(&new_owner.to_string()) {
-            return Err(AAError::RecoveryError("Suspicious address".to_string()));
+    /// Reject a recovery whose new owner is on the address denylist.
+    ///
+    /// Addresses are compared case-insensitively, because checksum casing is a
+    /// presentation detail rather than part of the address.
+    fn check_denylist(&self, account: &str, new_owner: &str) -> Result<(), AAError> {
+        if self
+            .anti_scam
+            .blocked_addresses
+            .iter()
+            .any(|blocked| blocked.eq_ignore_ascii_case(new_owner))
+        {
+            return Err(AAError::RecoveryError(format!(
+                "The proposed new owner {new_owner} is on the denylist"
+            )));
         }
-        
-        // In production, would check:
-        // - Transaction simulation
-        // - Domain verification
-        // - Phishing database
-        
+
+        if self
+            .anti_scam
+            .blocked_addresses
+            .iter()
+            .any(|blocked| blocked.eq_ignore_ascii_case(account))
+        {
+            return Err(AAError::RecoveryError(format!(
+                "The account {account} is on the denylist"
+            )));
+        }
+
         Ok(())
+    }
+
+    /// Add an address to the recovery denylist.
+    ///
+    /// The list is normalised to lowercase so lookups do not depend on how the
+    /// caller spelled the address.
+    pub fn block_address(&mut self, address: &str) {
+        let normalized = address.to_lowercase();
+        if !self.anti_scam.blocked_addresses.contains(&normalized) {
+            self.anti_scam.blocked_addresses.push(normalized);
+        }
+    }
+
+    /// Remove an address from the recovery denylist.
+    pub fn unblock_address(&mut self, address: &str) {
+        let normalized = address.to_lowercase();
+        self.anti_scam
+            .blocked_addresses
+            .retain(|blocked| *blocked != normalized);
     }
 
     /// Get pending recoveries
