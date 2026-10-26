@@ -16,11 +16,12 @@ import (
 )
 
 type IntegrationService struct {
-	cfg *config.Config
+	cfg     *config.Config
+	secrets *secretBox
 }
 
 func NewIntegrationService(cfg *config.Config) *IntegrationService {
-	return &IntegrationService{cfg: cfg}
+	return &IntegrationService{cfg: cfg, secrets: newSecretBox()}
 }
 
 // Datadog Integration
@@ -29,11 +30,11 @@ type DatadogMetrics struct {
 }
 
 type DatadogSeries struct {
-	Metric   string      `json:"metric"`
-	Points   [][]float64 `json:"points"`
-	Type     string      `json:"type"`
-	Host     string      `json:"host"`
-	Tags     []string    `json:"tags"`
+	Metric string      `json:"metric"`
+	Points [][]float64 `json:"points"`
+	Type   string      `json:"type"`
+	Host   string      `json:"host"`
+	Tags   []string    `json:"tags"`
 }
 
 func (s *IntegrationService) SendDatadogMetric(ctx context.Context, metric string, value float64, tags []string) error {
@@ -109,13 +110,13 @@ func (s *IntegrationService) CreateDatadogMonitor(ctx context.Context, name, que
 		"message": message,
 		"tags":    []string{"tigerwallet", "admin"},
 		"options": map[string]interface{}{
-			"notify_no_data":         true,
-			"no_data_timeframe":      60,
-			"alert_placement":        "workflow",
-			"include_tags":           true,
-			"new_host_delay":         300,
-			"notify_by":              []string{"priority"},
-			"thresholds":             map[string]interface{}{"critical": 100, "warning": 80},
+			"notify_no_data":    true,
+			"no_data_timeframe": 60,
+			"alert_placement":   "workflow",
+			"include_tags":      true,
+			"new_host_delay":    300,
+			"notify_by":         []string{"priority"},
+			"thresholds":        map[string]interface{}{"critical": 100, "warning": 80},
 		},
 	}
 
@@ -144,10 +145,10 @@ func (s *IntegrationService) CreateDatadogMonitor(ctx context.Context, name, que
 
 // PagerDuty Integration
 type PagerDutyIncident struct {
-	Title       string   `json:"title"`
-	Urgency     string   `json:"urgency"`
-	ServiceID   string   `json:"service_id"`
-	Body        string   `json:"body"`
+	Title     string `json:"title"`
+	Urgency   string `json:"urgency"`
+	ServiceID string `json:"service_id"`
+	Body      string `json:"body"`
 }
 
 func (s *IntegrationService) CreatePagerDutyIncident(ctx context.Context, incident *PagerDutyIncident) (string, error) {
@@ -157,11 +158,11 @@ func (s *IntegrationService) CreatePagerDutyIncident(ctx context.Context, incide
 
 	payload := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":        "incident",
-			"title":       incident.Title,
-			"urgency":     incident.Urgency,
-			"service":     map[string]string{"id": incident.ServiceID},
-			"body":        map[string]string{"type": "incident_body", "details": incident.Body},
+			"type":    "incident",
+			"title":   incident.Title,
+			"urgency": incident.Urgency,
+			"service": map[string]string{"id": incident.ServiceID},
+			"body":    map[string]string{"type": "incident_body", "details": incident.Body},
 		},
 	}
 
@@ -198,8 +199,8 @@ func (s *IntegrationService) AcknowledgePagerDutyIncident(ctx context.Context, i
 
 	payload := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":       "incident_reference",
-			"status":     "acknowledged",
+			"type":   "incident_reference",
+			"status": "acknowledged",
 		},
 	}
 
@@ -229,8 +230,8 @@ func (s *IntegrationService) ResolvePagerDutyIncident(ctx context.Context, incid
 
 	payload := map[string]interface{}{
 		"incident": map[string]interface{}{
-			"type":       "incident_reference",
-			"status":     "resolved",
+			"type":   "incident_reference",
+			"status": "resolved",
 		},
 	}
 
@@ -334,17 +335,17 @@ func (s *IntegrationService) GetCloudflareAnalytics(ctx context.Context, zoneID 
 
 // Integration configuration
 type IntegrationConfig struct {
-	ID           uuid.UUID `json:"id"`
-	Integration  string    `json:"integration"` // datadog, pagerduty, cloudflare
-	Name         string    `json:"name"`
-	APIKey       string    `json:"api_key"`
-	APISecret    string    `json:"api_secret"`
-	WebhookURL   string    `json:"webhook_url"`
-	IsActive     bool      `json:"is_active"`
-	Settings     map[string]interface{} `json:"settings"`
-	CreatedBy    uuid.UUID `json:"created_by"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          uuid.UUID              `json:"id"`
+	Integration string                 `json:"integration"` // datadog, pagerduty, cloudflare
+	Name        string                 `json:"name"`
+	APIKey      string                 `json:"api_key"`
+	APISecret   string                 `json:"api_secret"`
+	WebhookURL  string                 `json:"webhook_url"`
+	IsActive    bool                   `json:"is_active"`
+	Settings    map[string]interface{} `json:"settings"`
+	CreatedBy   uuid.UUID              `json:"created_by"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 func (s *IntegrationService) SaveIntegrationConfig(ctx context.Context, config *IntegrationConfig, adminID uuid.UUID) (*IntegrationConfig, error) {
@@ -355,15 +356,32 @@ func (s *IntegrationService) SaveIntegrationConfig(ctx context.Context, config *
 	}
 	config.UpdatedAt = time.Now()
 
-	// In production, encrypt API keys before storing
-	_, err := database.Pool.Exec(ctx, `
+	// Credentials are sealed before they reach the database. Reading them back
+	// requires the encryption key, so a database copy alone is not enough to
+	// act as the configured provider.
+	apiKey, err := s.secrets.protect(config.APIKey)
+	if err != nil {
+		return nil, err
+	}
+	apiSecret, err := s.secrets.protect(config.APISecret)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = database.Pool.Exec(ctx, `
 		INSERT INTO integration_configs (id, integration, name, api_key, api_secret, webhook_url, is_active, settings, created_by, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (id) DO UPDATE SET
 			name = $3, api_key = $4, api_secret = $5, webhook_url = $6, is_active = $7, settings = $8, updated_at = $11
-	`, config.ID, config.Integration, config.Name, config.APIKey, config.APISecret, config.WebhookURL, config.IsActive, config.Settings, config.CreatedBy, config.CreatedAt, config.UpdatedAt)
+	`, config.ID, config.Integration, config.Name, apiKey, apiSecret, config.WebhookURL, config.IsActive, config.Settings, config.CreatedBy, config.CreatedAt, config.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
 
-	return config, err
+	// The caller sees the plaintext it supplied, never the ciphertext.
+	config.APIKey = apiKey
+	config.APISecret = apiSecret
+	return config, nil
 }
 
 func (s *IntegrationService) GetIntegrationConfigs(ctx context.Context, integration string) ([]IntegrationConfig, error) {
@@ -387,6 +405,12 @@ func (s *IntegrationService) GetIntegrationConfigs(ctx context.Context, integrat
 		if err := rows.Scan(&c.ID, &c.Integration, &c.Name, &c.APIKey, &c.APISecret, &c.WebhookURL, &c.IsActive, &c.Settings, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
+		if c.APIKey, err = s.secrets.reveal(c.APIKey); err != nil {
+			return nil, err
+		}
+		if c.APISecret, err = s.secrets.reveal(c.APISecret); err != nil {
+			return nil, err
+		}
 		configs = append(configs, c)
 	}
 	return configs, nil
@@ -399,22 +423,67 @@ func (s *IntegrationService) DeleteIntegrationConfig(ctx context.Context, id uui
 
 func (s *IntegrationService) TestIntegration(ctx context.Context, id uuid.UUID) (bool, string, error) {
 	var config IntegrationConfig
-	err := database.Pool.QueryRow(ctx, "SELECT id, integration, api_key FROM integration_configs WHERE id = $1", id).Scan(&config.ID, &config.Integration, &config.APIKey)
+	err := database.Pool.QueryRow(ctx, "SELECT id, integration, api_key, api_secret FROM integration_configs WHERE id = $1", id).
+		Scan(&config.ID, &config.Integration, &config.APIKey, &config.APISecret)
 	if err != nil {
 		return false, "", err
 	}
 
+	apiKey, err := s.secrets.reveal(config.APIKey)
+	if err != nil {
+		return false, "", err
+	}
+	apiSecret, err := s.secrets.reveal(config.APISecret)
+	if err != nil {
+		return false, "", err
+	}
+	if apiKey == "" {
+		return false, "no API key is configured for this integration", nil
+	}
+
+	// Each provider exposes a cheap authenticated endpoint used to prove the
+	// credential works. Reporting success without calling it would tell an
+	// operator a broken integration is healthy.
+	var req *http.Request
 	switch config.Integration {
 	case "datadog":
-		// Test Datadog connection
-		return true, "Datadog connection successful", nil
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.datadoghq.com/api/v1/validate", nil)
+		if err == nil {
+			req.Header.Set("DD-API-KEY", apiKey)
+			if apiSecret != "" {
+				req.Header.Set("DD-APPLICATION-KEY", apiSecret)
+			}
+		}
 	case "pagerduty":
-		// Test PagerDuty connection
-		return true, "PagerDuty connection successful", nil
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.pagerduty.com/abilities", nil)
+		if err == nil {
+			req.Header.Set("Authorization", "Token token="+apiKey)
+			req.Header.Set("Accept", "application/vnd.pagerduty+json;version=2")
+		}
 	case "cloudflare":
-		// Test Cloudflare connection
-		return true, "Cloudflare connection successful", nil
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, "https://api.cloudflare.com/client/v4/user/tokens/verify", nil)
+		if err == nil {
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+		}
 	default:
 		return false, "Unknown integration type", nil
 	}
+	if err != nil {
+		return false, "", err
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, "provider is unreachable: " + err.Error(), nil
+	}
+	defer resp.Body.Close()
+	// Drain a bounded amount so the connection can be reused.
+	// Drain a bounded amount so the connection can be reused.
+	_, _ = io.ReadAll(io.LimitReader(resp.Body, 4096))
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false, fmt.Sprintf("provider rejected the credential (status %d)", resp.StatusCode), nil
+	}
+	return true, fmt.Sprintf("%s credential verified (status %d)", config.Integration, resp.StatusCode), nil
 }
