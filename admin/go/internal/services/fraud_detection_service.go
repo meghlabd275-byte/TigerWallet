@@ -115,7 +115,7 @@ func (s *FraudDetectionService) evaluateRule(ctx context.Context, rule models.Fr
 	case "velocity":
 		return s.checkVelocity(ctx, userID, condition, txType)
 	case "amount":
-		return s.checkAmount(amount, condition)
+		return s.checkAmount(ctx, userID, amount, condition)
 	case "geographic":
 		return s.checkGeographic(ctx, userID, condition, metadata)
 	case "pattern":
@@ -155,13 +155,10 @@ func (s *FraudDetectionService) checkVelocity(ctx context.Context, userID uint, 
 }
 
 // checkAmount checks for unusual transaction amounts
-func (s *FraudDetectionService) checkAmount(amount float64, condition map[string]interface{}) (bool, int) {
+func (s *FraudDetectionService) checkAmount(ctx context.Context, userID uint, amount float64, condition map[string]interface{}) (bool, int) {
 	maxAmount, _ := condition["max_amount"].(float64)
 	minAmount, _ := condition["min_amount"].(float64)
 	multiplier, _ := condition["multiplier"].(float64) // compared to average
-
-	// Get user's average transaction amount
-	avgAmount := s.getUserAverageTransaction(amount)
 
 	if maxAmount > 0 && amount > maxAmount {
 		return true, 40
@@ -171,8 +168,13 @@ func (s *FraudDetectionService) checkAmount(amount float64, condition map[string
 		return true, 10
 	}
 
-	if multiplier > 0 && avgAmount > 0 && amount > avgAmount*multiplier {
-		return true, 25
+	// Compare against the user's real average. Without history there is no
+	// baseline to compare against, so the multiplier rule cannot fire.
+	if multiplier > 0 {
+		avgAmount, ok := s.userAverageTransaction(ctx, userID)
+		if ok && avgAmount > 0 && amount > avgAmount*multiplier {
+			return true, 25
+		}
 	}
 
 	return false, 0
@@ -183,20 +185,23 @@ func (s *FraudDetectionService) checkGeographic(ctx context.Context, userID uint
 	blockedCountries, _ := condition["blocked_countries"].([]interface{})
 	blockedRegions, _ := condition["blocked_regions"].([]interface{})
 
-	_ = metadata["ip"]
-	country := metadata["country"].(string)
-	region := metadata["region"].(string)
+	// Metadata is caller-supplied, so every lookup is a checked assertion:
+	// a missing or mistyped field must not panic the request handler.
+	country, _ := metadata["country"].(string)
+	region, _ := metadata["region"].(string)
 
 	// Check if from blocked country
 	for _, c := range blockedCountries {
-		if country == c.(string) {
+		blocked, ok := c.(string)
+		if ok && country != "" && country == blocked {
 			return true, 50
 		}
 	}
 
 	// Check if from blocked region
 	for _, r := range blockedRegions {
-		if region == r.(string) {
+		blocked, ok := r.(string)
+		if ok && region != "" && region == blocked {
 			return true, 40
 		}
 	}
@@ -255,10 +260,23 @@ func (s *FraudDetectionService) checkTimeBased(ctx context.Context, userID uint,
 	return false, 0
 }
 
-func (s *FraudDetectionService) getUserAverageTransaction(currentAmount float64) float64 {
-	// In production, calculate from actual user history
-	// For now, return the current amount as a baseline
-	return currentAmount * 0.8
+// userAverageTransaction returns the mean confirmed transaction amount for a
+// user, computed from persisted history. The second return value is false when
+// the user has no usable history, so callers never compare against a
+// fabricated baseline.
+func (s *FraudDetectionService) userAverageTransaction(ctx context.Context, userID uint) (float64, bool) {
+	var avg *float64
+
+	err := s.db.DB.WithContext(ctx).
+		Model(&models.Transaction{}).
+		Where("user_id = ? AND status = ? AND amount IS NOT NULL", userID, "confirmed").
+		Select("AVG(CAST(amount AS NUMERIC))").
+		Scan(&avg).Error
+	if err != nil || avg == nil || *avg <= 0 {
+		return 0, false
+	}
+
+	return *avg, true
 }
 
 // createFraudAlert creates a fraud alert in the database

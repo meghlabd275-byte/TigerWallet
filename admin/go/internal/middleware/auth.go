@@ -4,6 +4,10 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/tigerwallet/admin/pkg/auth"
@@ -187,28 +191,50 @@ func PermissionMiddleware(requiredPermission string) gin.HandlerFunc {
 
 // RateLimitMiddleware creates rate limiting middleware
 type RateLimiter struct {
+	mu       sync.Mutex
 	requests map[string]int
 	limits   map[string]int
+	resetAt  map[string]time.Time
 }
 
 func NewRateLimiter() *RateLimiter {
 	return &RateLimiter{
 		requests: make(map[string]int),
 		limits:   make(map[string]int),
+		resetAt:  make(map[string]time.Time),
 	}
 }
 
+// Middleware returns a fixed-window limiter keyed by client IP. Counters reset
+// once their window expires; without that the counter would only ever grow and
+// a client would be locked out permanently after N lifetime requests.
 func (rl *RateLimiter) Middleware(requestsPerMinute int) gin.HandlerFunc {
+	if requestsPerMinute <= 0 {
+		requestsPerMinute = 60
+	}
+	const window = time.Minute
+
 	return func(c *gin.Context) {
-		// Get client IP
-		clientIP := c.ClientIP()
-		key := "rate_limit:" + clientIP
+		key := "rate_limit:" + c.ClientIP()
+		now := time.Now()
 
-		// In production, use Redis for distributed rate limiting
-		// For now, use in-memory
+		rl.mu.Lock()
+		if reset, ok := rl.resetAt[key]; !ok || now.After(reset) {
+			rl.requests[key] = 0
+			rl.resetAt[key] = now.Add(window)
+		}
 		rl.requests[key]++
+		count := rl.requests[key]
+		reset := rl.resetAt[key]
+		rl.pruneLocked(now)
+		rl.mu.Unlock()
 
-		if rl.requests[key] > requestsPerMinute {
+		if count > requestsPerMinute {
+			retryAfter := int(time.Until(reset).Seconds()) + 1
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "Rate limit exceeded",
 			})
@@ -220,11 +246,39 @@ func (rl *RateLimiter) Middleware(requestsPerMinute int) gin.HandlerFunc {
 	}
 }
 
-// CORSMiddleware creates CORS middleware
+// pruneLocked drops expired windows so the maps do not grow without bound.
+// Callers must hold rl.mu.
+func (rl *RateLimiter) pruneLocked(now time.Time) {
+	if len(rl.resetAt) < 1024 {
+		return
+	}
+	for k, reset := range rl.resetAt {
+		if now.After(reset) {
+			delete(rl.resetAt, k)
+			delete(rl.requests, k)
+			delete(rl.limits, k)
+		}
+	}
+}
+
+// CORSMiddleware creates CORS middleware.
+//
+// Credentialed requests are only allowed from origins explicitly listed in
+// CORS_ALLOWED_ORIGINS. The wildcard origin is never combined with
+// Allow-Credentials: browsers reject that pairing, and reflecting an arbitrary
+// origin with credentials would let any site read authenticated responses.
 func CORSMiddleware() gin.HandlerFunc {
+	allowed := parseAllowedOrigins(os.Getenv("CORS_ALLOWED_ORIGINS"))
+
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		origin := c.GetHeader("Origin")
+
+		if origin != "" && allowed[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			c.Writer.Header().Set("Vary", "Origin")
+		}
+
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 
@@ -235,6 +289,18 @@ func CORSMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// parseAllowedOrigins splits a comma-separated origin allowlist into a set.
+func parseAllowedOrigins(raw string) map[string]bool {
+	allowed := make(map[string]bool)
+	for _, part := range strings.Split(raw, ",") {
+		origin := strings.TrimSpace(part)
+		if origin != "" {
+			allowed[origin] = true
+		}
+	}
+	return allowed
 }
 
 // SecurityHeadersMiddleware adds security headers
