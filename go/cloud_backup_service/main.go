@@ -43,18 +43,33 @@ type Config struct {
 	S3SecretKey string
 	GCPProject  string
 	GCPBucket   string
+
+	// iCloud via CloudKit Web Services.
+	CloudKitContainer   string
+	CloudKitEnvironment string
+	CloudKitDatabase    string
+	CloudKitKeyID       string
+	CloudKitPrivateKey  string
+	CloudKitBaseURL     string
 }
 
 func LoadConfig() *Config {
 	return &Config{
 		Port:        getEnv("PORT", "8452"),
-		RedisURL:   getEnv("REDIS_URL", "redis://localhost:6379"),
-		S3Bucket:   os.Getenv("S3_BUCKET"),
-		S3Region:   os.Getenv("AWS_REGION"),
+		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
+		S3Bucket:    os.Getenv("S3_BUCKET"),
+		S3Region:    os.Getenv("AWS_REGION"),
 		S3AccessKey: os.Getenv("AWS_ACCESS_KEY_ID"),
 		S3SecretKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		GCPProject: os.Getenv("GCP_PROJECT"),
-		GCPBucket:  os.Getenv("GCP_BUCKET"),
+		GCPProject:  os.Getenv("GCP_PROJECT"),
+		GCPBucket:   os.Getenv("GCP_BUCKET"),
+
+		CloudKitContainer:   os.Getenv("CLOUDKIT_CONTAINER"),
+		CloudKitEnvironment: getEnv("CLOUDKIT_ENVIRONMENT", "production"),
+		CloudKitDatabase:    getEnv("CLOUDKIT_DATABASE", "private"),
+		CloudKitKeyID:       os.Getenv("CLOUDKIT_KEY_ID"),
+		CloudKitPrivateKey:  os.Getenv("CLOUDKIT_PRIVATE_KEY"),
+		CloudKitBaseURL:     os.Getenv("CLOUDKIT_BASE_URL"),
 	}
 }
 
@@ -213,10 +228,10 @@ type S3Storage struct {
 // backup data is never silently dropped.
 func NewS3Storage(bucket, region, accessKey, secretKey string) *S3Storage {
 	s := &S3Storage{
-		bucket:    bucket,
-		region:    region,
-		accessKey: accessKey,
-		secretKey: secretKey,
+		bucket:     bucket,
+		region:     region,
+		accessKey:  accessKey,
+		secretKey:  secretKey,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 	if s.isConfigured() {
@@ -474,37 +489,83 @@ func randBytes(n int) []byte {
 }
 
 // ============================================================================
-// iCloud Storage
+// iCloud Storage (CloudKit Web Services)
 // ============================================================================
 
+// ICloudStorage stores backups in CloudKit.
+//
+// It talks to Apple's CloudKit Web Services API using server-to-server key
+// authentication: each request is signed with an ECDSA P-256 key over
+// date:base64(sha256(body)):subpath.
+//
+// An instance built without credentials is not configured, and every operation
+// returns a real error naming the missing settings. Nothing is written locally
+// in that case, so a misconfigured deployment cannot silently produce backups
+// that were never uploaded.
 type ICloudStorage struct {
-	container string
+	client *cloudKitClient
 }
 
-func NewICloudStorage(container string) *ICloudStorage {
-	return &ICloudStorage{
-		container: container,
+// NewICloudStorage builds a CloudKit storage client from configuration.
+//
+// It returns a storage whose operations fail closed when the configuration is
+// incomplete, so the caller does not have to branch on an error at startup.
+func NewICloudStorage(config *Config) *ICloudStorage {
+	client, err := newCloudKitClient(cloudKitOptions{
+		Container:   config.CloudKitContainer,
+		Environment: config.CloudKitEnvironment,
+		Database:    config.CloudKitDatabase,
+		KeyID:       config.CloudKitKeyID,
+		PrivateKey:  config.CloudKitPrivateKey,
+		BaseURL:     config.CloudKitBaseURL,
+	})
+	if err != nil {
+		log.Printf("iCloud (CloudKit) storage disabled: %v", err)
+		return &ICloudStorage{}
 	}
+	return &ICloudStorage{client: client}
+}
+
+// Configured reports whether the storage has usable credentials.
+func (i *ICloudStorage) Configured() bool {
+	return i != nil && i.client != nil
 }
 
 func (i *ICloudStorage) notConfiguredError() error {
-	return fmt.Errorf("iCloud not configured: a valid iCloud container and credentials are required")
+	return fmt.Errorf("iCloud not configured: CLOUDKIT_CONTAINER, CLOUDKIT_KEY_ID and CLOUDKIT_PRIVATE_KEY are required")
 }
 
 func (i *ICloudStorage) Upload(path string, data []byte) error {
-	return i.notConfiguredError()
+	if !i.Configured() {
+		return i.notConfiguredError()
+	}
+	_, err := i.client.Upload(context.Background(), data, path)
+	return err
 }
 
 func (i *ICloudStorage) Download(path string) ([]byte, error) {
-	return nil, i.notConfiguredError()
+	if !i.Configured() {
+		return nil, i.notConfiguredError()
+	}
+	return i.client.Download(context.Background(), path)
 }
 
 func (i *ICloudStorage) Delete(path string) error {
-	return i.notConfiguredError()
+	if !i.Configured() {
+		return i.notConfiguredError()
+	}
+	return i.client.Delete(context.Background(), path)
 }
 
+// GetSignedURL returns the CloudKit record URL.
+//
+// CloudKit does not issue pre-signed media links for records, so callers that
+// need the bytes must use Download.
 func (i *ICloudStorage) GetSignedURL(path string, expiry time.Duration) (string, error) {
-	return "", i.notConfiguredError()
+	if !i.Configured() {
+		return "", i.notConfiguredError()
+	}
+	return i.client.RecordURL(path)
 }
 
 // ============================================================================
@@ -526,7 +587,7 @@ func NewCloudBackupService(config *Config) *CloudBackupService {
 	storage := make(map[string]CloudStorage)
 	storage["s3"] = NewS3Storage(config.S3Bucket, config.S3Region, config.S3AccessKey, config.S3SecretKey)
 	storage["google"] = NewGoogleDriveStorage(config.GCPBucket, os.Getenv("GDRIVE_TOKEN"))
-	storage["apple"] = NewICloudStorage("TigerWallet")
+	storage["apple"] = NewICloudStorage(config)
 
 	return &CloudBackupService{
 		config:  config,
