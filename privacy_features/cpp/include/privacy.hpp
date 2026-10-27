@@ -104,7 +104,13 @@ struct ZKProof {
     std::string public_inputs;
     std::string verification_key;
     std::string protocol; // groth16, plonk, starks
+
+    // For a Merkle path proof this records the outcome of re-computing the
+    // path, which is a real check. For a SNARK range proof there is no
+    // on-device prover, so generate_range_proof leaves this false and leaves
+    // proof_data empty; is_valid is never set true without a proof to back it.
     bool is_valid;
+
     std::chrono::milliseconds generation_time;
 };
 
@@ -139,44 +145,59 @@ struct MixedOutput {
 // ============================================================================
 
 /**
- * Poseidon hash function
+ * Commitment hash: Keccak-256 with length-prefixed inputs.
+ *
+ * This is NOT the Poseidon SNARK hash. Poseidon is arithmetic over a prime
+ * field (BN254 or Grumpkin), and nothing here implements that. The name was
+ * changed because calling a Keccak sponge "Poseidon" invites a caller to
+ * assume a SNARK-friendly commitment that this cannot provide.
+ *
+ * What it does provide, and what the privacy pool uses it for, is a
+ * collision-resistant commitment hash with domain separation: the Merkle tree
+ * over note commitments, nullifiers, and note encryptions. Those need a sound
+ * hash, not a SNARK-friendly one.
+ *
+ * Real ZK proof generation and verification are not implemented on-device and
+ * are delegated to a proving backend. See ZKProofGenerator.
  */
-class PoseidonHash {
+class CommitmentHash {
 public:
-    static std::string hash(const std::vector<std::string>& inputs, int rate = 4);
+    // Inputs are concatenated with a 4-byte length prefix each, so
+    // hash({a,b}) differs from hash({"ab"}).
+    static std::string hash(const std::vector<std::string>& inputs);
     static std::string hash_single(const std::string& input);
     static std::string hash_pair(const std::string& a, const std::string& b);
 };
 
 /**
- * Pedersen commitment
+ * Hiding commitment over CommitmentHash.
+ *
+ * This is a hash commitment, not a Pedersen commitment. A real Pedersen
+ * commitment is C = v*G + r*H over an elliptic curve, which makes it additively
+ * homomorphic, so a verifier can check that inputs sum to outputs without
+ * learning the amounts. That property does not exist here, so nothing may
+ * depend on it: the value and the blinding factor must both be supplied to
+ * re-open the commitment.
+ *
+ * The name was changed to stop a caller from assuming the homomorphic
+ * property. For what the current privacy pool does with it, binding and hiding
+ * are sufficient.
  */
-class PedersenCommitment {
+class HashCommitment {
 public:
     static std::string commit(const std::string& value, const std::string& randomness);
-    static std::string commit_with_asset(const std::string& value, const std::string& asset, const std::string& randomness);
-    static bool verify(const std::string& commitment, const std::string& value, const std::string& randomness);
+    static std::string commit_with_asset(const std::string& value, const std::string& asset,
+                                         const std::string& randomness);
+    static bool verify(const std::string& commitment, const std::string& value,
+                       const std::string& randomness);
 };
 
-/**
- * BLS signatures for aggregatable signatures
- */
-class BLSSignature {
-public:
-    static std::pair<std::string, std::string> sign(const std::string& message, const std::string& private_key);
-    static bool verify(const std::string& message, const std::string& signature, const std::string& public_key);
-    static std::string aggregate(const std::vector<std::string>& signatures);
-};
-
-/**
- * Bulletproofs for range proofs
- */
-class Bulletproof {
-public:
-    static ZKProof prove(const std::string& value, const std::string& commitment, int64_t min_value, int64_t max_value);
-    static bool verify(const ZKProof& proof, const std::string& commitment);
-    static std::vector<ZKProof> prove_batch(const std::vector<std::string>& values, const std::vector<std::string>& commitments);
-};
+// BLSSignature and Bulletproof were declared here with no implementation
+// anywhere in the repository. They were removed rather than left as
+// declarations: a caller linking against them would fail, and a reader would
+// reasonably assume BLS aggregation and range proofs were available. BLS
+// aggregation needs pairing-friendly curve arithmetic and range proofs need a
+// real proving system, neither of which is implemented here.
 
 /**
  * Merkle tree for commitment accumulation
