@@ -20,12 +20,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune=native")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -mtune=native")
-    add_compile_options(-flto -fno-stack-protector -fomit-frame-pointer)
+    add_compile_options(-flto)
 endif()
 
 # Find dependencies
 find_package(OpenSSL REQUIRED)
-find_package(Boost REQUIRED COMPONENTS system thread))
+find_package(Boost REQUIRED COMPONENTS system thread)
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)

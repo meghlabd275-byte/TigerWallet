@@ -36,8 +36,8 @@ target_link_libraries(tiger_mev PRIVATE Threads::Threads)
 
 # Enable LTO for better performance
 include(CheckIPOSupported)
-check_ipo_supported(SUPPORTS_IPO)
-if(SUPPORTS_IPO)
+check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+if(ipo_supported)
     set_target_properties(tiger_mev PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
@@ -55,10 +55,14 @@ install(FILES ${HEADERS}
 
 # Tests
 enable_testing()
-add_executable(test_mev test/test_mev.cpp)
-target_link_libraries(test_mev tiger_mev Threads::Threads)
-add_test(NAME MEVTest COMMAND test_mev)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/test_mev.cpp")
+    add_executable(test_mev test/test_mev.cpp)
+    target_link_libraries(test_mev tiger_mev Threads::Threads)
+    add_test(NAME MEVTest COMMAND test_mev)
+endif()
 
 # Benchmarks
-add_executable(benchmark_mev benchmark/benchmark_mev.cpp)
-target_link_libraries(benchmark_mev tiger_mev Threads::Threads)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/benchmark_mev.cpp")
+    add_executable(benchmark_mev benchmark/benchmark_mev.cpp)
+    target_link_libraries(benchmark_mev tiger_mev Threads::Threads)
+endif()

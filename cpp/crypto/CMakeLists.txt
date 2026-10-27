@@ -51,8 +51,8 @@ target_link_libraries(tiger_crypto PUBLIC
 
 # Enable LTO for release builds
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    target_property(tiger_crypto APPEND_STRING 
-        COMPILE_FLAGS " -flto")
+    set_target_properties(tiger_crypto PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
 # Benchmark executable
