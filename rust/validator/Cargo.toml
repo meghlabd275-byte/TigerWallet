@@ -1,0 +1,17 @@
+[package]
+name = "tigerwallet-validator"
+version = "0.1.0"
+edition = "2021"
+description = "TigerWallet transaction validator with fail-closed parsing and replay protection"
+
+[lib]
+name = "tigerwallet_validator"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
