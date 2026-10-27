@@ -25,6 +25,8 @@
 #include <variant>
 #include <unordered_map>
 
+#include "bip39_wordlist.h"
+
 // Platform-specific headers
 #ifdef _WIN32
 #include <windows.h>
@@ -34,6 +36,7 @@
 #pragma comment(lib, "hid.lib")
 #elif defined(__APPLE__)
 #include <IOKit/hid/IOHIDManager.h>
+#include <IOKit/hid/IOHIDLib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #elif defined(__linux__)
 #include <linux/hidraw.h>
@@ -216,6 +219,26 @@ public:
     static uint32_t uint32_from_big_endian(const uint8_t* data);
     static std::vector<uint8_t> hex_decode(const std::string& hex);
     static std::string hex_encode(const uint8_t* data, size_t len);
+
+    /// Keccak-256, the hash Ethereum uses. It is not SHA3-256.
+    static std::array<uint8_t, 32> keccak256(const std::vector<uint8_t>& data);
+
+    /// HMAC-SHA512, the primitive BIP32 is built on.
+    static std::array<uint8_t, 64> hmac_sha512(const std::vector<uint8_t>& key,
+                                               const std::vector<uint8_t>& data);
+
+    /// Compresses an uncompressed secp256k1 public key to 33 bytes.
+    static std::array<uint8_t, 33> compress_pubkey(const std::array<uint8_t, 65>& uncompressed);
+
+    /// Rebuilds the 65-byte point from its 33-byte compressed form.
+    /// Returns `false` when the point is not on the curve.
+    static bool decompress_pubkey(const std::array<uint8_t, 33>& compressed,
+                                  std::array<uint8_t, 65>& uncompressed);
+
+    /// Derives the 65-byte uncompressed public key for a private key.
+    /// Returns `false` when the key is not a valid secp256k1 scalar.
+    static bool public_key_from_private(const std::array<uint8_t, 32>& private_key,
+                                        std::array<uint8_t, 65>& public_key);
     
     static bool ecdsa_verify(const std::array<uint8_t, 32>& message,
                              const std::array<uint8_t, SECP256K1_SIG_SIZE>& signature,
@@ -290,9 +313,19 @@ public:
 // Hardware Wallet Manager
 // ============================================================================
 
+/// The USB identity a model appears under on the bus.
+struct UsbIdentity {
+    uint16_t vendor_id;
+    uint16_t product_id;
+    bool bluetooth;
+};
+
 class HardwareWalletManager {
 public:
     static HardwareWalletManager& get_instance();
+
+    /// The USB identity for a model, or `std::nullopt` when it has none.
+    static std::optional<UsbIdentity> usb_identity(DeviceModel model);
     
     std::vector<DeviceInfo> discover_devices();
     std::optional<DeviceInfo> get_connected_device(DeviceModel model);
@@ -395,6 +428,13 @@ public:
         const std::string& token_id,
         std::string& metadata_json) override;
 
+    /// Sets the EVM JSON-RPC endpoint used for the on-chain reads. Without
+    /// one, those reads fail closed rather than returning a guess.
+    void set_rpc_endpoint(std::string url);
+
+    /// The endpoint currently in use, empty when none is set.
+    const std::string& rpc_endpoint() const { return rpc_url_; }
+
 private:
     ErrorCode open_hid_device(uint16_t vendor_id, uint16_t product_id);
     ErrorCode close_hid_device();
@@ -430,6 +470,7 @@ private:
     uint16_t packet_counter_ = 0;
     bool initialized_ = false;
     std::string wallet_id_;
+    std::string rpc_url_;
 };
 
 class TrezorWallet : public IHardwareWallet {
@@ -517,10 +558,15 @@ public:
     static std::string derive_address(const std::array<uint8_t, 33>& pubkey, 
                                      const std::string& chain);
     
+    /// Derives `count` addresses starting at `start_index`.
+    ///
+    /// The seed is required: an address cannot be produced without one, and
+    /// inventing one would produce a key nobody controls.
     static std::vector<WalletInfo> generate_addresses(
         const std::string& chain,
         uint32_t start_index,
-        uint32_t count);
+        uint32_t count,
+        const std::vector<uint8_t>& seed);
 };
 
 class BIP39 {
@@ -534,6 +580,15 @@ public:
 private:
     static const std::vector<std::string>& wordlist();
     static bool checksum_valid(const std::vector<uint8_t>& entropy);
+
+    /// The position of a word in the list, or -1 when it is not there.
+    static int word_index(const std::string& word);
+
+    /// The number of entropy bits for a given entropy length in bytes.
+    static size_t bits_of_entropy(size_t entropy_bytes);
+
+    /// Turns entropy into the space-separated words, checksum included.
+    static std::vector<uint8_t> entropy_to_mnemonic(const std::vector<uint8_t>& entropy);
 };
 
 class BIP44 {
@@ -551,6 +606,7 @@ public:
     static std::string build_path(uint32_t coin_type, uint32_t account = 0, 
                                    uint32_t change = 0, uint32_t index = 0);
     
+    static constexpr uint32_t PURPOSE = 44;
     static constexpr uint32_t BTC = 0;
     static constexpr uint32_t ETH = 60;
     static constexpr uint32_t SOL = 501;
@@ -568,8 +624,11 @@ public:
 
 class HIDManager {
 public:
+    /// The hardware wallets the operating system currently reports.
+    ///
+    /// The list comes from the USB bus. A device that is not plugged in is
+    /// not in the list; nothing is added on the assumption it might be there.
     static std::vector<DeviceInfo> enumerate_devices();
-    static std::unique_ptr<IHardwareWallet> create_wallet(const DeviceInfo& info);
     
     static constexpr uint16_t LEDGER_VID = 0x2c97;
     static constexpr uint16_t TREZOR_VID = 0x1209;
