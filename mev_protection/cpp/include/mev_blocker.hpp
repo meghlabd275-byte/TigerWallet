@@ -68,8 +68,8 @@ struct RiskAssessment {
 struct MEVBundle {
     uint64_t bundle_id;
     std::vector<Transaction> transactions;
-    uint256_t bundle_gas_price;
-    uint256_t miner_reward;
+    uint64_t bundle_gas_price;
+    uint64_t miner_reward;
     float priority_fee;
     std::chrono::steady_clock::time_point submitted_at;
     bool backrunnable;
@@ -81,11 +81,11 @@ struct MEVBundle {
 
 // Gas oracle data
 struct GasOracle {
-    uint256_t base_fee;
-    uint256_t priority_fee_slow;
-    uint256_t priority_fee_standard;
-    uint256_t priority_fee_fast;
-    uint256_t priority_fee_instant;
+    uint64_t base_fee;
+    uint64_t priority_fee_slow;
+    uint64_t priority_fee_standard;
+    uint64_t priority_fee_fast;
+    uint64_t priority_fee_instant;
     std::chrono::steady_clock::time_point updated_at;
     
     GasOracle() : base_fee(0), priority_fee_slow(0), 
@@ -98,8 +98,8 @@ struct BlockProposal {
     uint64_t block_number;
     uint64_t slot;
     std::vector<Transaction> transactions;
-    uint256_t base_fee;
-    uint256_t gas_limit;
+    uint64_t base_fee;
+    uint64_t gas_limit;
     std::chrono::steady_clock::time_point received_at;
     
     BlockProposal() : block_number(0), slot(0), base_fee(0), gas_limit(0) {}
@@ -178,7 +178,7 @@ public:
         uint64_t blocked_transactions;
         uint64_t bundles_submitted;
         uint64_t bundles_included;
-        uint256_t total_profit;
+        uint64_t total_profit;
         float avg_protection_time_ms;
     };
     
@@ -213,6 +213,12 @@ private:
     // Gas oracle data
     GasOracle gas_oracle_;
     mutable std::mutex gas_mutex_;
+
+    // JSON-RPC endpoint used to read live fee data (eth_gasPrice and
+    // eth_feeHistory). Empty means the oracle cannot update and callers must
+    // treat the gas estimate as unavailable rather than inventing one.
+    std::string rpc_url_;
+    mutable std::mutex rpc_mutex_;
     
     // Transaction pool
     std::vector<Transaction> mempool_;
@@ -239,6 +245,11 @@ private:
     
     // Methods
     void RunGasOracleUpdater();
+
+    // Query the configured RPC endpoint for current fee data. Returns false on
+    // any transport, HTTP or JSON error so the caller never publishes a
+    // fabricated price.
+    bool RefreshGasOracle();
     void RunMempoolCleaner();
     void RunBundleProcessor();
     
@@ -250,7 +261,7 @@ private:
     std::string SubmitToFlashbots(const Transaction& tx);
     std::string SubmitToRelayer(const Transaction& tx, const std::string& relayer);
     
-    uint256_t CalculateOptimalGasPrice(const Transaction& tx);
+    uint64_t CalculateOptimalGasPrice(const Transaction& tx);
     float EstimateMEVProfit(const Transaction& tx);
     
     void UpdateStatistics(bool protected_, bool blocked_);
@@ -260,7 +271,7 @@ private:
         Transaction front_run;
         Transaction victim;
         Transaction back_run;
-        uint256_t potential_profit;
+        uint64_t potential_profit;
     };
     
     std::optional<SandwichOpportunity> DetectSandwich(const Transaction& tx);

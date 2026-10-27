@@ -11,6 +11,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 
 # Find required packages
 find_package(Threads REQUIRED)
+find_package(CURL REQUIRED)
 
 # Source files
 set(SOURCES
@@ -32,7 +33,7 @@ target_include_directories(tiger_mev PUBLIC
 )
 
 # Link libraries
-target_link_libraries(tiger_mev PRIVATE Threads::Threads)
+target_link_libraries(tiger_mev PRIVATE Threads::Threads CURL::libcurl)
 
 # Enable LTO for better performance
 include(CheckIPOSupported)
