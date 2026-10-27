@@ -1,0 +1,20 @@
+[package]
+name = "tigerwallet-privacy"
+version = "0.1.0"
+edition = "2021"
+description = "TigerWallet privacy - ERC-5564 stealth addresses and mixer notes"
+
+[lib]
+name = "tigerwallet_privacy"
+path = "src/lib.rs"
+
+[dependencies]
+secp256k1 = { version = "0.27", features = ["recovery", "global-context", "rand-std"] }
+sha3 = "0.10"
+hex = "0.4"
+thiserror = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
