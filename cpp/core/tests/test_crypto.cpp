@@ -13,6 +13,8 @@
 
 #include "crypto.hpp"
 
+#include "ed25519_vectors.hpp"
+
 using namespace tigerwallet::crypto;
 
 namespace {
@@ -214,6 +216,124 @@ void TestAesGcm() {
     Check("salt and IV differ per call", second != blob);
 }
 
+void TestEd25519() {
+    std::cout << "Ed25519 (RFC 8032)\n";
+    int matched = 0;
+    for (size_t i = 0; i < tigerwallet::test_vectors::kEd25519VectorCount; ++i) {
+        const auto& vector = tigerwallet::test_vectors::kEd25519Vectors[i];
+        const std::string label = vector.name;
+
+        const auto seed_bytes = FromHex(vector.secret_key_hex);
+        if (seed_bytes.size() != 32) {
+            Check(label + ": seed is 32 bytes", false);
+            continue;
+        }
+        std::array<uint8_t, 32> seed{};
+        std::copy(seed_bytes.begin(), seed_bytes.end(), seed.begin());
+
+        std::array<uint8_t, 32> public_key{};
+        if (!Ed25519PublicKeyFromSeed(seed, public_key) ||
+            ToHex(public_key.data(), public_key.size()) != vector.public_key_hex) {
+            Check(label + ": public key", false);
+            continue;
+        }
+
+        const auto message = FromHex(vector.message_hex);
+        std::array<uint8_t, 64> signature{};
+        if (!Ed25519Sign(seed, message.data(), message.size(), signature) ||
+            ToHex(signature.data(), signature.size()) != vector.signature_hex) {
+            Check(label + ": signature", false);
+            continue;
+        }
+
+        if (!Ed25519Verify(public_key, message.data(), message.size(), signature)) {
+            Check(label + ": signature verifies", false);
+            continue;
+        }
+
+        // A modified signature, message or key must all be rejected.
+        auto bad_signature = signature;
+        bad_signature[0] ^= 0x01;
+        if (Ed25519Verify(public_key, message.data(), message.size(), bad_signature)) {
+            Check(label + ": modified signature rejected", false);
+            continue;
+        }
+        auto bad_key = public_key;
+        bad_key[0] ^= 0x01;
+        if (Ed25519Verify(bad_key, message.data(), message.size(), signature)) {
+            Check(label + ": modified key rejected", false);
+            continue;
+        }
+        if (message.size() > 0) {
+            auto bad_message = message;
+            bad_message[0] ^= 0x01;
+            if (Ed25519Verify(public_key, bad_message.data(), bad_message.size(), signature)) {
+                Check(label + ": modified message rejected", false);
+                continue;
+            }
+        }
+        ++matched;
+    }
+    std::cout << "        " << matched << " of " << tigerwallet::test_vectors::kEd25519VectorCount
+              << " vectors matched\n";
+    Check("every RFC 8032 vector matched, with negative cases rejected",
+          matched == static_cast<int>(tigerwallet::test_vectors::kEd25519VectorCount));
+}
+
+void TestBase32() {
+    std::cout << "Base32 (RFC 4648)\n";
+    // The encoding vectors printed in RFC 4648 section 10.
+    struct Case { const char* plain; const char* encoded; };
+    const Case cases[] = {
+        {"", ""},
+        {"f", "MY======"},
+        {"fo", "MZXQ===="},
+        {"foo", "MZXW6==="},
+        {"foob", "MZXW6YQ="},
+        {"fooba", "MZXW6YTB"},
+        {"foobar", "MZXW6YTBOI======"},
+    };
+    for (const auto& c : cases) {
+        const std::string plain(c.plain);
+        const std::vector<uint8_t> bytes(plain.begin(), plain.end());
+        CheckEqual(std::string("encode \"") + plain + "\"", Base32Encode(bytes), c.encoded);
+
+        // Decoding must accept the padded form, the unpadded form and lowercase.
+        std::vector<uint8_t> decoded;
+        std::string unpadded = c.encoded;
+        while (!unpadded.empty() && unpadded.back() == '=') unpadded.pop_back();
+        std::string lower = c.encoded;
+        for (char& ch : lower) {
+            if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+        }
+        const bool ok = Base32Decode(c.encoded, decoded) &&
+                        std::string(decoded.begin(), decoded.end()) == plain &&
+                        Base32Decode(unpadded, decoded) &&
+                        std::string(decoded.begin(), decoded.end()) == plain &&
+                        Base32Decode(lower, decoded) &&
+                        std::string(decoded.begin(), decoded.end()) == plain;
+        Check(std::string("decode \"") + plain + "\" (padded, unpadded and lowercase)", ok);
+    }
+
+    std::vector<uint8_t> out;
+    // The alphabet excludes 0, 1, 8 and 9, so they must be refused.
+    Check("rejects '0'", !Base32Decode("0", out));
+    Check("rejects '1'", !Base32Decode("1", out));
+    Check("rejects '8'", !Base32Decode("8", out));
+    Check("rejects '9'", !Base32Decode("9", out));
+    // A length of 1, 3 or 6 characters cannot come from whole bytes.
+    Check("rejects a 1-character group", !Base32Decode("A", out));
+    Check("rejects a 3-character group", !Base32Decode("MZX", out));
+    Check("rejects a 6-character group", !Base32Decode("MZXW6Y", out));
+
+    // Solana addresses are 32-byte values in Base32, unpadded.
+    const std::vector<uint8_t> thirty_two(32, 0x00);
+    const auto encoded = Base32Encode(thirty_two, false);
+    Check("a 32-byte value encodes without padding", encoded.size() == 52);
+    Check("a 32-byte value round trips",
+          Base32Decode(encoded, out) && out == thirty_two);
+}
+
 }  // namespace
 
 int main() {
@@ -224,6 +344,8 @@ int main() {
     TestHexEncoding();
     TestQuantities();
     TestAesGcm();
+    TestEd25519();
+    TestBase32();
 
     std::cout << (failures == 0 ? "crypto: all tests passed\n"
                                 : "crypto: " + std::to_string(failures) + " test(s) failed\n");

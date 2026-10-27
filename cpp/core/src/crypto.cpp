@@ -552,5 +552,150 @@ std::optional<std::vector<uint8_t>> AesGcmDecrypt(const std::string& password,
     return plaintext;
 }
 
+// ---------------------------------------------------------------------------
+// Ed25519
+// ---------------------------------------------------------------------------
+
+bool Ed25519PublicKeyFromSeed(const std::array<uint8_t, 32>& seed,
+                              std::array<uint8_t, 32>& public_key) {
+    EVP_PKEY* key = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, nullptr, seed.data(),
+                                                 seed.size());
+    if (key == nullptr) return false;
+
+    size_t length = public_key.size();
+    const bool ok = EVP_PKEY_get_raw_public_key(key, public_key.data(), &length) == 1 &&
+                    length == public_key.size();
+    EVP_PKEY_free(key);
+    return ok;
+}
+
+bool Ed25519Sign(const std::array<uint8_t, 32>& seed, const uint8_t* message,
+                 size_t message_length, std::array<uint8_t, 64>& signature) {
+    EVP_PKEY* key = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, nullptr, seed.data(),
+                                                 seed.size());
+    if (key == nullptr) return false;
+
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    // Ed25519 is a one-shot signature: EVP_DigestSign takes the whole message
+    // and the digest is not selected, because Ed25519 hashes internally.
+    const bool ok = ctx != nullptr && EVP_DigestSignInit(ctx, nullptr, nullptr, nullptr, key) == 1;
+
+    size_t length = signature.size();
+    const bool signed_ok = ok && EVP_DigestSign(ctx, signature.data(), &length, message,
+                                                message_length) == 1 &&
+                           length == signature.size();
+
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(key);
+    return signed_ok;
+}
+
+bool Ed25519Verify(const std::array<uint8_t, 32>& public_key, const uint8_t* message,
+                   size_t message_length, const std::array<uint8_t, 64>& signature) {
+    EVP_PKEY* key = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, nullptr,
+                                                public_key.data(), public_key.size());
+    if (key == nullptr) return false;
+
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    const bool ok = ctx != nullptr && EVP_DigestVerifyInit(ctx, nullptr, nullptr, nullptr, key) == 1;
+    const bool verified = ok && EVP_DigestVerify(ctx, signature.data(), signature.size(),
+                                                 message, message_length) == 1;
+
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(key);
+    return verified;
+}
+
+// ---------------------------------------------------------------------------
+// Base32 (RFC 4648)
+// ---------------------------------------------------------------------------
+
+std::string Base32Encode(const uint8_t* data, size_t length, bool pad) {
+    static const char* kAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    std::string out;
+    out.reserve((length + 4) / 5 * 8);
+
+    size_t i = 0;
+    while (i < length) {
+        // Accumulate up to five bytes (40 bits) into eight 5-bit groups.
+        uint64_t buffer = 0;
+        int bits = 0;
+        for (int j = 0; j < 5 && i < length; ++j, ++i) {
+            buffer = (buffer << 8) | data[i];
+            bits += 8;
+        }
+        while (bits > 0) {
+            // Take the top five bits still in the buffer.
+            const int shift = bits - 5;
+            const uint8_t index =
+                shift >= 0 ? static_cast<uint8_t>((buffer >> shift) & 0x1F)
+                           : static_cast<uint8_t>((buffer << (-shift)) & 0x1F);
+            out.push_back(kAlphabet[index]);
+            bits -= 5;
+        }
+    }
+
+    if (pad) {
+        while (out.size() % 8 != 0) out.push_back('=');
+    }
+    return out;
+}
+
+std::string Base32Encode(const std::vector<uint8_t>& data, bool pad) {
+    return Base32Encode(data.data(), data.size(), pad);
+}
+
+bool Base32Decode(const std::string& text, std::vector<uint8_t>& out) {
+    // Strip padding; the decoder does not need it because the byte count
+    // follows from the number of data characters.
+    std::string clean;
+    clean.reserve(text.size());
+    for (char c : text) {
+        if (c == '=') continue;
+        if (c == ' ' || c == '\n' || c == '\t' || c == '\r') continue;
+        clean.push_back(c);
+    }
+    if (clean.empty()) {
+        out.clear();
+        return true;
+    }
+
+    // A Base32 group is eight characters carrying five bytes. Any other count
+    // is malformed, so the trailing group must be one of the five valid sizes.
+    const size_t remainder = clean.size() % 8;
+    if (remainder == 1 || remainder == 3 || remainder == 6) return false;
+
+    std::vector<uint8_t> decoded;
+    uint64_t buffer = 0;
+    int bits = 0;
+    for (char raw : clean) {
+        // Addresses are written in both cases, so the decoder accepts either.
+        const char c = (raw >= 'a' && raw <= 'z') ? static_cast<char>(raw - 'a' + 'A') : raw;
+        int value;
+        if (c >= 'A' && c <= 'Z') {
+            value = c - 'A';
+        } else if (c >= '2' && c <= '7') {
+            value = c - '2' + 26;
+        } else {
+            return false;  // not in the alphabet
+        }
+
+        buffer = (buffer << 5) | static_cast<uint64_t>(value);
+        bits += 5;
+        if (bits >= 8) {
+            bits -= 8;
+            decoded.push_back(static_cast<uint8_t>((buffer >> bits) & 0xFF));
+        }
+    }
+
+    // Any leftover bits must be zero, otherwise the input encoded data that was
+    // truncated rather than padded.
+    if (bits > 0 && (buffer & ((1ull << bits) - 1)) != 0) return false;
+
+    out = std::move(decoded);
+    return true;
+}
+
 }  // namespace crypto
 }  // namespace tigerwallet

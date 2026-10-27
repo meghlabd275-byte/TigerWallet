@@ -101,6 +101,39 @@ std::vector<uint8_t> AesGcmEncrypt(const std::string& password,
 std::optional<std::vector<uint8_t>> AesGcmDecrypt(const std::string& password,
                                                   const uint8_t* blob, size_t blob_len);
 
+// ---------------------------------------------------------------------------
+// Ed25519 (RFC 8032)
+// ---------------------------------------------------------------------------
+// Used by the non-EVM chains: Solana, Cardano, Polkadot, Stellar, Near, Sui,
+// Aptos, TON, Algorand and others all sign with Ed25519. The 32-byte private
+// key is the seed; OpenSSL derives the scalar and the nonce from it, so the
+// seed is the only secret that has to be stored.
+
+// Derives the 32-byte public key from a 32-byte seed.
+bool Ed25519PublicKeyFromSeed(const std::array<uint8_t, 32>& seed,
+                              std::array<uint8_t, 32>& public_key);
+
+// Signs a message. The signature is 64 bytes.
+bool Ed25519Sign(const std::array<uint8_t, 32>& seed, const uint8_t* message,
+                 size_t message_length, std::array<uint8_t, 64>& signature);
+
+// Verifies a signature. Returns false for a malformed key or signature.
+bool Ed25519Verify(const std::array<uint8_t, 32>& public_key, const uint8_t* message,
+                   size_t message_length, const std::array<uint8_t, 64>& signature);
+
+// ---------------------------------------------------------------------------
+// Base32 (RFC 4648)
+// ---------------------------------------------------------------------------
+// Solana addresses and Stellar and Algorand account identifiers are Base32, and
+// Solana's transaction wire format carries a Base58-encoded blockhash.
+
+std::string Base32Encode(const uint8_t* data, size_t length, bool pad = true);
+std::string Base32Encode(const std::vector<uint8_t>& data, bool pad = true);
+
+// Accepts padded or unpadded input and is case-insensitive on the way in, since
+// addresses are written both ways. Returns false on an invalid character.
+bool Base32Decode(const std::string& text, std::vector<uint8_t>& out);
+
 }  // namespace crypto
 }  // namespace tigerwallet
 

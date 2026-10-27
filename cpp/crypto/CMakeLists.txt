@@ -8,29 +8,60 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -flto")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -mtune=native -flto")
 
-# The crypto implementation lives in cpp/crypto_core: it is self-contained
-# (SHA-256, Keccak, HMAC, PBKDF2, Base58/Base58Check, secure random) and pulls
-# no third-party crypto library. This target previously referenced a
-# tiger_crypto.cpp that does not exist and fetched secp256k1 and Crypto++ over
-# the network at configure time, so it never built. Nothing consumes it yet, so
-# the stale references are dropped rather than guessed at.
-set(CRYPTO_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../crypto_core")
-set(CRYPTO_CORE_SRC "${CRYPTO_CORE_DIR}/src/tiger_crypto.cpp")
+# The implementation lives in cpp/core, which is the wallet's crypto layer:
+# SHA-256, Keccak-256, RIPEMD-160, HMAC, PBKDF2, AES-256-GCM, secp256k1,
+# Ed25519, Base58 and Base58Check, Base32, BIP39 and BIP32. Each is checked
+# against the published vectors for its specification.
+#
+# cpp/crypto_core used to sit here. It declared 32 types and implemented four,
+# and nothing included or linked it, so it was removed rather than extended: a
+# second half-written crypto library is a place for divergent behaviour to hide.
+# The Ed25519 and Base32 pieces it only declared are now real, in cpp/core.
 
-if(NOT EXISTS "${CRYPTO_CORE_SRC}")
-    message(FATAL_ERROR
-        "TigerCrypto: expected implementation at ${CRYPTO_CORE_SRC}")
-endif()
-
-find_package(Threads REQUIRED)
-
-add_library(tiger_crypto STATIC "${CRYPTO_CORE_SRC}")
-
-target_include_directories(tiger_crypto PUBLIC
-    "${CRYPTO_CORE_DIR}/include"
+set(CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../core")
+set(CORE_SOURCES
+    "${CORE_DIR}/src/crypto.cpp"
+    "${CORE_DIR}/src/transaction.cpp"
+    "${CORE_DIR}/src/rpc.cpp"
+    "${CORE_DIR}/src/mempool.cpp"
+    "${CORE_DIR}/src/chain.cpp"
+    "${CORE_DIR}/src/wallet.cpp"
+    "${CORE_DIR}/src/hdwallet.cpp"
+    "${CORE_DIR}/src/bip39_wordlist.cpp"
 )
 
-target_link_libraries(tiger_crypto PUBLIC Threads::Threads)
+foreach(source IN LISTS CORE_SOURCES)
+    if(NOT EXISTS "${source}")
+        message(FATAL_ERROR "TigerCrypto: missing source ${source}")
+    endif()
+endforeach()
+
+find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
+find_package(Threads REQUIRED)
+
+find_library(SECP256K1_LIBRARY NAMES secp256k1)
+find_path(SECP256K1_INCLUDE_DIR NAMES secp256k1.h)
+if(NOT SECP256K1_LIBRARY OR NOT SECP256K1_INCLUDE_DIR)
+    message(FATAL_ERROR
+        "TigerCrypto: libsecp256k1 was not found. Install it (Debian/Ubuntu: "
+        "libsecp256k1-dev) before building.")
+endif()
+
+add_library(tiger_crypto STATIC ${CORE_SOURCES})
+
+target_include_directories(tiger_crypto PUBLIC
+    "${CORE_DIR}/include"
+    "${SECP256K1_INCLUDE_DIR}"
+)
+
+target_link_libraries(tiger_crypto
+    PUBLIC
+        OpenSSL::Crypto
+        CURL::libcurl
+        Threads::Threads
+        "${SECP256K1_LIBRARY}"
+)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set_target_properties(tiger_crypto PROPERTIES
@@ -38,5 +69,4 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 install(TARGETS tiger_crypto ARCHIVE DESTINATION lib)
-install(FILES "${CRYPTO_CORE_DIR}/include/tiger_crypto.h"
-    DESTINATION include/tiger)
+install(DIRECTORY "${CORE_DIR}/include/" DESTINATION include/tiger)
