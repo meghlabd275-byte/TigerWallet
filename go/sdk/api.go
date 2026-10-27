@@ -1,13 +1,27 @@
+// Package sdk is the TigerWallet developer SDK.
+//
+// Requests are authenticated with an HMAC-SHA256 signature over the method,
+// path, timestamp and body, using the same scheme the platform services
+// verify. The secret never travels on the wire.
 package sdk
 
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"html"
+	"io"
 	"math/big"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,7 +30,14 @@ import (
 // TigerWallet Developer SDK
 // ============================================================================
 
-// Client provides TigerWallet SDK functionality
+// maxResponseBytes bounds how much of a response body the SDK will read, so a
+// hostile or misconfigured endpoint cannot exhaust memory.
+const maxResponseBytes = 8 << 20
+
+// maxRequestBodyBytes bounds request bodies accepted by the handler endpoints.
+const maxRequestBodyBytes = 1 << 20
+
+// Client provides TigerWallet SDK functionality.
 type Client struct {
 	mu         sync.RWMutex
 	config     *Config
@@ -25,7 +46,7 @@ type Client struct {
 	wallets    map[string]*WalletClient
 }
 
-// Config for SDK client
+// Config for SDK client.
 type Config struct {
 	APIKey     string
 	APISecret  string
@@ -35,16 +56,53 @@ type Config struct {
 	RetryDelay time.Duration
 }
 
-// NewClient creates new SDK client
-func NewClient(config *Config) *Client {
+// NewClient creates a new SDK client.
+//
+// It fails closed on a missing credential or a non-HTTPS base URL: sending a
+// signature over plaintext would expose the caller to interception, and
+// signing with an empty secret would produce a signature any attacker could
+// forge.
+func NewClient(config *Config) (*Client, error) {
+	if config == nil {
+		return nil, errors.New("sdk: nil config")
+	}
+	if config.APIKey == "" || config.APISecret == "" {
+		return nil, errors.New("sdk: APIKey and APISecret are required")
+	}
+	base, err := url.Parse(config.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("sdk: invalid BaseURL: %w", err)
+	}
+	if base.Host == "" {
+		return nil, errors.New("sdk: BaseURL must include a host")
+	}
+	if base.User != nil {
+		return nil, errors.New("sdk: BaseURL must not embed credentials")
+	}
+	if base.Scheme != "https" && base.Hostname() != "localhost" && base.Hostname() != "127.0.0.1" {
+		return nil, fmt.Errorf("sdk: BaseURL must use https, got %q", base.Scheme)
+	}
+	config.BaseURL = strings.TrimRight(config.BaseURL, "/")
+
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
+	}
+	if config.RetryCount == 0 {
+		config.RetryCount = 2
+	}
+	if config.RetryDelay == 0 {
+		config.RetryDelay = 250 * time.Millisecond
 	}
 
 	httpClient := &http.Client{
 		Timeout: config.Timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+			Proxy:           http.ProxyFromEnvironment,
+		},
+		// A redirect could silently move a signed request to another host.
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
 
@@ -53,49 +111,54 @@ func NewClient(config *Config) *Client {
 		httpClient: httpClient,
 		auth:       NewAuth(config.APIKey, config.APISecret),
 		wallets:    make(map[string]*WalletClient),
-	}
+	}, nil
 }
 
 // ============================================================================
 // Authentication
 // ============================================================================
 
-// Auth handles authentication
+// Auth signs requests with HMAC-SHA256.
+//
+// There is no token endpoint: the signature is derived from the secret for
+// every request, so nothing bearer-like is cached or replayed.
 type Auth struct {
 	APIKey    string
 	APISecret string
-	token     string
-	expires   time.Time
 	mu        sync.RWMutex
 }
 
+// NewAuth creates an authenticator.
 func NewAuth(apiKey, apiSecret string) *Auth {
-	return &Auth{
-		APIKey:    apiKey,
-		APISecret: apiSecret,
-	}
+	return &Auth{APIKey: apiKey, APISecret: apiSecret}
 }
 
-func (a *Auth) Token() (string, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+// Sign returns the hex-encoded signature for a request.
+//
+// The signed message is "METHOD\nPATH\nTIMESTAMP\nBODY". The timestamp is
+// included so a captured signature cannot be replayed outside its validity
+// window.
+func (a *Auth) Sign(method, path, timestamp string, body []byte) string {
+	a.mu.RLock()
+	secret := a.APISecret
+	a.mu.RUnlock()
 
-	if a.token != "" && time.Now().Before(a.expires) {
-		return a.token, nil
-	}
-
-	// In production, would call auth API
-	a.token = fmt.Sprintf("token_%d", time.Now().UnixNano())
-	a.expires = time.Now().Add(1 * time.Hour)
-
-	return a.token, nil
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(method))
+	mac.Write([]byte("\n"))
+	mac.Write([]byte(path))
+	mac.Write([]byte("\n"))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("\n"))
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // ============================================================================
 // Wallet Client
 // ============================================================================
 
-// WalletClient provides wallet functionality
+// WalletClient provides wallet functionality.
 type WalletClient struct {
 	mu       sync.RWMutex
 	client   *Client
@@ -104,7 +167,7 @@ type WalletClient struct {
 	balances map[string]*Balance
 }
 
-// Balance represents token balance
+// Balance represents token balance.
 type Balance struct {
 	Symbol   string
 	Amount   *big.Int
@@ -112,259 +175,422 @@ type Balance struct {
 	ValueUSD *big.Rat
 }
 
-// NewWallet creates wallet client
+// NewWallet creates a wallet client bound to an address and chain.
 func (c *Client) NewWallet(address string, chainID uint64) *WalletClient {
-	return &WalletClient{
+	w := &WalletClient{
 		client:   c,
 		address:  address,
 		chainID:  chainID,
 		balances: make(map[string]*Balance),
 	}
+	c.mu.Lock()
+	c.wallets[address] = w
+	c.mu.Unlock()
+	return w
 }
 
-// GetAddress returns wallet address
+// GetAddress returns the wallet address.
 func (w *WalletClient) GetAddress() string {
 	return w.address
 }
 
-// GetBalance returns token balance
+// GetBalance returns the token balance.
 func (w *WalletClient) GetBalance(ctx context.Context, token string) (*Balance, error) {
-	result, err := w.client.Request(ctx, "getBalance", map[string]interface{}{
+	raw, err := w.client.Call(ctx, "getBalance", map[string]interface{}{
 		"address": w.address,
 		"token":   token,
 		"chainId": w.chainID,
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
-	var balance Balance
-	if data, ok := result.(map[string]interface{}); ok {
-		if amount, ok := data["amount"].(string); ok {
-			balance.Amount = new(big.Int)
-			balance.Amount.SetString(amount, 10)
+	var payload struct {
+		Symbol   string `json:"symbol"`
+		Amount   string `json:"amount"`
+		Decimals uint8  `json:"decimals"`
+		ValueUSD string `json:"valueUsd"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("sdk: getBalance response: %w", err)
+	}
+
+	balance := &Balance{Symbol: payload.Symbol, Decimals: payload.Decimals, Amount: new(big.Int)}
+	if payload.Amount != "" {
+		amount, ok := new(big.Int).SetString(payload.Amount, 10)
+		if !ok {
+			return nil, fmt.Errorf("sdk: getBalance returned a non-numeric amount %q", payload.Amount)
+		}
+		balance.Amount = amount
+	}
+	if payload.ValueUSD != "" {
+		if value, ok := new(big.Rat).SetString(payload.ValueUSD); ok {
+			balance.ValueUSD = value
 		}
 	}
 
 	w.mu.Lock()
-	w.balances[token] = &balance
+	w.balances[token] = balance
 	w.mu.Unlock()
 
-	return &balance, nil
+	return balance, nil
 }
 
-// Transfer sends tokens
+// Transfer sends tokens and returns the transaction hash.
+//
+// A hash is only returned when the backend reports one. A response without a
+// hash is an error, because a caller that treated it as success would report a
+// transfer that never happened.
 func (w *WalletClient) Transfer(ctx context.Context, to string, amount *big.Int, token string) (string, error) {
-	result, err := w.client.Request(ctx, "transfer", map[string]interface{}{
+	if amount == nil || amount.Sign() <= 0 {
+		return "", errors.New("sdk: amount must be positive")
+	}
+	if to == "" {
+		return "", errors.New("sdk: recipient is required")
+	}
+
+	raw, err := w.client.Call(ctx, "transfer", map[string]interface{}{
 		"from":    w.address,
 		"to":      to,
 		"amount":  amount.String(),
 		"token":   token,
 		"chainId": w.chainID,
 	})
-
 	if err != nil {
 		return "", err
 	}
-
-	if txHash, ok := result.(string); ok {
-		return txHash, nil
-	}
-
-	return "", fmt.Errorf("transfer failed")
+	return txHashFrom(raw, "transfer")
 }
 
-// Swap swaps tokens
+// Swap swaps tokens and returns the transaction hash.
 func (w *WalletClient) Swap(ctx context.Context, fromToken, toToken string, amount *big.Int) (string, error) {
-	result, err := w.client.Request(ctx, "swap", map[string]interface{}{
+	if amount == nil || amount.Sign() <= 0 {
+		return "", errors.New("sdk: amount must be positive")
+	}
+	if fromToken == "" || toToken == "" {
+		return "", errors.New("sdk: fromToken and toToken are required")
+	}
+
+	raw, err := w.client.Call(ctx, "swap", map[string]interface{}{
 		"address":   w.address,
 		"fromToken": fromToken,
 		"toToken":   toToken,
 		"amount":    amount.String(),
 		"chainId":   w.chainID,
 	})
-
 	if err != nil {
 		return "", err
 	}
+	return txHashFrom(raw, "swap")
+}
 
-	if txHash, ok := result.(string); ok {
-		return txHash, nil
+// txHashFrom extracts a transaction hash from a backend result.
+func txHashFrom(raw json.RawMessage, op string) (string, error) {
+	var direct string
+	if err := json.Unmarshal(raw, &direct); err == nil && direct != "" {
+		return direct, nil
 	}
 
-	return "", fmt.Errorf("swap failed")
+	var envelope struct {
+		TxHash string `json:"tx_hash"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err == nil && envelope.TxHash != "" {
+		return envelope.TxHash, nil
+	}
+
+	return "", fmt.Errorf("sdk: %s succeeded but the backend returned no transaction hash", op)
 }
 
 // ============================================================================
 // API Methods
 // ============================================================================
 
-// Request makes API request
-func (c *Client) Request(ctx context.Context, method string, params map[string]interface{}) (interface{}, error) {
-	// Get auth token
-	token, err := c.auth.Token()
+// rpcRequest is the JSON-RPC envelope sent to the backend.
+type rpcRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	ID      int64           `json:"id"`
+}
+
+// rpcResponse is the JSON-RPC envelope returned by the backend.
+type rpcResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Result  json.RawMessage `json:"result"`
+	Error   *rpcError       `json:"error"`
+	ID      int64           `json:"id"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *rpcError) Error() string {
+	return fmt.Sprintf("rpc error %d: %s", e.Code, e.Message)
+}
+
+// Call performs a signed JSON-RPC request and returns the result.
+func (c *Client) Call(ctx context.Context, method string, params map[string]interface{}) (json.RawMessage, error) {
+	paramsJSON, err := json.Marshal(params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sdk: marshal params: %w", err)
 	}
 
-	// Build request
-	reqBody := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  method,
-		"params":  params,
-		"id":      time.Now().UnixNano(),
+	body, err := json.Marshal(rpcRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  paramsJSON,
+		ID:      time.Now().UnixNano(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sdk: marshal request: %w", err)
 	}
 
-	reqBodyJSON, _ := json.Marshal(reqBody)
+	const path = "/v1/rpc"
 
-	// Make request
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", c.config.BaseURL+"/v1/rpc", bytes.NewReader(reqBodyJSON))
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	var lastErr error
+	for attempt := 0; attempt <= c.config.RetryCount; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(c.config.RetryDelay * time.Duration(attempt)):
+			}
+		}
 
-	resp, err := c.httpClient.Do(httpReq)
+		result, retryable, err := c.doCall(ctx, path, method, body)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !retryable {
+			return nil, err
+		}
+	}
+
+	return nil, lastErr
+}
+
+// doCall performs one signed attempt. It reports whether a retry is sensible.
+func (c *Client) doCall(ctx context.Context, path, method string, body []byte) (json.RawMessage, bool, error) {
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	signature := c.auth.Sign(http.MethodPost, path, timestamp, body)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, false, fmt.Errorf("sdk: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-API-Key", c.auth.APIKey)
+	req.Header.Set("X-Timestamp", timestamp)
+	req.Header.Set("X-Signature", signature)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, true, fmt.Errorf("sdk: %s: %w", method, err)
 	}
 	defer resp.Body.Close()
 
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return nil, true, fmt.Errorf("sdk: %s: read response: %w", method, err)
 	}
 
-	return result, nil
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return nil, true, fmt.Errorf("sdk: %s: backend returned %s", method, resp.Status)
+	}
+	if resp.StatusCode >= 400 {
+		var envelope rpcResponse
+		if json.Unmarshal(raw, &envelope) == nil && envelope.Error != nil {
+			return nil, false, fmt.Errorf("sdk: %s: %w", method, envelope.Error)
+		}
+		return nil, false, fmt.Errorf("sdk: %s: backend returned %s", method, resp.Status)
+	}
+
+	var envelope rpcResponse
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, false, fmt.Errorf("sdk: %s: decode response: %w", method, err)
+	}
+	if envelope.Error != nil {
+		return nil, false, fmt.Errorf("sdk: %s: %w", method, envelope.Error)
+	}
+	if len(envelope.Result) == 0 {
+		return nil, false, fmt.Errorf("sdk: %s: response carried no result", method)
+	}
+
+	return envelope.Result, false, nil
+}
+
+// Request is kept for callers that want the decoded result as a generic value.
+func (c *Client) Request(ctx context.Context, method string, params map[string]interface{}) (interface{}, error) {
+	raw, err := c.Call(ctx, method, params)
+	if err != nil {
+		return nil, err
+	}
+	var out interface{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("sdk: decode result: %w", err)
+	}
+	return out, nil
 }
 
 // ============================================================================
 // Pre-built SDK Functions
 // ============================================================================
 
-// GetPortfolio gets portfolio
+// GetPortfolio gets the portfolio for an address.
 func (c *Client) GetPortfolio(ctx context.Context, address string) (*Portfolio, error) {
-	result, err := c.Request(ctx, "getPortfolio", map[string]interface{}{
-		"address": address,
-	})
+	if address == "" {
+		return nil, errors.New("sdk: address is required")
+	}
 
+	raw, err := c.Call(ctx, "getPortfolio", map[string]interface{}{"address": address})
 	if err != nil {
 		return nil, err
 	}
 
 	var portfolio Portfolio
-	if data, ok := result.(map[string]interface{}); ok {
-		if value, ok := data["totalValueUSD"].(string); ok {
-			portfolio.TotalValueUSD = value
-		}
+	if err := json.Unmarshal(raw, &portfolio); err != nil {
+		return nil, fmt.Errorf("sdk: getPortfolio response: %w", err)
 	}
-
 	return &portfolio, nil
 }
 
-// GetTransactions gets transactions
+// GetTransactions gets transactions for an address.
 func (c *Client) GetTransactions(ctx context.Context, address string, limit int) ([]Transaction, error) {
-	result, err := c.Request(ctx, "getTransactions", map[string]interface{}{
+	if address == "" {
+		return nil, errors.New("sdk: address is required")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+
+	raw, err := c.Call(ctx, "getTransactions", map[string]interface{}{
 		"address": address,
 		"limit":   limit,
 	})
-	_ = result
 	if err != nil {
 		return nil, err
 	}
-
-	// Simplified
-	return []Transaction{}, nil
+	return decodeList[Transaction](raw, "transactions")
 }
 
-// GetNFTs gets NFTs
+// GetNFTs gets NFTs for an address.
 func (c *Client) GetNFTs(ctx context.Context, address string) ([]NFT, error) {
-	result, err := c.Request(ctx, "getNFTs", map[string]interface{}{
-		"address": address,
-	})
-	_ = result
+	if address == "" {
+		return nil, errors.New("sdk: address is required")
+	}
+
+	raw, err := c.Call(ctx, "getNFTs", map[string]interface{}{"address": address})
 	if err != nil {
 		return nil, err
 	}
-
-	// Simplified
-	return []NFT{}, nil
+	return decodeList[NFT](raw, "nfts")
 }
 
-// GetStaking gets staking info
+// GetStaking gets staking info for an address.
 func (c *Client) GetStaking(ctx context.Context, address string) (*StakingInfo, error) {
-	result, err := c.Request(ctx, "getStaking", map[string]interface{}{
-		"address": address,
-	})
-	_ = result
+	if address == "" {
+		return nil, errors.New("sdk: address is required")
+	}
+
+	raw, err := c.Call(ctx, "getStaking", map[string]interface{}{"address": address})
 	if err != nil {
 		return nil, err
 	}
 
 	var staking StakingInfo
+	if err := json.Unmarshal(raw, &staking); err != nil {
+		return nil, fmt.Errorf("sdk: getStaking response: %w", err)
+	}
 	return &staking, nil
+}
+
+// decodeList reads an array result, accepting either a bare array or an object
+// that wraps it under key.
+func decodeList[T any](raw json.RawMessage, key string) ([]T, error) {
+	var direct []T
+	if err := json.Unmarshal(raw, &direct); err == nil {
+		return direct, nil
+	}
+
+	var wrapped map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &wrapped); err != nil {
+		return nil, fmt.Errorf("sdk: decode %s: %w", key, err)
+	}
+	inner, ok := wrapped[key]
+	if !ok {
+		return nil, fmt.Errorf("sdk: response has no %q field", key)
+	}
+	if err := json.Unmarshal(inner, &direct); err != nil {
+		return nil, fmt.Errorf("sdk: decode %s: %w", key, err)
+	}
+	return direct, nil
 }
 
 // ============================================================================
 // Data Types
 // ============================================================================
 
-// Portfolio represents portfolio
+// Portfolio represents a portfolio.
 type Portfolio struct {
-	TotalValueUSD string
-	Tokens        []TokenBalance
-	NFTs          []NFTBalance
+	TotalValueUSD string         `json:"totalValueUSD"`
+	Tokens        []TokenBalance `json:"tokens"`
+	NFTs          []NFTBalance   `json:"nfts"`
 }
 
-// TokenBalance represents token balance
+// TokenBalance represents a token balance.
 type TokenBalance struct {
-	Symbol    string
-	Balance   string
-	ValueUSD  string
-	Change24h string
+	Symbol    string `json:"symbol"`
+	Balance   string `json:"balance"`
+	ValueUSD  string `json:"valueUsd"`
+	Change24h string `json:"change24h"`
 }
 
-// NFTBalance represents NFT balance
+// NFTBalance represents an NFT holding.
 type NFTBalance struct {
-	Collection string
-	TokenID    string
-	Name       string
-	Image      string
+	Collection string `json:"collection"`
+	TokenID    string `json:"tokenId"`
+	Name       string `json:"name"`
+	Image      string `json:"image"`
 }
 
-// Transaction represents transaction
+// Transaction represents a transaction.
 type Transaction struct {
-	TxHash    string
-	Type      string
-	Status    string
-	From      string
-	To        string
-	Amount    string
-	Token     string
-	Timestamp int64
+	TxHash    string `json:"txHash"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Amount    string `json:"amount"`
+	Token     string `json:"token"`
+	Timestamp int64  `json:"timestamp"`
 }
 
-// NFT represents NFT
+// NFT represents an NFT.
 type NFT struct {
-	TokenID    string
-	Collection string
-	Name       string
-	Image      string
-	Metadata   map[string]string
+	TokenID    string            `json:"tokenId"`
+	Collection string            `json:"collection"`
+	Name       string            `json:"name"`
+	Image      string            `json:"image"`
+	Metadata   map[string]string `json:"metadata"`
 }
 
-// StakingInfo represents staking info
+// StakingInfo represents staking info.
 type StakingInfo struct {
-	TotalStaked string
-	Rewards     string
-	APY         string
-	UnlocksAt   int64
+	TotalStaked string `json:"totalStaked"`
+	Rewards     string `json:"rewards"`
+	APY         string `json:"apy"`
+	UnlocksAt   int64  `json:"unlocksAt"`
 }
 
 // ============================================================================
 // Widget Integration
 // ============================================================================
 
-// WidgetConfig for embedding
+// WidgetConfig for embedding.
 type WidgetConfig struct {
 	Type     string // "send", "swap", "buy", "stake"
 	Theme    string // "light", "dark"
@@ -376,133 +602,259 @@ type WidgetConfig struct {
 	Height   string
 }
 
-// RenderWidget renders widget HTML
-func RenderWidget(config *WidgetConfig) string {
-	return fmt.Sprintf(`<iframe 
-	src="%s/widget?type=%s&theme=%s&chainId=%d"
-	width="%s" height="%s" frameborder="0"
-	></iframe>`,
-		config.Type,
-		config.Theme,
-		config.ChainID,
-		config.Width,
-		config.Height,
-	)
+// RenderWidget renders widget HTML.
+//
+// Every value is escaped: the fields are caller-supplied, and interpolating
+// them raw would let a token symbol or callback URL break out of the attribute
+// and inject script into the embedding page.
+func RenderWidget(baseURL string, config *WidgetConfig) (string, error) {
+	if config == nil {
+		return "", errors.New("sdk: nil widget config")
+	}
+
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("sdk: invalid widget base URL: %w", err)
+	}
+	if base.Host == "" {
+		return "", errors.New("sdk: widget base URL must include a host")
+	}
+	if base.User != nil {
+		return "", errors.New("sdk: widget base URL must not embed credentials")
+	}
+	if base.Scheme != "https" && base.Hostname() != "localhost" && base.Hostname() != "127.0.0.1" {
+		return "", fmt.Errorf("sdk: widget base URL must use https, got %q", base.Scheme)
+	}
+
+	theme := config.Theme
+	if theme != "light" && theme != "dark" {
+		theme = "light"
+	}
+	width := config.Width
+	if width == "" {
+		width = "420"
+	}
+	height := config.Height
+	if height == "" {
+		height = "640"
+	}
+
+	// Values go through url.Values so the query string is correctly encoded.
+	query := url.Values{}
+	query.Set("type", config.Type)
+	query.Set("theme", theme)
+	query.Set("chainId", strconv.FormatUint(config.ChainID, 10))
+	if config.Token != "" {
+		query.Set("token", config.Token)
+	}
+	if config.Amount != "" {
+		query.Set("amount", config.Amount)
+	}
+	if config.Callback != "" {
+		callback, err := url.Parse(config.Callback)
+		if err != nil {
+			return "", fmt.Errorf("sdk: invalid callback URL: %w", err)
+		}
+		if callback.Scheme != "https" {
+			return "", errors.New("sdk: callback URL must use https")
+		}
+		query.Set("callback", callback.String())
+	}
+
+	src := base.String() + "/widget?" + query.Encode()
+
+	return fmt.Sprintf(
+		`<iframe src="%s" width="%s" height="%s" frameborder="0" sandbox="allow-scripts allow-forms allow-popups" referrerpolicy="no-referrer"></iframe>`,
+		html.EscapeString(src),
+		html.EscapeString(width),
+		html.EscapeString(height),
+	), nil
 }
 
 // ============================================================================
 // JavaScript SDK
 // ============================================================================
 
-// JavaScriptSDK returns JavaScript SDK code
+// JavaScriptSDK returns the embeddable JavaScript SDK.
+//
+// Chain parameters are fetched from the backend at runtime rather than
+// hardcoded here, so the wallet and the SDK cannot drift apart.
 func JavaScriptSDK() string {
-	return `
-// TigerWallet JavaScript SDK
+	return `// TigerWallet JavaScript SDK
 // Version: 1.0.0
-
-(function(window) {
+(function (window) {
   'use strict';
-  
-  var TigerWallet = function(config) {
-    this.config = config || {};
-    this.baseURL = this.config.baseURL || 'http://localhost:8443';
-    this.chainId = this.config.chainId || 1;
-  };
-  
-  // Connect wallet
-  TigerWallet.prototype.connect = async function() {
-    if (typeof window.ethereum === 'undefined') {
-      throw new Error('No wallet detected');
+
+  var ERC20_TRANSFER_SELECTOR = '0xa9059cbb';
+
+  function pad64(hex) {
+    if (hex.length > 64) {
+      throw new Error('value does not fit in 32 bytes');
     }
-    
-    var accounts = await window.ethereum.request({
-      method: 'eth_requestAccounts'
+    return hex.padStart(64, '0');
+  }
+
+  function toHexQuantity(value) {
+    var big;
+    try {
+      big = BigInt(value);
+    } catch (e) {
+      throw new Error('amount is not an integer: ' + value);
+    }
+    if (big <= 0n) {
+      throw new Error('amount must be positive');
+    }
+    return '0x' + big.toString(16);
+  }
+
+  // Encode an ERC-20 transfer(address,uint256) call.
+  function encodeErc20Transfer(to, amount) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(to)) {
+      throw new Error('recipient is not a 20-byte address');
+    }
+    var amountHex = BigInt(amount).toString(16);
+    return ERC20_TRANSFER_SELECTOR + pad64(to.slice(2).toLowerCase()) + pad64(amountHex);
+  }
+
+  function TigerWallet(config) {
+    this.config = config || {};
+    this.baseURL = (this.config.baseURL || '').replace(/\/+$/, '');
+    this.chainId = this.config.chainId || 1;
+    this.address = null;
+    this._chains = null;
+  }
+
+  TigerWallet.prototype._post = async function (path, body) {
+    var response = await fetch(this.baseURL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     });
-    
+    if (!response.ok) {
+      throw new Error(path + ' failed with status ' + response.status);
+    }
+    return response.json();
+  };
+
+  TigerWallet.prototype.connect = async function () {
+    if (typeof window.ethereum === 'undefined') {
+      throw new Error('No EIP-1193 provider detected');
+    }
+    var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    if (!accounts || !accounts.length) {
+      throw new Error('The provider returned no accounts');
+    }
     this.address = accounts[0];
     return this.address;
   };
-  
-  // Get balance
-  TigerWallet.prototype.getBalance = async function(token) {
-    var response = await fetch(this.baseURL + '/v1/balance', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        address: this.address,
-        token: token,
-        chainId: this.chainId
-      })
-    });
-    
-    return response.json();
-  };
-  
-  // Transfer
-  TigerWallet.prototype.transfer = async function(to, amount, token) {
-    var method = token === 'ETH' ? 'eth_sendTransaction' : 'eth_sendTransaction';
-    var tx = {
-      to: to,
-      value: '0x' + amount.toString(16)
-    };
-    
-    if (token !== 'ETH') {
-      tx.data = '0xa9059cbb000000000000000000' + to.slice(2) + 
-        amount.toString(16).padStart(64, '0');
+
+  TigerWallet.prototype.getBalance = function (token) {
+    if (!this.address) {
+      return Promise.reject(new Error('connect() first'));
     }
-    
-    var txHash = await window.ethereum.request({
-      method: method,
-      params: [tx]
+    return this._post('/v1/balance', {
+      address: this.address,
+      token: token,
+      chainId: this.chainId
     });
-    
-    return txHash;
   };
-  
-  // Sign message
-  TigerWallet.prototype.sign = async function(message) {
-    var signature = await window.ethereum.request({
+
+  TigerWallet.prototype.transfer = async function (to, amount, token) {
+    if (typeof window.ethereum === 'undefined') {
+      throw new Error('No EIP-1193 provider detected');
+    }
+    if (!this.address) {
+      throw new Error('connect() first');
+    }
+
+    var tx;
+    if (!token || token === 'ETH' || token === 'NATIVE') {
+      tx = { from: this.address, to: to, value: toHexQuantity(amount) };
+    } else {
+      var contract = this.config.tokenContracts && this.config.tokenContracts[token];
+      if (!contract) {
+        throw new Error('no contract address configured for ' + token);
+      }
+      tx = {
+        from: this.address,
+        to: contract,
+        value: '0x0',
+        data: encodeErc20Transfer(to, amount)
+      };
+    }
+
+    return window.ethereum.request({ method: 'eth_sendTransaction', params: [tx] });
+  };
+
+  TigerWallet.prototype.sign = async function (message) {
+    if (typeof window.ethereum === 'undefined') {
+      throw new Error('No EIP-1193 provider detected');
+    }
+    if (!this.address) {
+      throw new Error('connect() first');
+    }
+    return window.ethereum.request({
       method: 'personal_sign',
       params: [message, this.address]
     });
-    
-    return signature;
   };
-  
-  // Switch chain
-  TigerWallet.prototype.switchChain = async function(chainId) {
-    var chainIds = {
-      1: { chainId: '0x1', chainName: 'Ethereum', rpcUrls: ['https://eth-mainnet.alchemyapi.io'] },
-      56: { chainId: '0x38', chainName: 'BNB Chain', rpcUrls: ['https://bsc-dataseed.binance.org'] },
-      137: { chainId: '0x89', chainName: 'Polygon', rpcUrls: ['https://polygon-rpc.com'] },
-      42161: { chainId: '0xa4b1', chainName: 'Arbitrum', rpcUrls: ['https://arb1.arbitrum.io/rpc'] }
-    };
-    
-    var chain = chainIds[chainId];
-    if (!chain) {
-      throw new Error('Unsupported chain');
+
+  TigerWallet.prototype.loadChains = async function () {
+    if (this._chains) {
+      return this._chains;
     }
-    
+    var response = await fetch(this.baseURL + '/v1/chains');
+    if (!response.ok) {
+      throw new Error('could not load chain registry: ' + response.status);
+    }
+    var payload = await response.json();
+    var chains = payload.chains || payload;
+    var byId = {};
+    for (var i = 0; i < chains.length; i++) {
+      byId[Number(chains[i].chainId)] = chains[i];
+    }
+    this._chains = byId;
+    return byId;
+  };
+
+  TigerWallet.prototype.switchChain = async function (chainId) {
+    if (typeof window.ethereum === 'undefined') {
+      throw new Error('No EIP-1193 provider detected');
+    }
+    var chains = await this.loadChains();
+    var chain = chains[chainId];
+    if (!chain) {
+      throw new Error('chain ' + chainId + ' is not in the registry');
+    }
+    var params = {
+      chainId: '0x' + Number(chainId).toString(16),
+      chainName: chain.name,
+      nativeCurrency: chain.nativeCurrency,
+      rpcUrls: chain.rpcUrls
+    };
+    if (chain.blockExplorerUrls && chain.blockExplorerUrls.length) {
+      params.blockExplorerUrls = chain.blockExplorerUrls;
+    }
+
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: chain.chainId }]
+        params: [{ chainId: params.chainId }]
       });
     } catch (e) {
-      if (e.code === 4902) {
+      // 4902 means the chain is unknown to the wallet; offer to add it.
+      if (e && e.code === 4902) {
         await window.ethereum.request({
           method: 'wallet_addEthereumChain',
-          params: [chain]
+          params: [params]
         });
+      } else {
+        throw e;
       }
     }
   };
-  
-  // Expose to window
+
   window.TigerWallet = TigerWallet;
-  
 })(window);
 `
 }
@@ -511,10 +863,38 @@ func JavaScriptSDK() string {
 // REST API Endpoints
 // ============================================================================
 
-// HandleBalance handles balance requests
+// writeJSON writes a JSON response.
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// writeError writes a JSON error.
+//
+// The message is sent to the caller, so it must describe the fault without
+// echoing internal detail.
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// decodeBody reads a bounded JSON body into dst.
+func decodeBody(w http.ResponseWriter, r *http.Request, dst interface{}) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return errors.New("invalid JSON body")
+	}
+	return nil
+}
+
+// HandleBalance handles balance requests.
 func (c *Client) HandleBalance(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.Header().Set("Allow", http.MethodPost)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -523,31 +903,32 @@ func (c *Client) HandleBalance(w http.ResponseWriter, r *http.Request) {
 		Token   string `json:"token"`
 		ChainID uint64 `json:"chainId"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeBody(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Address == "" {
+		writeError(w, http.StatusBadRequest, "address is required")
 		return
 	}
 
-	result, err := c.Request(r.Context(), "getBalance", map[string]interface{}{
+	raw, err := c.Call(r.Context(), "getBalance", map[string]interface{}{
 		"address": req.Address,
 		"token":   req.Token,
 		"chainId": req.ChainID,
 	})
-
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusBadGateway, "upstream request failed")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, http.StatusOK, raw)
 }
 
-// HandleTransfer handles transfer requests
+// HandleTransfer handles transfer requests.
 func (c *Client) HandleTransfer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		w.Header().Set("Allow", http.MethodPost)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -558,76 +939,135 @@ func (c *Client) HandleTransfer(w http.ResponseWriter, r *http.Request) {
 		Token   string `json:"token"`
 		ChainID uint64 `json:"chainId"`
 	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := decodeBody(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.From == "" || req.To == "" {
+		writeError(w, http.StatusBadRequest, "from and to are required")
+		return
+	}
+	amount, ok := new(big.Int).SetString(req.Amount, 10)
+	if !ok || amount.Sign() <= 0 {
+		writeError(w, http.StatusBadRequest, "amount must be a positive integer")
 		return
 	}
 
-	result, err := c.Request(r.Context(), "transfer", map[string]interface{}{
+	raw, err := c.Call(r.Context(), "transfer", map[string]interface{}{
 		"from":    req.From,
 		"to":      req.To,
-		"amount":  req.Amount,
+		"amount":  amount.String(),
 		"token":   req.Token,
 		"chainId": req.ChainID,
 	})
-
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusBadGateway, "upstream request failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, raw)
+}
+
+// HandlePortfolio handles portfolio requests.
+func (c *Client) HandlePortfolio(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
-// HandlePortfolio handles portfolio requests
-func (c *Client) HandlePortfolio(w http.ResponseWriter, r *http.Request) {
 	address := r.URL.Query().Get("address")
 	if address == "" {
-		http.Error(w, "Missing address", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "address is required")
 		return
 	}
 
 	portfolio, err := c.GetPortfolio(r.Context(), address)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusBadGateway, "upstream request failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, portfolio)
+}
+
+// HandleTransactions handles transaction requests.
+func (c *Client) HandleTransactions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(portfolio)
-}
-
-// HandleTransactions handles transaction requests
-func (c *Client) HandleTransactions(w http.ResponseWriter, r *http.Request) {
 	address := r.URL.Query().Get("address")
+	if address == "" {
+		writeError(w, http.StatusBadRequest, "address is required")
+		return
+	}
+
 	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 || parsed > 500 {
+			writeError(w, http.StatusBadRequest, "limit must be an integer between 1 and 500")
+			return
+		}
+		limit = parsed
+	}
 
 	txs, err := c.GetTransactions(r.Context(), address, limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusBadGateway, "upstream request failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, txs)
+}
+
+// HandleChains serves the chain registry used by the JavaScript SDK.
+func (c *Client) HandleChains(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(txs)
+	raw, err := c.Call(r.Context(), "getChains", map[string]interface{}{})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "upstream request failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, raw)
 }
 
-// HandleSDK handles SDK JS requests
+// HandleSDK serves the JavaScript SDK.
 func (c *Client) HandleSDK(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/javascript")
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	fmt.Fprint(w, JavaScriptSDK())
+	_, _ = io.WriteString(w, JavaScriptSDK())
 }
 
-// Serve starts SDK HTTP server
+// Serve starts the SDK HTTP server.
 func (c *Client) Serve(addr string) error {
-	http.HandleFunc("/v1/balance", c.HandleBalance)
-	http.HandleFunc("/v1/transfer", c.HandleTransfer)
-	http.HandleFunc("/v1/portfolio", c.HandlePortfolio)
-	http.HandleFunc("/v1/transactions", c.HandleTransactions)
-	http.HandleFunc("/sdk.js", c.HandleSDK)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/balance", c.HandleBalance)
+	mux.HandleFunc("/v1/transfer", c.HandleTransfer)
+	mux.HandleFunc("/v1/portfolio", c.HandlePortfolio)
+	mux.HandleFunc("/v1/transactions", c.HandleTransactions)
+	mux.HandleFunc("/v1/chains", c.HandleChains)
+	mux.HandleFunc("/sdk.js", c.HandleSDK)
 
-	return http.ListenAndServe(addr, nil)
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	return server.ListenAndServe()
 }
