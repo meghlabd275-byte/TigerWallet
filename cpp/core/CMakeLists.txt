@@ -17,6 +17,8 @@ set(TIGER_CORE_SOURCES
   src/mempool.cpp
   src/chain.cpp
   src/wallet.cpp
+  src/hdwallet.cpp
+  src/bip39_wordlist.cpp
 )
 
 add_library(tigerwallet_core STATIC ${TIGER_CORE_SOURCES})
@@ -67,7 +69,7 @@ option(TIGER_CORE_BUILD_TESTS "Build the tigerwallet_core test suite" ON)
 if(TIGER_CORE_BUILD_TESTS)
   enable_testing()
 
-  foreach(test_name crypto transaction wallet)
+  foreach(test_name crypto transaction wallet hdwallet)
     add_executable(test_${test_name} tests/test_${test_name}.cpp)
     target_link_libraries(test_${test_name} PRIVATE tigerwallet_core)
     target_compile_options(test_${test_name} PRIVATE -Wall -Wextra)
