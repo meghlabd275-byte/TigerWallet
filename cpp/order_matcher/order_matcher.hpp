@@ -1,7 +1,7 @@
 /**
  * TigerWallet High-Performance Order Matcher (CLOB)
  * C++ Implementation with Ultra-Low Latency
- * 
+ *
  * COMPLETE PRODUCTION IMPLEMENTATION
  */
 
@@ -33,6 +33,68 @@
 
 namespace tigerwallet {
 namespace orderbook {
+
+// ============================================================================
+// Atomic double accumulator
+// ============================================================================
+
+// std::atomic<double> supports load and store but no arithmetic, so `total +=
+// x` on one does not compile. This does the compare-exchange loop once, instead
+// of at each of the call sites that need it.
+class AtomicDouble {
+public:
+    AtomicDouble() = default;
+    explicit AtomicDouble(double value) : value_(value) {}
+
+    double load() const { return value_.load(std::memory_order_relaxed); }
+    void store(double value) { value_.store(value, std::memory_order_relaxed); }
+
+    void add(double delta) {
+        double current = value_.load(std::memory_order_relaxed);
+        while (!value_.compare_exchange_weak(current, current + delta,
+                                             std::memory_order_relaxed,
+                                             std::memory_order_relaxed)) {
+            // `current` is refreshed by compare_exchange_weak on failure.
+        }
+    }
+
+    AtomicDouble& operator+=(double delta) {
+        add(delta);
+        return *this;
+    }
+
+    AtomicDouble& operator-=(double delta) {
+        add(-delta);
+        return *this;
+    }
+
+    operator double() const { return load(); }
+
+private:
+    std::atomic<double> value_{0.0};
+};
+
+// ============================================================================
+// Clock helpers
+// ============================================================================
+
+// order_matcher.cpp calls these in eleven places, but they were never declared
+// anywhere, so the translation unit could not compile.
+
+// Seconds since the Unix epoch.
+inline uint64_t getCurrentTimestamp() {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+// Milliseconds since the Unix epoch. Order timestamps are compared for
+// priority, so this keeps the higher resolution.
+inline uint64_t getCurrentTimestampMillis() {
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+}
 
 // ============================================================================
 // Constants
@@ -96,7 +158,7 @@ struct PriceLevel {
     double price;
     double quantity;
     uint64_t orderCount;
-    
+
     PriceLevel() : price(0.0), quantity(0.0), orderCount(0) {}
     PriceLevel(double p, double q) : price(p), quantity(q), orderCount(1) {}
 };
@@ -118,8 +180,8 @@ struct Order {
     uint64_t updatedAt;
     uint64_t expiresAt;
     std::string clientOrderId;
-    
-    Order() 
+
+    Order()
         : type(OrderType::LIMIT)
         , side(OrderSide::BUY)
         , price(0.0)
@@ -133,15 +195,15 @@ struct Order {
         , updatedAt(0)
         , expiresAt(0)
     {}
-    
+
     bool isBuy() const { return side == OrderSide::BUY; }
     bool isSell() const { return side == OrderSide::SELL; }
     bool isMarket() const { return type == OrderType::MARKET; }
     bool isLimit() const { return type == OrderType::LIMIT; }
     bool isFilled() const { return status == OrderStatus::FILLED; }
     bool isCancelled() const { return status == OrderStatus::CANCELLED; }
-    bool isActive() const { 
-        return status == OrderStatus::OPEN || 
+    bool isActive() const {
+        return status == OrderStatus::OPEN ||
                status == OrderStatus::PARTIALLY_FILLED ||
                status == OrderStatus::PENDING;
     }
@@ -159,7 +221,7 @@ struct Trade {
     uint64_t timestamp;
     std::string userId;
     std::string counterUserId;
-    
+
     Trade() : side(OrderSide::BUY), price(0.0), quantity(0.0), fee(0.0), timestamp(0) {}
 };
 
@@ -174,8 +236,8 @@ struct OrderBookData {
     double quoteVolume24h;
     uint64_t tradeCount24h;
     uint64_t lastUpdate;
-    
-    OrderBookData() 
+
+    OrderBookData()
         : lastPrice(0.0)
         , lastQuantity(0.0)
         , highPrice(0.0)
@@ -207,7 +269,7 @@ struct Market {
     bool allowStopOrders;
     double makerFee;
     double takerFee;
-    
+
     Market()
         : basePrecision(8)
         , quotePrecision(8)
@@ -236,14 +298,14 @@ public:
     double price;
     double totalQuantity;
     std::map<uint64_t, std::shared_ptr<Order>> orders; // timestamp -> order
-    
+
     OrderBookLevel(double p = 0.0) : price(p), totalQuantity(0.0) {}
-    
+
     void addOrder(std::shared_ptr<Order> order) {
         orders[order->createdAt] = order;
         totalQuantity += order->remainingQuantity;
     }
-    
+
     void removeOrder(const std::string& orderId) {
         for (auto it = orders.begin(); it != orders.end(); ++it) {
             if (it->second->orderId == orderId) {
@@ -253,18 +315,18 @@ public:
             }
         }
     }
-    
+
     std::shared_ptr<Order> popBestOrder() {
         if (orders.empty()) return nullptr;
-        
+
         auto it = orders.begin();
         std::shared_ptr<Order> order = it->second;
         totalQuantity -= order->remainingQuantity;
         orders.erase(it);
-        
+
         return order;
     }
-    
+
     std::vector<std::shared_ptr<Order>> getOrders(uint64_t maxCount) const {
         std::vector<std::shared_ptr<Order>> result;
         for (const auto& pair : orders) {
@@ -284,20 +346,40 @@ public:
     void addOrder(std::shared_ptr<Order> order);
     void removeOrder(const std::string& orderId, OrderSide side);
     std::vector<std::shared_ptr<Order>> matchOrders(OrderSide side, double quantity);
-    
+
     std::map<double, std::shared_ptr<OrderBookLevel>, std::greater<double>>& getBids() { return bids_; }
     std::map<double, std::shared_ptr<OrderBookLevel>, std::less<double>>& getAsks() { return asks_; }
-    
+
+    // The bid and ask books are ordered in opposite directions, so they are
+    // different types and cannot be selected with a ternary or bound to a
+    // single reference. This dispatches to a callable with the right book.
+    template <typename Fn>
+    auto withBook(OrderSide side, Fn&& fn) {
+        if (side == OrderSide::BUY) {
+            return fn(bids_);
+        }
+        return fn(asks_);
+    }
+
+    // The same two-book selection, for a const book.
+    template <typename Fn>
+    auto withBook(OrderSide side, Fn&& fn) const {
+        if (side == OrderSide::BUY) {
+            return fn(bids_);
+        }
+        return fn(asks_);
+    }
+
     double getBestBid() const;
     double getBestAsk() const;
     double getSpread() const;
     std::vector<PriceLevel> getTopBids(int count) const;
     std::vector<PriceLevel> getTopAsks(int count) const;
-    
+
     void clear();
-    
+
     OrderBookData data;
-    
+
 private:
     std::map<double, std::shared_ptr<OrderBookLevel>, std::greater<double>> bids_;
     std::map<double, std::shared_ptr<OrderBookLevel>, std::less<double>> asks_;
@@ -313,11 +395,11 @@ public:
     std::vector<Trade> getTrades(const std::string& symbol, uint64_t since = 0);
     std::vector<Trade> getUserTrades(const std::string& userId, uint64_t since = 0);
     Trade* getTrade(const std::string& tradeId);
-    
+
     double getVolume24h(const std::string& symbol);
     double getQuoteVolume24h(const std::string& symbol);
     uint64_t getTradeCount24h(const std::string& symbol);
-    
+
 private:
     std::unordered_map<std::string, Trade> trades_;
     std::map<uint64_t, std::vector<std::string>> tradesByTime_;
@@ -333,22 +415,22 @@ private:
 class FeeCalculator {
 public:
     FeeCalculator() : makerFee_(MAKER_FEE_RATE), takerFee_(TAKER_FEE_RATE) {}
-    
+
     double calculateMakerFee(double quantity, double price) {
         return quantity * price * makerFee_.load();
     }
-    
+
     double calculateTakerFee(double quantity, double price) {
         return quantity * price * takerFee_.load();
     }
-    
+
     double calculateFee(double quantity, double price, bool isMaker) {
         return isMaker ? calculateMakerFee(quantity, price) : calculateTakerFee(quantity, price);
     }
-    
+
     void setMakerFee(double fee) { makerFee_.store(fee); }
     void setTakerFee(double fee) { takerFee_.store(fee); }
-    
+
 private:
     std::atomic<double> makerFee_;
     std::atomic<double> takerFee_;
@@ -360,64 +442,64 @@ private:
 
 class RiskManager {
 public:
-    RiskManager() 
+    RiskManager()
         : maxOrderSize_(MAX_ORDER_SIZE)
         , maxNotional_(10000000.0)
         , maxOrdersPerSecond_(1000)
     {
         lastReset_ = std::chrono::steady_clock::now();
     }
-    
+
     bool checkOrder(const std::shared_ptr<Order>& order) {
         if (!checkQuantity(order->quantity)) return false;
         if (!checkPrice(order->price, order->price)) return false;
-        
+
         double notional = order->quantity * order->price;
         if (notional > maxNotional_.load()) return false;
-        
+
         return checkOrderRate(order->userId);
     }
-    
+
     bool checkQuantity(double quantity) {
         return quantity >= MIN_ORDER_SIZE && quantity <= maxOrderSize_.load();
     }
-    
+
     bool checkPrice(double price, double lastPrice) {
         if (lastPrice <= 0) return true;
-        
+
         double maxDeviation = 0.5; // 50% max deviation
         return std::abs(price - lastPrice) / lastPrice <= maxDeviation;
     }
-    
+
     bool checkUserBalance(const std::string& userId, const std::string& symbol, double quantity) {
         (void)userId; (void)symbol; (void)quantity;
         return true; // Would check actual balance in production
     }
-    
+
     void setMaxOrderSize(double max) { maxOrderSize_.store(max); }
     void setMaxNotional(double max) { maxNotional_.store(max); }
     void setMaxOrdersPerSecond(uint64_t max) { maxOrdersPerSecond_.store(max); }
-    
+
 private:
     bool checkOrderRate(const std::string& userId) {
         std::lock_guard<std::mutex> lock(countMutex_);
-        
+
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastReset_).count();
-        
+
         if (elapsed >= 1) {
             userOrderCounts_.clear();
             lastReset_ = now;
         }
-        
+
         uint64_t count = ++userOrderCounts_[userId];
         return count <= maxOrdersPerSecond_.load();
     }
-    
+
     std::atomic<double> maxOrderSize_;
     std::atomic<double> maxNotional_;
     std::atomic<uint64_t> maxOrdersPerSecond_;
-    
+
     std::unordered_map<std::string, uint64_t> userOrderCounts_;
     std::mutex countMutex_;
     std::chrono::steady_clock::time_point lastReset_;
@@ -430,42 +512,42 @@ private:
 class OrderMatcherEngine {
 public:
     static OrderMatcherEngine& getInstance();
-    
+
     // Market management
     void addMarket(const Market& market);
     void removeMarket(const std::string& symbol);
     std::optional<Market> getMarket(const std::string& symbol);
     std::vector<Market> getAllMarkets();
-    
+
     // Order operations
     std::string submitOrder(std::shared_ptr<Order> order);
     bool cancelOrder(const std::string& orderId);
     bool modifyOrder(const std::string& orderId, double newPrice, double newQuantity);
-    
+
     // Order queries
     std::optional<std::shared_ptr<Order>> getOrder(const std::string& orderId);
     std::vector<std::shared_ptr<Order>> getUserOrders(const std::string& userId);
     std::vector<std::shared_ptr<Order>> getOpenOrders(const std::string& symbol);
-    
+
     // Order book queries
     OrderBook* getOrderBook(const std::string& symbol);
     std::vector<PriceLevel> getDepth(const std::string& symbol, int levels = 10);
-    
+
     // Trade history
     std::vector<Trade> getRecentTrades(const std::string& symbol, int limit = 100);
     std::vector<Trade> getUserTrades(const std::string& userId, int limit = 100);
-    
+
     // Market data
     double getLastPrice(const std::string& symbol);
     double get24hVolume(const std::string& symbol);
     double get24hHigh(const std::string& symbol);
     double get24hLow(const std::string& symbol);
-    
+
     // Risk management
     bool enableRiskChecks(bool enable);
     void setMaxOrderSize(double max);
     void setMaxNotional(double max);
-    
+
     // Statistics
     struct EngineStats {
         uint64_t totalOrders;
@@ -475,63 +557,63 @@ public:
         double totalVolume;
         uint64_t ordersPerSecond;
     };
-    
+
     EngineStats getStats() const;
-    
+
     // Configuration
     void setMarketStatus(const std::string& symbol, MarketStatus status);
-    
+
     ~OrderMatcherEngine();
-    
+
 private:
     OrderMatcherEngine();
-    
+
     OrderMatcherEngine(const OrderMatcherEngine&) = delete;
     OrderMatcherEngine& operator=(const OrderMatcherEngine&) = delete;
-    
+
     // Core matching logic
     std::vector<Trade> matchOrder(std::shared_ptr<Order> order);
     std::vector<Trade> matchLimitOrder(std::shared_ptr<Order> order);
     std::vector<Trade> matchMarketOrder(std::shared_ptr<Order> order);
-    
+
     // Order validation
     bool validateOrder(const std::shared_ptr<Order>& order);
     bool validatePrice(const Market& market, double price);
     bool validateQuantity(const Market& market, double quantity);
-    
+
     // Order book management
     OrderBook* getOrCreateOrderBook(const std::string& symbol);
     void updateOrderBookData(OrderBook* book, const std::string& symbol);
-    
+
     // Price calculation
     double calculateFillPrice(double orderPrice, double matchPrice, double quantity);
     double calculateAveragePrice(const std::vector<Trade>& trades);
-    
+
     // Generate IDs
     std::string generateOrderId();
     std::string generateTradeId();
-    
+
     // State
     std::unordered_map<std::string, Market> markets_;
     std::unordered_map<std::string, std::unique_ptr<OrderBook>> orderBooks_;
     std::unordered_map<std::string, std::shared_ptr<Order>> orders_;
     std::unordered_map<std::string, std::vector<std::string>> userOrders_;
     std::unordered_map<std::string, std::vector<std::string>> symbolOrders_;
-    
+
     std::unique_ptr<TradeRepository> tradeRepo_;
     std::unique_ptr<FeeCalculator> feeCalc_;
     std::unique_ptr<RiskManager> riskMgr_;
-    
+
     mutable std::shared_mutex mutex_;
     bool riskChecksEnabled_;
-    
+
     // Statistics
     std::atomic<uint64_t> totalOrders_;
     std::atomic<uint64_t> filledOrders_;
     std::atomic<uint64_t> cancelledOrders_;
     std::atomic<uint64_t> totalTrades_;
-    std::atomic<double> totalVolume_;
-    
+    AtomicDouble totalVolume_;
+
     // Thread safety
     std::mutex orderMutex_;
     std::mutex matchMutex_;
@@ -542,55 +624,58 @@ private:
 // ============================================================================
 
 inline void OrderBook::addOrder(std::shared_ptr<Order> order) {
-    auto& levels = order->isBuy() ? bids_ : asks_;
-    double price = order->price;
-    
-    auto it = levels.find(price);
-    if (it == levels.end()) {
-        it = levels.emplace(price, std::make_shared<OrderBookLevel>(price)).first;
-    }
-    
-    it->second->addOrder(order);
+    const double price = order->price;
+
+    withBook(order->isBuy() ? OrderSide::BUY : OrderSide::SELL, [&](auto& levels) {
+        auto it = levels.find(price);
+        if (it == levels.end()) {
+            it = levels.emplace(price, std::make_shared<OrderBookLevel>(price)).first;
+        }
+        it->second->addOrder(order);
+    });
     data.lastUpdate = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
 }
 
 inline void OrderBook::removeOrder(const std::string& orderId, OrderSide side) {
-    auto& levels = side == OrderSide::BUY ? bids_ : asks_;
-    
-    for (auto& pair : levels) {
-        pair.second->removeOrder(orderId);
-    }
+    withBook(side, [&](auto& levels) {
+        for (auto& pair : levels) {
+            pair.second->removeOrder(orderId);
+        }
+    });
 }
 
 inline std::vector<std::shared_ptr<Order>> OrderBook::matchOrders(OrderSide side, double quantity) {
     std::vector<std::shared_ptr<Order>> matched;
-    auto& levels = side == OrderSide::BUY ? asks_ : bids_;
-    
+    // An incoming buy consumes the asks and an incoming sell consumes the bids.
+    const OrderSide resting = (side == OrderSide::BUY) ? OrderSide::SELL : OrderSide::BUY;
+
     double remaining = quantity;
-    
-    for (auto& pair : levels) {
-        if (remaining <= 0) break;
-        
-        auto& level = pair.second;
-        while (remaining > 0 && !level->orders.empty()) {
-            auto order = level->popBestOrder();
-            if (!order) break;
-            
-            double fillQty = std::min(remaining, order->remainingQuantity);
-            order->filledQuantity += fillQty;
-            order->remainingQuantity -= fillQty;
-            remaining -= fillQty;
-            
-            matched.push_back(order);
-            
-            if (order->remainingQuantity > 0) {
-                level->addOrder(order); // Re-add with remaining qty
+
+    withBook(resting, [&](auto& levels) {
+        for (auto& pair : levels) {
+            if (remaining <= 0) break;
+
+            auto& level = pair.second;
+            while (remaining > 0 && !level->orders.empty()) {
+                auto order = level->popBestOrder();
+                if (!order) break;
+
+                const double fillQty = std::min(remaining, order->remainingQuantity);
+                order->filledQuantity += fillQty;
+                order->remainingQuantity -= fillQty;
+                remaining -= fillQty;
+
+                matched.push_back(order);
+
+                if (order->remainingQuantity > 0) {
+                    level->addOrder(order); // Re-add with the remaining quantity
+                }
             }
         }
-    }
-    
+    });
+
     return matched;
 }
 

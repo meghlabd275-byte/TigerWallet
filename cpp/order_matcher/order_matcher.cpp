@@ -453,64 +453,65 @@ std::vector<Trade> OrderMatcherEngine::matchLimitOrder(std::shared_ptr<Order> or
 
 std::vector<Trade> OrderMatcherEngine::matchMarketOrder(std::shared_ptr<Order> order) {
     std::vector<Trade> trades;
-    
+
     auto* book = getOrCreateOrderBook(order->symbol);
     if (!book) return trades;
-    
+
     double remaining = order->remainingQuantity;
-    auto& levels = order->isBuy() ? book->getAsks() : book->getBids();
-    
-    for (auto& pair : levels) {
-        if (remaining <= 0) break;
-        
-        auto& level = pair.second;
-        auto levelOrders = level->getOrders(100);
-        
-        for (auto& counterOrder : levelOrders) {
+    // An incoming buy takes the asks; an incoming sell takes the bids. The two
+    // books have opposite comparators and so are different types, which is why
+    // this goes through withBook rather than a ternary.
+    const OrderSide resting = order->isBuy() ? OrderSide::SELL : OrderSide::BUY;
+
+    book->withBook(resting, [&](auto& levels) {
+        for (auto& pair : levels) {
             if (remaining <= 0) break;
-            
-            double fillQty = std::min(remaining, counterOrder->remainingQuantity);
-            double fillPrice = counterOrder->price;
-            
-            // Create trade
-            Trade trade;
-            trade.tradeId = generateTradeId();
-            trade.orderId = order->orderId;
-            trade.counterOrderId = counterOrder->orderId;
-            trade.symbol = order->symbol;
-            trade.side = order->side;
-            trade.price = fillPrice;
-            trade.quantity = fillQty;
-            trade.timestamp = getCurrentTimestampMillis();
-            trade.userId = order->userId;
-            trade.counterUserId = counterOrder->userId;
-            
-            // Calculate fees
-            bool isMaker = (order->isBuy() && order->createdAt > counterOrder->createdAt) ||
-                          (!order->isBuy() && order->createdAt < counterOrder->createdAt);
-            trade.fee = feeCalc_->calculateFee(fillQty, fillPrice, isMaker);
-            
-            trades.push_back(trade);
-            
-            // Update orders
-            order->filledQuantity += fillQty;
-            order->remainingQuantity -= fillQty;
-            
-            counterOrder->filledQuantity += fillQty;
-            counterOrder->remainingQuantity -= fillQty;
-            
-            remaining -= fillQty;
-            
-            // Update status
-            if (counterOrder->remainingQuantity <= 0.00000001) {
-                counterOrder->status = OrderStatus::FILLED;
-                filledOrders_++;
-            } else {
-                counterOrder->status = OrderStatus::PARTIALLY_FILLED;
+
+            auto& level = pair.second;
+            auto levelOrders = level->getOrders(100);
+
+            for (auto& counterOrder : levelOrders) {
+                if (remaining <= 0) break;
+
+                const double fillQty = std::min(remaining, counterOrder->remainingQuantity);
+                const double fillPrice = counterOrder->price;
+
+                Trade trade;
+                trade.tradeId = generateTradeId();
+                trade.orderId = order->orderId;
+                trade.counterOrderId = counterOrder->orderId;
+                trade.symbol = order->symbol;
+                trade.side = order->side;
+                trade.price = fillPrice;
+                trade.quantity = fillQty;
+                trade.timestamp = getCurrentTimestampMillis();
+                trade.userId = order->userId;
+                trade.counterUserId = counterOrder->userId;
+
+                // The resting order made the market; the incoming one took it.
+                const bool isMaker = false;
+                trade.fee = feeCalc_->calculateFee(fillQty, fillPrice, isMaker);
+
+                trades.push_back(trade);
+
+                order->filledQuantity += fillQty;
+                order->remainingQuantity -= fillQty;
+
+                counterOrder->filledQuantity += fillQty;
+                counterOrder->remainingQuantity -= fillQty;
+
+                remaining -= fillQty;
+
+                if (counterOrder->remainingQuantity <= 0.00000001) {
+                    counterOrder->status = OrderStatus::FILLED;
+                    filledOrders_++;
+                } else {
+                    counterOrder->status = OrderStatus::PARTIALLY_FILLED;
+                }
             }
         }
-    }
-    
+    });
+
     // Update order status
     if (order->remainingQuantity <= 0.00000001) {
         order->status = OrderStatus::FILLED;
@@ -524,20 +525,18 @@ std::vector<Trade> OrderMatcherEngine::matchMarketOrder(std::shared_ptr<Order> o
             cancelledOrders_++;
         } else {
             order->status = OrderStatus::OPEN;
-            // Add remaining to book
             book->addOrder(order);
         }
     }
-    
+
     // Update statistics
     totalTrades_ += trades.size();
     for (const auto& trade : trades) {
         totalVolume_ += trade.quantity * trade.price;
     }
-    
-    // Update order book data
+
     updateOrderBookData(book, order->symbol);
-    
+
     return trades;
 }
 
