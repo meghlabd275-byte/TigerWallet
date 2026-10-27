@@ -23,18 +23,20 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
       "run_at": "document_start"
     }
   ],
-  "injected_script": "src/injected/injected.js",
   "permissions": [
     "storage",
     "activeTab",
     "tabs",
     "webRequest",
-    "webRequestBlocking",
     "notifications",
     "clipboardRead",
     "clipboardWrite",
@@ -51,8 +53,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/injected/injected.js", "src/injected/injected.css"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "src/injected/injected.js",
+        "src/injected/injected.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "commands": {
@@ -65,6 +72,8 @@
     }
   },
   "externally_connectable": {
-    "matches": ["*://*.tigerwallet.com/*"]
+    "matches": [
+      "*://*.tigerwallet.com/*"
+    ]
   }
 }
