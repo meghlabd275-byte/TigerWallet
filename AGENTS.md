@@ -1369,3 +1369,50 @@
 
 
 - Still open (documented, backend/deployment not client): extension Google OAuth client_id config; FCM google-services.json config; non-EVM broadcast sdk family for exotic chains fail-closed; EVM tx-history needs ETHERSCAN_API_KEY deploy config.
+## Session 40 (2026-10-26) — hardware_wallet module: real crypto + on-chain reads, stubs fail closed (commits 4698e44, eb3e91a, pushed to main)
+- TOOLCHAIN (sandbox was reset): Go 1.22.12 at /tmp/goroot, Rust 1.85 via
+  rustup (~/.cargo), cmake at ~/.local/bin, OpenSSL 3.5 (system headers absent;
+  headers copied to /tmp/ossl/include with a minimal opensslv.h).
+- hardware_wallet/cpp — the module was largely placeholder logic. Replaced with
+  real implementations, all vector-tested (114 checks pass, warning-free build):
+  - BIP32: master_key_from_seed returned a ZEROED HMAC and derive_child_key used
+    SHA256 instead of HMAC-SHA512. Both now real HMAC-SHA512; validated against
+    official BIP32 test vector 1.
+  - BIP39: wordlist()/generate_mnemonic/mnemonic_to_seed/checksum_valid did not
+    exist; embedded the canonical 2048-word list (include/bip39_wordlist.h) and
+    implemented all of it. validate_mnemonic now checks the checksum.
+  - EVM address was SHA256; now Keccak-256 + EIP-55. base58 carry/leading-zero
+    fixed. ECDSA verify rewritten on the OpenSSL 3 PROVIDER interface
+    (EVP_PKEY_fromdata + EVP_PKEY_verify) — EVP_DigestVerify re-hashed the input,
+    so a real signature never verified.
+  - NEW include/json_value.h + src/json_value.cpp: strict RFC 8259 reader
+    (rejects trailing content, duplicate keys, bad escapes, lone surrogates).
+  - NEW include/json_rpc.h + src/json_rpc.cpp: HTTPS JSON-RPC over OpenSSL with
+    SSL_VERIFY_PEER + SSL_set1_host, https-only, user-info in the URL rejected.
+    Powers LedgerWallet::get_erc20_token_balance (balanceOf) and
+    get_nft_metadata (tokenURI) via set_rpc_endpoint(). LIVE-VERIFIED against
+    Ethereum mainnet (USDT balanceOf of 0x28C6...d60 = 595,377,428.986820 USDT
+    at block 26281609; public nodes 403 without a User-Agent, so one is sent).
+  - SECURITY BUGS FIXED: get_public_key copied 65 bytes into a 64-byte array
+    (heap/stack overflow); get_extended_public_key did
+    `*(PublicKeyInfo*)&info` (type-punning read past the destination) and
+    returned SUCCESS without writing anything; show_address_ledger ignored the
+    address it was asked to confirm; Trezor connect() reported CONNECTED
+    without opening anything.
+  - FALSE-SUCCESS STUBS now fail closed (UNSUPPORTED_OPERATION): Ledger
+    verify_pin/change_pin/enable_passphrase/unlock_with_passphrase/
+    reboot_to_bootloader/factory_reset (no APDU exists); HardwareWalletManager
+    init_multisig/sign_multisig (returned SUCCESS with an EMPTY signature);
+    Trezor sign_transaction/sign_message/sign_typed_data/sign_tx_trezor/
+    get_public_key. Trezor get_firmware_version/get_erc20_token_balance/
+    get_nft_metadata return UNSUPPORTED_OPERATION instead of a fake value.
+  - NEW CMakeLists.txt (static lib + ctest), tests/test_hardware_wallet.cpp.
+- hardware_wallet/rust + go/backend were already real fail-closed work from a
+  concurrent session; verified and committed: cargo build + 44 tests pass;
+  go build + vet + test pass (go.mod/go.sum added).
+- PUSH NOTE: the stored token in the git remote URL had EXPIRED (push prompted
+  for a password). Refresh with
+  `git remote set-url origin https://${GITHUB_TOKEN}@github.com/meghlabd275-byte/TigerWallet.git`.
+- Remaining open in this module: the Ledger APDU exchange path and all Trezor
+  protocol work still need a real transport (HID/WebHID) before they can do
+  anything; they fail closed meanwhile, which is correct.
