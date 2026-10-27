@@ -269,24 +269,33 @@ std::string AddressToString(const std::array<uint8_t, 20>& address) {
     return ToChecksumAddress("0x" + ToHex(address.data(), address.size()));
 }
 
-bool PrivateKeyToAddress(const std::array<uint8_t, 32>& private_key,
-                         std::array<uint8_t, 20>& address) {
+std::vector<uint8_t> PrivateKeyToPublicKey(const std::array<uint8_t, 32>& private_key) {
     secp256k1_context* ctx =
         secp256k1_context_create(SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
-    if (ctx == nullptr) return false;
+    if (ctx == nullptr) return {};
 
     secp256k1_pubkey pubkey;
-    bool ok = secp256k1_ec_pubkey_create(ctx, &pubkey, private_key.data()) == 1;
-    if (ok) {
+    std::vector<uint8_t> out;
+    if (secp256k1_ec_pubkey_create(ctx, &pubkey, private_key.data()) == 1) {
         uint8_t serialized[65];
         size_t serialized_len = sizeof(serialized);
-        ok = secp256k1_ec_pubkey_serialize(ctx, serialized, &serialized_len, &pubkey,
-                                           SECP256K1_EC_UNCOMPRESSED) == 1;
-        if (ok) address = PublicKeyToAddress(serialized, serialized_len);
+        if (secp256k1_ec_pubkey_serialize(ctx, serialized, &serialized_len, &pubkey,
+                                          SECP256K1_EC_UNCOMPRESSED) == 1 &&
+            serialized_len == 65) {
+            out.assign(serialized + 1, serialized + 65);  // drop the 0x04 prefix
+        }
     }
 
     secp256k1_context_destroy(ctx);
-    return ok;
+    return out;
+}
+
+bool PrivateKeyToAddress(const std::array<uint8_t, 32>& private_key,
+                         std::array<uint8_t, 20>& address) {
+    const auto public_key = PrivateKeyToPublicKey(private_key);
+    if (public_key.size() != 64) return false;
+    address = PublicKeyToAddress(public_key.data(), public_key.size());
+    return true;
 }
 
 std::vector<uint8_t> SignHash(const std::array<uint8_t, 32>& digest,
@@ -370,6 +379,177 @@ std::vector<uint8_t> SecureRandom(size_t length) {
         throw std::runtime_error("SecureRandom: the OS random source failed");
     }
     return out;
+}
+
+bool IsValidHexQuantity(const std::string& text, size_t max_bytes) {
+    if (text.size() < 3 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X')) return false;
+    const std::string digits = text.substr(2);
+    if (digits.empty()) return false;
+    for (char c : digits) {
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+        if (!hex) return false;
+    }
+    // Canonical form has no leading zeros, except for the single digit "0".
+    if (digits.size() > 1 && digits[0] == '0') return false;
+    if (digits.size() > max_bytes * 2) return false;
+    return true;
+}
+
+std::string HexQuantityToDecimal(const std::string& text, size_t max_bytes) {
+    if (!IsValidHexQuantity(text, max_bytes)) return {};
+
+    std::string digits = text.substr(2);
+    // Pad the whole digit string to an even length. Padding each pair
+    // separately would treat "100" as bytes 0x10,0x00 (4096) instead of 256.
+    if (digits.size() % 2 != 0) digits = "0" + digits;
+
+    // Big-endian bytes, then long division by 10 from the most significant end.
+    std::vector<uint8_t> value;
+    value.reserve(max_bytes);
+    for (size_t i = 0; i < digits.size(); i += 2) {
+        value.push_back(static_cast<uint8_t>(std::stoul(digits.substr(i, 2), nullptr, 16)));
+    }
+
+    if (value.empty()) return "0";
+
+    std::string decimal;
+    while (!value.empty()) {
+        unsigned int remainder = 0;
+        std::vector<uint8_t> quotient;
+        quotient.reserve(value.size());
+        for (uint8_t byte : value) {
+            const unsigned int current = remainder * 256 + byte;
+            const unsigned int q = current / 10;
+            remainder = current % 10;
+            if (!quotient.empty() || q != 0) quotient.push_back(static_cast<uint8_t>(q));
+        }
+        decimal.push_back(static_cast<char>('0' + remainder));
+        value.swap(quotient);
+    }
+    return std::string(decimal.rbegin(), decimal.rend());
+}
+
+std::vector<uint8_t> AesGcmEncrypt(const std::string& password,
+                                   const uint8_t* plaintext, size_t plaintext_len,
+                                   uint32_t iterations) {
+    constexpr size_t kSaltLen = 16;
+    constexpr size_t kIvLen = 12;
+    constexpr size_t kTagLen = 16;
+
+    const auto salt = SecureRandom(kSaltLen);
+    const auto iv = SecureRandom(kIvLen);
+    const auto key = Pbkdf2HmacSha512(password, salt, iterations, 32);
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (ctx == nullptr) throw std::runtime_error("AesGcmEncrypt: context allocation failed");
+
+    std::vector<uint8_t> ciphertext(plaintext_len);
+    std::vector<uint8_t> tag(kTagLen);
+    int out_len = 0;
+    int total = 0;
+
+    bool ok = EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) == 1 &&
+              EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(kIvLen),
+                                  nullptr) == 1 &&
+              EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) == 1;
+
+    if (ok && plaintext_len > 0) {
+        ok = EVP_EncryptUpdate(ctx, ciphertext.data(), &out_len, plaintext,
+                               static_cast<int>(plaintext_len)) == 1;
+        total = out_len;
+    }
+    if (ok) {
+        ok = EVP_EncryptFinal_ex(ctx, ciphertext.data() + total, &out_len) == 1;
+        total += out_len;
+        ciphertext.resize(static_cast<size_t>(total));
+    }
+    if (ok) {
+        ok = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, static_cast<int>(kTagLen),
+                                 tag.data()) == 1;
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+    if (!ok) throw std::runtime_error("AesGcmEncrypt: encryption failed");
+
+    // The iteration count is stored in the blob. It has to be: a caller that
+    // encrypts with a non-default count would otherwise be unable to decrypt,
+    // and silently assuming a constant is a correctness bug waiting to happen.
+    std::vector<uint8_t> blob;
+    blob.reserve(kSaltLen + 4 + kIvLen + ciphertext.size() + kTagLen);
+    blob.insert(blob.end(), salt.begin(), salt.end());
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        blob.push_back(static_cast<uint8_t>((iterations >> shift) & 0xFF));
+    }
+    blob.insert(blob.end(), iv.begin(), iv.end());
+    blob.insert(blob.end(), ciphertext.begin(), ciphertext.end());
+    blob.insert(blob.end(), tag.begin(), tag.end());
+    return blob;
+}
+
+std::optional<std::vector<uint8_t>> AesGcmDecrypt(const std::string& password,
+                                                  const uint8_t* blob, size_t blob_len) {
+    constexpr size_t kSaltLen = 16;
+    constexpr size_t kIterationsLen = 4;
+    constexpr size_t kIvLen = 12;
+    constexpr size_t kTagLen = 16;
+    // Bounds on the stored iteration count. The lower bound rejects a weakened
+    // blob; the upper bound keeps a corrupt value from turning into a very long
+    // PBKDF2 run.
+    constexpr uint32_t kMinIterations = 1000;
+    constexpr uint32_t kMaxIterations = 10000000;
+
+    if (blob_len < kSaltLen + kIterationsLen + kIvLen + kTagLen) return std::nullopt;
+
+    const uint8_t* salt = blob;
+    const uint8_t* iterations_bytes = blob + kSaltLen;
+    const uint8_t* iv = blob + kSaltLen + kIterationsLen;
+    const uint8_t* ciphertext = blob + kSaltLen + kIterationsLen + kIvLen;
+    const size_t ciphertext_len = blob_len - kSaltLen - kIterationsLen - kIvLen - kTagLen;
+    const uint8_t* tag = blob + blob_len - kTagLen;
+
+    uint32_t iterations = 0;
+    for (size_t i = 0; i < kIterationsLen; ++i) {
+        iterations = (iterations << 8) | iterations_bytes[i];
+    }
+    if (iterations < kMinIterations || iterations > kMaxIterations) return std::nullopt;
+
+    const std::vector<uint8_t> salt_vec(salt, salt + kSaltLen);
+    const auto key = Pbkdf2HmacSha512(password, salt_vec, iterations, 32);
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (ctx == nullptr) return std::nullopt;
+
+    std::vector<uint8_t> plaintext(ciphertext_len);
+    int out_len = 0;
+    int total = 0;
+
+    bool ok = EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) == 1 &&
+              EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(kIvLen),
+                                  nullptr) == 1 &&
+              EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.data(), iv) == 1;
+
+    if (ok && ciphertext_len > 0) {
+        ok = EVP_DecryptUpdate(ctx, plaintext.data(), &out_len, ciphertext,
+                               static_cast<int>(ciphertext_len)) == 1;
+        total = out_len;
+    }
+    if (ok) {
+        // The tag check happens in DecryptFinal. A wrong password or a modified
+        // blob fails here, which is why the result is an optional.
+        ok = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, static_cast<int>(kTagLen),
+                                 const_cast<uint8_t*>(tag)) == 1;
+    }
+    if (ok) {
+        ok = EVP_DecryptFinal_ex(ctx, plaintext.data() + total, &out_len) == 1;
+        total += out_len;
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+    if (!ok) return std::nullopt;
+
+    plaintext.resize(static_cast<size_t>(total));
+    return plaintext;
 }
 
 }  // namespace crypto

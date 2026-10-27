@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,10 @@ std::string AddressToString(const std::array<uint8_t, 20>& address);
 bool PrivateKeyToAddress(const std::array<uint8_t, 32>& private_key,
                          std::array<uint8_t, 20>& address);
 
+// Uncompressed public key without the 0x04 prefix (64 bytes). Returns an empty
+// vector if the key is not a valid secp256k1 scalar.
+std::vector<uint8_t> PrivateKeyToPublicKey(const std::array<uint8_t, 32>& private_key);
+
 // ECDSA over secp256k1. Returns an empty vector on failure. `recovery_id` is
 // the raw 0..3 value; callers that build an Ethereum signature add 27.
 std::vector<uint8_t> SignHash(const std::array<uint8_t, 32>& digest,
@@ -69,6 +74,32 @@ std::vector<uint8_t> Pbkdf2HmacSha512(const std::string& password,
 
 // Throws std::runtime_error if the OS random source fails.
 std::vector<uint8_t> SecureRandom(size_t length);
+
+// A JSON-RPC quantity is a 0x-prefixed hexadecimal integer with no leading
+// zeros ("0x0" for zero). Validates the shape and that the value fits in
+// `max_bytes`. Needed because balances and gas prices are 256-bit and must not
+// be range-checked as 64-bit values.
+bool IsValidHexQuantity(const std::string& text, size_t max_bytes = 32);
+
+// Converts a JSON-RPC quantity to a decimal string, for display and for the
+// decimal fields on Transaction. Returns an empty string if `text` is not a
+// valid quantity within `max_bytes`.
+std::string HexQuantityToDecimal(const std::string& text, size_t max_bytes = 32);
+
+// AES-256-GCM. The output layout is
+//   salt(16) || iterations(4, big-endian) || iv(12) || ciphertext || tag(16)
+// The key is derived from `password` with PBKDF2-HMAC-SHA512 over the salt.
+// The iteration count travels in the blob so that decryption does not have to
+// assume the default, and is range-checked on the way back in.
+// Decryption returns std::nullopt when authentication fails, which is what
+// makes a tampered or wrong-password blob detectable rather than producing
+// garbage plaintext.
+std::vector<uint8_t> AesGcmEncrypt(const std::string& password,
+                                   const uint8_t* plaintext, size_t plaintext_len,
+                                   uint32_t iterations = 210000);
+
+std::optional<std::vector<uint8_t>> AesGcmDecrypt(const std::string& password,
+                                                  const uint8_t* blob, size_t blob_len);
 
 }  // namespace crypto
 }  // namespace tigerwallet
