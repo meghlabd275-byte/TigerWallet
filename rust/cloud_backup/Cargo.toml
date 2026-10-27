@@ -1,0 +1,22 @@
+[package]
+name = "tigerwallet-cloud-backup"
+version = "0.1.0"
+edition = "2021"
+description = "TigerWallet encrypted cloud backup with AES-256-GCM"
+
+[lib]
+name = "tigerwallet_cloud_backup"
+path = "src/lib.rs"
+
+[dependencies]
+aes-gcm = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+sha2 = "0.10"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+getrandom = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
