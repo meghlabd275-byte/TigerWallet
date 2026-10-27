@@ -37,8 +37,9 @@ OrderValidationResult RiskEngine::validate_order(
     
     const Account& acc = account_it->second;
     
-    // 1. Check circuit breaker
-    if (is_circuit_breaker_triggered(order.symbol)) {
+    // 1. Check circuit breaker. Use the unlocked form because mutex_ is
+    // already held here; the locking version deadlocks on the same mutex.
+    if (is_circuit_breaker_triggered_locked(order.symbol)) {
         result.approved = false;
         result.reject_reason = OrderRejectReason::CIRCUIT_BREAKER;
         result.message = "Circuit breaker triggered for symbol";
@@ -423,16 +424,69 @@ RiskLevel RiskEngine::assess_risk_level(double margin_ratio) const {
 }
 
 double RiskEngine::calculate_correlation_adjustment() const {
-    // Simplified correlation adjustment
-    return 0.1;
+    // The correlation adjustment scales a portfolio's risk for the tendency of
+    // its positions to move together. The previous version returned a constant
+    // 0.1 regardless of the book.
+    //
+    // This computes the ratio of net directional exposure to gross exposure.
+    // A book that is entirely long has a ratio near 1, meaning the positions
+    // are perfectly correlated and there is no diversification, so the
+    // adjustment approaches its maximum. A book that is long and short in
+    // equal measure has a ratio near 0, meaning the positions offset each
+    // other.
+    double gross = 0.0;
+    double net = 0.0;
+    for (const auto& [id, position] : positions_) {
+        (void)id;
+        const double notional = position.size * position.current_price;
+        gross += std::abs(notional);
+        net += notional;
+    }
+    if (gross <= 0.0) return 0.0;  // No positions means nothing to correlate.
+
+    const double directional_ratio = std::abs(net) / gross;
+    // Map the ratio onto the configured concentration allowance, so an
+    // operator can tune how much concentration is tolerated.
+    return directional_ratio * config_.max_single_asset_concentration;
 }
 
 bool RiskEngine::check_concentration_limits(
     const std::string& symbol,
     double order_size
 ) const {
-    // Simplified concentration check
-    return true;
+    // This used to return true unconditionally, so validate_order's call to it
+    // never rejected anything and the configured concentration limits had no
+    // effect.
+    if (config_.max_single_asset_concentration <= 0.0) return true;
+
+    // Gross notional across the book, and the notional already held in the
+    // symbol this order would add to.
+    double gross = 0.0;
+    double symbol_notional = 0.0;
+    for (const auto& [id, position] : positions_) {
+        (void)id;
+        const double notional = std::abs(position.size * position.current_price);
+        gross += notional;
+        if (position.symbol == symbol) {
+            symbol_notional += notional;
+        }
+    }
+
+    // The order's own notional, priced from the symbol's last known price.
+    double order_price = 0.0;
+    const auto price_it = last_prices_.find(symbol);
+    if (price_it != last_prices_.end()) {
+        order_price = price_it->second;
+    }
+    const double order_notional = std::abs(order_size) * order_price;
+
+    const double projected_gross = gross + order_notional;
+    if (projected_gross <= 0.0) return true;
+
+    const double projected_symbol_share =
+        (symbol_notional + order_notional) / projected_gross;
+
+    return projected_symbol_share <= config_.max_single_asset_concentration;
 }
 
 void RiskEngine::update_daily_volume(
@@ -447,12 +501,25 @@ void RiskEngine::update_daily_volume(
 }
 
 bool RiskEngine::is_new_day() const {
-    auto now = std::chrono::system_clock::now();
-    auto today = std::chrono::duration_cast<std::chrono::days>(
-        now.time_since_epoch()
-    ).count();
-    
-    return false; // Simplified
+    // This always returned false, so the daily volume counters were never
+    // cleared and a trader who reached max_daily_volume could never trade
+    // again. The day number is the count of whole days since the epoch.
+    //
+    // std::chrono::days is not defined by the standard library, so the
+    // duration is expressed in hours and divided by 24.
+    const auto now = std::chrono::system_clock::now();
+    const auto today = std::chrono::duration_cast<std::chrono::hours>(
+        now.time_since_epoch()).count() / 24;
+
+    if (current_day_ == 0) {
+        current_day_ = today;  // First call: establish the current day.
+        return false;
+    }
+    if (today != current_day_) {
+        current_day_ = today;
+        return true;
+    }
+    return false;
 }
 
 void RiskEngine::reset_daily_limits() {
@@ -464,10 +531,8 @@ void RiskEngine::reset_daily_limits() {
 // Counterparty Methods
 // ============================================================================
 
-void RiskEngine::register_counterparty(const Counterparty& counterparty) {
-    std::unique_lock lock(mutex_);
-    counterparties_[counterparty.counterparty_id] = counterparty;
-}
+// register_counterparty is defined inline in risk_engine.h; the out-of-line
+// copy that used to be here was a redefinition.
 
 void RiskEngine::update_counterparty(const Counterparty& counterparty) {
     std::unique_lock lock(mutex_);
@@ -478,14 +543,19 @@ double RiskEngine::get_counterparty_exposure(
     const std::string& counterparty_id
 ) {
     std::shared_lock lock(mutex_);
-    
+
+    // This summed a literal 0.0 for every position, so counterparty exposure
+    // was always zero and the max_single_counterparty limit could never be
+    // breached. Exposure is the notional of the positions belonging to this
+    // counterparty, matched on the trader_id recorded on each position.
     double exposure = 0.0;
-    
+
     for (const auto& [id, position] : positions_) {
-        // Simplified - would need counterparty association
-        exposure += 0.0;
+        (void)id;
+        if (position.trader_id != counterparty_id) continue;
+        exposure += std::abs(position.size * position.current_price);
     }
-    
+
     return exposure;
 }
 

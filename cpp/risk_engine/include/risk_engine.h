@@ -299,6 +299,11 @@ public:
     
     // Circuit breaker
     bool is_circuit_breaker_triggered(const std::string& symbol);
+
+    // Same question as is_circuit_breaker_triggered, for callers that already
+    // hold mutex_. validate_order holds a unique_lock and called the locking
+    // version, which deadlocked on the same mutex.
+    bool is_circuit_breaker_triggered_locked(const std::string& symbol) const;
     void reset_circuit_breaker(const std::string& symbol);
     
     // Daily reset
@@ -327,6 +332,9 @@ private:
     // Daily trading
     std::unordered_map<std::string, double> daily_volumes_;
     std::unordered_map<std::string, uint64_t> last_reset_date_;
+    // The day number the daily volume counters belong to. is_new_day() is
+    // const and advances it, so it is mutable.
+    mutable int64_t current_day_ = 0;
     
     // Mutex for thread safety
     mutable std::shared_mutex mutex_;
@@ -358,8 +366,8 @@ public:
     static RiskManager& get_instance();
     
     // Engine access
-    RiskEngine& get_engine() { return engine_; }
-    const RiskEngine& get_engine() const { return engine_; }
+    RiskEngine& get_engine() { return *engine_; }
+    const RiskEngine& get_engine() const { return *engine_; }
     
     // Convenience methods
     OrderValidationResult validate_order(const Order& order);
@@ -377,7 +385,9 @@ private:
     RiskManager(const RiskManager&) = delete;
     RiskManager& operator=(const RiskManager&) = delete;
     
-    RiskEngine engine_;
+    // RiskEngine deletes its copy assignment, so it cannot be a by-value
+    // member that initialize() reassigns. The manager allocates it instead.
+    std::unique_ptr<RiskEngine> engine_;
     bool initialized_ = false;
 };
 
@@ -513,7 +523,13 @@ inline size_t RiskEngine::get_order_count() const {
 
 inline bool RiskEngine::is_circuit_breaker_triggered(const std::string& symbol) {
     std::shared_lock lock(mutex_);
-    auto it = circuit_breaker_triggered_.find(symbol);
+    return is_circuit_breaker_triggered_locked(symbol);
+}
+
+inline bool RiskEngine::is_circuit_breaker_triggered_locked(
+    const std::string& symbol
+) const {
+    const auto it = circuit_breaker_triggered_.find(symbol);
     return it != circuit_breaker_triggered_.end() && it->second;
 }
 
@@ -524,7 +540,14 @@ inline void RiskEngine::reset_circuit_breaker(const std::string& symbol) {
 
 // Risk Manager inline methods
 inline OrderValidationResult RiskManager::validate_order(const Order& order) {
-    auto account_opt = engine_.get_account(order.trader_id);
+    if (!engine_) {
+        return OrderValidationResult{
+            false,
+            OrderRejectReason::RISK_LIMIT_EXCEEDED,
+            "Risk engine not initialized"
+        };
+    }
+    auto account_opt = engine_->get_account(order.trader_id);
     if (!account_opt) {
         return OrderValidationResult{
             false,
@@ -532,24 +555,35 @@ inline OrderValidationResult RiskManager::validate_order(const Order& order) {
             "Account not found"
         };
     }
-    return engine_.validate_order(order, *account_opt);
+    return engine_->validate_order(order, *account_opt);
 }
 
 inline RiskMetrics RiskManager::get_account_risk(const std::string& account_id) {
-    return engine_.calculate_risk_metrics(account_id);
+    if (!engine_) return RiskMetrics{};
+    return engine_->calculate_risk_metrics(account_id);
 }
 
 inline double RiskManager::get_portfolio_var(const std::string& account_id) {
-    return engine_.calculate_portfolio_var(account_id, 99);
+    if (!engine_) return 0.0;
+    return engine_->calculate_portfolio_var(account_id, 99);
 }
 
 inline void RiskManager::initialize(const RiskConfig& config) {
-    engine_ = RiskEngine(config);
+    // A fresh engine, so a re-initialise does not keep the previous state.
+    engine_ = std::make_unique<RiskEngine>(config);
     initialized_ = true;
 }
 
 inline void RiskManager::shutdown() {
+    engine_.reset();
     initialized_ = false;
+}
+
+inline RiskManager& RiskManager::get_instance() {
+    // This was declared and called but never defined, so any caller failed to
+    // link. The constructor is private, so the instance is created here.
+    static RiskManager instance;
+    return instance;
 }
 
 } // namespace risk
