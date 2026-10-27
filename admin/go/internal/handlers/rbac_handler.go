@@ -9,6 +9,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,11 +42,11 @@ func (AdminRole) TableName() string { return "admin_roles" }
 
 // AdminRoleAssignment mirrors the admin_role_assignments table.
 type AdminRoleAssignment struct {
-	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	AdminID   uuid.UUID  `gorm:"type:uuid;index:idx_admin_role_assignments_admin,unique:uniq_admin_role" json:"admin_id"`
-	RoleID    uuid.UUID  `gorm:"type:uuid;index:idx_admin_role_assignments_admin,unique:uniq_admin_role" json:"role_id"`
-	GrantedBy *uuid.UUID `gorm:"type:uuid" json:"granted_by"`
-	GrantedAt time.Time  `json:"granted_at"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	AdminID   uint      `gorm:"index:idx_admin_role_assignments_admin,unique:uniq_admin_role" json:"admin_id"`
+	RoleID    uuid.UUID `gorm:"type:uuid;index:idx_admin_role_assignments_admin,unique:uniq_admin_role" json:"role_id"`
+	GrantedBy *uint     `json:"granted_by"`
+	GrantedAt time.Time `json:"granted_at"`
 }
 
 func (AdminRoleAssignment) TableName() string { return "admin_role_assignments" }
@@ -225,7 +226,7 @@ func (h *RBACHandler) CreatePermission(c *gin.Context) {
 // -------- Assignments --------
 
 func (h *RBACHandler) AssignRole(c *gin.Context) {
-	adminID, err := uuid.Parse(c.Param("id"))
+	adminID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid admin id"})
 		return
@@ -243,17 +244,16 @@ func (h *RBACHandler) AssignRole(c *gin.Context) {
 		return
 	}
 
-	grantedByStr := c.GetString("user_id")
-	var grantedBy *uuid.UUID
-	if grantedByStr != "" {
-		if uid, err := uuid.Parse(grantedByStr); err == nil {
-			grantedBy = &uid
-		}
+	// Audit the granting admin. The previous code read a "user_id" context
+	// value that no middleware sets, so granted_by was always NULL.
+	var grantedBy *uint
+	if actor := c.GetUint("admin_id"); actor != 0 {
+		grantedBy = &actor
 	}
 
 	assignment := AdminRoleAssignment{
 		ID:        uuid.New(),
-		AdminID:   adminID,
+		AdminID:   uint(adminID),
 		RoleID:    roleID,
 		GrantedBy: grantedBy,
 		GrantedAt: time.Now(),
@@ -269,7 +269,7 @@ func (h *RBACHandler) AssignRole(c *gin.Context) {
 }
 
 func (h *RBACHandler) RevokeRole(c *gin.Context) {
-	adminID, err := uuid.Parse(c.Param("id"))
+	adminID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid admin id"})
 		return
@@ -290,7 +290,7 @@ func (h *RBACHandler) RevokeRole(c *gin.Context) {
 // GetEffectivePermissions aggregates permissions across all active roles
 // assigned to an admin (mirrors super_admin's DISTINCT unnest query).
 func (h *RBACHandler) GetEffectivePermissions(c *gin.Context) {
-	adminID, err := uuid.Parse(c.Param("id"))
+	adminID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid admin id"})
 		return

@@ -1873,7 +1873,7 @@ async function loadStaking() {
     const q = await WalletAPI.getStakingQuote();
     const list = q.assets || [];
     document.getElementById('stakingList').innerHTML = list.length
-      ? list.map((a) => `<div class="wallet-item"><div class="wallet-label">${escapeHtml(a.symbol)} <span style="color:var(--text-secondary)">· Chain #${a.chain_id}</span></div><div class="wallet-balance">APY: ${a.apy}% · Min: ${a.min_stake}</div></div>`).join('')
+      ? list.map((a) => `<div class="wallet-item"><div class="wallet-label">${escapeHtml(a.symbol)} <span style="color:var(--text-secondary)">· Chain #${escapeHtml(a.chain_id)}</span></div><div class="wallet-balance">APY: ${escapeHtml(a.apy)}% · Min: ${escapeHtml(a.min_stake)}</div></div>`).join('')
       : '<div class="wallet-label" style="color:var(--text-secondary)">No staking assets available.</div>';
   } catch (err) {
     document.getElementById('stakingList').innerHTML = `<div class="wallet-label" style="color:var(--error)">${escapeHtml(err.message)}</div>`;

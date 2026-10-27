@@ -240,7 +240,13 @@ func (h *SuperAdminHandler) UpdateAdmin(c *gin.Context) {
 	}
 
 	if req.IsActive != nil {
-		updates["is_active"] = *req.IsActive
+		// admins uses a status enum (active/suspended/inactive); there is no
+		// is_active column, so a boolean toggle maps onto that enum.
+		if *req.IsActive {
+			updates["status"] = "active"
+		} else {
+			updates["status"] = "suspended"
+		}
 	}
 
 	if len(updates) > 0 {
@@ -322,7 +328,7 @@ func (h *SuperAdminHandler) SuspendAdmin(c *gin.Context) {
 	lockedUntil := time.Now().Add(24 * time.Hour) // 24 hour suspension
 
 	if err := h.db.Model(&admin).Updates(map[string]interface{}{
-		"is_active":    false,
+		"status":       "suspended",
 		"locked_until": lockedUntil,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to suspend admin"})
@@ -353,7 +359,7 @@ func (h *SuperAdminHandler) ActivateAdmin(c *gin.Context) {
 	}
 
 	if err := h.db.Model(&admin).Updates(map[string]interface{}{
-		"is_active":    true,
+		"status":       "active",
 		"locked_until": nil,
 	}).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to activate admin"})

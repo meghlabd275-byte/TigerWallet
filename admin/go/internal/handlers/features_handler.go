@@ -121,7 +121,7 @@ func (h *FeaturesHandler) Update(c *gin.Context) {
 	if input.Category != "" {
 		updates["category"] = input.Category
 	}
-	updates["rollout_percentage"] = input.RolloutPercent
+	updates["rollout_percent"] = input.RolloutPercent
 
 	if err := h.db.Model(&feature).Updates(updates).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -184,7 +184,7 @@ func (h *FeaturesHandler) SetRollout(c *gin.Context) {
 		return
 	}
 
-	result := h.db.Model(&Feature{}).Where("id = ?", id).Update("rollout_percentage", input.Percentage)
+	result := h.db.Model(&Feature{}).Where("id = ?", id).Update("rollout_percent", input.Percentage)
 
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
@@ -392,4 +392,3 @@ func (h *FeaturesHandler) SetStatus(c *gin.Context) {
 		"enabled": dbEnabled,
 	})
 }
-

@@ -24,18 +24,18 @@ func NewOptionsHandler(db *gorm.DB) *OptionsHandler {
 
 // OptionsContract mirrors the options_contracts table.
 type OptionsContract struct {
-	ID          uint       `gorm:"primaryKey" json:"id"`
-	UserID      *string    `gorm:"index" json:"user_id"`
-	Underlying  string     `gorm:"not null" json:"underlying"`
-	OptionType  string     `gorm:"not null" json:"option_type"`
-	Strike      float64    `gorm:"not null;default:0" json:"strike"`
-	Expiry      *time.Time `gorm:"not null" json:"expiry"`
-	Premium     float64    `gorm:"not null;default:0" json:"premium"`
-	Size        float64    `gorm:"not null;default:0" json:"size"`
-	Status      string     `gorm:"not null;default:'active'" json:"status"`
-	ChainID     *int64     `json:"chain_id"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	UserID     *string    `gorm:"index" json:"user_id"`
+	Underlying string     `gorm:"not null" json:"underlying"`
+	OptionType string     `gorm:"not null" json:"option_type"`
+	Strike     float64    `gorm:"not null;default:0" json:"strike"`
+	Expiry     *time.Time `gorm:"not null" json:"expiry"`
+	Premium    float64    `gorm:"not null;default:0" json:"premium"`
+	Size       float64    `gorm:"not null;default:0" json:"size"`
+	Status     string     `gorm:"not null;default:'active'" json:"status"`
+	ChainID    *int64     `json:"chain_id"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 func (OptionsContract) TableName() string { return "options_contracts" }
@@ -81,6 +81,12 @@ func (h *OptionsHandler) Create(c *gin.Context) {
 	}
 	if item.Status == "" {
 		item.Status = "active"
+	}
+	// expiry is a NOT NULL column: reject the request instead of letting the
+	// database raise a constraint violation (which surfaced as a 500).
+	if item.Underlying == "" || item.OptionType == "" || item.Expiry == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "underlying, option_type and expiry are required"})
+		return
 	}
 	if err := h.db.Create(&item).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

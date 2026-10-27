@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/tigerwallet/admin/pkg/database"
@@ -248,8 +249,8 @@ func (h *BillingHandler) DeletePlan(c *gin.Context) {
 }
 
 func (h *BillingHandler) GetSubscription(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -262,8 +263,8 @@ func (h *BillingHandler) GetSubscription(c *gin.Context) {
 }
 
 func (h *BillingHandler) CreateSubscription(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -344,8 +345,8 @@ func (h *BillingHandler) CreateSubscription(c *gin.Context) {
 }
 
 func (h *BillingHandler) CancelSubscription(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -365,8 +366,8 @@ func (h *BillingHandler) CancelSubscription(c *gin.Context) {
 }
 
 func (h *BillingHandler) GetInvoices(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -383,8 +384,8 @@ func (h *BillingHandler) GetInvoices(c *gin.Context) {
 }
 
 func (h *BillingHandler) GetPaymentMethods(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -397,8 +398,8 @@ func (h *BillingHandler) GetPaymentMethods(c *gin.Context) {
 }
 
 func (h *BillingHandler) AddPaymentMethod(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -454,8 +455,8 @@ func (h *BillingHandler) AddPaymentMethod(c *gin.Context) {
 }
 
 func (h *BillingHandler) DeletePaymentMethod(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -481,8 +482,8 @@ func (h *BillingHandler) DeletePaymentMethod(c *gin.Context) {
 }
 
 func (h *BillingHandler) SetDefaultPaymentMethod(c *gin.Context) {
-	userID := c.GetString("user_id")
-	if userID == "" {
+	userID, ok := billingSubject(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -524,4 +525,22 @@ func addPeriod(from time.Time, period string) time.Time {
 	default:
 		return from.AddDate(0, 1, 0)
 	}
+}
+
+// billingSubject resolves the subscription owner for the current request.
+//
+// Billing is administered through the admin console, so the authenticated
+// principal is an admin, not a subscriber. The subscriber is therefore taken
+// from an explicit "user_id" query parameter when supplied, and otherwise
+// falls back to the admin's own id so the operator can manage their own
+// subscription. Previously these handlers read a "user_id" context value that
+// no middleware ever set, so every endpoint returned 401 unconditionally.
+func billingSubject(c *gin.Context) (string, bool) {
+	if uid := c.Query("user_id"); uid != "" {
+		return uid, true
+	}
+	if adminID := c.GetUint("admin_id"); adminID != 0 {
+		return strconv.FormatUint(uint64(adminID), 10), true
+	}
+	return "", false
 }
