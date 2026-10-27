@@ -194,3 +194,4 @@ protection_fund/go/protection-fund
 payments/go/cmd/payment-gateway/payment-gateway
 payments/go/payment-gateway
 cross_chain_aggregator/go/cross-chain-aggregator
+hardware_wallet/go/backend/hardware-wallet-backend

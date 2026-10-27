@@ -74,7 +74,7 @@ impl EllipalWallet {
         *self.connected.read()
     }
 
-    pub fn get_public_key(&self, path: &str) -> Result<EllipalResponse, EllipalError> {
+    pub fn get_public_key(&self, _path: &str) -> Result<EllipalResponse, EllipalError> {
         if !self.is_connected() {
             return Err(EllipalError::DeviceNotFound);
         }

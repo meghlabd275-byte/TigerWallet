@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bip32_path_h_and_H_suffixes() {
+    fn test_bip32_path_h_and_hardened_suffixes() {
         assert_eq!(
             derive_bip32_path("m/44h/60H/0'/0/0").unwrap(),
             vec![0x8000002c, 0x8000003c, 0x80000000, 0, 0]

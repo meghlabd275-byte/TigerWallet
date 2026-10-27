@@ -70,7 +70,7 @@ impl OneKeyWallet {
         *self.connected.read()
     }
 
-    pub fn get_public_key(&self, path: &str) -> Result<OneKeyResponse, OneKeyError> {
+    pub fn get_public_key(&self, _path: &str) -> Result<OneKeyResponse, OneKeyError> {
         if !self.is_connected() {
             return Err(OneKeyError::DeviceNotFound);
         }
