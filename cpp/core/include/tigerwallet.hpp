@@ -35,18 +35,18 @@ struct Transaction {
     Bytes s;
 };
 
+struct Log {
+    Address address;
+    std::vector<Bytes> topics;
+    Bytes data;
+};
+
 struct TransactionReceipt {
     std::string hash;
     uint64_t block_number;
     bool success;
     uint64_t gas_used;
     std::vector<Log> logs;
-};
-
-struct Log {
-    Address address;
-    std::vector<Bytes> topics;
-    Bytes data;
 };
 
 // Wallet types

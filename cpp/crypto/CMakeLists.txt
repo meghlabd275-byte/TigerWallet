@@ -5,56 +5,38 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Release optimizations for ultra-low latency
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -ffast-math -flto")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -mtune=native -ffast-math -flto")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -flto")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -mtune=native -flto")
 
-# Find packages
+# The crypto implementation lives in cpp/crypto_core: it is self-contained
+# (SHA-256, Keccak, HMAC, PBKDF2, Base58/Base58Check, secure random) and pulls
+# no third-party crypto library. This target previously referenced a
+# tiger_crypto.cpp that does not exist and fetched secp256k1 and Crypto++ over
+# the network at configure time, so it never built. Nothing consumes it yet, so
+# the stale references are dropped rather than guessed at.
+set(CRYPTO_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../crypto_core")
+set(CRYPTO_CORE_SRC "${CRYPTO_CORE_DIR}/src/tiger_crypto.cpp")
+
+if(NOT EXISTS "${CRYPTO_CORE_SRC}")
+    message(FATAL_ERROR
+        "TigerCrypto: expected implementation at ${CRYPTO_CORE_SRC}")
+endif()
+
 find_package(Threads REQUIRED)
-find_package(OpenSSL REQUIRED)
 
-# secp256k1
-include(FetchContent)
-FetchContent_Declare(
-    secp256k1
-    GIT_REPOSITORY https://github.com/bitcoin-core/secp256k1.git
-    GIT_TAG v0.4.0
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(secp256k1)
+add_library(tiger_crypto STATIC "${CRYPTO_CORE_SRC}")
 
-# Crypto++ (for AES-GCM, SHA)
-include(FetchContent)
-FetchContent_Declare(
-    cryptopp
-    GIT_REPOSITORY https://github.com/weidai11/cryptopp.git
-    GIT_TAG CRYPTOPP_8_9_0
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(cryptopp)
-
-# Add library
-add_library(tiger_crypto STATIC 
-    tiger_crypto.cpp
+target_include_directories(tiger_crypto PUBLIC
+    "${CRYPTO_CORE_DIR}/include"
 )
 
-target_include_directories(tiger_crypto PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${secp256k1_INCLUDE_DIRS}
-)
+target_link_libraries(tiger_crypto PUBLIC Threads::Threads)
 
-target_link_libraries(tiger_crypto PUBLIC
-    secp256k1
-    cryptopp
-    OpenSSL::Crypto
-    Threads::Threads
-)
-
-# Enable LTO for release builds
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set_target_properties(tiger_crypto PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
-# Benchmark executable
-add_executable(crypto_benchmark benchmark.cpp)
-target_link_libraries(crypto_benchmark tiger_crypto)
+install(TARGETS tiger_crypto ARCHIVE DESTINATION lib)
+install(FILES "${CRYPTO_CORE_DIR}/include/tiger_crypto.h"
+    DESTINATION include/tiger)

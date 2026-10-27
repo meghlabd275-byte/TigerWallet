@@ -10,6 +10,8 @@
 #include <array>
 #include <cstdint>
 
+#include "tiger_uint256.hpp"
+
 namespace tiger {
 
 // Forward declarations
@@ -18,7 +20,7 @@ class KeyPair;
 class ChainConfig;
 
 // Chain IDs for supported blockchains
-enum class ChainType : uint32_t {
+enum class ChainType : int64_t {
     ETHEREUM = 1,
     POLYGON = 137,
     ARBITRUM = 42161,
@@ -157,11 +159,23 @@ struct TokenConfig {
     std::string explorer_url;
     bool is_active;
     std::string icon_url;
-    uint256_t total_supply;
+    uint256 total_supply;
     bool is_listed;
     
     TokenConfig() : decimals(18), chain(ChainType::ETHEREUM), 
                    is_active(true), total_supply(0), is_listed(true) {}
+};
+
+// Token balance
+struct TokenBalance {
+    std::string contract_address;
+    std::string symbol;
+    std::string name;
+    uint256 balance;
+    uint8_t decimals;
+    uint256 usd_value;
+    
+    TokenBalance() : balance(0), decimals(18), usd_value(0) {}
 };
 
 // Address information
@@ -178,23 +192,11 @@ struct AddressInfo {
                    is_derived(false), balance(0) {}
 };
 
-// Token balance
-struct TokenBalance {
-    std::string contract_address;
-    std::string symbol;
-    std::string name;
-    uint256_t balance;
-    uint8_t decimals;
-    uint256_t usd_value;
-    
-    TokenBalance() : balance(0), decimals(18), usd_value(0) {}
-};
-
 // Transaction data
 struct TransactionData {
     std::string from;
     std::string to;
-    uint256_t value;
+    uint256 value;
     std::string data;
     uint64_t nonce;
     uint64_t gas_price;
@@ -223,10 +225,10 @@ struct SignedTransaction {
 struct SwapQuote {
     std::string from_token;
     std::string to_token;
-    uint256_t from_amount;
-    uint256_t to_amount;
-    uint256_t price_impact;
-    uint256_t gas_estimate;
+    uint256 from_amount;
+    uint256 to_amount;
+    uint256 price_impact;
+    uint256 gas_estimate;
     std::string route;
     std::string dex;
     uint64_t expires_at;
@@ -242,11 +244,11 @@ struct PerpetualPosition {
     std::string collateral_token;
     std::string index_token;
     bool is_long;
-    uint256_t size;
-    uint256_t collateral;
-    uint256_t entry_price;
-    uint256_t mark_price;
-    uint256_t unrealized_pnl;
+    uint256 size;
+    uint256 collateral;
+    uint256 entry_price;
+    uint256 mark_price;
+    uint256 unrealized_pnl;
     uint64_t leverage;
     uint64_t timestamp;
     
@@ -262,8 +264,8 @@ struct TradingSignal {
     std::string token_a;
     std::string token_b;
     std::string action; // BUY, SELL
-    uint256_t amount;
-    uint256_t price;
+    uint256 amount;
+    uint256 price;
     uint64_t timestamp;
     double success_rate;
     
@@ -342,7 +344,7 @@ public:
     Result<void> derive_addresses(ChainType chain, uint32_t count);
     
     // Balance operations
-    Result<uint256_t> get_native_balance(ChainType chain, const std::string& address);
+    Result<uint256> get_native_balance(ChainType chain, const std::string& address);
     Result<std::vector<TokenBalance>> get_token_balances(ChainType chain, const std::string& address);
     Result<AddressInfo> get_full_balance(ChainType chain, const std::string& address);
     
@@ -362,13 +364,13 @@ public:
     Result<SwapQuote> get_swap_quote(
         const std::string& from_token,
         const std::string& to_token,
-        uint256_t amount,
+        uint256 amount,
         ChainType chain
     );
     Result<SignedTransaction> execute_swap(
         const SwapQuote& quote,
         const std::string& from_address,
-        uint256_t slippage_tolerance
+        uint256 slippage_tolerance
     );
     
     // Perpetual trading
@@ -376,13 +378,13 @@ public:
         const std::string& collateral_token,
         const std::string& index_token,
         bool is_long,
-        uint256_t collateral_amount,
+        uint256 collateral_amount,
         uint64_t leverage
     );
     Result<PerpetualPosition> close_perpetual_position(const std::string& position_id);
     Result<PerpetualPosition> update_perpetual_position(
         const std::string& position_id,
-        uint256_t new_collateral,
+        uint256 new_collateral,
         uint64_t new_leverage
     );
     Result<std::vector<PerpetualPosition>> get_perpetual_positions(const std::string& trader);
@@ -394,7 +396,7 @@ public:
         const std::string& trader_address,
         uint32_t limit = 100
     );
-    Result<void> execute_copy_trade(const TradingSignal& signal, uint256_t amount);
+    Result<void> execute_copy_trade(const TradingSignal& signal, uint256 amount);
     Result<std::vector<TradingSignal>> get_top_traders(uint32_t limit = 50);
     
     // Chain and token management
