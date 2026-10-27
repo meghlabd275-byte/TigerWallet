@@ -2,7 +2,7 @@
 // Designed for microsecond-level trading performance
 
 #ifndef TRADING_ENGINE_ULTRA_HPP
-#define TRADING_ULTRA_HPP_HPP
+#define TRADING_ENGINE_ULTRA_HPP
 
 #include <atomic>
 #include <chrono>
@@ -15,6 +15,8 @@
 #include <vector>
 #include <array>
 #include <cstdint>
+#include <cstring>
+#include <cstdio>
 
 // ============================================================================
 // High-Performance Types
@@ -26,9 +28,11 @@ using UserID = uint64_t;
 using Price = double;
 using Quantity = double;
 
-// Constants for ultra-low latency
-constexpr size_t MAX_PAIRS = 50000;
-constexpr size_t MAX_ORDERS = 1000000;
+// Constants for ultra-low latency.
+// FastHashMap masks its index with (N - 1), so N must be a power of two; 50000
+// is not, and the static assertion in the class rejected it.
+constexpr size_t MAX_PAIRS = 65536;
+constexpr size_t MAX_ORDERS = 1048576;
 constexpr size_t CACHE_LINE_SIZE = 64;
 
 // ============================================================================
@@ -86,8 +90,16 @@ struct TradingPair {
     double makerFee;
     double takerFee;
     
-    // Pad to cache line
-    char _padding[CACHE_LINE_SIZE - (32 + 16 + 16 + 8 + 8 + 8 + 8 + 8 + 1 + 1 + 8 + 8 + 8)];
+    // Pad to a cache line. The hand-written size subtracted 124 from a
+    // 64-byte constant, so the bound underflowed and the array size was
+    // ~1.8e19. The padding is now derived from the members that precede it.
+    char _padding[CACHE_LINE_SIZE > (sizeof(symbol) + sizeof(base) + sizeof(quote) +
+        sizeof(std::atomic<Price>) * 4 + sizeof(std::atomic<double>) +
+        sizeof(bool) * 2 + sizeof(double) * 4)
+        ? CACHE_LINE_SIZE - (sizeof(symbol) + sizeof(base) + sizeof(quote) +
+            sizeof(std::atomic<Price>) * 4 + sizeof(std::atomic<double>) +
+            sizeof(bool) * 2 + sizeof(double) * 4)
+        : 1];
 } __attribute__((aligned(CACHE_LINE_SIZE)));
 
 struct alignas(CACHE_LINE_SIZE) Order {
@@ -106,8 +118,13 @@ struct alignas(CACHE_LINE_SIZE) Order {
     Timestamp createTime;
     Timestamp updateTime;
     
-    // Cache-aligned for concurrent access
-    char _padding[CACHE_LINE_SIZE - (8 + 8 + 32 + 1 + 1 + 8 + 8 + 8 + 8 + 4 + 1 + 1 + 8 + 8)];
+    char _padding[CACHE_LINE_SIZE > (sizeof(OrderID) + sizeof(UserID) + sizeof(symbol) +
+        sizeof(OrderSide) + sizeof(OrderType) + sizeof(Quantity) * 2 + sizeof(Price) * 2 +
+        sizeof(int) + sizeof(MarginMode) + sizeof(OrderStatus) + sizeof(Timestamp) * 2)
+        ? CACHE_LINE_SIZE - (sizeof(OrderID) + sizeof(UserID) + sizeof(symbol) +
+            sizeof(OrderSide) + sizeof(OrderType) + sizeof(Quantity) * 2 + sizeof(Price) * 2 +
+            sizeof(int) + sizeof(MarginMode) + sizeof(OrderStatus) + sizeof(Timestamp) * 2)
+        : 1];
 };
 
 struct alignas(CACHE_LINE_SIZE) Position {
@@ -126,7 +143,13 @@ struct alignas(CACHE_LINE_SIZE) Position {
     Price liquidationPrice;
     Timestamp openTime;
     
-    char _padding[CACHE_LINE_SIZE - (8 + 8 + 32 + 1 + 8 + 8 + 8 + 4 + 8 + 1 + 8 + 8 + 8 + 8)];
+    char _padding[CACHE_LINE_SIZE > (sizeof(OrderID) + sizeof(UserID) + sizeof(symbol) +
+        sizeof(PositionSide) + sizeof(Quantity) * 2 + sizeof(Price) * 3 + sizeof(int) +
+        sizeof(MarginMode) + sizeof(double) * 2 + sizeof(Timestamp))
+        ? CACHE_LINE_SIZE - (sizeof(OrderID) + sizeof(UserID) + sizeof(symbol) +
+            sizeof(PositionSide) + sizeof(Quantity) * 2 + sizeof(Price) * 3 + sizeof(int) +
+            sizeof(MarginMode) + sizeof(double) * 2 + sizeof(Timestamp))
+        : 1];
 };
 
 // ============================================================================
@@ -138,7 +161,11 @@ class LockFreeRingBuffer {
     static_assert((N & (N - 1)) == 0, "Size must be power of 2");
     
 public:
-    LockFreeRingBuffer() : head_(0), tail_(0) {}
+    LockFreeRingBuffer()
+        : buffer_(std::make_unique<std::array<T, N>>()), head_(0), tail_(0) {}
+
+    LockFreeRingBuffer(const LockFreeRingBuffer&) = delete;
+    LockFreeRingBuffer& operator=(const LockFreeRingBuffer&) = delete;
     
     bool push(const T& item) {
         size_t head = head_.load(std::memory_order_relaxed);
@@ -146,7 +173,7 @@ public:
         if (next_head == tail_.load(std::memory_order_acquire)) {
             return false;
         }
-        buffer_[head] = item;
+        (*buffer_)[head] = item;
         head_.store(next_head, std::memory_order_release);
         return true;
     }
@@ -156,7 +183,7 @@ public:
         if (tail == head_.load(std::memory_order_acquire)) {
             return false;
         }
-        item = buffer_[tail];
+        item = (*buffer_)[tail];
         tail_.store((tail + 1) & (N - 1), std::memory_order_release);
         return true;
     }
@@ -172,7 +199,11 @@ public:
     }
 
 private:
-    alignas(CACHE_LINE_SIZE) std::array<T, N> buffer_;
+    // 65536 slots of a cache-line-aligned Order is 4 MB. Held by value this
+    // became part of the engine object and, together with the hash tables,
+    // pushed it past the default 8 MB stack, so constructing the engine
+    // crashed. On the heap the object stays small.
+    std::unique_ptr<std::array<T, N>> buffer_;
     std::atomic<size_t> head_;
     std::atomic<size_t> tail_;
 };
@@ -183,62 +214,104 @@ private:
 
 template<typename Key, typename Value, size_t N>
 class FastHashMap {
-    static_assert((N & (N - 1)) == 0, "Size must be power of 2");
-    
+    // N must be a power of two because the probe index is masked with (N - 1).
+    static_assert((N & (N - 1)) == 0, "Size must be power of two");
+
 public:
-    FastHashMap() {
-        std::fill(keys_.begin(), keys_.end(), 0);
-    }
-    
-    bool insert(Key key, const Value& value) {
-        size_t idx = hash(key);
-        for (size_t i = 0; i < 8; ++i) {
-            size_t pos = (idx + i) & (N - 1);
-            if (keys_[pos] == 0 || keys_[pos] == key) {
-                keys_[pos] = key;
-                values_[pos] = value;
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    Value* find(Key key) {
-        size_t idx = hash(key);
-        for (size_t i = 0; i < 8; ++i) {
-            size_t pos = (idx + i) & (N - 1);
-            if (keys_[pos] == key) {
-                return &values_[pos];
-            }
-            if (keys_[pos] == 0) {
-                return nullptr;
-            }
-        }
-        return nullptr;
-    }
-    
-    bool erase(Key key) {
-        size_t idx = hash(key);
-        for (size_t i = 0; i < 8; ++i) {
-            size_t pos = (idx + i) & (N - 1);
-            if (keys_[pos] == key) {
-                keys_[pos] = 0;
-                return true;
-            }
-            if (keys_[pos] == 0) {
-                return false;
-            }
-        }
-        return false;
+    FastHashMap()
+        : keys_(std::make_unique<std::array<Key, N>>()),
+          values_(std::make_unique<std::array<Value, N>>()),
+          occupied_(std::make_unique<std::array<bool, N>>()),
+          tombstones_(std::make_unique<std::array<bool, N>>()) {
+        // Occupancy is tracked in its own bitmap. The previous version used
+        // `keys_[pos] == 0` to mean "empty", which cannot work when Key is
+        // std::string: there is no integer zero to compare against, so the
+        // class did not compile for the string-keyed instantiations it is used
+        // with. A bitmap works for any key type.
+        occupied_->fill(false);
+        tombstones_->fill(false);
     }
 
-private:
-    size_t hash(Key key) const {
-        return (key * 11400714819323198485ull) >> (64 - 20);
+    FastHashMap(const FastHashMap&) = delete;
+    FastHashMap& operator=(const FastHashMap&) = delete;
+
+    bool insert(const Key& key, const Value& value) {
+        const size_t idx = hash(key);
+        for (size_t i = 0; i < kMaxProbe; ++i) {
+            const size_t pos = (idx + i) & (N - 1);
+            if (!(*occupied_)[pos]) {
+                (*keys_)[pos] = key;
+                (*values_)[pos] = value;
+                (*occupied_)[pos] = true;
+                ++count_;
+                return true;
+            }
+            if ((*keys_)[pos] == key) {
+                // Overwrite an existing key rather than adding a second entry.
+                (*values_)[pos] = value;
+                return true;
+            }
+        }
+        return false; // The probe window is full.
     }
-    
-    std::array<Key, N> keys_;
-    std::array<Value, N> values_;
+
+    Value* find(const Key& key) {
+        const size_t pos = findPos(key);
+        return pos == npos ? nullptr : &(*values_)[pos];
+    }
+
+    const Value* find(const Key& key) const {
+        const size_t pos = findPos(key);
+        return pos == npos ? nullptr : &(*values_)[pos];
+    }
+
+    bool erase(const Key& key) {
+        const size_t pos = findPos(key);
+        if (pos == npos) return false;
+        // Marking the slot free would break probe chains for keys that
+        // collided with this one, so the slot keeps its key and is tombstoned.
+        (*occupied_)[pos] = false;
+        (*tombstones_)[pos] = true;
+        --count_;
+        return true;
+    }
+
+    size_t size() const { return count_; }
+
+private:
+    static constexpr size_t npos = static_cast<size_t>(-1);
+    static constexpr size_t kMaxProbe = 8;
+
+    size_t hash(const Key& key) const {
+        // The original mixed the key with a 64-bit constant, which only
+        // applies to integral keys. std::hash covers the string keys used here.
+        return std::hash<Key>{}(key) & (N - 1);
+    }
+
+    size_t findPos(const Key& key) const {
+        const size_t idx = hash(key);
+        for (size_t i = 0; i < kMaxProbe; ++i) {
+            const size_t pos = (idx + i) & (N - 1);
+            if (!(*occupied_)[pos] && !(*tombstones_)[pos]) {
+                return npos; // A never-used slot ends the probe chain.
+            }
+            if ((*occupied_)[pos] && (*keys_)[pos] == key) {
+                return pos;
+            }
+        }
+        return npos;
+    }
+
+    // The four tables are ~32 MB at the sizes this engine uses (65536 string
+    // keys plus a million order slots). Held by value they became part of the
+    // engine object, which then could not be constructed on an 8 MB stack. On
+    // the heap the engine object stays small and the tables are sized at
+    // runtime.
+    std::unique_ptr<std::array<Key, N>> keys_;
+    std::unique_ptr<std::array<Value, N>> values_;
+    std::unique_ptr<std::array<bool, N>> occupied_;
+    std::unique_ptr<std::array<bool, N>> tombstones_;
+    size_t count_ = 0;
 };
 
 // ============================================================================
@@ -266,6 +339,12 @@ public:
     // Position management
     Position* getPosition(UserID userId, const char* symbol);
     std::vector<Position*> getUserPositions(UserID userId);
+
+    // Opens or replaces the position for this user and symbol. Without this
+    // there was no way for a position to exist, so getPosition always returned
+    // nullptr and getUserPositions always returned an empty vector.
+    Position* openPosition(UserID userId, const char* symbol, PositionSide side,
+                            Quantity size, Price entryPrice, int leverage);
     
     // Market data - Lock-free reads
     Price getPrice(const char* symbol) const;
@@ -289,6 +368,13 @@ private:
     // Order processing ring buffer
     LockFreeRingBuffer<Order, 65536> orderQueue_;
     
+    // FastHashMap cannot be iterated, so ownership and the pre-installed
+    // subset are tracked alongside it.
+    std::vector<TradingPair*> ownedPairs_;
+    std::vector<TradingPair*> preInstalledPairs_;
+    std::vector<Order*> ownedOrders_;
+    std::vector<Position*> ownedPositions_;
+
     std::atomic<size_t> pairsCount_;
     std::atomic<size_t> ordersCount_;
     
@@ -312,41 +398,34 @@ inline UltraLowLatencyTradingEngine::UltraLowLatencyTradingEngine()
     initializePairs();
 }
 
-inline UltraLowLatencyTradingEngine::~UltraLowLatencyTradingEngine() {}
+inline UltraLowLatencyTradingEngine::~UltraLowLatencyTradingEngine() {
+    // The engine owns every TradingPair and Order it allocated. The previous
+    // empty destructor leaked all of them.
+    for (TradingPair* pair : ownedPairs_) {
+        delete pair;
+    }
+    ownedPairs_.clear();
+    preInstalledPairs_.clear();
+    for (Order* order : ownedOrders_) {
+        delete order;
+    }
+    ownedOrders_.clear();
+    for (Position* position : ownedPositions_) {
+        delete position;
+    }
+    ownedPositions_.clear();
+}
 
 inline void UltraLowLatencyTradingEngine::initializePairs() {
-    // Initialize with 50,000+ pairs
-    const char* bases[] = {
-        "BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "LINK",
-        "MATIC", "LTC", "UNI", "ATOM", "XLM", "NEAR", "APT", "ARB", "OP", "INJ"
-    };
-    const char* quotes[] = {"USDT", "USDC"};
-    
-    double prices[] = {43250.0, 2280.0, 312.5, 98.75, 0.62, 0.082, 0.58, 38.20, 7.85, 14.50,
-                       0.92, 72.30, 6.25, 10.45, 0.125, 3.25, 9.80, 1.12, 2.45, 35.50};
-    
-    int id = 0;
-    
-    // Top 200 pre-installed pairs
-    for (int i = 0; i < 20; ++i) {
-        for (int j = 0; j < 2; ++j) {
-            if (i < 20) {
-                char symbol[32];
-                snprintf(symbol, sizeof(symbol), "%s/%s", bases[i], quotes[j]);
-                addTradingPair(symbol, bases[i], quotes[j], prices[i], id < 200);
-                id++;
-            }
-        }
-    }
-    
-    // Additional pairs to reach 50,000+
-    for (int i = 201; i <= 50000; ++i) {
-        char symbol[32];
-        char base[32];
-        snprintf(base, sizeof(base), "TOKEN%d", i);
-        snprintf(symbol, sizeof(symbol), "%s/USDT", base);
-        addTradingPair(symbol, base, "USDT", 10.0 + i * 0.001, false);
-    }
+    // This used to seed 50,000 pairs: 40 real-looking ones with hardcoded
+    // prices, then 49,800 synthetic "TOKEN<n>/USDT" pairs priced from the loop
+    // counter. getTotalPairs() then reported 50,000 and getPreInstalledPairs()
+    // reported nothing. A pair is now only present once something with a real
+    // market has registered it through addTradingPair, so the count reflects
+    // pairs that actually exist.
+    //
+    // Nothing is pre-registered here on purpose. A caller that wants a pair
+    // supplies its symbol and a price obtained from a real source.
 }
 
 inline void UltraLowLatencyTradingEngine::addTradingPair(
@@ -370,17 +449,35 @@ inline void UltraLowLatencyTradingEngine::addTradingPair(
     pair->makerFee = 0.02;
     pair->takerFee = 0.04;
     
-    pairs_.insert(std::string(symbol), pair);
+    if (!pairs_.insert(std::string(symbol), pair)) {
+        // The table is full, so the pair is not registered. Do not leak it and
+        // do not count it.
+        delete pair;
+        return;
+    }
+    ownedPairs_.push_back(pair);
+    if (isPreInstalled) {
+        preInstalledPairs_.push_back(pair);
+    }
     pairsCount_.fetch_add(1, std::memory_order_relaxed);
 }
 
 inline TradingPair* UltraLowLatencyTradingEngine::getTradingPair(const char* symbol) {
-    return *pairs_.find(std::string(symbol));
+    // find() returns a pointer to the stored value, and the stored value is
+    // itself a TradingPair*, so this is one dereference, not two.
+    TradingPair** slot = pairs_.find(std::string(symbol));
+    return slot ? *slot : nullptr;
 }
 
 inline std::vector<TradingPair*> UltraLowLatencyTradingEngine::getPreInstalledPairs() {
     std::vector<TradingPair*> result;
-    // This would iterate through pairs_ to find pre-installed ones
+    // addTradingPair records pre-installed pairs here, because FastHashMap has
+    // no iteration interface and the previous version returned an empty vector
+    // unconditionally.
+    result.reserve(preInstalledPairs_.size());
+    for (TradingPair* pair : preInstalledPairs_) {
+        result.push_back(pair);
+    }
     return result;
 }
 
@@ -406,14 +503,21 @@ inline OrderID UltraLowLatencyTradingEngine::createOrder(
     order->createTime = getCurrentTimestamp();
     order->updateTime = order->createTime;
     
-    orders_.insert(orderId, order);
+    if (!orders_.insert(orderId, order)) {
+        // The order table is full. Report failure rather than returning an id
+        // for an order that was never stored.
+        delete order;
+        return 0;
+    }
+    ownedOrders_.push_back(order);
     ordersCount_.fetch_add(1, std::memory_order_relaxed);
     
     return orderId;
 }
 
 inline bool UltraLowLatencyTradingEngine::cancelOrder(OrderID orderId) {
-    Order* order = *orders_.find(orderId);
+    Order** slot = orders_.find(orderId);
+    Order* order = slot ? *slot : nullptr;
     if (order && order->status == OrderStatus::OPEN) {
         order->status = OrderStatus::CANCELLED;
         order->updateTime = getCurrentTimestamp();
@@ -423,7 +527,8 @@ inline bool UltraLowLatencyTradingEngine::cancelOrder(OrderID orderId) {
 }
 
 inline bool UltraLowLatencyTradingEngine::modifyOrder(OrderID orderId, Price newPrice, Quantity newSize) {
-    Order* order = *orders_.find(orderId);
+    Order** slot = orders_.find(orderId);
+    Order* order = slot ? *slot : nullptr;
     if (order && order->status == OrderStatus::OPEN) {
         order->price = newPrice;
         order->size = newSize;
@@ -435,18 +540,80 @@ inline bool UltraLowLatencyTradingEngine::modifyOrder(OrderID orderId, Price new
 
 inline Position* UltraLowLatencyTradingEngine::getPosition(UserID userId, const char* symbol) {
     char key[64];
-    snprintf(key, sizeof(key), "%lu_%s", userId, symbol);
-    return *positions_.find(std::string(key));
+    snprintf(key, sizeof(key), "%lu_%s",
+             static_cast<unsigned long>(userId), symbol);
+    Position** slot = positions_.find(std::string(key));
+    return slot ? *slot : nullptr;
 }
 
 inline std::vector<Position*> UltraLowLatencyTradingEngine::getUserPositions(UserID userId) {
     std::vector<Position*> result;
-    // Would iterate through positions_
+    for (Position* position : ownedPositions_) {
+        if (position == nullptr) continue;
+        // Compare the recorded owner. Rebuilding the key from the requested
+        // userId and the position's symbol would match every position, since
+        // the requested id is the same on both sides of the comparison.
+        if (position->userId == userId) {
+            result.push_back(position);
+        }
+    }
     return result;
 }
 
+inline Position* UltraLowLatencyTradingEngine::openPosition(
+    UserID userId, const char* symbol, PositionSide side,
+    Quantity size, Price entryPrice, int leverage) {
+
+    if (symbol == nullptr || size <= 0 || entryPrice <= 0) return nullptr;
+
+    char key[64];
+    snprintf(key, sizeof(key), "%lu_%s",
+             static_cast<unsigned long>(userId), symbol);
+    const std::string positionKey(key);
+
+    Position** existing = positions_.find(positionKey);
+    if (existing != nullptr && *existing != nullptr) {
+        // Replace the existing position's figures rather than creating a
+        // second one under the same key, which the table would reject.
+        Position* position = *existing;
+        position->side = side;
+        position->size = size;
+        position->entryPrice = entryPrice;
+        position->markPrice = entryPrice;
+        position->leverage = leverage;
+        position->margin = (size * entryPrice) / (leverage > 0 ? leverage : 1);
+        position->openTime = getCurrentTimestamp();
+        return position;
+    }
+
+    Position* position = new Position();
+    position->id = nextOrderId_.fetch_add(1, std::memory_order_relaxed);
+    position->userId = userId;
+    strncpy(position->symbol, symbol, sizeof(position->symbol) - 1);
+    position->symbol[sizeof(position->symbol) - 1] = '\0';
+    position->side = side;
+    position->size = size;
+    position->entryPrice = entryPrice;
+    position->markPrice = entryPrice;
+    position->leverage = leverage;
+    position->margin = (size * entryPrice) / (leverage > 0 ? leverage : 1);
+    position->marginMode = MarginMode::CROSS;
+    position->pnl = 0;
+    position->pnlPercent = 0;
+    position->liquidationPrice = 0;
+    position->openTime = getCurrentTimestamp();
+
+    if (!positions_.insert(positionKey, position)) {
+        delete position;
+        return nullptr;
+    }
+    ownedPositions_.push_back(position);
+    return position;
+}
+
 inline Price UltraLowLatencyTradingEngine::getPrice(const char* symbol) const {
-    TradingPair* pair = *((TradingPair**)pairs_.find(std::string(symbol)));
+    const TradingPair* const* slot = pairs_.find(std::string(symbol));
+    const TradingPair* pair = slot ? *slot : nullptr;
     if (pair) {
         return pair->price.load(std::memory_order_acquire);
     }
@@ -454,7 +621,8 @@ inline Price UltraLowLatencyTradingEngine::getPrice(const char* symbol) const {
 }
 
 inline void UltraLowLatencyTradingEngine::updatePrice(const char* symbol, Price newPrice) {
-    TradingPair* pair = *pairs_.find(std::string(symbol));
+    TradingPair** slot = pairs_.find(std::string(symbol));
+    TradingPair* pair = slot ? *slot : nullptr;
     if (pair) {
         Price oldPrice = pair->price.load(std::memory_order_relaxed);
         pair->price.store(newPrice, std::memory_order_release);
