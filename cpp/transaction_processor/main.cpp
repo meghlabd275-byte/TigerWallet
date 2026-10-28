@@ -55,8 +55,8 @@ int run_demo() {
         
         tx->type = TransactionType::EVM;
         tx->status = TransactionStatus::PENDING;
-        tx->from = "0x742d35Cc6634C0532925a3b844Bc9e7595f8a1E1";
-        tx->to = "0x8Ba1f109551bD432803012645Ac136ddd64DBA72";
+        tx->from = "0x742D35cc6634C0532925A3b844bc9E7595F8a1E1";
+        tx->to = "0x8ba1f109551bD432803012645Ac136ddd64DBA72";
         tx->nonce = std::to_string(i);
         tx->value = "1000000000000000000"; // 1 ETH
         tx->gas_price = "20000000000"; // 20 Gwei
