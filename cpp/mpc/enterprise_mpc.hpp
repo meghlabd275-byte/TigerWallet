@@ -841,6 +841,14 @@ public:
         walletPolicies_[walletAddress].push_back(policyId);
     }
 
+    // Evaluates one policy rule against a transaction.
+    //
+    // Exposed so a caller can check a single rule directly, and so the rule
+    // logic can be tested without standing up a whole policy.
+    bool evaluateRule(const PolicyRule& rule, const TransactionRequest& tx) {
+        return evaluateRuleInternal(rule, tx);
+    }
+
 private:
     std::map<std::string, Policy> policies_;
     std::map<Address, std::vector<std::string>> walletPolicies_;
@@ -854,7 +862,7 @@ private:
     //
     // A rule type that is not understood is refused, because a policy that
     // cannot be evaluated must not approve.
-    bool evaluateRule(const PolicyRule& rule, const TransactionRequest& tx) {
+    bool evaluateRuleInternal(const PolicyRule& rule, const TransactionRequest& tx) {
         if (rule.type == "daily_limit") {
             return withinDailyLimit(rule, tx);
         }

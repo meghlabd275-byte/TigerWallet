@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cstdio>
 #include <string>
+#include <algorithm>
 #include <vector>
 
 using namespace tigerwallet::mev;
@@ -21,12 +22,35 @@ const char* kRouter = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 const char* kWeth = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 const char* kUsdc = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
-// Left-pads a hex string to a 32-byte word.
-std::string word(const std::string& hex) {
-    std::string out = hex;
-    if (out.rfind("0x", 0) == 0) out = out.substr(2);
-    while (out.size() < 64) out = "0" + out;
-    return out;
+// A uint256 as a 32-byte word.
+//
+// The previous helper padded its argument as if it were already hex, so a
+// caller writing word("160") produced the value 0x160 (352) rather than 160.
+// The path offset came out as 352 bytes, which points past the end of the
+// calldata, so decoding failed and the detector never ran. Taking a number and
+// converting it removes the ambiguity.
+//
+// A 128-bit type is used because a realistic amount such as 50 WETH in wei is
+// 5e19, which does not fit in 64 bits.
+std::string word(unsigned __int128 value) {
+    std::string hex;
+    do {
+        const int digit = static_cast<int>(value % 16);
+        hex.push_back(static_cast<char>(digit < 10 ? '0' + digit : 'a' + digit - 10));
+        value /= 16;
+    } while (value != 0);
+    std::reverse(hex.begin(), hex.end());
+    while (hex.size() < 64) hex = "0" + hex;
+    return hex;
+}
+
+// A whole-token amount in base units, which is what the calldata carries.
+unsigned __int128 tokens(uint64_t whole, uint8_t decimals) {
+    unsigned __int128 value = whole;
+    for (uint8_t i = 0; i < decimals; ++i) {
+        value *= 10;
+    }
+    return value;
 }
 
 std::string address_word(const std::string& address) {
@@ -38,14 +62,14 @@ std::string address_word(const std::string& address) {
 
 // swapExactTokensForTokens(amountIn, amountOutMin, path[], to, deadline)
 std::string encode_swap_exact_tokens_for_tokens(
-    uint64_t amount_in, const std::string& token_in, const std::string& token_out) {
+    unsigned __int128 amount_in, const std::string& token_in, const std::string& token_out) {
     std::string data = "0x38ed1739";
-    data += word(std::to_string(amount_in));
-    data += word("0");                                    // amountOutMin
-    data += word("160");                                  // path offset
+    data += word(amount_in);
+    data += word(0);                                    // amountOutMin
+    data += word(160);                                  // path offset
     data += address_word("0x1111111111111111111111111111111111111111");  // to
-    data += word(std::to_string(9999999999ULL));          // deadline
-    data += word("2");                                    // path length
+    data += word(9999999999ULL);                        // deadline
+    data += word(2);                                    // path length
     data += address_word(token_in);
     data += address_word(token_out);
     return data;
@@ -54,11 +78,11 @@ std::string encode_swap_exact_tokens_for_tokens(
 // swapExactETHForTokens(amountOutMin, path[], to, deadline)
 std::string encode_swap_exact_eth_for_tokens(const std::string& token_out) {
     std::string data = "0x7ff36ab5";
-    data += word("0");                                    // amountOutMin
-    data += word("128");                                  // path offset
+    data += word(0);                                    // amountOutMin
+    data += word(128);                                  // path offset
     data += address_word("0x1111111111111111111111111111111111111111");  // to
-    data += word(std::to_string(9999999999ULL));          // deadline
-    data += word("2");                                    // path length
+    data += word(9999999999ULL);                        // deadline
+    data += word(2);                                    // path length
     data += address_word(kWeth);
     data += address_word(token_out);
     return data;
@@ -103,7 +127,7 @@ int main() {
         protector.add_pool(MakePool());
 
         const Transaction victim =
-            MakeSwap("0xvictim", encode_swap_exact_tokens_for_tokens(10, kWeth, kUsdc), 20000000000ULL);
+            MakeSwap("0xvictim", encode_swap_exact_tokens_for_tokens(tokens(10, 18), kWeth, kUsdc), 20000000000ULL);
 
         const auto result = protector.protect(victim, {});
         assert(result.allowed);
@@ -132,20 +156,24 @@ int main() {
         config.enable_flashbots = false;
         MEVProtector protector(config);
         protector.add_pool(MakePool());
-        // A WETH price, so the profit can be expressed in dollars.
+        // WETH and USDC are priced and registered, so the profit can be
+        // expressed in dollars and the decimals are known.
+        protector.add_token(kWeth, "WETH", 18);
+        protector.add_token(kUsdc, "USDC", 6);
         protector.update_price(kWeth, 2000.0);
+        protector.update_price(kUsdc, 1.0);
 
         // The victim buys USDC with 10 WETH.
         const Transaction victim = MakeSwap(
-            "0xvictim", encode_swap_exact_tokens_for_tokens(10, kWeth, kUsdc), 20000000000ULL);
+            "0xvictim", encode_swap_exact_tokens_for_tokens(tokens(10, 18), kWeth, kUsdc), 20000000000ULL);
 
         // The attacker front-runs with 50 WETH at a higher gas price.
         const Transaction front_run = MakeSwap(
-            "0xfrontrun", encode_swap_exact_tokens_for_tokens(50, kWeth, kUsdc), 40000000000ULL);
+            "0xfrontrun", encode_swap_exact_tokens_for_tokens(tokens(50, 18), kWeth, kUsdc), 40000000000ULL);
 
         // ...and back-runs by selling USDC for WETH.
         const Transaction back_run = MakeSwap(
-            "0xbackrun", encode_swap_exact_tokens_for_tokens(100000, kUsdc, kWeth), 30000000000ULL);
+            "0xbackrun", encode_swap_exact_tokens_for_tokens(tokens(100000, 6), kUsdc, kWeth), 30000000000ULL);
 
         const auto result = protector.protect(victim, {front_run, back_run});
 
@@ -175,9 +203,9 @@ int main() {
         protector.update_price(kWeth, 2000.0);
 
         const Transaction victim = MakeSwap(
-            "0xvictim", encode_swap_exact_tokens_for_tokens(10, kWeth, kUsdc), 20000000000ULL);
+            "0xvictim", encode_swap_exact_tokens_for_tokens(tokens(10, 18), kWeth, kUsdc), 20000000000ULL);
         const Transaction front_run = MakeSwap(
-            "0xfrontrun", encode_swap_exact_tokens_for_tokens(50, kWeth, kUsdc), 40000000000ULL);
+            "0xfrontrun", encode_swap_exact_tokens_for_tokens(tokens(50, 18), kWeth, kUsdc), 40000000000ULL);
 
         // No back-run, so no profit can be taken.
         const auto result = protector.protect(victim, {front_run});
@@ -195,14 +223,14 @@ int main() {
         protector.update_price(kWeth, 2000.0);
 
         const Transaction victim = MakeSwap(
-            "0xvictim", encode_swap_exact_tokens_for_tokens(10, kWeth, kUsdc), 20000000000ULL);
+            "0xvictim", encode_swap_exact_tokens_for_tokens(tokens(10, 18), kWeth, kUsdc), 20000000000ULL);
         const Transaction other = MakeSwap(
             "0xother",
             encode_swap_exact_tokens_for_tokens(50, kUsdc, kWeth),
             40000000000ULL);
         const Transaction other_back = MakeSwap(
             "0xotherback",
-            encode_swap_exact_tokens_for_tokens(50, kWeth, kUsdc),
+            encode_swap_exact_tokens_for_tokens(tokens(50, 18), kWeth, kUsdc),
             40000000000ULL);
 
         const auto result = protector.protect(victim, {other, other_back});
@@ -216,14 +244,17 @@ int main() {
         config.enable_flashbots = false;
         MEVProtector protector(config);
         protector.add_pool(MakePool());
+        protector.add_token(kWeth, "WETH", 18);
+        protector.add_token(kUsdc, "USDC", 6);
         protector.update_price(kWeth, 2000.0);
+        protector.update_price(kUsdc, 1.0);
 
         const Transaction victim = MakeSwap(
             "0xvictim", encode_swap_exact_eth_for_tokens(kUsdc), 20000000000ULL, 5000000000000000000ULL);
         const Transaction front_run = MakeSwap(
             "0xfrontrun", encode_swap_exact_eth_for_tokens(kUsdc), 40000000000ULL, 20000000000000000000ULL);
         const Transaction back_run = MakeSwap(
-            "0xbackrun", encode_swap_exact_tokens_for_tokens(100000, kUsdc, kWeth), 30000000000ULL);
+            "0xbackrun", encode_swap_exact_tokens_for_tokens(tokens(100000, 6), kUsdc, kWeth), 30000000000ULL);
 
         const auto result = protector.protect(victim, {front_run, back_run});
         assert(result.attack.has_value());
@@ -238,13 +269,13 @@ int main() {
         MEVProtector protector(config);
 
         // No gas limit.
-        Transaction no_gas = MakeSwap("0x1", encode_swap_exact_tokens_for_tokens(1, kWeth, kUsdc), 1);
+        Transaction no_gas = MakeSwap("0x1", encode_swap_exact_tokens_for_tokens(tokens(1, 18), kWeth, kUsdc), 1);
         no_gas.gas_limit = 0;
         const auto rejected = protector.protect(no_gas, {});
         assert(!rejected.allowed);
 
         // Priority fee above the max fee, which a node rejects.
-        Transaction bad_fees = MakeSwap("0x2", encode_swap_exact_tokens_for_tokens(1, kWeth, kUsdc), 1);
+        Transaction bad_fees = MakeSwap("0x2", encode_swap_exact_tokens_for_tokens(tokens(1, 18), kWeth, kUsdc), 1);
         bad_fees.max_priority_fee_per_gas = 5000;
         bad_fees.max_fee_per_gas = 1000;
         const auto bad = protector.protect(bad_fees, {});
@@ -252,7 +283,7 @@ int main() {
         assert(bad.reason.find("Priority fee") != std::string::npos);
 
         // No sender.
-        Transaction no_from = MakeSwap("0x3", encode_swap_exact_tokens_for_tokens(1, kWeth, kUsdc), 1);
+        Transaction no_from = MakeSwap("0x3", encode_swap_exact_tokens_for_tokens(tokens(1, 18), kWeth, kUsdc), 1);
         no_from.from = "";
         assert(!protector.protect(no_from, {}).allowed);
     }
@@ -265,7 +296,7 @@ int main() {
         config.blocked_contracts.push_back("0xDEADBEEFdeadbeefDEADBEEFdeadbeefDEADBEEF");
         MEVProtector protector(config);
 
-        Transaction tx = MakeSwap("0x4", encode_swap_exact_tokens_for_tokens(1, kWeth, kUsdc), 1);
+        Transaction tx = MakeSwap("0x4", encode_swap_exact_tokens_for_tokens(tokens(1, 18), kWeth, kUsdc), 1);
         tx.to = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
         const auto result = protector.protect(tx, {});
         assert(!result.allowed);
@@ -282,7 +313,7 @@ int main() {
         protector.add_pool(MakePool());
 
         const Transaction victim = MakeSwap(
-            "0xvictim", encode_swap_exact_tokens_for_tokens(10, kWeth, kUsdc), 20000000000ULL);
+            "0xvictim", encode_swap_exact_tokens_for_tokens(tokens(10, 18), kWeth, kUsdc), 20000000000ULL);
         const auto result = protector.protect(victim, {});
         assert(result.allowed);
         // No relay, so no bundle is claimed and the reason does not mention
@@ -331,9 +362,9 @@ int main() {
     {
         // 10 WETH into a 1000 WETH / 2,000,000 USDC pool at 0.3%:
         //   10 * 0.997 = 9.97
-        //   9.97 * 2000000 / (1000 + 9.97) = 19741.55...
+        //   9.97 * 2000000 / (1000 + 9.97) = 19743.1607
         const double out = uniswap_v2_amount_out(10.0, 1000.0, 2000000.0, 0.3);
-        assert(out > 19741.0 && out < 19742.0);
+        assert(out > 19743.0 && out < 19744.0);
 
         // A zero reserve has no price.
         assert(uniswap_v2_amount_out(10.0, 0.0, 2000000.0, 0.3) == 0.0);
@@ -356,8 +387,8 @@ int main() {
         // fabricated success.
         const auto result = integrator.send_bundle(bundle, "", {});
         assert(result.has_value());
-        assert(!result.success);
-        assert(!result.error.empty());
+        assert(!result->success);
+        assert(!result->error.empty());
 
         // The hash is a keccak-256 digest, so 66 characters including the 0x.
         assert(result->bundle_hash.size() == 66);

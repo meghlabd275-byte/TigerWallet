@@ -51,6 +51,11 @@ struct MEVConfig {
 
     std::string flashbots_rpc;
     std::string ethereum_rpc;
+
+    // The address the router wraps a native coin into before trading. A
+    // native-for-token swap moves this token on the pool, so it is what pool
+    // matching has to compare against. It defaults to WETH on Ethereum.
+    std::string wrapped_native = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 };
 
 // ==================== Transaction Types ====================
@@ -176,14 +181,26 @@ inline double abi_decode_uint256(const std::string& data, size_t word_index) {
 // Removes the 0x prefix and lower-cases, so addresses compare reliably. A
 // comparison that ignores case is required because the same address is written
 // both checksummed and plain across clients.
+// The zero address, which a router uses to mean the native coin.
+inline constexpr const char* kNativeAddress =
+    "0x0000000000000000000000000000000000000000";
+
 inline std::string normalize_hex(const std::string& input) {
+    // Drops a leading "0x" and lowercases the rest.
+    //
+    // The previous version skipped only the '0', so "0x38ed1739" normalized to
+    // "x38ed1739". Every selector and address comparison in this file used the
+    // result, so no selector ever matched and no two addresses ever compared
+    // equal: swap decoding always failed, which meant the sandwich detector
+    // could not run and the module's protection was dead code.
     std::string out;
     out.reserve(input.size());
-    for (size_t i = 0; i < input.size(); ++i) {
-        if (i == 0 && input[i] == '0' && i + 1 < input.size() &&
-            (input[i + 1] == 'x' || input[i + 1] == 'X')) {
-            continue;
-        }
+    size_t start = 0;
+    if (input.size() >= 2 && input[0] == '0' &&
+        (input[1] == 'x' || input[1] == 'X')) {
+        start = 2;
+    }
+    for (size_t i = start; i < input.size(); ++i) {
         out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(input[i]))));
     }
     return out;
@@ -504,9 +521,12 @@ public:
             if (tx.gas_price <= victim_tx.gas_price) continue;
             const auto other_swap = decode_swap(tx);
             if (!other_swap) continue;
-            // The front-run must trade the same pair.
-            if (normalize_hex(other_swap->token_in) != normalize_hex(victim_swap->token_in) ||
-                normalize_hex(other_swap->token_out) != normalize_hex(victim_swap->token_out)) {
+            // The front-run must trade the same pair, with the native address
+            // resolved to the wrapped token.
+            if (normalize_hex(match_address(other_swap->token_in)) !=
+                    normalize_hex(match_address(victim_swap->token_in)) ||
+                normalize_hex(match_address(other_swap->token_out)) !=
+                    normalize_hex(match_address(victim_swap->token_out))) {
                 continue;
             }
             front_run_candidates.push_back(tx);
@@ -610,7 +630,7 @@ private:
             // the input amount is not known from the calldata alone.
             swap.amount_in = (selector == "8803dbee" || selector == "4a25d94a")
                                  ? 0.0
-                                 : first_amount;
+                                 : scale_to_token_units(first_amount, swap.token_in);
             return swap;
         }
 
@@ -626,7 +646,10 @@ private:
             swap.token_in = "0x0000000000000000000000000000000000000000";
             swap.token_out = abi_decode_address(
                 args, path_start / 64 + static_cast<size_t>(path_length));
-            swap.amount_in = static_cast<double>(tx.value);
+            // The value is in wei, so it is scaled to whole units like the
+            // pool reserves.
+            swap.amount_in = scale_to_token_units(static_cast<double>(tx.value),
+                                                  swap.token_in);
             return swap;
         }
 
@@ -634,7 +657,8 @@ private:
         if (selector == "414bf389" || selector == "db3e2198") {
             swap.token_in = abi_decode_address(args, 0);
             swap.token_out = abi_decode_address(args, 1);
-            swap.amount_in = abi_decode_uint256(args, 3);
+            swap.amount_in =
+                scale_to_token_units(abi_decode_uint256(args, 3), swap.token_in);
             return swap;
         }
 
@@ -659,13 +683,44 @@ private:
         return std::nullopt;
     }
 
+    // Converts a base-unit amount to whole-token units. An unregistered token
+    // is assumed to use 18 decimals, which is the EVM default, and a native
+    // coin likewise.
+    double scale_to_token_units(double raw_amount, const std::string& token) const {
+        if (!(raw_amount > 0.0)) {
+            return 0.0;
+        }
+        uint8_t decimals = 18;
+        if (price_oracle_) {
+            if (const auto known = price_oracle_->get_decimals(match_address(token))) {
+                decimals = *known;
+            }
+        }
+        double divisor = 1.0;
+        for (uint8_t i = 0; i < decimals; ++i) {
+            divisor *= 10.0;
+        }
+        return raw_amount / divisor;
+    }
+
+    // The native address is reported as the wrapped token a router actually
+    // trades, so a native-for-token swap matches the pool it moves.
+    std::string match_address(const std::string& token) const {
+        if (normalize_hex(token) == normalize_hex(kNativeAddress)) {
+            if (!config_.wrapped_native.empty()) {
+                return config_.wrapped_native;
+            }
+        }
+        return token;
+    }
+
     std::optional<Pool> find_pool_for_swap(const DecodedSwap& swap,
                                            const std::vector<Pool>& pools) const {
+        const std::string in = normalize_hex(match_address(swap.token_in));
+        const std::string out = normalize_hex(match_address(swap.token_out));
         for (const auto& pool : pools) {
             const std::string t0 = normalize_hex(pool.token0);
             const std::string t1 = normalize_hex(pool.token1);
-            const std::string in = normalize_hex(swap.token_in);
-            const std::string out = normalize_hex(swap.token_out);
             if ((t0 == in && t1 == out) || (t0 == out && t1 == in)) {
                 return pool;
             }
@@ -689,9 +744,12 @@ private:
             if (candidate.gas_price <= victim.gas_price) continue;
             const auto candidate_swap = decode_swap(candidate);
             if (!candidate_swap) continue;
-            // Reversed direction relative to the front-run.
-            if (normalize_hex(candidate_swap->token_in) != normalize_hex(front_swap.token_out) ||
-                normalize_hex(candidate_swap->token_out) != normalize_hex(front_swap.token_in)) {
+            // Reversed direction relative to the front-run, with the native
+            // address resolved to the wrapped token.
+            if (normalize_hex(match_address(candidate_swap->token_in)) !=
+                    normalize_hex(match_address(front_swap.token_out)) ||
+                normalize_hex(match_address(candidate_swap->token_out)) !=
+                    normalize_hex(match_address(front_swap.token_in))) {
                 continue;
             }
             (void)victim_swap;
@@ -712,7 +770,7 @@ private:
         if (front_swap.amount_in <= 0.0) return 0.0;
 
         const bool front_is_token0_in =
-            normalize_hex(pool.token0) == normalize_hex(front_swap.token_in);
+            normalize_hex(pool.token0) == normalize_hex(match_address(front_swap.token_in));
         double reserve_in = front_is_token0_in ? pool.reserve0 : pool.reserve1;
         double reserve_out = front_is_token0_in ? pool.reserve1 : pool.reserve0;
         if (reserve_in <= 0.0 || reserve_out <= 0.0) return 0.0;
@@ -730,7 +788,7 @@ private:
         double victim_in = victim_swap.amount_in;
         if (victim_in > 0.0) {
             const bool victim_is_token0_in =
-                normalize_hex(pool.token0) == normalize_hex(victim_swap.token_in);
+                normalize_hex(pool.token0) == normalize_hex(match_address(victim_swap.token_in));
             if (victim_is_token0_in == front_is_token0_in) {
                 // The victim trades the same way as the front-run, so the pool
                 // moves further in the same direction.
@@ -745,7 +803,7 @@ private:
         const double back_in =
             back_swap.amount_in > 0.0 ? back_swap.amount_in : attacker_received;
         const bool back_is_token0_in =
-            normalize_hex(pool.token0) == normalize_hex(back_swap.token_in);
+            normalize_hex(pool.token0) == normalize_hex(match_address(back_swap.token_in));
 
         // The attacker sells the token they bought, so the reserves are the
         // post-victim ones with the orientation flipped.
@@ -760,7 +818,7 @@ private:
         if (profit_in_input_token <= 0.0) return 0.0;
 
         // Convert to USD when a price is known for the input token.
-        if (auto price = price_of(front_swap.token_in)) {
+        if (auto price = price_of(match_address(front_swap.token_in))) {
             return profit_in_input_token * (*price);
         }
         return 0.0;
@@ -969,16 +1027,19 @@ public:
         reasonable_gas_price_ = wei;
     }
 
+    // True when the address is on the blocked list. Exposed so the protector
+    // can apply the blacklist before it looks for a sandwich, rather than only
+    // after one has been found.
+    bool is_blocked_contract(const std::string& address) const {
+        std::shared_lock lock(mutex_);
+        return blocked_contracts_.find(normalize_hex(address)) != blocked_contracts_.end();
+    }
+
 private:
     const MEVConfig& config_;
     mutable std::shared_mutex mutex_;
     std::unordered_set<std::string> blocked_contracts_;
     uint64_t reasonable_gas_price_ = 0;  // 0 means "no threshold configured".
-
-    bool is_blocked_contract(const std::string& address) const {
-        std::shared_lock lock(mutex_);
-        return blocked_contracts_.find(normalize_hex(address)) != blocked_contracts_.end();
-    }
 
     uint64_t get_reasonable_gas_price() const {
         std::shared_lock lock(mutex_);
@@ -1023,6 +1084,15 @@ public:
     ) {
         ProtectionResult result;
         result.allowed = true;
+
+        // The blocked-contract list is checked first and on its own. It used to
+        // be consulted only after a sandwich had been found, so a plain
+        // transaction to a blocked address was allowed through.
+        if (config_.enable_blocker && blocker_.is_blocked_contract(tx.to)) {
+            result.allowed = false;
+            result.reason = "Transaction blocked: destination contract is blocked";
+            return result;
+        }
 
         auto attack = detector_.detect_sandwich(tx, pending_txs, scanner_.get_all_pools());
         if (attack) {
@@ -1088,11 +1158,12 @@ public:
         blocker_.add_blocked_contract(address);
     }
     void update_price(const std::string& token, double price) {
-        price_oracle_.update_price(token, price);
-        detector_.set_price_oracle(price_oracle_shared_);
+        // One oracle instance, shared with the detector, so a price set here
+        // is the price the detector prices a sandwich against.
+        price_oracle_shared_->update_price(token, price);
     }
     void add_token(const std::string& address, const std::string& symbol, uint8_t decimals) {
-        price_oracle_.add_token(address, symbol, decimals);
+        price_oracle_shared_->add_token(address, symbol, decimals);
     }
 
 private:
@@ -1105,7 +1176,6 @@ private:
     // One oracle instance, shared with the detector so a price set through
     // update_price is visible where the profit is computed.
     std::shared_ptr<PriceOracle> price_oracle_shared_ = std::make_shared<PriceOracle>();
-    PriceOracle price_oracle_;
     std::unordered_set<std::string> watched_pools_;
 };
 

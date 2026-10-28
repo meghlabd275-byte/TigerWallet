@@ -45,6 +45,18 @@ struct U256 {
 
     static U256 fromDecimal(const std::string& digits);
 
+    // 10 raised to `exponent`, for scaling between token decimals.
+    U256 pow10(uint32_t exponent) const {
+        U256 result = fromUint64(1);
+        U256 base = *this;
+        while (exponent > 0) {
+            if (exponent & 1u) result = result * base;
+            base = base * base;
+            exponent >>= 1;
+        }
+        return result;
+    }
+
     std::string toDecimal() const;
 
     // -1, 0 or 1.
@@ -219,6 +231,102 @@ inline U256 divideFull(const U512& numerator, const U256& divisor,
 inline U256 mulDiv(const U256& a, const U256& b, const U256& c) {
     if (c.isZero()) return U256();
     return divideFull(multiplyFull(a, b), c);
+}
+
+// The 512-bit sum of two 512-bit values, truncating beyond 512 bits.
+inline U512 addFull(const U512& a, const U512& b) {
+    U512 out;
+    unsigned __int128 carry = 0;
+    for (int i = 0; i < 8; ++i) {
+        const unsigned __int128 sum =
+            static_cast<unsigned __int128>(a.word[i]) + b.word[i] + carry;
+        out.word[i] = static_cast<uint64_t>(sum);
+        carry = sum >> 64;
+    }
+    return out;
+}
+
+// A 256-bit value shifted right. Bits shifted out of the bottom are dropped.
+inline U256 shiftRight(const U256& value, unsigned bits) {
+    if (bits == 0) return value;
+    if (bits >= 256) return U256();
+
+    U256 out;
+    const unsigned words = bits / 64;
+    const unsigned rem = bits % 64;
+    for (int i = 0; i < 4; ++i) {
+        const int src = i + static_cast<int>(words);
+        uint64_t v = (src < 4) ? value.word[src] : 0;
+        if (rem != 0) {
+            const uint64_t next = (src + 1 < 4) ? value.word[src + 1] : 0;
+            v = (v >> rem) | (next << (64 - rem));
+        }
+        out.word[i] = v;
+    }
+    return out;
+}
+
+// A 256-bit value shifted left, truncating beyond 256 bits.
+inline U256 shiftLeft(const U256& value, unsigned bits) {
+    if (bits == 0) return value;
+    if (bits >= 256) return U256();
+
+    U256 out;
+    const unsigned words = bits / 64;
+    const unsigned rem = bits % 64;
+    for (int i = 3; i >= 0; --i) {
+        const int src = i - static_cast<int>(words);
+        uint64_t v = (src >= 0) ? value.word[src] : 0;
+        if (rem != 0 && src - 1 >= 0) {
+            v = (v << rem) | (value.word[src - 1] >> (64 - rem));
+        } else if (rem != 0) {
+            v = v << rem;
+        }
+        out.word[i] = v;
+    }
+    return out;
+}
+
+// Divides a 512-bit value by a 512-bit divisor, returning the 256-bit
+// quotient. Used where the numerator and the denominator both grow past 256
+// bits before the divide, which is the shape the StableSwap invariant has.
+inline U256 divideFull512(const U512& numerator, const U512& divisor,
+                          U512* remainder_out = nullptr) {
+    if (divisor.isZero()) {
+        if (remainder_out) *remainder_out = U512();
+        return U256();
+    }
+
+    U512 remainder;
+    U256 quotient;
+
+    for (int bit = 511; bit >= 0; --bit) {
+        // remainder <<= 1
+        for (int i = 7; i >= 0; --i) {
+            remainder.word[i] <<= 1;
+            if (i > 0 && ((remainder.word[i - 1] >> 63) & 1ULL)) {
+                remainder.word[i] |= 1ULL;
+            }
+        }
+        remainder.word[0] |= (numerator.word[bit / 64] >> (bit % 64)) & 1ULL;
+
+        if (remainder.compare(divisor) >= 0) {
+            unsigned __int128 borrow = 0;
+            for (int i = 0; i < 8; ++i) {
+                const unsigned __int128 diff =
+                    static_cast<unsigned __int128>(remainder.word[i]) -
+                    divisor.word[i] - borrow;
+                remainder.word[i] = static_cast<uint64_t>(diff);
+                borrow = (diff >> 64) ? 1 : 0;
+            }
+            if (bit < 256) {
+                quotient.word[bit / 64] |= (1ULL << (bit % 64));
+            }
+        }
+    }
+
+    if (remainder_out) *remainder_out = remainder;
+    return quotient;
 }
 
 inline std::string toHex(const U256& value) {
