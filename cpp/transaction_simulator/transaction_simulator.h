@@ -45,6 +45,10 @@ namespace SimConfig {
     constexpr uint64_t MIN_GAS_PRICE = 1e7; // 0.01 gwei
 }
 
+// A 256-bit value as four little-endian 64-bit words. This was declared after
+// the Token struct that uses it, so the header did not compile.
+using uint256_t = std::array<uint64_t, 4>;
+
 // Transaction types
 enum class TransactionType {
     LEGACY,
@@ -80,8 +84,6 @@ struct Token {
     Token() : decimals(18), isNative(false) {}
 };
 
-using uint256_t = std::array<uint64_t, 4>;
-
 // Amount with decimal precision
 struct TokenAmount {
     std::string tokenAddress;
@@ -101,6 +103,34 @@ struct Address {
     std::string toString() const;
     static Address fromString(const std::string& hex);
     bool isZero() const;
+
+    // Needed to key account state by address in an unordered_map. Comparing
+    // the checksum string would be wrong, because fromString derives it, so
+    // two addresses that differ only in case would compare equal while the
+    // bytes decide identity.
+    bool operator==(const Address& other) const {
+        return bytes == other.bytes;
+    }
+    bool operator!=(const Address& other) const {
+        return !(*this == other);
+    }
+};
+
+// Hash functor for Address, needed by the unordered_map that keys account
+// state by address. This was declared at the end of the file, after the class
+// that uses it, so the header did not compile.
+struct AddressHash {
+    size_t operator()(const Address& addr) const {
+        // FNV-1a over the twenty address bytes. The previous version was
+        // hash * 31 + byte starting from zero, which maps every address whose
+        // bytes are all zero to 0 and clusters badly on similar addresses.
+        size_t hash = 1469598103934665603ULL;
+        for (auto byte : addr.bytes) {
+            hash ^= static_cast<size_t>(byte);
+            hash *= 1099511628211ULL;
+        }
+        return hash;
+    }
 };
 
 // Transaction data structure
@@ -239,16 +269,33 @@ struct SwapSimulation {
     double priceImpact;
     uint64_t gasEstimate;
 
+    // A quote is only meaningful when the pool's reserves are known. When they
+    // are not, expectedAmountOut stays zero and this flag says why, so a caller
+    // cannot mistake a missing quote for a quote of zero.
+    bool quoteAvailable;
+    std::string quoteUnavailableReason;
+
     SwapSimulation() 
         : amountIn({0,0,0,0}), expectedAmountOut({0,0,0,0})
-        , minimumAmountOut({0,0,0,0}), priceImpact(0.0), gasEstimate(0) {}
+        , minimumAmountOut({0,0,0,0}), priceImpact(0.0), gasEstimate(0)
+        , quoteAvailable(false) {}
 };
 
 // Transaction Simulator class
 class TransactionSimulator {
 public:
     TransactionSimulator();
+    // The chain the simulator is operating on. Transactions carry their own
+    // chain id; this one is used when a caller simulates a transaction that
+    // leaves it unset.
+    explicit TransactionSimulator(uint64_t chain_id);
     ~TransactionSimulator();
+
+    // The hash a signature commits to, and the transaction identity hash.
+    // Both are public: a caller needs the hash to look a transaction up and
+    // to check a signature against it.
+    std::string signingHash(const Transaction& tx) const;
+    std::string computeTransactionHash(const Transaction& tx) const;
 
     // Core simulation methods
     SimulationResult simulateTransaction(const Transaction& tx);
@@ -327,6 +374,8 @@ private:
     std::unordered_map<Address, AccountState, AddressHash> accountStates_;
     std::unordered_map<std::string, Token> tokens_;
 
+    uint64_t chain_id_;
+
     Block currentBlock_;
     PerformanceMetrics metrics_;
 
@@ -337,6 +386,21 @@ private:
     bool validateTransaction(const Transaction& tx);
     void executeTransaction(Transaction& tx, SimulationResult& result);
     bool checkSignature(const Transaction& tx);
+    void initialize();
+
+    // The bodies of the public methods, for callers that already hold mutex_.
+    // The public methods took the lock and then called each other, and a
+    // std::shared_mutex is not recursive, so every nested call aborted with
+    // "Resource deadlock avoided". simulateTransaction took the lock and then
+    // called validateTransaction, analyzeMEV and executeTransaction, each of
+    // which took it again.
+    SimulationResult simulateTransactionLocked(const Transaction& tx);
+    bool validateTransactionLocked(const Transaction& tx);
+    void executeTransactionLocked(Transaction& tx, SimulationResult& result);
+    MEVAnalysis analyzeMEVLocked(const Transaction& tx);
+    AccountState getAccountStateLocked(const Address& address) const;
+    void updateAccountStateLocked(const Address& address, const AccountState& state);
+
     bool checkNonce(const Transaction& tx);
     bool checkBalance(const Transaction& tx);
     bool checkGasLimit(const Transaction& tx);
@@ -354,17 +418,6 @@ private:
     // Token swap helpers
     uint256_t getAmountOut(uint256_t amountIn, uint256_t reserveIn, uint256_t reserveOut);
     std::vector<Address> findOptimalPath(const std::string& from, const std::string& to);
-};
-
-// Address hash for unordered_map
-struct AddressHash {
-    size_t operator()(const Address& addr) const {
-        size_t hash = 0;
-        for (auto byte : addr.bytes) {
-            hash = hash * 31 + byte;
-        }
-        return hash;
-    }
 };
 
 } // namespace TigerWallet

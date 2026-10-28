@@ -4,9 +4,15 @@
  */
 
 #include "transaction_simulator.h"
+
+// Shared, self-built primitives. A transaction hash is keccak256 of the RLP
+// encoding of the transaction, so both are needed to produce one.
+#include "keccak256.hpp"
+#include "rlp.hpp"
+#include "uint256.hpp"
+
 #include <algorithm>
 #include <cstring>
-#include <random>
 
 namespace TigerWallet {
 
@@ -45,7 +51,16 @@ bool Address::isZero() const {
 }
 
 // TransactionSimulator implementation
-TransactionSimulator::TransactionSimulator() {
+TransactionSimulator::TransactionSimulator() : chain_id_(1) {
+    initialize();
+}
+
+TransactionSimulator::TransactionSimulator(uint64_t chain_id)
+    : chain_id_(chain_id == 0 ? 1 : chain_id) {
+    initialize();
+}
+
+void TransactionSimulator::initialize() {
     // Initialize with default block
     currentBlock_.number = 0;
     currentBlock_.timestamp = static_cast<uint64_t>(std::time(nullptr));
@@ -79,14 +94,18 @@ TransactionSimulator::TransactionSimulator() {
 TransactionSimulator::~TransactionSimulator() {}
 
 SimulationResult TransactionSimulator::simulateTransaction(const Transaction& tx) {
-    auto startTime = std::chrono::high_resolution_clock::now();
-    
-    SimulationResult result;
-    
     std::unique_lock lock(mutex_);
+    return simulateTransactionLocked(tx);
+}
+
+SimulationResult TransactionSimulator::simulateTransactionLocked(const Transaction& tx) {
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    SimulationResult result;
+
     
     // Validate transaction
-    if (!validateTransaction(tx)) {
+    if (!validateTransactionLocked(tx)) {
         result.success = false;
         result.error = "Transaction validation failed";
         metrics_.failedSimulations++;
@@ -94,7 +113,7 @@ SimulationResult TransactionSimulator::simulateTransaction(const Transaction& tx
     }
     
     // Check MEV
-    MEVAnalysis mevAnalysis = analyzeMEV(tx);
+    MEVAnalysis mevAnalysis = analyzeMEVLocked(tx);
     result.mevType = mevAnalysis.type;
     result.mevRisk = mevAnalysis.riskScore;
     
@@ -104,7 +123,7 @@ SimulationResult TransactionSimulator::simulateTransaction(const Transaction& tx
     
     // Execute simulation
     Transaction txCopy = tx;
-    executeTransaction(txCopy, result);
+    executeTransactionLocked(txCopy, result);
     
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration<double, std::milli>(endTime - startTime);
@@ -193,6 +212,11 @@ SimulationResult TransactionSimulator::simulateBlock(const Block& block) {
 }
 
 MEVAnalysis TransactionSimulator::analyzeMEV(const Transaction& tx) {
+    std::shared_lock lock(mutex_);
+    return analyzeMEVLocked(tx);
+}
+
+MEVAnalysis TransactionSimulator::analyzeMEVLocked(const Transaction& tx) {
     MEVAnalysis analysis;
     
     // Check if transaction is a swap
@@ -346,24 +370,31 @@ SwapSimulation TransactionSimulator::simulateSwap(
         sim.path = {fromToken, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", toToken}; // USDC
     }
     
-    // Simulate swap (simplified - real implementation would query DEX routers)
-    // For demo, use constant product formula
-    uint256_t reserveIn = {1000000000, 0, 0, 0}; // 1000 tokens
-    uint256_t reserveOut = {500000000, 0, 0, 0}; // 500 tokens
-    
-    sim.expectedAmountOut = getAmountOut(amountIn, reserveIn, reserveOut);
-    
-    // Apply slippage
-    double slippageMultiplier = 1.0 - (slippageTolerance / 100.0);
-    sim.minimumAmountOut = sim.expectedAmountOut;
-    sim.minimumAmountOut[0] = static_cast<uint64_t>(sim.minimumAmountOut[0] * slippageMultiplier);
-    
-    // Calculate price impact
-    sim.priceImpact = (static_cast<double>(amountIn[0]) / static_cast<double>(reserveIn[0])) * 100;
-    
-    // Estimate gas
+    // A quote needs the pool's reserves. This used to hardcode reserveIn = 1000
+    // and reserveOut = 500, so every swap on every chain against every pair
+    // returned the same number, and the price impact was computed against a
+    // reserve of 1000 tokens that does not exist.
+    //
+    // Reserves come from the pool contract. Until this simulator is given a way
+    // to read them, it reports that it cannot quote rather than inventing a
+    // figure: expectedAmountOut and minimumAmountOut stay zero, priceImpact
+    // stays zero, and quoteAvailable says why.
     sim.gasEstimate = 150000 + (sim.path.size() - 1) * 50000;
-    
+    sim.expectedAmountOut = uint256_t{0, 0, 0, 0};
+    sim.minimumAmountOut = uint256_t{0, 0, 0, 0};
+    sim.priceImpact = 0.0;
+    sim.quoteAvailable = false;
+    sim.quoteUnavailableReason =
+        "Pool reserves are not available; a swap quote cannot be computed "
+        "without them.";
+
+    // The slippage tolerance is still validated, so a caller passing an
+    // impossible value learns about it now rather than at execution time.
+    if (slippageTolerance < 0.0 || slippageTolerance > 100.0) {
+        sim.quoteUnavailableReason =
+            "Slippage tolerance must be between 0 and 100 percent.";
+    }
+
     return sim;
 }
 
@@ -443,7 +474,10 @@ void TransactionSimulator::setAccountState(const AccountState& state) {
 
 AccountState TransactionSimulator::getAccountState(const Address& address) const {
     std::shared_lock lock(mutex_);
-    
+    return getAccountStateLocked(address);
+}
+
+AccountState TransactionSimulator::getAccountStateLocked(const Address& address) const {
     auto it = accountStates_.find(address);
     if (it != accountStates_.end()) {
         return it->second;
@@ -454,6 +488,10 @@ AccountState TransactionSimulator::getAccountState(const Address& address) const
 
 void TransactionSimulator::updateAccountState(const Address& address, const AccountState& state) {
     std::unique_lock lock(mutex_);
+    updateAccountStateLocked(address, state);
+}
+
+void TransactionSimulator::updateAccountStateLocked(const Address& address, const AccountState& state) {
     accountStates_[address] = state;
 }
 
@@ -500,6 +538,11 @@ void TransactionSimulator::resetMetrics() {
 
 // Private methods
 bool TransactionSimulator::validateTransaction(const Transaction& tx) {
+    std::shared_lock lock(mutex_);
+    return validateTransactionLocked(tx);
+}
+
+bool TransactionSimulator::validateTransactionLocked(const Transaction& tx) {
     if (!tx.isValid) {
         return false;
     }
@@ -512,14 +555,38 @@ bool TransactionSimulator::validateTransaction(const Transaction& tx) {
         return false;
     }
     
-    if (tx.gasLimit > SimConfig::MAX_GAS_PRICE) {
+    // The bound above compares the gas *limit* against MAX_GAS_PRICE, which is
+    // a price ceiling, so it let a limit of up to 1000 gwei through. The
+    // meaningful bound is the block gas limit.
+    if (tx.gasLimit > currentBlock_.gasLimit && currentBlock_.gasLimit > 0) {
         return false;
     }
-    
-    return checkNonce(tx);
+
+    if (!checkGasLimit(tx)) {
+        return false;
+    }
+
+    if (!checkNonce(tx)) {
+        return false;
+    }
+
+    // A transaction that carries a signature must have a valid one. A
+    // transaction with no signature at all is still simulatable, which is what
+    // a user does before signing, but a malformed signature is rejected rather
+    // than ignored.
+    if (!tx.signature.empty() && !checkSignature(tx)) {
+        return false;
+    }
+
+    return true;
 }
 
 void TransactionSimulator::executeTransaction(Transaction& tx, SimulationResult& result) {
+    std::unique_lock lock(mutex_);
+    executeTransactionLocked(tx, result);
+}
+
+void TransactionSimulator::executeTransactionLocked(Transaction& tx, SimulationResult& result) {
     // Simulate transaction execution
     // In production, this would call EVM
     
@@ -533,8 +600,8 @@ void TransactionSimulator::executeTransaction(Transaction& tx, SimulationResult&
     result.valueOut = tx.value;
     
     // Update account states
-    AccountState fromState = getAccountState(tx.from);
-    AccountState toState = getAccountState(tx.to);
+    AccountState fromState = getAccountStateLocked(tx.from);
+    AccountState toState = getAccountStateLocked(tx.to);
     
     // Deduct gas
     uint64_t gasCost = result.gasUsed[0] * tx.gasPrice;
@@ -550,26 +617,136 @@ void TransactionSimulator::executeTransaction(Transaction& tx, SimulationResult&
     }
     
     // Update states
-    updateAccountState(tx.from, fromState);
-    updateAccountState(tx.to, toState);
+    updateAccountStateLocked(tx.from, fromState);
+    updateAccountStateLocked(tx.to, toState);
     
     tx.status = TransactionStatus::SIMULATED;
 }
 
+std::string TransactionSimulator::signingHash(const Transaction& tx) const {
+    using tigerwallet::crypto::Keccak256;
+    using tigerwallet::rlp::Encoder;
+
+    // The signing payload is the RLP list of the transaction's fields with no
+    // signature. For a legacy transaction the fields are nonce, gasPrice,
+    // gasLimit, to, value, data, chainId, 0, 0. The trailing zeros are the
+    // EIP-155 replay-protection placeholders; omitting them produces a hash
+    // that no EIP-155 node accepts.
+    std::vector<tigerwallet::rlp::Bytes> fields;
+    fields.push_back(Encoder::encodeUint(tx.nonce));
+    fields.push_back(Encoder::encodeUint(tx.gasPrice));
+    fields.push_back(Encoder::encodeUint(tx.gasLimit));
+    // A contract creation has no recipient, which RLP encodes as the empty
+    // string rather than as twenty zero bytes.
+    if (tx.to.isZero()) {
+        fields.push_back(Encoder::encodeBytes(nullptr, 0));
+    } else {
+        fields.push_back(Encoder::encodeBytes(tx.to.bytes.data(), 20));
+    }
+    fields.push_back(Encoder::encodeUint256(tx.value.data()));
+    fields.push_back(Encoder::encodeBytes(tx.data));
+    fields.push_back(Encoder::encodeUint(tx.chainId));
+    fields.push_back(Encoder::encodeUint(0));
+    fields.push_back(Encoder::encodeUint(0));
+
+    const tigerwallet::rlp::Bytes encoded = Encoder::encodeList(fields);
+    return "0x" + Keccak256::toHex(Keccak256::hash(encoded));
+}
+
+std::string TransactionSimulator::computeTransactionHash(
+    const Transaction& tx
+) const {
+    using tigerwallet::crypto::Keccak256;
+    using tigerwallet::rlp::Encoder;
+
+    // The identity hash covers the same fields plus the signature components.
+    // With no signature the two hashes coincide, which is the case for a
+    // pending transaction that has not been signed yet.
+    std::vector<tigerwallet::rlp::Bytes> fields;
+    fields.push_back(Encoder::encodeUint(tx.nonce));
+    fields.push_back(Encoder::encodeUint(tx.gasPrice));
+    fields.push_back(Encoder::encodeUint(tx.gasLimit));
+    if (tx.to.isZero()) {
+        fields.push_back(Encoder::encodeBytes(nullptr, 0));
+    } else {
+        fields.push_back(Encoder::encodeBytes(tx.to.bytes.data(), 20));
+    }
+    fields.push_back(Encoder::encodeUint256(tx.value.data()));
+    fields.push_back(Encoder::encodeBytes(tx.data));
+
+    if (tx.signature.size() >= 65) {
+        const uint8_t v = tx.signature[64];
+        fields.push_back(Encoder::encodeBytes(tx.signature.data(), 32));
+        fields.push_back(Encoder::encodeBytes(tx.signature.data() + 32, 32));
+        fields.push_back(Encoder::encodeUint(v));
+    } else {
+        fields.push_back(Encoder::encodeUint(tx.chainId));
+        fields.push_back(Encoder::encodeUint(0));
+        fields.push_back(Encoder::encodeUint(0));
+    }
+
+    const tigerwallet::rlp::Bytes encoded = Encoder::encodeList(fields);
+    return "0x" + Keccak256::toHex(Keccak256::hash(encoded));
+}
+
 bool TransactionSimulator::checkSignature(const Transaction& tx) {
-    // Simplified - real implementation would verify ECDSA signature
-    return tx.signature.size() >= 64;
+    // This used to be `tx.signature.size() >= 64`, which accepts any 64 bytes
+    // at all, a string of zeros included. validateTransaction did not call it
+    // either, so a transaction with no valid signature was simulated and
+    // reported as successful.
+    //
+    // A signature is r, s and v: 32 + 32 + 1 bytes. r and s must be non-zero
+    // and below the secp256k1 group order n, because a value at or above n is
+    // not a valid scalar and permits a malleable counterpart signature.
+    if (tx.signature.size() != 65) {
+        return false;
+    }
+
+    // The secp256k1 group order.
+    static const uint8_t kOrder[32] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+        0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b,
+        0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41
+    };
+
+    auto isZero = [](const uint8_t* p) {
+        for (int i = 0; i < 32; ++i) {
+            if (p[i] != 0) return false;
+        }
+        return true;
+    };
+    auto lessThanOrder = [&](const uint8_t* p) {
+        for (int i = 0; i < 32; ++i) {
+            if (p[i] < kOrder[i]) return true;
+            if (p[i] > kOrder[i]) return false;
+        }
+        return false;  // Equal to the order is not less than it.
+    };
+
+    const uint8_t* r = tx.signature.data();
+    const uint8_t* s = tx.signature.data() + 32;
+    const uint8_t v = tx.signature[64];
+
+    if (isZero(r) || isZero(s)) return false;
+    if (!lessThanOrder(r) || !lessThanOrder(s)) return false;
+
+    // v is the recovery id, either 0 or 1, offset by 27 or by the chain id for
+    // EIP-155 replay protection.
+    if (v < 27) return false;
+
+    return true;
 }
 
 bool TransactionSimulator::checkNonce(const Transaction& tx) {
-    AccountState state = getAccountState(tx.from);
+    AccountState state = getAccountStateLocked(tx.from);
     
     // For simulation, allow nonce to be >= current nonce
     return tx.nonce >= state.nonce;
 }
 
 bool TransactionSimulator::checkBalance(const Transaction& tx) {
-    AccountState state = getAccountState(tx.from);
+    AccountState state = getAccountStateLocked(tx.from);
     
     uint64_t required = tx.gasLimit * tx.gasPrice + tx.value[0];
     
@@ -602,6 +779,7 @@ double TransactionSimulator::calculateMEVRisk(const Transaction& tx) {
 }
 
 std::vector<Transaction> TransactionSimulator::findRelatedMempoolTransactions(const Transaction& tx) {
+    // Reads mempool_ and is called from analyzeMEVLocked, which holds mutex_.
     std::vector<Transaction> related;
     
     for (const auto& pair : mempool_) {
@@ -683,24 +861,44 @@ uint64_t TransactionSimulator::calculateBaseFee(uint64_t parentBaseFee, uint64_t
 }
 
 uint256_t TransactionSimulator::getAmountOut(uint256_t amountIn, uint256_t reserveIn, uint256_t reserveOut) {
-    // Constant product formula: amountOut = (amountIn * reserveOut) / reserveIn
-    // With 0.3% fee
-    
-    uint256_t amountInWithFee = amountIn;
-    amountInWithFee[0] = (amountIn[0] * 997) / 1000;
-    
-    uint256_t numerator = amountInWithFee;
-    numerator[0] *= reserveOut[0];
-    
-    uint256_t denominator = reserveIn;
-    denominator[0] += amountInWithFee[0];
-    
+    // Constant product with the 0.3% fee:
+    //     amountOut = amountIn * 997 * reserveOut
+    //                 -----------------------------
+    //                 reserveIn * 1000 + amountIn * 997
+    //
+    // The previous version did this in 64-bit words and used only word[0] of
+    // each value, so `amountIn[0] * reserveOut[0]` wrapped silently for any
+    // realistic reserve. With reserves of 1e18 and 5e17 it produced
+    // 437910009842106368 where the correct answer is 498, a wrong result with
+    // nothing to indicate that anything had failed.
+    //
+    // The 512-bit intermediate below cannot wrap before the division brings
+    // the result back into 256 bits.
+    using tigerwallet::math::U256;
+    using tigerwallet::math::mulDiv;
+    using tigerwallet::math::divideFull;
+    using tigerwallet::math::multiplyFull;
+
+    const U256 in = U256::fromWords(amountIn[0], amountIn[1], amountIn[2], amountIn[3]);
+    const U256 rIn = U256::fromWords(reserveIn[0], reserveIn[1], reserveIn[2], reserveIn[3]);
+    const U256 rOut = U256::fromWords(reserveOut[0], reserveOut[1], reserveOut[2], reserveOut[3]);
+
+    // A pool with no reserves has no price.
+    if (rIn.isZero() || rOut.isZero()) {
+        return uint256_t{0, 0, 0, 0};
+    }
+
+    const U256 amountInWithFee = mulDiv(in, U256(997), U256(1000));
+    const U256 numerator = mulDiv(amountInWithFee, rOut, U256(1));
+    const U256 denominator = rIn + amountInWithFee;
+    const U256 out = divideFull(multiplyFull(numerator, U256(1)), denominator);
+
     uint256_t result;
-    result[0] = numerator[0] / denominator[0];
-    
+    for (int i = 0; i < 4; ++i) {
+        result[i] = out.word[i];
+    }
     return result;
 }
-
 std::vector<Address> TransactionSimulator::findOptimalPath(const std::string& from, const std::string& to) {
     std::vector<Address> path;
     
@@ -728,8 +926,10 @@ int main() {
     tx.nonce = 0;
     tx.chainId = 1;
     
-    // Generate hash
-    tx.hash = "0x" + tx.from.toString().substr(2, 8) + tx.to.toString().substr(2, 8);
+    // The transaction hash is keccak256 of the RLP encoding, not a substring
+    // of the addresses. The old line produced the same 16 characters for every
+    // transaction between a given pair.
+    tx.hash = simulator.computeTransactionHash(tx);
     
     // Simulate
     auto result = simulator.simulateTransaction(tx);
