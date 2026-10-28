@@ -6,10 +6,19 @@
 
 #include "transaction_simulator.h"
 
+#include "rpc.hpp"
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <thread>
 
 using namespace TigerWallet;
 
@@ -33,6 +42,123 @@ const uint8_t kOrder[32] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
     0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b,
     0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41
+};
+
+// A minimal JSON-RPC endpoint. It answers the handful of methods the
+// simulator calls, so the simulation path can be exercised without a real
+// chain. The balance is large enough for the sample transaction.
+class StubNode {
+public:
+    StubNode() {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        assert(listen_fd_ >= 0);
+
+        int one = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        assert(::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr),
+                      sizeof(addr)) == 0);
+
+        socklen_t len = sizeof(addr);
+        assert(::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr),
+                             &len) == 0);
+        port_ = ::ntohs(addr.sin_port);
+        assert(::listen(listen_fd_, 8) == 0);
+
+        worker_ = std::thread([this] { serve(); });
+    }
+
+    ~StubNode() {
+        running_ = false;
+        ::shutdown(listen_fd_, SHUT_RDWR);
+        ::close(listen_fd_);
+        if (worker_.joinable()) worker_.join();
+    }
+
+    std::string url() const {
+        return "http://127.0.0.1:" + std::to_string(port_);
+    }
+
+    // A node that rejects the call, for the fail-closed check.
+    void setRevert(bool revert) { revert_ = revert; }
+
+private:
+    void serve() {
+        while (running_) {
+            const int fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (fd < 0) {
+                if (!running_) return;
+                continue;
+            }
+            handle(fd);
+            ::close(fd);
+        }
+    }
+
+    void handle(int fd) {
+        std::string request;
+        char buffer[4096];
+        // Read the headers first, then the body by its length.
+        size_t header_end = std::string::npos;
+        while ((header_end = request.find("\r\n\r\n")) == std::string::npos) {
+            const ssize_t n = ::recv(fd, buffer, sizeof(buffer), 0);
+            if (n <= 0) return;
+            request.append(buffer, static_cast<size_t>(n));
+            if (request.size() > 65536) return;
+        }
+
+        size_t content_length = 0;
+        const std::string length_key = "Content-Length:";
+        const size_t at = request.find(length_key);
+        if (at != std::string::npos) {
+            content_length = static_cast<size_t>(
+                std::strtoul(request.c_str() + at + length_key.size(), nullptr, 10));
+        }
+
+        const size_t body_start = header_end + 4;
+        while (request.size() < body_start + content_length) {
+            const ssize_t n = ::recv(fd, buffer, sizeof(buffer), 0);
+            if (n <= 0) return;
+            request.append(buffer, static_cast<size_t>(n));
+        }
+        const std::string body = request.substr(body_start, content_length);
+
+        std::string result;
+        if (revert_) {
+            result = "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":3,"
+                     "\"message\":\"execution reverted: insufficient output\"}}";
+        } else if (body.find("eth_estimateGas") != std::string::npos) {
+            result = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x5208\"}";
+        } else if (body.find("eth_getTransactionCount") != std::string::npos) {
+            result = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x0\"}";
+        } else if (body.find("eth_gasPrice") != std::string::npos) {
+            result = "{\"jsonrpc\":\"2.0\",\"id\":1,"
+                     "\"result\":\"0x4a817c800\"}";
+        } else if (body.find("eth_getBlockByNumber") != std::string::npos) {
+            result = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":"
+                     "{\"baseFeePerGas\":\"0x3b9aca00\"}}";
+        } else {
+            // eth_getBalance, and anything else, reports ten ether.
+            result = "{\"jsonrpc\":\"2.0\",\"id\":1,"
+                     "\"result\":\"0x8ac7230489e80000\"}";
+        }
+
+        const std::string response =
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            "Content-Length: " + std::to_string(result.size()) +
+            "\r\nConnection: close\r\n\r\n" + result;
+        ::send(fd, response.data(), response.size(), 0);
+    }
+
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::atomic<bool> running_{true};
+    std::atomic<bool> revert_{false};
+    std::thread worker_;
 };
 
 }  // namespace
@@ -131,17 +257,63 @@ int main() {
     bad_v.signature[64] = 5;
     assert(!simulator.simulateTransaction(bad_v).success);
 
-    // A well-formed signature is accepted.
+    // A well-formed signature passes validation. With no node configured the
+    // simulation cannot observe an outcome, so it reports a failure and names
+    // the reason rather than claiming success it did not see.
     Transaction good = MakeTransaction();
     good.signature.resize(65, 0x00);
     good.signature[31] = 0x01;  // r = 1
     good.signature[63] = 0x01;  // s = 1
     good.signature[64] = 27;    // v
-    assert(simulator.simulateTransaction(good).success);
+    const SimulationResult unsigned_no_node = simulator.simulateTransaction(good);
+    assert(!unsigned_no_node.success);
+    assert(unsigned_no_node.error.find("no node") != std::string::npos);
 
-    // A transaction with no signature is still simulatable, which is what a
-    // user does before signing.
-    assert(simulator.simulateTransaction(MakeTransaction()).success);
+    // The same holds for a transaction with no signature, which is what a user
+    // has before signing.
+    const SimulationResult plain_no_node =
+        simulator.simulateTransaction(MakeTransaction());
+    assert(!plain_no_node.success);
+    assert(plain_no_node.error.find("no node") != std::string::npos);
+
+    // --- Simulation against a node -------------------------------------------
+
+    StubNode node;
+    simulator.setRpcClient(std::make_shared<tigerwallet::RpcClient>(node.url(), 5));
+
+    const SimulationResult simulated = simulator.simulateTransaction(good);
+    assert(simulated.success);
+    assert(simulated.gasUsed[0] == 21000);   // the value the node reported
+    assert(simulated.gasPrice == 20000000000ULL);
+    assert(simulated.valueOut == good.value);
+    // The sender is debited the value plus the gas cost, and the recipient is
+    // credited the value.
+    assert(simulated.stateChanges.count(good.from.toString()) == 1);
+    assert(simulated.stateChanges.at(good.from.toString())[0] == '-');
+    assert(simulated.stateChanges.at(good.to.toString()) ==
+           "+" + std::to_string(good.value[0]));
+
+    // A revert the node reports is a failed simulation carrying the node's
+    // reason, not a success.
+    node.setRevert(true);
+    const SimulationResult reverted = simulator.simulateTransaction(good);
+    assert(!reverted.success);
+    assert(reverted.error.find("reverted") != std::string::npos);
+    node.setRevert(false);
+
+    // --- Gas estimation ------------------------------------------------------
+
+    const GasEstimate estimate = simulator.estimateGas(good);
+    // The node measured 21000, so the twenty percent margin applies to that
+    // rather than to the intrinsic floor.
+    assert(estimate.gasLimit == 25200);
+    assert(estimate.gasPrice == 20000000000ULL);
+    assert(estimate.confidence > 0.9);
+
+    const GasEstimate eip1559 = simulator.estimateGasEIP1559(good);
+    // The base fee comes from the node's latest block.
+    assert(eip1559.maxFeePerGas == 1000000000ULL * 2 + 1000000000ULL);
+    assert(eip1559.maxPriorityFeePerGas == 1000000000ULL);
 
     // --- Swap quoting --------------------------------------------------------
 

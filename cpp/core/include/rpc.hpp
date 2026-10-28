@@ -47,8 +47,14 @@ public:
     const std::string& url() const { return url_; }
 
     // Raw JSON-RPC. `params_json` is the params array, e.g. "[]" or
-    // "[\"0xabc\",\"latest\"]". Returns the raw "result" JSON text.
+    // "[\"0xabc\",\"latest\"]". Returns the string the "result" field holds.
+    // A method whose result is an object or an array must use CallRaw.
     RpcResult<std::string> Call(const std::string& method, const std::string& params_json) const;
+
+    // Raw JSON-RPC for a result that is not a string. Returns the complete
+    // response body, so the caller reads the object or array it asked for.
+    RpcResult<std::string> CallRaw(const std::string& method,
+                                   const std::string& params_json) const;
 
     // eth_chainId
     RpcResult<uint64_t> ChainId() const;
@@ -79,6 +85,11 @@ public:
     RpcResult<uint64_t> BlockNumber() const;
 
 private:
+    // Performs the request and returns the response body. A JSON-RPC error is
+    // turned into a failure here, so the callers only deal with results.
+    RpcResult<std::string> Post(const std::string& method,
+                                const std::string& params_json) const;
+
     std::string url_;
     long timeout_seconds_;
 };

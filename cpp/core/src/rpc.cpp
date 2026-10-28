@@ -124,8 +124,8 @@ RpcClient::RpcClient(std::string url, long timeout_seconds)
     EnsureCurlInitialised();
 }
 
-RpcResult<std::string> RpcClient::Call(const std::string& method,
-                                       const std::string& params_json) const {
+RpcResult<std::string> RpcClient::Post(const std::string& method,
+                                        const std::string& params_json) const {
     if (url_.empty()) {
         return RpcResult<std::string>::Fail(-1, "no RPC endpoint configured");
     }
@@ -173,11 +173,26 @@ RpcResult<std::string> RpcClient::Call(const std::string& method,
         return RpcResult<std::string>::Fail(-1, ExtractErrorMessage(response));
     }
 
+    return RpcResult<std::string>::Ok(std::move(response));
+}
+
+RpcResult<std::string> RpcClient::Call(const std::string& method,
+                                       const std::string& params_json) const {
+    const auto response = Post(method, params_json);
+    if (!response.ok) {
+        return response;
+    }
+
     std::string result;
-    if (!ExtractJsonString(response, "result", result)) {
+    if (!ExtractJsonString(response.value, "result", result)) {
         return RpcResult<std::string>::Fail(-1, "response had no result field");
     }
     return RpcResult<std::string>::Ok(std::move(result));
+}
+
+RpcResult<std::string> RpcClient::CallRaw(const std::string& method,
+                                          const std::string& params_json) const {
+    return Post(method, params_json);
 }
 
 RpcResult<uint64_t> RpcClient::ChainId() const {

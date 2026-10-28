@@ -1,7 +1,7 @@
 /**
  * TigerWallet - High-Performance Transaction Simulator
  * C++ Implementation with Ultra-Low Latency
- * 
+ *
  * Features:
  * - Real-time transaction simulation
  * - MEV sandwich attack detection
@@ -15,6 +15,9 @@
 
 #include <iostream>
 #include <vector>
+
+#include "rpc.hpp"
+
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -165,7 +168,7 @@ struct Transaction {
     bool isValid;
     std::string simulationError;
 
-    Transaction() 
+    Transaction()
         : nonce(0), gasLimit(0), gasPrice(0)
         , maxFeePerGas(0), maxPriorityFeePerGas(0)
         , chainId(1), blockNumber(0), transactionIndex(0)
@@ -192,7 +195,7 @@ struct SimulationResult {
     std::vector<std::string> warnings;
     std::unordered_map<std::string, std::string> stateChanges;
 
-    SimulationResult() 
+    SimulationResult()
         : success(true), gasPrice(0), executionTimeMs(0)
         , mevType(MEVType::NONE), mevRisk(0.0) {}
 };
@@ -209,7 +212,7 @@ struct Block {
     std::string miner;
     std::vector<Transaction> transactions;
 
-    Block() 
+    Block()
         : number(0), timestamp(0), gasLimit(0)
         , gasUsed(0), baseFeePerGas(0) {}
 };
@@ -237,7 +240,7 @@ struct MEVAnalysis {
     double potentialLoss;
     double botProbability;
 
-    MEVAnalysis() 
+    MEVAnalysis()
         : type(MEVType::NONE), riskScore(0.0)
         , potentialLoss(0.0), botProbability(0.0) {}
 };
@@ -252,7 +255,7 @@ struct GasEstimate {
     double confidence;
     std::vector<std::string> factors;
 
-    GasEstimate() 
+    GasEstimate()
         : gasLimit(0), gasPrice(0), maxFeePerGas(0)
         , maxPriorityFeePerGas(0), estimatedCost(0), confidence(0.0) {}
 };
@@ -275,7 +278,7 @@ struct SwapSimulation {
     bool quoteAvailable;
     std::string quoteUnavailableReason;
 
-    SwapSimulation() 
+    SwapSimulation()
         : amountIn({0,0,0,0}), expectedAmountOut({0,0,0,0})
         , minimumAmountOut({0,0,0,0}), priceImpact(0.0), gasEstimate(0)
         , quoteAvailable(false) {}
@@ -296,6 +299,11 @@ public:
     // to check a signature against it.
     std::string signingHash(const Transaction& tx) const;
     std::string computeTransactionHash(const Transaction& tx) const;
+
+    // Points the simulator at a node. Without one a simulation can only
+    // validate the transaction locally; every method that needs chain state
+    // fails closed rather than reporting an outcome it did not observe.
+    void setRpcClient(std::shared_ptr<tigerwallet::RpcClient> rpc);
 
     // Core simulation methods
     SimulationResult simulateTransaction(const Transaction& tx);
@@ -357,7 +365,7 @@ public:
         uint64_t blocksProcessed;
         uint64_t mevDetections;
 
-        PerformanceMetrics() 
+        PerformanceMetrics()
             : totalSimulations(0), successfulSimulations(0)
             , failedSimulations(0), averageSimulationTimeMs(0.0)
             , p50SimulationTimeMs(0.0), p99SimulationTimeMs(0.0)
@@ -381,6 +389,9 @@ private:
 
     mutable std::shared_mutex mutex_;
     SimulationCallback simulationCallback_;
+
+    // The node, or nullptr when none is configured.
+    std::shared_ptr<tigerwallet::RpcClient> rpc_;
 
     // Internal methods
     bool validateTransaction(const Transaction& tx);
@@ -414,6 +425,12 @@ private:
     uint64_t calculateIntrinsicGas(const Transaction& tx);
     uint64_t calculateOptimalGasPrice(const Transaction& tx);
     uint64_t calculateBaseFee(uint64_t parentBaseFee, uint64_t parentGasUsed, uint64_t gasLimit);
+
+    // Reads the account's live balance and nonce from the node.
+    bool fetchAccountStateLocked(const Address& address, AccountState& out) const;
+
+    // The largest amount the sender may spend, in wei.
+    uint256_t spendLimitLocked(const Transaction& tx) const;
 
     // Token swap helpers
     uint256_t getAmountOut(uint256_t amountIn, uint256_t reserveIn, uint256_t reserveOut);
