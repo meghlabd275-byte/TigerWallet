@@ -17,3 +17,7 @@ add_test(NAME keccak256 COMMAND test_keccak256)
 add_executable(test_rlp tests/test_rlp.cpp)
 target_link_libraries(test_rlp PRIVATE tigerwallet_common)
 add_test(NAME rlp COMMAND test_rlp)
+
+add_executable(test_uint256 tests/test_uint256.cpp)
+target_link_libraries(test_uint256 PRIVATE tigerwallet_common)
+add_test(NAME uint256 COMMAND test_uint256)
