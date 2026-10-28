@@ -11,10 +11,13 @@
 namespace tiger_wallet {
 
 // ============================================================================
-// Main Function - Example Usage
+// Demo
 // ============================================================================
 
-int main() {
+// Defined inside the namespace so the types it uses resolve here; the real
+// entry point below calls it. A main() inside a namespace is not the program
+// entry point, so the previous file never linked.
+int run_demo() {
     std::cout << "TigerWallet High-Performance Transaction Processor" << std::endl;
     std::cout << "==================================================" << std::endl;
     
@@ -86,3 +89,7 @@ int main() {
 }
 
 } // namespace tiger_wallet
+
+int main() {
+    return tiger_wallet::run_demo();
+}
