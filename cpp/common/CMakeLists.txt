@@ -4,9 +4,13 @@ project(tigerwallet_common CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Header-only primitives shared by the wallet's C++ modules.
+# Header-only primitives shared by the wallet's C++ modules. OpenSSL supplies
+# the BIGNUM and EC_POINT arithmetic secp256k1.hpp is built on.
+find_package(OpenSSL REQUIRED)
+
 add_library(tigerwallet_common INTERFACE)
 target_include_directories(tigerwallet_common INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tigerwallet_common INTERFACE OpenSSL::Crypto)
 
 enable_testing()
 
@@ -21,3 +25,7 @@ add_test(NAME rlp COMMAND test_rlp)
 add_executable(test_uint256 tests/test_uint256.cpp)
 target_link_libraries(test_uint256 PRIVATE tigerwallet_common)
 add_test(NAME uint256 COMMAND test_uint256)
+
+add_executable(test_secp256k1 tests/test_secp256k1.cpp)
+target_link_libraries(test_secp256k1 PRIVATE tigerwallet_common)
+add_test(NAME secp256k1 COMMAND test_secp256k1)
