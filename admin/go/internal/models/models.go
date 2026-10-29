@@ -137,8 +137,8 @@ type Token struct {
 	Description     string          `json:"description"`
 	Price           string          `gorm:"type:decimal(36,8)" json:"price"`
 	MarketCap       string          `gorm:"type:decimal(36,2)" json:"market_cap"`
-	Volume24h       string          `gorm:"type:decimal(36,2)" json:"volume_24h"`
-	PriceChange24h  string          `gorm:"type:decimal(10,4)" json:"price_change_24h"`
+	Volume24h       string          `gorm:"column:volume_24h;type:decimal(36,2)" json:"volume_24h"`
+	PriceChange24h  string          `gorm:"column:price_change_24h;type:decimal(10,4)" json:"price_change_24h"`
 	IsActive        bool            `gorm:"default:true" json:"is_active"`
 	IsVerified      bool            `gorm:"default:false" json:"is_verified"`
 	ListingFee      string          `gorm:"type:decimal(36,8)" json:"listing_fee"`
@@ -747,8 +747,8 @@ type TradingPair struct {
 	IsActive          bool      `gorm:"default:true" json:"is_active"`
 	Status            string    `gorm:"not null;default:'active'" json:"status"`
 	LastPrice         float64   `json:"last_price"`
-	Volume24h         float64   `json:"volume_24h"`
-	PriceChange24h    float64   `json:"price_change_24h"`
+	Volume24h         float64   `gorm:"column:volume_24h" json:"volume_24h"`
+	PriceChange24h    float64   `gorm:"column:price_change_24h" json:"price_change_24h"`
 	CreatedBy         uint      `json:"created_by"`
 }
 

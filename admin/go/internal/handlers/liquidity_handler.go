@@ -36,8 +36,8 @@ type LiquidityPool struct {
 	ReserveB    float64   `json:"reserve_b"`
 	TotalSupply float64   `json:"total_supply"`
 	APR         float64   `json:"apr"`
-	Volume24h   float64   `json:"volume_24h"`
-	Fees24h     float64   `json:"fees_24h"`
+	Volume24h   float64   `gorm:"column:volume_24h" json:"volume_24h"`
+	Fees24h     float64   `gorm:"column:fees_24h" json:"fees_24h"`
 	Status      string    `gorm:"default:'active'" json:"status"` // active, inactive
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`

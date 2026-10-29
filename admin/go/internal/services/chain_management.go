@@ -4,8 +4,15 @@
 package services
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -368,11 +375,91 @@ func (m *BlockchainManager) GetChainTokens(chainID string) []*Token {
 	return m.tokens[chainID]
 }
 
-// ValidateRPC validates an RPC endpoint
+// ValidateRPC probes an RPC endpoint with a real JSON-RPC request and reports
+// whether the node answered with a well-formed result. A non-empty string is
+// not evidence that a node exists, so the endpoint is actually contacted.
 func (m *BlockchainManager) ValidateRPC(rpcURL string) bool {
-	// In production, would make actual RPC call
-	return len(rpcURL) > 0
+	return ValidateRPCEndpoint(rpcURL) == nil
 }
+
+// ValidateRPCEndpoint contacts the endpoint and returns a descriptive error when
+// the node is unreachable, rejects the request, or answers with an RPC error.
+func ValidateRPCEndpoint(rpcURL string) error {
+	rpcURL = strings.TrimSpace(rpcURL)
+	if rpcURL == "" {
+		return errors.New("rpc url is empty")
+	}
+
+	parsed, err := url.Parse(rpcURL)
+	if err != nil {
+		return fmt.Errorf("rpc url is not a valid URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("rpc url scheme %q is not http or https", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return errors.New("rpc url has no host")
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "eth_chainId",
+		"params":  []interface{}{},
+	})
+	if err != nil {
+		return fmt.Errorf("encode probe request: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), rpcProbeTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("build probe request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := rpcProbeClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("rpc endpoint unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Bound the response so a hostile endpoint cannot exhaust memory.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return fmt.Errorf("read probe response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("rpc endpoint returned HTTP %d", resp.StatusCode)
+	}
+
+	var decoded struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return fmt.Errorf("rpc endpoint did not return JSON: %w", err)
+	}
+	if decoded.Error != nil {
+		return fmt.Errorf("rpc error %d: %s", decoded.Error.Code, decoded.Error.Message)
+	}
+	if len(decoded.Result) == 0 || string(decoded.Result) == "null" {
+		return errors.New("rpc endpoint returned no result")
+	}
+	return nil
+}
+
+// rpcProbeTimeout bounds how long a single validation probe may take, and
+// rpcProbeClient is reused so connections are pooled across probes.
+const rpcProbeTimeout = 10 * time.Second
+
+var rpcProbeClient = &http.Client{Timeout: rpcProbeTimeout}
 
 // GetSupportedChainTypes returns all supported chain types
 func (m *BlockchainManager) GetSupportedChainTypes() []ChainType {

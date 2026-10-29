@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tigerwallet/admin/internal/models"
+	"github.com/tigerwallet/admin/internal/services"
 	"github.com/tigerwallet/admin/pkg/database"
 )
 
@@ -131,6 +132,17 @@ func (h *BlockchainHandler) CreateBlockchain(c *gin.Context) {
 		CreatedBy:    adminID,
 	}
 
+	// An unreachable RPC endpoint would make the chain unusable for every wallet
+	// that selects it, so it is probed before the record is persisted.
+	if blockchain.RPCURL != "" {
+		if err := services.ValidateRPCEndpoint(blockchain.RPCURL); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "rpc endpoint validation failed: " + err.Error(),
+			})
+			return
+		}
+	}
+
 	if err := h.db.Create(&blockchain).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create blockchain"})
 		return
@@ -203,6 +215,14 @@ func (h *BlockchainHandler) UpdateBlockchain(c *gin.Context) {
 		updates["rpc_url"] = *req.RPCURL
 	} else if req.RPCURLSnake != nil {
 		updates["rpc_url"] = *req.RPCURLSnake
+	}
+	if candidate, ok := updates["rpc_url"].(string); ok && candidate != "" {
+		if err := services.ValidateRPCEndpoint(candidate); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "rpc endpoint validation failed: " + err.Error(),
+			})
+			return
+		}
 	}
 	if req.WSRPCURL != nil {
 		updates["ws_rpc_url"] = *req.WSRPCURL
