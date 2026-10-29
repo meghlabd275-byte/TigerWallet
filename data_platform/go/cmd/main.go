@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -434,12 +435,14 @@ func GetDashboards(c *gin.Context) {
 		FROM dashboards
 		WHERE 1=1
 	`
+	args := []interface{}{}
 	if ownerID != "" {
-		query += fmt.Sprintf(" AND owner_id = '%s'", ownerID)
+		args = append(args, ownerID)
+		query += fmt.Sprintf(" AND owner_id = $%d", len(args))
 	}
 	query += " ORDER BY updated_at DESC LIMIT 50"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -496,12 +499,22 @@ func GetMetrics(c *gin.Context) {
 		FROM metrics
 		WHERE 1=1
 	`
+	args := []interface{}{}
 	if name != "" {
-		query += fmt.Sprintf(" AND name = '%s'", name)
+		args = append(args, name)
+		query += fmt.Sprintf(" AND name = $%d", len(args))
 	}
-	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT %s", limit)
+	parsedLimit := 100
+	if v, err := strconv.Atoi(limit); err == nil && v > 0 {
+		parsedLimit = v
+	}
+	if parsedLimit > 1000 {
+		parsedLimit = 1000
+	}
+	args = append(args, parsedLimit)
+	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d", len(args))
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

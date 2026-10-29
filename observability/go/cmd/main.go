@@ -548,12 +548,14 @@ func GetServiceHealth(c *gin.Context) {
 		SELECT id, service, status, uptime, latency, error_rate, requests_min, last_check_at, created_at
 		FROM service_health
 	`
+	args := []interface{}{}
 	if service != "" {
-		query += fmt.Sprintf(" WHERE service = '%s'", service)
+		args = append(args, service)
+		query += fmt.Sprintf(" WHERE service = $%d", len(args))
 	}
 	query += " ORDER BY last_check_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -607,12 +609,14 @@ func GetDashboards(c *gin.Context) {
 		SELECT id, name, panels, service, owner_id, created_at, updated_at
 		FROM observability_dashboards
 	`
+	args := []interface{}{}
 	if ownerID != "" {
-		query += fmt.Sprintf(" WHERE owner_id = '%s'", ownerID)
+		args = append(args, ownerID)
+		query += fmt.Sprintf(" WHERE owner_id = $%d", len(args))
 	}
 	query += " ORDER BY updated_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

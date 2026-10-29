@@ -589,15 +589,18 @@ func GetConnections(c *gin.Context) {
 		FROM connection_sessions
 		WHERE status = 'connected'
 	`
+	args := []interface{}{}
 	if clientID != "" {
-		query += fmt.Sprintf(" AND client_id = '%s'", clientID)
+		args = append(args, clientID)
+		query += fmt.Sprintf(" AND client_id = $%d", len(args))
 	}
 	if product != "" {
-		query += fmt.Sprintf(" AND product = '%s'", product)
+		args = append(args, product)
+		query += fmt.Sprintf(" AND product = $%d", len(args))
 	}
 	query += " ORDER BY connected_at DESC LIMIT 100"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

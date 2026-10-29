@@ -226,15 +226,18 @@ func listTickets(c *gin.Context) {
 	status := c.Query("status")
 
 	query := "SELECT id, client_id, subject, category, status, priority, created_at, updated_at FROM tickets WHERE 1=1"
+	args := []interface{}{}
 	if clientID != "" {
-		query += fmt.Sprintf(" AND client_id = '%s'", clientID)
+		args = append(args, clientID)
+		query += fmt.Sprintf(" AND client_id = $%d", len(args))
 	}
 	if status != "" {
-		query += fmt.Sprintf(" AND status = '%s'", status)
+		args = append(args, status)
+		query += fmt.Sprintf(" AND status = $%d", len(args))
 	}
 	query += " ORDER BY created_at DESC LIMIT 100"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

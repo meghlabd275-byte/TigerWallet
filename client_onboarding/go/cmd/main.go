@@ -205,12 +205,14 @@ func listOnboardings(c *gin.Context) {
 	status := c.Query("status")
 
 	query := "SELECT id, company_name, contact_name, contact_email, contact_phone, products, website, status, submitted_at FROM onboarding_requests"
+	args := []interface{}{}
 	if status != "" {
-		query += fmt.Sprintf(" WHERE status = '%s'", status)
+		args = append(args, status)
+		query += fmt.Sprintf(" WHERE status = $%d", len(args))
 	}
 	query += " ORDER BY submitted_at DESC LIMIT 100"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -278,12 +279,14 @@ func GetCloudWallets(c *gin.Context) {
 		SELECT id, user_id, wallet_type, public_key, address, chain_id, status, is_multi_sig, threshold, signers, created_at, updated_at
 		FROM cloud_wallets
 	`
+	args := []interface{}{}
 	if userID != "" {
-		query += fmt.Sprintf(" WHERE user_id = '%s'", userID)
+		args = append(args, userID)
+		query += fmt.Sprintf(" WHERE user_id = $%d", len(args))
 	}
 	query += " ORDER BY created_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -334,18 +337,30 @@ func CreateTransaction(c *gin.Context) {
 // GetTransactions - Get transactions
 func GetTransactions(c *gin.Context) {
 	walletID := c.Query("wallet_id")
-	limit := c.DefaultQuery("limit", "50")
+	// LIMIT is validated and clamped so it can never influence statement text.
+	parsedLimit := 50
+	if raw := c.Query("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			parsedLimit = v
+		}
+	}
+	if parsedLimit > 1000 {
+		parsedLimit = 1000
+	}
 
 	query := `
 		SELECT id, wallet_id, from_address, to_address, amount, token_address, fee, status, hash, raw_tx, signatures, chain_id, nonce, gas_limit, gas_price, created_at, confirmed_at
 		FROM cloud_transactions
 	`
+	args := []interface{}{}
 	if walletID != "" {
-		query += fmt.Sprintf(" WHERE wallet_id = '%s'", walletID)
+		args = append(args, walletID)
+		query += fmt.Sprintf(" WHERE wallet_id = $%d", len(args))
 	}
-	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT %s", limit)
+	args = append(args, parsedLimit)
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", len(args))
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -455,12 +470,14 @@ func GetPolicies(c *gin.Context) {
 		SELECT id, wallet_id, policy_type, condition, limit_amount, limit_period, is_enabled, created_at, updated_at
 		FROM wallet_policies
 	`
+	args := []interface{}{}
 	if walletID != "" {
-		query += fmt.Sprintf(" WHERE wallet_id = '%s'", walletID)
+		args = append(args, walletID)
+		query += fmt.Sprintf(" WHERE wallet_id = $%d", len(args))
 	}
 	query += " ORDER BY created_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -511,12 +528,14 @@ func GetBackups(c *gin.Context) {
 		SELECT id, wallet_id, backup_type, encrypted_data, shard_index, total_shards, status, created_at
 		FROM wallet_backups
 	`
+	args := []interface{}{}
 	if walletID != "" {
-		query += fmt.Sprintf(" WHERE wallet_id = '%s'", walletID)
+		args = append(args, walletID)
+		query += fmt.Sprintf(" WHERE wallet_id = $%d", len(args))
 	}
 	query += " ORDER BY created_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -567,12 +586,14 @@ func GetKeyShares(c *gin.Context) {
 		SELECT id, wallet_id, share_id, encrypted_share, holder_id, holder_type, status, created_at
 		FROM key_shares
 	`
+	args := []interface{}{}
 	if walletID != "" {
-		query += fmt.Sprintf(" WHERE wallet_id = '%s'", walletID)
+		args = append(args, walletID)
+		query += fmt.Sprintf(" WHERE wallet_id = $%d", len(args))
 	}
 	query += " ORDER BY created_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -625,12 +646,14 @@ func GetRecoveries(c *gin.Context) {
 		SELECT id, wallet_id, recovery_type, guardians, threshold, status, expires_at, created_at
 		FROM wallet_recovery
 	`
+	args := []interface{}{}
 	if walletID != "" {
-		query += fmt.Sprintf(" WHERE wallet_id = '%s'", walletID)
+		args = append(args, walletID)
+		query += fmt.Sprintf(" WHERE wallet_id = $%d", len(args))
 	}
 	query += " ORDER BY created_at DESC"
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

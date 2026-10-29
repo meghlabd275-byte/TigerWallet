@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -596,15 +597,26 @@ func GetHistory(c *gin.Context) {
 		FROM metrics_history
 		WHERE 1=1
 	`
+	args := []interface{}{}
 	if metricType != "" {
-		query += fmt.Sprintf(" AND metric_type = '%s'", metricType)
+		args = append(args, metricType)
+		query += fmt.Sprintf(" AND metric_type = $%d", len(args))
 	}
 	if service != "" {
-		query += fmt.Sprintf(" AND service = '%s'", service)
+		args = append(args, service)
+		query += fmt.Sprintf(" AND service = $%d", len(args))
 	}
-	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT %s", limit)
+	parsedLimit := 100
+	if v, err := strconv.Atoi(limit); err == nil && v > 0 {
+		parsedLimit = v
+	}
+	if parsedLimit > 1000 {
+		parsedLimit = 1000
+	}
+	args = append(args, parsedLimit)
+	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d", len(args))
 
-	rows, err := db.Query(context.Background(), query)
+	rows, err := db.Query(context.Background(), query, args...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
