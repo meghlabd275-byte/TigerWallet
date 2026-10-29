@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -23,12 +22,12 @@ import (
 
 type Config struct {
 	Port          string
-	RedisURL       string
-	EthereumRPC    string
-	PolygonRPC     string
-	BSCRPC         string
-	CoingeckoURL   string
-	InfuraProject  string
+	RedisURL      string
+	EthereumRPC   string
+	PolygonRPC    string
+	BSCRPC        string
+	CoingeckoURL  string
+	InfuraProject string
 }
 
 func getEnv(key, defaultValue string) string {
@@ -43,89 +42,89 @@ func getEnv(key, defaultValue string) string {
 type TokenType string
 
 const (
-	TokenTypeERC20  TokenType = "ERC20"
-	TokenTypeERC721 TokenType = "ERC721"
+	TokenTypeERC20   TokenType = "ERC20"
+	TokenTypeERC721  TokenType = "ERC721"
 	TokenTypeERC1155 TokenType = "ERC1155"
-	TokenTypeSPL    TokenType = "SPL"
+	TokenTypeSPL     TokenType = "SPL"
 )
 
 type TokenStatus string
 
 const (
-	StatusVerified  TokenStatus = "verified"
+	StatusVerified   TokenStatus = "verified"
 	StatusSuspicious TokenStatus = "suspicious"
-	StatusScam      TokenStatus = "scam"
-	StatusNew       TokenStatus = "new"
+	StatusScam       TokenStatus = "scam"
+	StatusNew        TokenStatus = "new"
 )
 
 type Token struct {
-	Address     string     `json:"address"`
-	Name        string     `json:"name"`
-	Symbol      string     `json:"symbol"`
-	Decimals    int        `json:"decimals"`
-	Type        TokenType  `json:"type"`
-	Chain       string     `json:"chain"`
-	TotalSupply string     `json:"totalSupply"`
-	Price       float64    `json:"price"`
-	MarketCap   float64    `json:"marketCap"`
-	Volume24h   float64    `json:"volume24h"`
-	Holders     int        `json:"holders"`
-	Transfers   int64      `json:"transfers"`
+	Address     string      `json:"address"`
+	Name        string      `json:"name"`
+	Symbol      string      `json:"symbol"`
+	Decimals    int         `json:"decimals"`
+	Type        TokenType   `json:"type"`
+	Chain       string      `json:"chain"`
+	TotalSupply string      `json:"totalSupply"`
+	Price       float64     `json:"price"`
+	MarketCap   float64     `json:"marketCap"`
+	Volume24h   float64     `json:"volume24h"`
+	Holders     int         `json:"holders"`
+	Transfers   int64       `json:"transfers"`
 	Status      TokenStatus `json:"status"`
-	RiskScore   int        `json:"riskScore"`
-	Verified    bool       `json:"verified"`
-	Tags        []string   `json:"tags"`
-	Socials     Socials    `json:"socials"`
-	Contract    Contract   `json:"contract"`
-	CreatedAt   int64      `json:"createdAt"`
-	UpdatedAt   int64      `json:"updatedAt"`
+	RiskScore   int         `json:"riskScore"`
+	Verified    bool        `json:"verified"`
+	Tags        []string    `json:"tags"`
+	Socials     Socials     `json:"socials"`
+	Contract    Contract    `json:"contract"`
+	CreatedAt   int64       `json:"createdAt"`
+	UpdatedAt   int64       `json:"updatedAt"`
 }
 
 type Socials struct {
-	Website   string `json:"website"`
-	Twitter   string `json:"twitter"`
-	Telegram  string `json:"telegram"`
-	Discord   string `json:"discord"`
-	GitHub    string `json:"github"`
+	Website  string `json:"website"`
+	Twitter  string `json:"twitter"`
+	Telegram string `json:"telegram"`
+	Discord  string `json:"discord"`
+	GitHub   string `json:"github"`
 }
 
 type Contract struct {
-	Verified        bool   `json:"verified"`
-	Proxy          bool   `json:"proxy"`
+	Verified        bool     `json:"verified"`
+	Proxy           bool     `json:"proxy"`
 	Implementations []string `json:"implementations"`
-	Compiler       string `json:"compiler"`
-	License        string `json:"license"`
+	Compiler        string   `json:"compiler"`
+	License         string   `json:"license"`
 }
 
 type TokenAnalysis struct {
-	TokenAddress string            `json:"tokenAddress"`
-	RiskScore   int               `json:"riskScore"`
-	Flags       []string          `json:"flags"`
-	Warnings    []string          `json:"warnings"`
-	 Honeypot   bool              `json:"honeypot"`
-	MintFunction bool              `json:"mintFunction"`
-	PauseFunction bool            `json:"pauseFunction"`
-	Blacklist   bool              `json:"blacklist"`
-	AntiWhale   bool              `json:"antiWhale"`
-	TradingCooldown bool          `json:"tradingCooldown"`
-	HiddenOwner  bool             `json:"hiddenOwner"`
-	CentralizedMinter bool        `json:"centralizedMinter"`
-	ExternalCallRisk bool         `json:"externalCallRisk"`
-	RiskLevel   string            `json:"riskLevel"`
-	AnalyzedAt int64             `json:"analyzedAt"`
+	TokenAddress      string   `json:"tokenAddress"`
+	RiskScore         int      `json:"riskScore"`
+	Flags             []string `json:"flags"`
+	Warnings          []string `json:"warnings"`
+	Honeypot          bool     `json:"honeypot"`
+	MintFunction      bool     `json:"mintFunction"`
+	PauseFunction     bool     `json:"pauseFunction"`
+	Blacklist         bool     `json:"blacklist"`
+	AntiWhale         bool     `json:"antiWhale"`
+	TradingCooldown   bool     `json:"tradingCooldown"`
+	HiddenOwner       bool     `json:"hiddenOwner"`
+	CentralizedMinter bool     `json:"centralizedMinter"`
+	ExternalCallRisk  bool     `json:"externalCallRisk"`
+	RiskLevel         string   `json:"riskLevel"`
+	AnalyzedAt        int64    `json:"analyzedAt"`
 }
 
 type Airdrop struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Symbol      string   `json:"symbol"`
-	ClaimAmount string   `json:"claimAmount"`
-	ClaimURL    string   `json:"claimUrl"`
-	StartDate   int64    `json:"startDate"`
-	EndDate     int64    `json:"endDate"`
-	SnapshotDate int64   `json:"snapshotDate"`
-	Eligible    bool     `json:"eligible"`
-	Claimed     bool     `json:"claimed"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Symbol       string `json:"symbol"`
+	ClaimAmount  string `json:"claimAmount"`
+	ClaimURL     string `json:"claimUrl"`
+	StartDate    int64  `json:"startDate"`
+	EndDate      int64  `json:"endDate"`
+	SnapshotDate int64  `json:"snapshotDate"`
+	Eligible     bool   `json:"eligible"`
+	Claimed      bool   `json:"claimed"`
 }
 
 // ============ Token Scanner Service ============
@@ -193,7 +192,7 @@ func (s *TokenScannerService) Initialize() {
 		Address:   "0xdAC17F958D2ee523a2206206994597C13D831ec7",
 		Name:      "Tether USD",
 		Symbol:    "USDT",
-		Decimals: 6,
+		Decimals:  6,
 		Type:      TokenTypeERC20,
 		Chain:     "ethereum",
 		Price:     1.00,
@@ -208,7 +207,7 @@ func (s *TokenScannerService) Initialize() {
 		Address:   "0x7Fc66500c84A76Ad7e9e934DC149D2C5bD80b7d1",
 		Name:      "Aave Token",
 		Symbol:    "AAVE",
-		Decimals: 18,
+		Decimals:  18,
 		Type:      TokenTypeERC20,
 		Chain:     "ethereum",
 		Price:     250.00,
@@ -271,64 +270,266 @@ func (s *TokenScannerService) GetVerifiedTokens() []*Token {
 	return tokens
 }
 
+// AnalyzeToken inspects the deployed contract for a token and reports what the
+// bytecode actually shows.
+//
+// The result is derived from the contract: an address holding no code is
+// reported as such, and a contract that cannot be read is reported as
+// unanalyzable rather than as low risk.
 func (s *TokenScannerService) AnalyzeToken(address string) (*TokenAnalysis, error) {
-	// Simulate token analysis
-	analysis := &TokenAnalysis{
-		TokenAddress: address,
-		RiskScore:   0,
-		Flags:       []string{},
-		Warnings:    []string{},
-		Honeypot:    false,
-		AnalyzedAt:  time.Now().Unix(),
-		RiskLevel:   "low",
+	return s.AnalyzeTokenOnChain(context.Background(), address, s.chainFor(address))
+}
+
+// AnalyzeTokenOnChain performs the analysis against a specific chain.
+func (s *TokenScannerService) AnalyzeTokenOnChain(ctx context.Context, address, chain string) (*TokenAnalysis, error) {
+	if !isValidAddress(address) {
+		return nil, fmt.Errorf("invalid token address %q", address)
+	}
+	address = strings.ToLower(address)
+
+	endpoint := s.rpcForChain(chain)
+	if endpoint == "" {
+		return nil, fmt.Errorf("no RPC endpoint configured for chain %q", chain)
 	}
 
-	// In production, would:
-	// 1. Fetch contract code from blockchain
-	// 2. Analyze for honeypot patterns
-	// 3. Check for mint functions
-	// 4. Check for pause functions
-	// 5. Analyze holder distribution
-	// 6. Check trading restrictions
+	client := &http.Client{Timeout: rpcTimeout}
 
-	return analysis, nil
-}
+	code, err := fetchContractCode(ctx, client, endpoint, address)
+	if err != nil {
+		return nil, fmt.Errorf("read contract code: %w", err)
+	}
 
-func (s *TokenScannerService) CheckHoneypot(address string) (bool, string) {
-	// In production, would use multiple detection methods:
-	// 1. Static code analysis
-	// 2. Dynamic analysis (sandbox)
-	// 3. HoneypotDetector integration
-	// 4. Trading simulation
-
-	return false, "No honeypot detected"
-}
-
-func (s *TokenScannerService) GetTokenSecurity(address string) (*TokenAnalysis, error) {
-	// Comprehensive security check
 	analysis := &TokenAnalysis{
-		TokenAddress:  address,
-		RiskScore:    10,
-		RiskLevel:    "low",
-		Flags:         []string{},
+		TokenAddress: address,
+		Flags:        []string{},
 		Warnings:     []string{},
-		Honeypot:     false,
 		AnalyzedAt:   time.Now().Unix(),
 	}
 
-	// Check for common scam patterns
-	analysis.Flags = append(analysis.Flags, "contract_verified")
-	analysis.Flags = append(analysis.Flags, "no_mint_function")
+	codeInfo := analyzeCode(code)
+	if !codeInfo.IsContract {
+		// No code at this address: it is an account, not a token. Saying
+		// otherwise would let a mistyped address look like a valid token.
+		analysis.RiskLevel = "unknown"
+		analysis.Flags = append(analysis.Flags, "not_a_contract")
+		analysis.Warnings = append(analysis.Warnings, "the address holds no contract code; it is not a token contract")
+		return analysis, nil
+	}
+
+	caps := codeInfo.Capabilities
+
+	// A token must implement the ERC-20 read surface. Without balanceOf and
+	// transfer it is not a fungible token, whatever else it implements.
+	if !caps["balance_of"] || !caps["transfer"] {
+		analysis.Warnings = append(analysis.Warnings, "the contract does not implement the ERC-20 transfer/balanceOf interface")
+		analysis.Flags = append(analysis.Flags, "not_erc20")
+	}
+
+	analysis.MintFunction = caps["mint"]
+	analysis.PauseFunction = caps["pause"]
+	analysis.Blacklist = caps["blacklist"]
+	analysis.AntiWhale = caps["anti_whale"]
+	analysis.TradingCooldown = caps["cooldown"]
+	analysis.HiddenOwner = caps["ownership"] && codeInfo.IsProxy
+	analysis.CentralizedMinter = caps["mint"] && !caps["ownership"]
+	analysis.ExternalCallRisk = caps["external_call_risk"] || codeInfo.Facts.DelegateCall > 0
+
+	// A proxy can be repointed at new logic, so the behaviour a user relies on
+	// can change after they approve it.
+	proxy := codeInfo.IsProxy
+	analysis.Honeypot = false // static analysis cannot prove a honeypot; see CheckHoneypot
+
+	score := 0
+	if analysis.MintFunction {
+		score += 15
+		analysis.Flags = append(analysis.Flags, "mint_function")
+		analysis.Warnings = append(analysis.Warnings, "supply is not fixed: the contract can mint more tokens")
+	}
+	if analysis.PauseFunction {
+		score += 20
+		analysis.Flags = append(analysis.Flags, "pause_function")
+		analysis.Warnings = append(analysis.Warnings, "transfers can be paused, which can block selling")
+	}
+	if analysis.Blacklist {
+		score += 25
+		analysis.Flags = append(analysis.Flags, "blacklist")
+		analysis.Warnings = append(analysis.Warnings, "the operator can blacklist individual holders")
+	}
+	if analysis.AntiWhale {
+		score += 10
+		analysis.Flags = append(analysis.Flags, "anti_whale")
+		analysis.Warnings = append(analysis.Warnings, "maximum transaction or wallet limits are enforced")
+	}
+	if analysis.TradingCooldown {
+		score += 10
+		analysis.Flags = append(analysis.Flags, "trading_cooldown")
+		analysis.Warnings = append(analysis.Warnings, "a transfer cooldown is enforced")
+	}
+	if proxy {
+		score += 15
+		analysis.Flags = append(analysis.Flags, "proxy_contract")
+		analysis.Warnings = append(analysis.Warnings, "the contract is upgradeable, so its logic can change after you approve it")
+	}
+	if analysis.ExternalCallRisk {
+		score += 15
+		analysis.Flags = append(analysis.Flags, "external_call")
+		analysis.Warnings = append(analysis.Warnings, "the contract can execute external calls or arbitrary data")
+	}
+	if codeInfo.Facts.SelfDestruct > 0 {
+		score += 30
+		analysis.Flags = append(analysis.Flags, "selfdestruct")
+		analysis.Warnings = append(analysis.Warnings, "the contract contains SELFDESTRUCT")
+	}
+	if caps["trading_switch"] {
+		score += 20
+		analysis.Flags = append(analysis.Flags, "trading_switch")
+		analysis.Warnings = append(analysis.Warnings, "trading can be enabled or disabled by the operator")
+	}
+	if !caps["balance_of"] || !caps["transfer"] {
+		score += 40
+	}
+
+	if score > 100 {
+		score = 100
+	}
+	analysis.RiskScore = score
+	analysis.RiskLevel = riskLevelForScore(score)
 
 	return analysis, nil
 }
 
+// riskLevelForScore maps a 0..100 risk score onto a level.
+func riskLevelForScore(score int) string {
+	switch {
+	case score >= 70:
+		return "critical"
+	case score >= 45:
+		return "high"
+	case score >= 20:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+// rpcForChain returns the configured endpoint for a chain.
+func (s *TokenScannerService) rpcForChain(chain string) string {
+	switch strings.ToLower(strings.TrimSpace(chain)) {
+	case "1", "ethereum", "eth":
+		return s.config.EthereumRPC
+	case "137", "polygon", "matic":
+		return s.config.PolygonRPC
+	case "56", "bsc", "binance":
+		return s.config.BSCRPC
+	default:
+		return ""
+	}
+}
+
+// chainFor returns the chain a known token belongs to, defaulting to Ethereum.
+func (s *TokenScannerService) chainFor(address string) string {
+	if token, ok := s.tokens[strings.ToLower(address)]; ok && token.Chain != "" {
+		return token.Chain
+	}
+	return "1"
+}
+
+// CheckHoneypot reports whether the contract can be sold.
+//
+// A static analysis cannot prove a honeypot: the determination requires
+// observing a real buy and sell. This performs the checks that are decidable
+// from the contract and reports what remains unverified, rather than asserting
+// that no honeypot exists.
+func (s *TokenScannerService) CheckHoneypot(address string) (bool, string) {
+	analysis, err := s.AnalyzeToken(address)
+	if err != nil {
+		return false, fmt.Sprintf("could not analyze the contract: %v", err)
+	}
+
+	var reasons []string
+	if analysis.Flags == nil {
+		return false, "no contract code at this address; nothing to check"
+	}
+	for _, flag := range analysis.Flags {
+		switch flag {
+		case "blacklist":
+			reasons = append(reasons, "holders can be blacklisted")
+		case "pause_function":
+			reasons = append(reasons, "transfers can be paused")
+		case "trading_switch":
+			reasons = append(reasons, "trading can be switched off")
+		case "not_erc20":
+			reasons = append(reasons, "the contract does not implement the ERC-20 transfer interface")
+		}
+	}
+
+	if len(reasons) > 0 {
+		return true, "restrictions that can prevent selling were found: " + strings.Join(reasons, ", ")
+	}
+	return false, "no sell-restricting capability was found in the contract; a definitive check requires simulating an actual buy and sell"
+}
+
+// GetTokenSecurity returns the full security assessment for a token.
+func (s *TokenScannerService) GetTokenSecurity(address string) (*TokenAnalysis, error) {
+	return s.AnalyzeToken(address)
+}
+
+// GetTokenPrice returns the market price for a token.
+//
+// The price is read from the configured price API. A token whose price is not
+// listed returns an error rather than a placeholder value, so a caller cannot
+// mistake an unknown price for a real one.
 func (s *TokenScannerService) GetTokenPrice(address string) (float64, error) {
-	// In production, would call CoinGecko or other price API
-	if token, ok := s.tokens[strings.ToLower(address)]; ok {
+	if !isValidAddress(address) {
+		return 0, fmt.Errorf("invalid token address %q", address)
+	}
+	address = strings.ToLower(address)
+
+	if token, ok := s.tokens[address]; ok && token.Price > 0 {
 		return token.Price, nil
 	}
-	return 0, fmt.Errorf("token not found")
+
+	endpoint := strings.TrimSpace(s.config.CoingeckoURL)
+	if endpoint == "" {
+		return 0, fmt.Errorf("no price API is configured (COINGECKO_URL)")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+
+	url := fmt.Sprintf("%s/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=usd", strings.TrimRight(endpoint, "/"), address)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := (&http.Client{Timeout: rpcTimeout}).Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("price API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("price API returned HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return 0, err
+	}
+
+	var decoded map[string]struct {
+		USD float64 `json:"usd"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return 0, fmt.Errorf("decode price response: %w", err)
+	}
+	entry, ok := decoded[address]
+	if !ok || entry.USD <= 0 {
+		return 0, fmt.Errorf("no price is available for %s", address)
+	}
+	return entry.USD, nil
 }
 
 func (s *TokenScannerService) GetAirdrops(walletAddress string) []*Airdrop {
@@ -343,8 +544,8 @@ func (s *TokenScannerService) GetAirdrops(walletAddress string) []*Airdrop {
 			StartDate:    time.Now().Add(-7 * 24 * time.Hour).Unix(),
 			EndDate:      time.Now().Add(30 * 24 * time.Hour).Unix(),
 			SnapshotDate: time.Now().Add(-30 * 24 * time.Hour).Unix(),
-			Eligible:    true,
-			Claimed:     false,
+			Eligible:     true,
+			Claimed:      false,
 		},
 	}
 
@@ -358,11 +559,11 @@ func (s *TokenScannerService) ScanWallet(walletAddress string) (map[string][]*To
 	// For demo, return some sample tokens
 	result["ethereum"] = []*Token{
 		{
-			Address:   "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-			Name:      "USD Coin",
-			Symbol:    "USDC",
-			Decimals:  6,
-			Chain:     "ethereum",
+			Address:  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+			Name:     "USD Coin",
+			Symbol:   "USDC",
+			Decimals: 6,
+			Chain:    "ethereum",
 		},
 	}
 
@@ -518,7 +719,7 @@ func (h *Handler) GetPortfolio(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"wallet":     wallet,
-		"totalValue":  total,
+		"totalValue": total,
 		"holdings":   holdings,
 	})
 }
@@ -532,9 +733,9 @@ func (h *Handler) GetTrending(c *gin.Context) {
 
 func main() {
 	config := &Config{
-		Port:        getEnv("PORT", "8080"),
-		RedisURL:    getEnv("REDIS_URL", "localhost:6379"),
-		EthereumRPC: getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
+		Port:         getEnv("PORT", "8080"),
+		RedisURL:     getEnv("REDIS_URL", "localhost:6379"),
+		EthereumRPC:  getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
 		CoingeckoURL: getEnv("COINGECKO_URL", "https://api.coingecko.com/api/v3"),
 	}
 
@@ -608,15 +809,6 @@ func main() {
 }
 
 // Helper functions
-func calculateRiskScore(flags []string) int {
-	score := 0
-	for _, flag := range flags {
-		hash := sha256.Sum256([]byte(flag))
-		score += int(hash[0]) % 30
-	}
-	return score
-}
-
 func formatLargeNumber(n *big.Int) string {
 	str := n.String()
 	if len(str) <= 3 {
