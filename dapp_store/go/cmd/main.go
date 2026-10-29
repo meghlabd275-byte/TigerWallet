@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,9 +20,9 @@ import (
 // ============ Configuration ============
 
 type Config struct {
-	Port          string
-	RedisURL      string
-	IPFSGateway   string
+	Port         string
+	RedisURL     string
+	IPFSGateway  string
 	FeaturedDays int
 }
 
@@ -35,49 +36,49 @@ func getEnv(key, defaultValue string) string {
 // ============ Models ============
 
 type DApp struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Category    string   `json:"category"`
-	IconURL     string   `json:"iconUrl"`
-	WebsiteURL  string   `json:"websiteUrl"`
-	AppURL      string   `json:"appUrl"`
-	Chains      []string `json:"chains"`
-	Contracts   []string `json:"contracts"`
-	Tags        []string `json:"tags"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Category    string    `json:"category"`
+	IconURL     string    `json:"iconUrl"`
+	WebsiteURL  string    `json:"websiteUrl"`
+	AppURL      string    `json:"appUrl"`
+	Chains      []string  `json:"chains"`
+	Contracts   []string  `json:"contracts"`
+	Tags        []string  `json:"tags"`
 	Developer   Developer `json:"developer"`
-	Metrics     Metrics  `json:"metrics"`
-	Status      string   `json:"status"`
-	Verified    bool     `json:"verified"`
-	Featured    bool     `json:"featured"`
-	CreatedAt   int64    `json:"createdAt"`
-	UpdatedAt   int64    `json:"updatedAt"`
+	Metrics     Metrics   `json:"metrics"`
+	Status      string    `json:"status"`
+	Verified    bool      `json:"verified"`
+	Featured    bool      `json:"featured"`
+	CreatedAt   int64     `json:"createdAt"`
+	UpdatedAt   int64     `json:"updatedAt"`
 }
 
 type Developer struct {
-	Name        string `json:"name"`
-	Website     string `json:"website"`
-	Email       string `json:"email"`
-	Twitter     string `json:"twitter"`
-	GitHub      string `json:"github"`
+	Name    string `json:"name"`
+	Website string `json:"website"`
+	Email   string `json:"email"`
+	Twitter string `json:"twitter"`
+	GitHub  string `json:"github"`
 }
 
 type Metrics struct {
 	Users        int64   `json:"users"`
 	Transactions int64   `json:"transactions"`
 	Volume24h    float64 `json:"volume24h"`
-	Volume7d    float64 `json:"volume7d"`
+	Volume7d     float64 `json:"volume7d"`
 	Rating       float64 `json:"rating"`
 	Reviews      int     `json:"reviews"`
 }
 
 type Review struct {
-	ID          string   `json:"id"`
-	DAppID      string   `json:"dappId"`
-	UserID      string   `json:"userId"`
-	Rating      int      `json:"rating"`
-	Comment     string   `json:"comment"`
-	CreatedAt   int64    `json:"createdAt"`
+	ID        string `json:"id"`
+	DAppID    string `json:"dappId"`
+	UserID    string `json:"userId"`
+	Rating    int    `json:"rating"`
+	Comment   string `json:"comment"`
+	CreatedAt int64  `json:"createdAt"`
 }
 
 type Category struct {
@@ -89,13 +90,13 @@ type Category struct {
 }
 
 type DAppSubmission struct {
-	ID          string    `json:"id"`
-	DApp        DApp      `json:"dapp"`
-	SubmittedBy string    `json:"submittedBy"`
-	Status      string    `json:"status"` // pending, approved, rejected
-	SubmittedAt int64     `json:"submittedAt"`
-	ReviewedAt  *int64   `json:"reviewedAt"`
-	Reviewer    string    `json:"reviewer"`
+	ID          string `json:"id"`
+	DApp        DApp   `json:"dapp"`
+	SubmittedBy string `json:"submittedBy"`
+	Status      string `json:"status"` // pending, approved, rejected
+	SubmittedAt int64  `json:"submittedAt"`
+	ReviewedAt  *int64 `json:"reviewedAt"`
+	Reviewer    string `json:"reviewer"`
 }
 
 // ============ Service ============
@@ -103,12 +104,14 @@ type DAppSubmission struct {
 type DAppStoreService struct {
 	config *Config
 	dapps  map[string]*DApp
+	store  *Store
 }
 
-func NewDAppStoreService(config *Config) *DAppStoreService {
+func NewDAppStoreService(config *Config, store *Store) *DAppStoreService {
 	return &DAppStoreService{
 		config: config,
 		dapps:  make(map[string]*DApp),
+		store:  store,
 	}
 }
 
@@ -126,9 +129,9 @@ func (s *DAppStoreService) Initialize() {
 		Chains:      []string{"ethereum", "arbitrum", "optimism", "polygon"},
 		Tags:        []string{"swap", "defi", "dex"},
 		Developer: Developer{
-			Name:     "Uniswap Labs",
-			Twitter:  "@uniswap",
-			GitHub:   "Uniswap",
+			Name:    "Uniswap Labs",
+			Twitter: "@uniswap",
+			GitHub:  "Uniswap",
 		},
 		Metrics: Metrics{
 			Users:        3500000,
@@ -153,9 +156,9 @@ func (s *DAppStoreService) Initialize() {
 		Chains:      []string{"ethereum", "polygon", "arbitrum", "optimism"},
 		Tags:        []string{"lending", "borrow", "defi"},
 		Developer: Developer{
-			Name:     "Aave Labs",
-			Twitter:  "@aaveaave",
-			GitHub:   "aave",
+			Name:    "Aave Labs",
+			Twitter: "@aaveaave",
+			GitHub:  "aave",
 		},
 		Metrics: Metrics{
 			Users:        150000,
@@ -180,8 +183,10 @@ func (s *DAppStoreService) Initialize() {
 		AppURL:      "https://opensea.io",
 		Chains:      []string{"ethereum", "polygon", "arbitrum", "optimism", "bsc"},
 		Tags:        []string{"nft", "marketplace", "collectibles"},
-		Developer: OpenSeaDev{
-			Foundation, "OpenSea", "@opensea", "opensea",
+		Developer: Developer{
+			Name:    "OpenSea",
+			Twitter: "@opensea",
+			GitHub:  "opensea",
 		},
 		Metrics: Metrics{
 			Users:        2000000,
@@ -206,8 +211,8 @@ func (s *DAppStoreService) Initialize() {
 		Chains:      []string{"ethereum"},
 		Tags:        []string{"nft", "trading", "blur"},
 		Developer: Developer{
-			Name:     "Blur Foundation",
-			Twitter:  "@blur_io",
+			Name:    "Blur Foundation",
+			Twitter: "@blur_io",
 		},
 		Metrics: Metrics{
 			Users:        500000,
@@ -233,9 +238,9 @@ func (s *DAppStoreService) Initialize() {
 		Chains:      []string{"ronin", "ethereum"},
 		Tags:        []string{"game", "nft", "play2earn"},
 		Developer: Developer{
-			Name:     "Sky Mavis",
-			Twitter:  "@SkyMavis",
-			GitHub:   "axieinfinity",
+			Name:    "Sky Mavis",
+			Twitter: "@SkyMavis",
+			GitHub:  "axieinfinity",
 		},
 		Metrics: Metrics{
 			Users:        1000000,
@@ -261,8 +266,8 @@ func (s *DAppStoreService) Initialize() {
 		Chains:      []string{"ethereum", "avalanche", "polygon", "bsc", "arbitrum", "optimism"},
 		Tags:        []string{"bridge", "crosschain", "omnichain"},
 		Developer: Developer{
-			Name:     "LayerZero Labs",
-			Twitter:  "@LayerZero_Labs",
+			Name:    "LayerZero Labs",
+			Twitter: "@LayerZero_Labs",
 		},
 		Metrics: Metrics{
 			Users:        500000,
@@ -288,8 +293,8 @@ func (s *DAppStoreService) Initialize() {
 		Chains:      []string{"ethereum", "polygon", "bsc", "arbitrum", "optimism"},
 		Tags:        []string{"analytics", "data", "dashboard"},
 		Developer: Developer{
-			Name:     "Dune Analytics",
-			Twitter:  "@DuneAnalytics",
+			Name:    "Dune Analytics",
+			Twitter: "@DuneAnalytics",
 		},
 		Metrics: Metrics{
 			Users:        150000,
@@ -302,11 +307,6 @@ func (s *DAppStoreService) Initialize() {
 		Verified: true,
 		Featured: false,
 	})
-}
-
-type OpenSeaDev struct {
-	Developer
-	Foundation string `json:"foundation"`
 }
 
 func (s *DAppStoreService) AddDApp(dapp *DApp) {
@@ -392,28 +392,72 @@ func (s *DAppStoreService) GetDAppsByChain(chain string) []*DApp {
 	return dapps
 }
 
-func (s *DAppStoreService) SubmitDApp(dapp DApp, userID string) string {
-	submissionID := uuid.New().String()
-	// In production, would save to database
-	log.Printf("DApp submission: %s by user %s", dapp.Name, userID)
-	return submissionID
-}
-
-func (s *DAppStoreService) AddReview(review Review) {
-	// In production, would save to database
-	log.Printf("Review added for DApp: %s by user %s", review.DAppID, review.UserID)
-}
-
-func (s *DAppStoreService) GetReviews(dappID string) []Review {
-	// In production, would fetch from database
-	return []Review{}
-}
-
-func (s *DAppStoreService) UpdateMetrics(dappID string, metrics Metrics) {
-	if dapp, ok := s.dapps[dappID]; ok {
-		dapp.Metrics = metrics
-		dapp.UpdatedAt = time.Now().Unix()
+// SubmitDApp records a submission in the backing store and returns its id.
+// It fails closed: an unreachable store returns an error instead of an id, so
+// a client is never told a submission was accepted when nothing was stored.
+func (s *DAppStoreService) SubmitDApp(ctx context.Context, dapp DApp, userID string) (string, error) {
+	if strings.TrimSpace(dapp.Name) == "" {
+		return "", fmt.Errorf("dapp name is required")
 	}
+	if strings.TrimSpace(dapp.AppURL) == "" {
+		return "", fmt.Errorf("dapp appUrl is required")
+	}
+	if strings.TrimSpace(userID) == "" {
+		return "", fmt.Errorf("submitter is required")
+	}
+	if s.store == nil {
+		return "", ErrStoreUnavailable
+	}
+
+	submission := DAppSubmission{
+		ID:          newSubmissionID(),
+		DApp:        dapp,
+		SubmittedBy: userID,
+		Status:      "pending",
+		SubmittedAt: time.Now().Unix(),
+	}
+	if err := s.store.SaveSubmission(ctx, submission); err != nil {
+		return "", err
+	}
+	return submission.ID, nil
+}
+
+// AddReview stores a review. The review is persisted before it is acknowledged.
+func (s *DAppStoreService) AddReview(ctx context.Context, review Review) error {
+	if err := ValidateReview(&review); err != nil {
+		return err
+	}
+	if s.store == nil {
+		return ErrStoreUnavailable
+	}
+	if _, ok := s.GetDApp(review.DAppID); !ok {
+		return fmt.Errorf("unknown dappId %q", review.DAppID)
+	}
+	return s.store.SaveReview(ctx, review)
+}
+
+// GetReviews returns the stored reviews for a DApp.
+func (s *DAppStoreService) GetReviews(ctx context.Context, dappID string) ([]Review, error) {
+	if s.store == nil {
+		return nil, ErrStoreUnavailable
+	}
+	return s.store.GetReviews(ctx, dappID)
+}
+
+// Submission returns a stored submission by id.
+func (s *DAppStoreService) Submission(ctx context.Context, id string) (*DAppSubmission, error) {
+	if s.store == nil {
+		return nil, ErrStoreUnavailable
+	}
+	return s.store.GetSubmission(ctx, id)
+}
+
+// Submissions returns recent submissions, newest first.
+func (s *DAppStoreService) Submissions(ctx context.Context, limit int64) ([]DAppSubmission, error) {
+	if s.store == nil {
+		return nil, ErrStoreUnavailable
+	}
+	return s.store.ListSubmissions(ctx, limit)
 }
 
 // ============ Handlers ============
@@ -471,7 +515,7 @@ func (h *Handler) GetCategories(c *gin.Context) {
 
 func (h *Handler) SubmitDApp(c *gin.Context) {
 	var req struct {
-		DApp    DApp  `json:"dapp" binding:"required"`
+		DApp      DApp   `json:"dapp" binding:"required"`
 		Submitter string `json:"submitter" binding:"required"`
 	}
 
@@ -480,7 +524,15 @@ func (h *Handler) SubmitDApp(c *gin.Context) {
 		return
 	}
 
-	id := h.service.SubmitDApp(req.DApp, req.Submitter)
+	id, err := h.service.SubmitDApp(c.Request.Context(), req.DApp, req.Submitter)
+	if err != nil {
+		if errors.Is(err, ErrStoreUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "submissions are unavailable"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"submissionId": id, "status": "pending"})
 }
 
@@ -494,16 +546,76 @@ func (h *Handler) AddReview(c *gin.Context) {
 	review.ID = uuid.New().String()
 	review.CreatedAt = time.Now().Unix()
 
-	h.service.AddReview(review)
-
+	if err := h.service.AddReview(c.Request.Context(), review); err != nil {
+		if errors.Is(err, ErrStoreUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "reviews are unavailable"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"reviewId": review.ID})
 }
 
 func (h *Handler) GetReviews(c *gin.Context) {
 	dappID := c.Param("id")
-	reviews := h.service.GetReviews(dappID)
+	reviews, err := h.service.GetReviews(c.Request.Context(), dappID)
+	if err != nil {
+		if errors.Is(err, ErrStoreUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "reviews are unavailable"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"reviews": reviews})
+	total, mean, err := h.service.store.ReviewSummary(c.Request.Context(), dappID)
+	if err != nil {
+		total, mean = len(reviews), 0
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"reviews":       reviews,
+		"reviewCount":   total,
+		"averageRating": mean,
+	})
+}
+
+// ListSubmissions returns recent submissions, newest first.
+func (h *Handler) ListSubmissions(c *gin.Context) {
+	limit, err := strconv.ParseInt(c.DefaultQuery("limit", "50"), 10, 64)
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "limit must be a positive integer"})
+		return
+	}
+
+	submissions, err := h.service.Submissions(c.Request.Context(), limit)
+	if err != nil {
+		if errors.Is(err, ErrStoreUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "submissions are unavailable"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"submissions": submissions, "total": len(submissions)})
+}
+
+// GetSubmission returns a single stored submission.
+func (h *Handler) GetSubmission(c *gin.Context) {
+	submission, err := h.service.Submission(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "submission not found"})
+		case errors.Is(err, ErrStoreUnavailable):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "submissions are unavailable"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, submission)
 }
 
 func (h *Handler) Search(c *gin.Context) {
@@ -525,13 +637,24 @@ func (h *Handler) Search(c *gin.Context) {
 
 func main() {
 	config := &Config{
-		Port:          getEnv("PORT", "8080"),
-		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
-		IPFSGateway:   getEnv("IPFS_GATEWAY", "https://ipfs.io/ipfs/"),
-		FeaturedDays:  7,
+		Port:         getEnv("PORT", "8080"),
+		RedisURL:     getEnv("REDIS_URL", "localhost:6379"),
+		IPFSGateway:  getEnv("IPFS_GATEWAY", "https://ipfs.io/ipfs/"),
+		FeaturedDays: 7,
 	}
 
-	service := NewDAppStoreService(config)
+	ctx := context.Background()
+
+	// The submissions and reviews endpoints require durable storage. A failure
+	// to connect is reported at startup rather than surfacing later as an
+	// endpoint that accepts data and silently discards it.
+	store, err := NewStore(ctx, config.RedisURL)
+	if err != nil {
+		log.Fatalf("failed to connect to the storage backend: %v", err)
+	}
+	defer store.Close()
+
+	service := NewDAppStoreService(config, store)
 	service.Initialize()
 
 	handler := NewHandler(service)
@@ -558,6 +681,8 @@ func main() {
 
 		// Submissions
 		api.POST("/dapps/submit", handler.SubmitDApp)
+		api.GET("/submissions", handler.ListSubmissions)
+		api.GET("/submissions/:id", handler.GetSubmission)
 
 		// Reviews
 		api.POST("/dapps/:id/reviews", handler.AddReview)

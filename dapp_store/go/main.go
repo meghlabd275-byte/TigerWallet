@@ -14,28 +14,28 @@ import (
 // DApp represents a decentralized application
 type DApp struct {
 	ID          string   `json:"id"`
-	Name       string   `json:"name"`
-	Description string  `json:"description"`
-	Category   string   `json:"category"`
-	URL        string   `json:"url"`
-	Icon       string   `json:"icon"`
-	Chain      string   `json:"chain"`
-	Verified   bool     `json:"verified"`
-	Rating     float64  `json:"rating"`
-	Reviews    int      `json:"reviews"`
-	Installs   int      `json:"installs"`
-	Developers []string `json:"developers"`
-	Tags      []string `json:"tags"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	URL         string   `json:"url"`
+	Icon        string   `json:"icon"`
+	Chain       string   `json:"chain"`
+	Verified    bool     `json:"verified"`
+	Rating      float64  `json:"rating"`
+	Reviews     int      `json:"reviews"`
+	Installs    int      `json:"installs"`
+	Developers  []string `json:"developers"`
+	Tags        []string `json:"tags"`
 }
 
 // Review represents a user review
 type Review struct {
-	ID        string `json:"id"`
-	DAppID   string `json:"dappId"`
-	UserID   string `json:"userId"`
-	Rating   int    `json:"rating"`
-	Review   string `json:"review"`
-	Helpful  int    `json:"helpful"`
+	ID      string `json:"id"`
+	DAppID  string `json:"dappId"`
+	UserID  string `json:"userId"`
+	Rating  int    `json:"rating"`
+	Review  string `json:"review"`
+	Helpful int    `json:"helpful"`
 	Date    int64  `json:"date"`
 }
 
@@ -71,7 +71,7 @@ func (s *DAppStore) initSampleApps() {
 			Reviews: 500, Installs: 200000, Tags: []string{"Lending", "Borrow"},
 		},
 	}
-	
+
 	for _, app := range apps {
 		s.dapps[app.ID] = &app
 	}
@@ -116,7 +116,7 @@ func (s *DAppStore) getDApp(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	app, ok := s.dapps[id]
 	if !ok {
 		http.Error(w, "DApp not found", http.StatusNotFound)
