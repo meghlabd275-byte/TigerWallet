@@ -1,7 +1,7 @@
 /**
  * TigerWallet Security Bug Bounty Platform
  * Production-ready security vulnerability disclosure and reward system
- * 
+ *
  * Features:
  * - Vulnerability submission and tracking
  * - Severity classification (CVSS)
@@ -13,9 +13,9 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -39,46 +39,46 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort      string `json:"server_port"`
-	DBHost          string `json:"db_host"`
-	DBPort          string `json:"db_port"`
-	DBUser          string `json:"db_user"`
-	DBPassword      string `json:"db_password"`
-	DBName          string `json:"db_name"`
-	RedisHost       string `json:"redis_host"`
-	RedisPort       string `json:"redis_port"`
-	JWTSecret       string `json:"jwt_secret"`
-	
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
+	JWTSecret  string `json:"jwt_secret"`
+
 	// Reward settings
-	RewardPool       float64 `json:"reward_pool"` // Total pool in USD
-	MinReward        float64 `json:"min_reward"`
-	MaxReward        float64 `json:"max_reward"`
-	
+	RewardPool float64 `json:"reward_pool"` // Total pool in USD
+	MinReward  float64 `json:"min_reward"`
+	MaxReward  float64 `json:"max_reward"`
+
 	// Severity rewards (percentage of pool)
-	CriticalPercent  float64 `json:"critical_percent"`  // 40%
+	CriticalPercent float64 `json:"critical_percent"` // 40%
 	HighPercent     float64 `json:"high_percent"`     // 25%
 	MediumPercent   float64 `json:"medium_percent"`   // 15%
-	LowPercent      float64 `json:"low_percent"`     // 5%
+	LowPercent      float64 `json:"low_percent"`      // 5%
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:    getEnv("BOUNTY_PORT", "9096"),
-		DBHost:        getEnv("DB_HOST", "localhost"),
-		DBPort:        getEnv("DB_PORT", "5432"),
-		DBUser:        getEnv("DB_USER", "tigerwallet"),
-		DBPassword:    getEnv("DB_PASSWORD", "password"),
-		DBName:        getEnv("DB_NAME", "tigerwallet"),
-		RedisHost:     getEnv("REDIS_HOST", "localhost"),
-		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		JWTSecret:     getEnv("JWT_SECRET", ""),
-		RewardPool:    1000000, // $1M pool
-		MinReward:     100,
-		MaxReward:     50000,
+		ServerPort:      getEnv("BOUNTY_PORT", "9096"),
+		DBHost:          getEnv("DB_HOST", "localhost"),
+		DBPort:          getEnv("DB_PORT", "5432"),
+		DBUser:          getEnv("DB_USER", "tigerwallet"),
+		DBPassword:      getEnv("DB_PASSWORD", "password"),
+		DBName:          getEnv("DB_NAME", "tigerwallet"),
+		RedisHost:       getEnv("REDIS_HOST", "localhost"),
+		RedisPort:       getEnv("REDIS_PORT", "6379"),
+		JWTSecret:       getEnv("JWT_SECRET", ""),
+		RewardPool:      1000000, // $1M pool
+		MinReward:       100,
+		MaxReward:       50000,
 		CriticalPercent: 40,
-		HighPercent:    25,
-		MediumPercent:  15,
-		LowPercent:     5,
+		HighPercent:     25,
+		MediumPercent:   15,
+		LowPercent:      5,
 	}
 }
 
@@ -95,145 +95,145 @@ func getEnv(key, defaultValue string) string {
 
 // Researcher (Security Researcher)
 type Researcher struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	Username    string    `gorm:"uniqueIndex" json:"username"`
-	Email       string    `gorm:"index" json:"email"`
-	PasswordHash string   `json:"-"`
-	
-	Reputation  int       `json:"reputation"` // Points system
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	Username     string `gorm:"uniqueIndex" json:"username"`
+	Email        string `gorm:"index" json:"email"`
+	PasswordHash string `json:"-"`
+
+	Reputation    int     `json:"reputation"` // Points system
 	TotalBounties int     `json:"total_bounties"`
 	TotalEarnings float64 `json:"total_earnings"`
-	
-	Status      string    `json:"status"` // pending, verified, suspended
-	KYCVerified bool      `json:"kyc_verified"`
-	PayoutAddress string  `json:"payout_address"`
-	
+
+	Status        string `json:"status"` // pending, verified, suspended
+	KYCVerified   bool   `json:"kyc_verified"`
+	PayoutAddress string `json:"payout_address"`
+
 	LastActiveAt time.Time `json:"last_active_at"`
 }
 
 // Vulnerability Report
 type VulnerabilityReport struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	
-	ReportID       string    `gorm:"uniqueIndex" json:"report_id"`
-	ResearcherID   uint      `gorm:"index" json:"researcher_id"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	ReportID     string `gorm:"uniqueIndex" json:"report_id"`
+	ResearcherID uint   `gorm:"index" json:"researcher_id"`
+
 	// Classification
-	Title          string    `json:"title" binding:"required"`
-	Description    string    `json:"description" binding:"required"`
-	Category       string    `json:"category" binding:"required"` // smart_contract, wallet, frontend, api, etc.
-	Severity       string    `json:"severity"` // critical, high, medium, low, info
-	CVSSScore      float64   `json:"cvss_score"`
-	
+	Title       string  `json:"title" binding:"required"`
+	Description string  `json:"description" binding:"required"`
+	Category    string  `json:"category" binding:"required"` // smart_contract, wallet, frontend, api, etc.
+	Severity    string  `json:"severity"`                    // critical, high, medium, low, info
+	CVSSScore   float64 `json:"cvss_score"`
+
 	// Technical details
-	Impact         string    `json:"impact"`
-	StepsToReproduce string  `json:"steps_to_reproduce"`
-	ProofOfConcept string    `json:"proof_of_concept"`
-	AffectedAssets string    `json:"affected_assets"` // Comma-separated
-	
+	Impact           string `json:"impact"`
+	StepsToReproduce string `json:"steps_to_reproduce"`
+	ProofOfConcept   string `json:"proof_of_concept"`
+	AffectedAssets   string `json:"affected_assets"` // Comma-separated
+
 	// Status workflow
-	Status         string    `json:"status"` // submitted, triaged, confirmed, disputed, resolved, rewarded, closed
-	Resolution     string    `json:"resolution"`
-	
+	Status     string `json:"status"` // submitted, triaged, confirmed, disputed, resolved, rewarded, closed
+	Resolution string `json:"resolution"`
+
 	// Rewards
-	RewardAmount   float64   `json:"reward_amount"`
-	RewardStatus  string    `json:"reward_status"` // pending, approved, paid, rejected
-	
+	RewardAmount float64 `json:"reward_amount"`
+	RewardStatus string  `json:"reward_status"` // pending, approved, paid, rejected
+
 	// Review
-	AssignedTo    *uint     `json:"assigned_to"` // Admin reviewer
-	ReviewedAt    *time.Time `json:"reviewed_at"`
-	ReviewNotes   string    `json:"review_notes"`
-	
+	AssignedTo  *uint      `json:"assigned_to"` // Admin reviewer
+	ReviewedAt  *time.Time `json:"reviewed_at"`
+	ReviewNotes string     `json:"review_notes"`
+
 	// Timeline
-	SubmittedAt   time.Time `json:"submitted_at"`
-	TriagedAt     *time.Time `json:"triaged_at"`
-	ConfirmedAt   *time.Time `json:"confirmed_at"`
-	ResolvedAt    *time.Time `json:"resolved_at"`
-	RewardedAt    *time.Time `json:"rewarded_at"`
+	SubmittedAt time.Time  `json:"submitted_at"`
+	TriagedAt   *time.Time `json:"triaged_at"`
+	ConfirmedAt *time.Time `json:"confirmed_at"`
+	ResolvedAt  *time.Time `json:"resolved_at"`
+	RewardedAt  *time.Time `json:"rewarded_at"`
 }
 
 // Program Management
 type BountyProgram struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	Status        string    `json:"status"` // active, paused, closed
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"` // active, paused, closed
+
 	// Scope
-	Scopes        string    `json:"scopes"` // JSON array of in-scope targets
-	Exclusions    string    `json:"exclusions"` // JSON array
-	
+	Scopes     string `json:"scopes"`     // JSON array of in-scope targets
+	Exclusions string `json:"exclusions"` // JSON array
+
 	// Rewards
-	MinReward     float64   `json:"min_reward"`
-	MaxReward     float64   `json:"max_reward"`
-	TotalPaid     float64   `json:"total_paid"`
-	
+	MinReward float64 `json:"min_reward"`
+	MaxReward float64 `json:"max_reward"`
+	TotalPaid float64 `json:"total_paid"`
+
 	// Rules
-	Rules         string    `json:"rules"`
-	DisclosurePolicy string  `json:"disclosure_policy"`
-	
-	StartDate     time.Time `json:"start_date"`
-	EndDate       *time.Time `json:"end_date"`
-	
-	CreatedBy     uint      `json:"created_by"`
+	Rules            string `json:"rules"`
+	DisclosurePolicy string `json:"disclosure_policy"`
+
+	StartDate time.Time  `json:"start_date"`
+	EndDate   *time.Time `json:"end_date"`
+
+	CreatedBy uint `json:"created_by"`
 }
 
 // Reward Distribution
 type Reward struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	ReportID     uint      `gorm:"index" json:"report_id"`
-	ResearcherID uint      `gorm:"index" json:"researcher_id"`
-	
-	Amount        float64   `json:"amount"`
-	Currency     string    `json:"currency"` // USDT, USDC, ETH
-	Status        string    `json:"status"` // pending, processing, completed, failed
-	
-	TransactionHash string  `json:"transaction_hash"`
-	PayoutAddress string  `json:"payout_address"`
-	
-	ProcessedAt   *time.Time `json:"processed_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	ReportID     uint `gorm:"index" json:"report_id"`
+	ResearcherID uint `gorm:"index" json:"researcher_id"`
+
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"` // USDT, USDC, ETH
+	Status   string  `json:"status"`   // pending, processing, completed, failed
+
+	TransactionHash string `json:"transaction_hash"`
+	PayoutAddress   string `json:"payout_address"`
+
+	ProcessedAt *time.Time `json:"processed_at"`
 }
 
 // Security Audit
 type SecurityAudit struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"updated_at"`
-	
-	Name        string    `json:"name"`
-	Auditor      string    `json:"auditor"` // CertiK, SlowMist, etc.
-	Status       string    `json:"status"` // scheduled, in_progress, completed
-	
-	StartDate   time.Time `json:"start_date"`
-	EndDate     *time.Time `json:"end_date"`
-	
-	Scope       string    `json:"scope"` // JSON array
-	Findings    int       `json:"findings"`
-	Critical    int       `json:"critical"`
-	High        int       `json:"high"`
-	Medium      int       `json:"medium"`
-	Low         int       `json:"low"`
-	
-	ReportURL   string    `json:"report_url"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"updated_at"`
+
+	Name    string `json:"name"`
+	Auditor string `json:"auditor"` // CertiK, SlowMist, etc.
+	Status  string `json:"status"`  // scheduled, in_progress, completed
+
+	StartDate time.Time  `json:"start_date"`
+	EndDate   *time.Time `json:"end_date"`
+
+	Scope    string `json:"scope"` // JSON array
+	Findings int    `json:"findings"`
+	Critical int    `json:"critical"`
+	High     int    `json:"high"`
+	Medium   int    `json:"medium"`
+	Low      int    `json:"low"`
+
+	ReportURL string `json:"report_url"`
 }
 
 // Audit Log
 type AuditLog struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	
-	AdminID      uint      `gorm:"index" json:"admin_id"`
-	Action       string    `json:"action"`
-	Resource     string    `json:"resource"`
-	Details      string    `json:"details"`
-	IPAddress    string    `json:"ip_address"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	AdminID   uint   `gorm:"index" json:"admin_id"`
+	Action    string `json:"action"`
+	Resource  string `json:"resource"`
+	Details   string `json:"details"`
+	IPAddress string `json:"ip_address"`
 }
 
 // ============================================================================
@@ -242,8 +242,8 @@ type AuditLog struct {
 
 type BugBountyService struct {
 	db        *gorm.DB
-	redis    *redis.Client
-	config   *Config
+	redis     *redis.Client
+	config    *Config
 	jwtSecret []byte
 }
 
@@ -262,13 +262,13 @@ func NewBugBountyService(cfg *Config) (*BugBountyService, error) {
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
-		DB:  6,
+		DB:   6,
 	})
 
 	service := &BugBountyService{
-		db:         db,
-		redis:      rdb,
-		config:     cfg,
+		db:        db,
+		redis:     rdb,
+		config:    cfg,
 		jwtSecret: []byte(cfg.JWTSecret),
 	}
 
@@ -281,19 +281,19 @@ func NewBugBountyService(cfg *Config) (*BugBountyService, error) {
 func (s *BugBountyService) initializeDefaultProgram() {
 	var program BountyProgram
 	result := s.db.First(&program)
-	
+
 	if result.Error != nil {
 		program = BountyProgram{
-			Name:          "TigerWallet Bug Bounty",
-			Description:   "Official security vulnerability disclosure program for TigerWallet",
-			Status:        "active",
-			Scopes:        `["smart_contracts", "wallet_core", "mobile_app", "web_app", "api", "infrastructure"]`,
-			Exclusions:    `["ddos", "social_engineering", "physical_security", "third_party_services"]`,
-			MinReward:     100,
-			MaxReward:     50000,
-			Rules:         "Standard responsible disclosure rules apply. No black hat testing.",
+			Name:             "TigerWallet Bug Bounty",
+			Description:      "Official security vulnerability disclosure program for TigerWallet",
+			Status:           "active",
+			Scopes:           `["smart_contracts", "wallet_core", "mobile_app", "web_app", "api", "infrastructure"]`,
+			Exclusions:       `["ddos", "social_engineering", "physical_security", "third_party_services"]`,
+			MinReward:        100,
+			MaxReward:        50000,
+			Rules:            "Standard responsible disclosure rules apply. No black hat testing.",
 			DisclosurePolicy: "No public disclosure until vulnerability is fixed",
-			StartDate:     time.Now(),
+			StartDate:        time.Now(),
 		}
 		s.db.Create(&program)
 	}
@@ -330,7 +330,7 @@ func (s *BugBountyService) Register(c *gin.Context) {
 
 	researcher := Researcher{
 		Username:     req.Username,
-		Email:       req.Email,
+		Email:        req.Email,
 		PasswordHash: passwordHash,
 		Status:       "verified",
 		Reputation:   0,
@@ -339,7 +339,7 @@ func (s *BugBountyService) Register(c *gin.Context) {
 	s.db.Create(&researcher)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message":   "Registration successful",
+		"message":       "Registration successful",
 		"researcher_id": researcher.ID,
 	})
 }
@@ -367,16 +367,16 @@ func (s *BugBountyService) Login(c *gin.Context) {
 	// Generate token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"researcher_id": researcher.ID,
-		"username":     researcher.Username,
-		"exp":          time.Now().Add(24 * time.Hour).Unix(),
+		"username":      researcher.Username,
+		"exp":           time.Now().Add(24 * time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString(s.jwtSecret)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":    tokenString,
+		"token": tokenString,
 		"researcher": gin.H{
-			"id":          researcher.ID,
-			"username":    researcher.Username,
+			"id":           researcher.ID,
+			"username":     researcher.Username,
 			"reputation":   researcher.Reputation,
 			"total_earned": researcher.TotalEarnings,
 		},
@@ -388,13 +388,13 @@ func (s *BugBountyService) Login(c *gin.Context) {
 // ============================================================================
 
 type SubmitReportRequest struct {
-	Title          string `json:"title" binding:"required"`
-	Description    string `json:"description" binding:"required"`
-	Category       string `json:"category" binding:"required"`
-	Impact         string `json:"impact"`
+	Title            string `json:"title" binding:"required"`
+	Description      string `json:"description" binding:"required"`
+	Category         string `json:"category" binding:"required"`
+	Impact           string `json:"impact"`
 	StepsToReproduce string `json:"steps_to_reproduce"`
-	ProofOfConcept string `json:"proof_of_concept"`
-	AffectedAssets string `json:"affected_assets"`
+	ProofOfConcept   string `json:"proof_of_concept"`
+	AffectedAssets   string `json:"affected_assets"`
 }
 
 func (s *BugBountyService) SubmitReport(c *gin.Context) {
@@ -410,26 +410,26 @@ func (s *BugBountyService) SubmitReport(c *gin.Context) {
 	severity := s.classifySeverity(req.Category, req.Impact)
 
 	report := VulnerabilityReport{
-		ReportID:        "RPT-" + uuid.New().String()[:10],
-		ResearcherID:    researcherID,
-		Title:           req.Title,
-		Description:     req.Description,
-		Category:        req.Category,
-		Severity:        severity,
-		Impact:          req.Impact,
+		ReportID:         "RPT-" + uuid.New().String()[:10],
+		ResearcherID:     researcherID,
+		Title:            req.Title,
+		Description:      req.Description,
+		Category:         req.Category,
+		Severity:         severity,
+		Impact:           req.Impact,
 		StepsToReproduce: req.StepsToReproduce,
-		ProofOfConcept:  req.ProofOfConcept,
-		AffectedAssets:  req.AffectedAssets,
-		Status:          "submitted",
-		RewardStatus:    "pending",
-		SubmittedAt:    time.Now(),
+		ProofOfConcept:   req.ProofOfConcept,
+		AffectedAssets:   req.AffectedAssets,
+		Status:           "submitted",
+		RewardStatus:     "pending",
+		SubmittedAt:      time.Now(),
 	}
 
 	s.db.Create(&report)
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message":    "Report submitted successfully",
-		"report_id":  report.ReportID,
+		"message":   "Report submitted successfully",
+		"report_id": report.ReportID,
 		"status":    report.Status,
 		"severity":  report.Severity,
 	})
@@ -437,27 +437,27 @@ func (s *BugBountyService) SubmitReport(c *gin.Context) {
 
 func (s *BugBountyService) classifySeverity(category, impact string) string {
 	impactLower := strings.ToLower(impact)
-	
+
 	// Simple classification based on keywords
-	if strings.Contains(impactLower, "fund") || 
-	   strings.Contains(impactLower, "theft") ||
-	   strings.Contains(impactLower, "unauthorized") ||
-	   strings.Contains(impactLower, "critical") {
+	if strings.Contains(impactLower, "fund") ||
+		strings.Contains(impactLower, "theft") ||
+		strings.Contains(impactLower, "unauthorized") ||
+		strings.Contains(impactLower, "critical") {
 		return "critical"
 	}
-	
+
 	if strings.Contains(impactLower, "access") ||
-	   strings.Contains(impactLower, "privilege") ||
-	   strings.Contains(impactLower, "high") {
+		strings.Contains(impactLower, "privilege") ||
+		strings.Contains(impactLower, "high") {
 		return "high"
 	}
-	
+
 	if strings.Contains(impactLower, "moderate") ||
-	   strings.Contains(impactLower, "medium") ||
-	   strings.Contains(impactLower, "limited") {
+		strings.Contains(impactLower, "medium") ||
+		strings.Contains(impactLower, "limited") {
 		return "medium"
 	}
-	
+
 	return "low"
 }
 
@@ -493,9 +493,9 @@ func (s *BugBountyService) GetReport(c *gin.Context) {
 // ============================================================================
 
 type ReviewReportRequest struct {
-	Severity   string  `json:"severity"`
-	Status     string  `json:"status" binding:"required"`
-	Resolution string  `json:"resolution"`
+	Severity     string  `json:"severity"`
+	Status       string  `json:"status" binding:"required"`
+	Resolution   string  `json:"resolution"`
 	RewardAmount float64 `json:"reward_amount"`
 }
 
@@ -535,12 +535,12 @@ func (s *BugBountyService) ReviewReport(c *gin.Context) {
 	if req.Status == "resolved" && req.RewardAmount > 0 {
 		report.RewardAmount = req.RewardAmount
 		report.RewardStatus = "approved"
-		
+
 		// Create reward record
 		reward := Reward{
 			ReportID:     report.ID,
 			ResearcherID: report.ResearcherID,
-			Amount:      req.RewardAmount,
+			Amount:       req.RewardAmount,
 			Currency:     "USDT",
 			Status:       "pending",
 		}
@@ -560,7 +560,7 @@ func (s *BugBountyService) ReviewReport(c *gin.Context) {
 	s.db.Create(&audit)
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":     "Report reviewed",
+		"message":    "Report reviewed",
 		"reward":     req.RewardAmount,
 		"new_status": req.Status,
 	})
@@ -582,9 +582,21 @@ func (s *BugBountyService) ListAllReports(c *gin.Context) {
 
 	query.Order("created_at DESC").Find(&reports)
 
-	// Get counts
-	var counts map[string]int
-	s.db.Model(&VulnerabilityReport{}).Group("status").Count(&counts)
+	// GORM's Count takes a *int64, so a grouped aggregate is scanned into
+	// explicit rows rather than a map.
+	counts := map[string]int64{}
+	var statusRows []struct {
+		Status string
+		Total  int64
+	}
+	if err := s.db.Model(&VulnerabilityReport{}).
+		Select("status, COUNT(*) AS total").
+		Group("status").
+		Scan(&statusRows).Error; err == nil {
+		for _, row := range statusRows {
+			counts[row.Status] = row.Total
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"reports": reports,
@@ -638,38 +650,89 @@ func (s *BugBountyService) ProcessReward(c *gin.Context) {
 	rewardID := c.Param("id")
 
 	var reward Reward
-	result := s.db.First(&reward, rewardID)
-	if result.Error != nil {
+	if err := s.db.First(&reward, rewardID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "reward not found"})
 		return
 	}
+	if reward.Status == "completed" {
+		c.JSON(http.StatusConflict, gin.H{"error": "reward has already been paid"})
+		return
+	}
+	if strings.TrimSpace(reward.PayoutAddress) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "reward has no payout address"})
+		return
+	}
 
-	// In production, would initiate blockchain transaction
-	// For now, mark as processing
+	to, err := parsePayoutAddress(reward.PayoutAddress)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	payout, err := NewPayoutClient(ctx)
+	if err != nil {
+		// The reward stays in its current state so the payout can be retried
+		// once the wallet is configured. Marking it paid here would lose the
+		// ability to reconcile it.
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payout unavailable: " + err.Error()})
+		return
+	}
+
 	reward.Status = "processing"
-	s.db.Save(&reward)
+	if err := s.db.Save(&reward).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mark reward processing"})
+		return
+	}
 
-	// Simulate processing
+	hash, payoutErr := payout.Payout(ctx, to, reward.Amount)
+	if payoutErr != nil {
+		// Record the hash only when the transaction was actually broadcast, so
+		// an in-flight payout can still be reconciled. The reward is not marked
+		// completed: a broadcast that failed or reverted must not look paid.
+		reward.Status = "failed"
+		if hash != "" {
+			reward.TransactionHash = hash
+		}
+		if err := s.db.Save(&reward).Error; err != nil {
+			log.Printf("bug bounty: failed to persist failed reward %d: %v", reward.ID, err)
+		}
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error":   "payout failed: " + payoutErr.Error(),
+			"tx_hash": reward.TransactionHash,
+		})
+		return
+	}
+
 	reward.Status = "completed"
-	reward.TransactionHash = "0x" + uuid.New().String()
+	reward.TransactionHash = hash
 	now := time.Now()
 	reward.ProcessedAt = &now
+	if err := s.db.Save(&reward).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record reward completion"})
+		return
+	}
 
-	s.db.Save(&reward)
-
-	// Update researcher stats
+	// Researcher statistics are only advanced once the payout is confirmed.
 	var researcher Researcher
-	s.db.First(&researcher, reward.ResearcherID)
-	researcher.TotalBounties++
-	researcher.TotalEarnings += reward.Amount
-	researcher.Reputation += int(reward.Amount / 100) // 1 point per $100
-	s.db.Save(&researcher)
+	if err := s.db.First(&researcher, reward.ResearcherID).Error; err != nil {
+		log.Printf("bug bounty: reward %d paid but researcher %d was not found: %v", reward.ID, reward.ResearcherID, err)
+	} else {
+		researcher.TotalBounties++
+		researcher.TotalEarnings += reward.Amount
+		researcher.Reputation += int(reward.Amount / 100) // 1 point per $100
+		if err := s.db.Save(&researcher).Error; err != nil {
+			log.Printf("bug bounty: failed to update researcher %d stats: %v", researcher.ID, err)
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":      "Reward processed",
-		"tx_hash":      reward.TransactionHash,
-		"amount":       reward.Amount,
-		"researcher":   researcher.Username,
+		"message":    "Reward processed",
+		"tx_hash":    reward.TransactionHash,
+		"amount":     reward.Amount,
+		"researcher": researcher.Username,
 	})
 }
 
@@ -708,9 +771,9 @@ func (s *BugBountyService) GetLeaderboard(c *gin.Context) {
 	s.db.Order("reputation DESC").Limit(20).Find(&researchers)
 
 	type LeaderboardEntry struct {
-		Rank         int     `json:"rank"`
-		Username     string  `json:"username"`
-		Reputation   int     `json:"reputation"`
+		Rank        int     `json:"rank"`
+		Username    string  `json:"username"`
+		Reputation  int     `json:"reputation"`
 		Bounties    int     `json:"bounties"`
 		TotalEarned float64 `json:"total_earned"`
 	}
@@ -718,9 +781,9 @@ func (s *BugBountyService) GetLeaderboard(c *gin.Context) {
 	leaderboard := make([]LeaderboardEntry, len(researchers))
 	for i, r := range researchers {
 		leaderboard[i] = LeaderboardEntry{
-			Rank:         i + 1,
-			Username:     r.Username,
-			Reputation:   r.Reputation,
+			Rank:        i + 1,
+			Username:    r.Username,
+			Reputation:  r.Reputation,
 			Bounties:    r.TotalBounties,
 			TotalEarned: r.TotalEarnings,
 		}
@@ -751,8 +814,19 @@ func (s *BugBountyService) GetDashboard(c *gin.Context) {
 	s.db.Model(&VulnerabilityReport{}).Where("reward_status = ?", "paid").Count(&rewarded)
 
 	// By severity
-	var bySeverity map[string]int
-	s.db.Model(&VulnerabilityReport{}).Group("severity").Count(&bySeverity)
+	bySeverity := map[string]int64{}
+	var severityRows []struct {
+		Severity string
+		Total    int64
+	}
+	if err := s.db.Model(&VulnerabilityReport{}).
+		Select("severity, COUNT(*) AS total").
+		Group("severity").
+		Scan(&severityRows).Error; err == nil {
+		for _, row := range severityRows {
+			bySeverity[row.Severity] = row.Total
+		}
+	}
 
 	// Reward stats
 	var totalPaid, pendingPay float64
@@ -775,13 +849,13 @@ func (s *BugBountyService) GetDashboard(c *gin.Context) {
 			"by_severity": bySeverity,
 		},
 		"rewards": gin.H{
-			"total_paid":    totalPaid,
-			"pending_pay":  pendingPay,
+			"total_paid":     totalPaid,
+			"pending_pay":    pendingPay,
 			"pool_remaining": s.config.RewardPool - totalPaid,
 		},
 		"researchers": gin.H{
-			"total":        totalResearchers,
-			"active":       activeResearchers,
+			"total":  totalResearchers,
+			"active": activeResearchers,
 		},
 	})
 }
