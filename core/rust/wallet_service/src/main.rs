@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use wallet_service::{
-    WalletManager, WalletError, Chain,
+    WalletManager, Chain,
 };
 
 #[tokio::main]

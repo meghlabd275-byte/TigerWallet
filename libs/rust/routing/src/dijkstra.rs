@@ -117,18 +117,18 @@ impl DijkstraRouter {
                         current.amount_out.clone()
                     };
 
-                    let amount_out = self.calculate_amount_out(&pool, &input_amount, reserve_in, reserve_out);
+                    let amount_out = self.calculate_amount_out(&pool, &input_amount);
                     
                     if amount_out == BigUint::from(0u64) {
                         continue;
                     }
 
-                    let price_impact = self.calculate_price_impact(&pool, &input_amount, reserve_in, reserve_out, &amount_out);
+                    let price_impact = self.calculate_price_impact(&pool, &input_amount);
 
                     let step = RouteStep::new(
                         pool.address.clone(),
                         token_in,
-                        token_out,
+                        token_out.clone(),
                         pool.dex.clone(),
                         pool.dex.clone(),
                         reserve_in,
@@ -157,25 +157,12 @@ impl DijkstraRouter {
     }
 
     /// Calculate amount out from a pool
-    fn calculate_amount_out(
-        &self,
-        pool: &Pool,
-        amount_in: &BigUint,
-        _reserve_in: BigUint,
-        _reserve_out: BigUint,
-    ) -> BigUint {
+    fn calculate_amount_out(&self, pool: &Pool, amount_in: &BigUint) -> BigUint {
         pool.get_amount_out(amount_in)
     }
 
     /// Calculate price impact
-    fn calculate_price_impact(
-        &self,
-        pool: &Pool,
-        amount_in: &BigUint,
-        _reserve_in: BigUint,
-        _reserve_out: BigUint,
-        amount_out: &BigUint,
-    ) -> f64 {
+    fn calculate_price_impact(&self, pool: &Pool, amount_in: &BigUint) -> f64 {
         pool.price_impact(amount_in)
     }
 

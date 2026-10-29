@@ -1,6 +1,7 @@
 //! Pool representation and operations for the routing engine
 
 use num_bigint::BigUint;
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
@@ -129,7 +130,6 @@ impl Pool {
 
     /// Calculate liquidity score based on reserves
     fn calculate_liquidity_score(reserve0: &BigUint, reserve1: &BigUint) -> f64 {
-        use num_traits::ToPrimitive;
         let r0 = reserve0.to_f64().unwrap_or(0.0);
         let r1 = reserve1.to_f64().unwrap_or(0.0);
         2.0 * (r0 * r1).sqrt()
@@ -152,17 +152,20 @@ impl Pool {
             return BigUint::from(0u64);
         }
         
-        let fee_multiplier = 10000 - self.fee_bps;
-        let amount_in_with_fee = amount_in * fee_multiplier / 10000;
-        
-        let numerator = amount_in_with_fee * &self.reserve1;
-        let denominator = &self.reserve0 + amount_in_with_fee;
-        
+        let fee_multiplier = BigUint::from(10000u64 - self.fee_bps as u64);
+        let fee_denominator = BigUint::from(10000u64);
+
+        // Uniswap V2 getAmountOut: no intermediate division, so precision is
+        // preserved exactly as the on-chain implementation.
+        let amount_in_with_fee = amount_in * &fee_multiplier;
+        let numerator = &amount_in_with_fee * &self.reserve1;
+        let denominator = &self.reserve0 * &fee_denominator + &amount_in_with_fee;
+
         if denominator == BigUint::from(0u64) {
             return BigUint::from(0u64);
         }
-        
-        &self.reserve0 * &numerator / denominator
+
+        numerator / denominator
     }
 
     /// Calculate amount in required for desired amount out
@@ -171,8 +174,9 @@ impl Pool {
             return BigUint::from(0u64);
         }
         
-        let numerator = &self.reserve0 * amount_out * 10000;
-        let denominator = (&self.reserve1 - amount_out) * (10000 - self.fee_bps);
+        let fee_denominator = BigUint::from(10000u64);
+        let numerator = &self.reserve0 * amount_out * &fee_denominator;
+        let denominator = (&self.reserve1 - amount_out) * BigUint::from(10000u64 - self.fee_bps as u64);
         
         if denominator == BigUint::from(0u64) {
             return BigUint::from(0u64);
@@ -243,11 +247,10 @@ mod tests {
         
         let amount_in = BigUint::from(1000u64);
         let amount_out = pool.get_amount_out(&amount_in);
-        
-        // With 0.3% fee, amount_in_with_fee = 997
-        // amount_out = 1000 * 1000 / (1000 + 997) ≈ 500.75
-        assert!(amount_out > BigUint::from(400u64));
-        assert!(amount_out < BigUint::from(600u64));
+
+        // Uniswap V2: amountOut = (amountIn*997*reserveOut)/(reserveIn*10000 + amountIn*997)
+        // = (1000*997*1000000)/(1000000*10000 + 997000) = 969
+        assert_eq!(amount_out, BigUint::from(969u64));
     }
 
     #[test]

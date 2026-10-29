@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 /**
  * TigerWallet Browser Extension - Bridge Module
  * Complete cross-chain bridge functionality for extension
@@ -141,13 +154,13 @@ class BridgeModule {
           <div class="tw-form-group">
             <label>From Chain</label>
             <select class="tw-from-chain">
-              ${this.supportedChains.map(c => `<option value="${c}">${c}</option>`).join('')}
+              ${this.supportedChains.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
             </select>
           </div>
           <div class="tw-form-group">
             <label>To Chain</label>
             <select class="tw-to-chain">
-              ${this.supportedChains.map(c => `<option value="${c}">${c}</option>`).join('')}
+              ${this.supportedChains.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
             </select>
           </div>
           <div class="tw-form-group">

@@ -20,7 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     token_balances.insert("BTC".to_string(), 500000.0);
     token_balances.insert("USDC".to_string(), 2000000.0);
     
-    let tvl = engine.calculate_tvl(&token_balances).await;
+    let mut pool_balances = HashMap::new();
+    pool_balances.insert("ETH/USDC".to_string(), 1500000.0);
+    pool_balances.insert("BTC/USDC".to_string(), 750000.0);
+
+    let tvl = engine.calculate_tvl(&token_balances, &pool_balances).await;
     println!("Total TVL: ${:.2}", tvl.total);
     
     // Record trades

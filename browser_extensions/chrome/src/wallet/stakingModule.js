@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 /**
  * TigerWallet Browser Extension - Staking Module
  * Complete staking functionality for browser extension
@@ -143,10 +156,10 @@ class StakingModule {
     
     const validatorsList = container.querySelector('.tw-validators-list');
     validatorsList.innerHTML = validators.map(v => `
-      <div class="tw-validator-card" data-validator-id="${v.id}">
-        <div class="tw-validator-name">${v.name}</div>
-        <div class="tw-validator-apr">${v.apr}% APR</div>
-        <div class="tw-validator-min">Min: ${v.minStake}</div>
+      <div class="tw-validator-card" data-validator-id="${esc(v.id)}">
+        <div class="tw-validator-name">${esc(v.name)}</div>
+        <div class="tw-validator-apr">${esc(v.apr)}% APR</div>
+        <div class="tw-validator-min">Min: ${esc(v.minStake)}</div>
       </div>
     `).join('');
 
@@ -160,10 +173,10 @@ class StakingModule {
         const validators = await this.getValidators(chain);
         
         validatorsList.innerHTML = validators.map(v => `
-          <div class="tw-validator-card" data-validator-id="${v.id}">
-            <div class="tw-validator-name">${v.name}</div>
-            <div class="tw-validator-apr">${v.apr}% APR</div>
-            <div class="tw-validator-min">Min: ${v.minStake}</div>
+          <div class="tw-validator-card" data-validator-id="${esc(v.id)}">
+            <div class="tw-validator-name">${esc(v.name)}</div>
+            <div class="tw-validator-apr">${esc(v.apr)}% APR</div>
+            <div class="tw-validator-min">Min: ${esc(v.minStake)}</div>
           </div>
         `).join('');
       });

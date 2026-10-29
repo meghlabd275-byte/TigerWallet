@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 // TigerWallet UserWallet extension popup.
 // Talks to the canonical Go wallet-api backend (go/wallet_api, port 8443):
 // REAL on-chain RPC, REAL BIP-39/32/44 derivation, REAL secp256k1 signing,
@@ -336,9 +349,9 @@ async function loadWallets() {
       .map(
         ({ wallet, balance }) => `
         <div class="wallet-item">
-          <div class="wallet-label">${escapeHtml(wallet.label)} <span style="color:var(--text-secondary);font-weight:400">· Chain #${wallet.chain_id}</span></div>
+          <div class="wallet-label">${escapeHtml(wallet.label)} <span style="color:var(--text-secondary);font-weight:400">· Chain #${esc(wallet.chain_id)}</span></div>
           <div class="wallet-addr">${escapeHtml(wallet.address)}</div>
-          ${balance ? `<div class="wallet-balance">${escapeHtml(balance.symbol)}: ${balance.balance_f.toFixed(6)} ($${balance.usd_value.toFixed(2)})</div>` : '<div class="wallet-balance" style="color:var(--text-secondary)">Balance unavailable</div>'}
+          ${balance ? `<div class="wallet-balance">${escapeHtml(balance.symbol)}: ${esc(balance.balance_f.toFixed(6))} ($${esc(balance.usd_value.toFixed(2))})</div>` : '<div class="wallet-balance" style="color:var(--text-secondary)">Balance unavailable</div>'}
           <a href="#" class="setup-lock" data-wallet-id="${escapeHtml(wallet.id)}" style="display:inline-block;margin-top:4px;color:var(--accent);font-size:12px;">Setup App Lock</a>
         </div>`
       )

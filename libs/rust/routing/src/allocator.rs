@@ -1,5 +1,6 @@
 //! Route allocator - distributes trades across multiple routes for best execution
 
+use num_traits::ToPrimitive;
 use crate::route::{Route, SplitRoute, QuoteRequest};
 use num_bigint::BigUint;
 
@@ -55,8 +56,8 @@ impl RouteAllocator {
 
     /// Check if split is better than single route
     fn is_split_better(&self, split: &SplitRoute, best_route: &Route) -> bool {
-        let improvement = if best_route.total_amount_out == BigUint::from(0u64) {
-            0.0
+        let improvement: u32 = if best_route.total_amount_out == BigUint::from(0u64) {
+            0
         } else {
             let split_out = split.total_amount_out.to_f64().unwrap_or(0.0);
             let best_out = best_route.total_amount_out.to_f64().unwrap_or(1.0);

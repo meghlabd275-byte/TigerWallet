@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for order in orders {
-        println!("Placed {} order: {} {} {} @ {}",
+        println!("Placed {} order: {} {} @ {}",
             if order.side == OrderSide::Buy { "BUY" } else { "SELL" },
             order.amount,
             order.pair,

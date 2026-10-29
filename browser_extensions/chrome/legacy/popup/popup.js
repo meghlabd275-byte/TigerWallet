@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 // TigerWallet Popup - Main UI Logic
 
 // ============================================================================
@@ -134,9 +147,9 @@ function renderTransactions() {
         </div>
         <div class="tx-details">
           <span class="tx-type">${tx.type === 'in' ? 'Received' : 'Sent'}</span>
-          <span class="tx-amount">${tx.amount} ${tx.symbol}</span>
+          <span class="tx-amount">${esc(tx.amount)} ${esc(tx.symbol)}</span>
         </div>
-        <div class="tx-status ${tx.status}">
+        <div class="tx-status ${esc(tx.status)}">
           ${tx.status === 'confirmed' ? '✓' : '...'}
         </div>
       </div>

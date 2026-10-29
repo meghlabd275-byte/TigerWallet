@@ -1,6 +1,19 @@
 // TigerWallet Desktop - Production JavaScript
 // Full functionality with light/dark theme support
 
+// Single hardened HTML escaper for the whole app. Every value interpolated into
+// an HTML string MUST pass through esc(): token symbols, chain names, NFT
+// metadata, P2P order fields and RPC error text all originate from on-chain or
+// backend data that an attacker can influence, so they are never trusted.
+function esc(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'object') { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\/]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
+        "'": '&#39;', '`': '&#96;', '=': '&#61;', '/': '&#47;'
+    }[c]));
+}
+
 class TigerWalletApp {
     constructor() {
         this.currentTheme = 'dark';
@@ -28,6 +41,7 @@ class TigerWalletApp {
 
         // Set up event listeners
         this.setupEventListeners();
+        this.setupDelegatedActions();
 
         // Load supported chains
         await this.loadChains();
@@ -676,7 +690,7 @@ class TigerWalletApp {
         networksList.innerHTML = this.chains.map(chain => `
             <div class="network-item">
                 <span class="icon">🔗</span>
-                <span>${chain.name} (${chain.symbol})</span>
+                <span>${esc(chain.name)} (${esc(chain.symbol)})</span>
             </div>
         `).join('');
     }
@@ -752,14 +766,14 @@ class TigerWalletApp {
         
         assetsList.innerHTML = wallet.tokens.map(token => `
             <div class="asset-item">
-                <div class="asset-icon">${icons[token.symbol] || '🪙'}</div>
+                <div class="asset-icon">${esc(icons[token.symbol] || '🪙')}</div>
                 <div class="asset-info">
-                    <div class="asset-name">${token.symbol}</div>
-                    <div class="asset-address">${this.formatAddress(wallet.address)}</div>
+                    <div class="asset-name">${esc(token.symbol)}</div>
+                    <div class="asset-address">${esc(this.formatAddress(wallet.address))}</div>
                 </div>
                 <div class="asset-balance">
-                    <div class="balance">${token.balance} ${token.symbol}</div>
-                    <div class="usd-value">$${token.usdValue?.toLocaleString() || '0'}</div>
+                    <div class="balance">${esc(token.balance)} ${esc(token.symbol)}</div>
+                    <div class="usd-value">$${esc(token.usdValue?.toLocaleString() || '0')}</div>
                 </div>
             </div>
         `).join('');
@@ -787,9 +801,9 @@ class TigerWalletApp {
             });
             if (!res.ok) { throw new Error(await res.text()); }
             const est = await res.json();
-            out.innerHTML = `<strong>Gas estimate:</strong> ${this.escapeHtml(String(est.gas_estimate ?? est.gas ?? est.estimate ?? ''))} units · gas price: ${this.escapeHtml(String(est.gas_price ?? ''))}`;
+            out.innerHTML = `<strong>Gas estimate:</strong> ${esc(String(est.gas_estimate ?? est.gas ?? est.estimate ?? ''))} units · gas price: ${esc(String(est.gas_price ?? ''))}`;
         } catch (e) {
-            out.innerHTML = `<span style="color: var(--danger)">Gas estimate error: ${this.escapeHtml(e.message)}</span>`;
+            out.innerHTML = `<span style="color: var(--danger)">Gas estimate error: ${esc(e.message)}</span>`;
         }
     }
 
@@ -831,18 +845,18 @@ class TigerWalletApp {
             const gasPrice = sim.gas_price || '';
             result.innerHTML = `
                 <strong>Simulation Result:</strong><br>
-                To: ${this.formatAddress(to)}<br>
-                Amount: ${amount} ETH<br>
-                Gas estimate: ${gas} units<br>
-                ${gasPrice ? `Gas price: ${gasPrice} wei<br>` : ''}
+                To: ${esc(this.formatAddress(to))}<br>
+                Amount: ${esc(amount)} ETH<br>
+                Gas estimate: ${esc(gas)} units<br>
+                ${gasPrice ? `Gas price: ${esc(gasPrice)} wei<br>` : ''}
                 ${willRevert
-                    ? `<span style="color: var(--danger)">✗ Will revert: ${this.escapeHtml(revertReason)}</span>`
+                    ? `<span style="color: var(--danger)">✗ Will revert: ${esc(revertReason)}</span>`
                     : `<span style="color: var(--success)">✓ Transaction would succeed</span>`}
             `;
         } catch (e) {
             result.innerHTML = `
                 <strong>Simulation Result:</strong><br>
-                <span style="color: var(--danger)">Simulation error: ${this.escapeHtml(e.message)}</span>
+                <span style="color: var(--danger)">Simulation error: ${esc(e.message)}</span>
             `;
         }
         result.classList.add('show');
@@ -1149,18 +1163,18 @@ class TigerWalletApp {
         }
         
         list.innerHTML = this.transactions.map(tx => `
-            <div class="asset-item tx-row" data-txhash="${this.escapeHtml(tx.hash || '')}" style="cursor: pointer" title="Tap to check on-chain status">
+            <div class="asset-item tx-row" data-txhash="${esc(tx.hash || '')}" style="cursor: pointer" title="Tap to check on-chain status">
                 <div class="asset-icon">${tx.value > 0 ? '📤' : '📥'}</div>
                 <div class="asset-info">
-                    <div class="asset-name">${tx.token} Transfer</div>
-                    <div class="asset-address">${this.formatAddress(tx.from)} → ${this.formatAddress(tx.to)}</div>
-                    <div class="asset-address tx-receipt-status" data-txreceipt="${this.escapeHtml(tx.hash || '')}"></div>
+                    <div class="asset-name">${esc(tx.token)} Transfer</div>
+                    <div class="asset-address">${esc(this.formatAddress(tx.from))} → ${esc(this.formatAddress(tx.to))}</div>
+                    <div class="asset-address tx-receipt-status" data-txreceipt="${esc(tx.hash || '')}"></div>
                 </div>
                 <div class="asset-balance">
                     <div class="balance" style="color: ${tx.value > 0 ? 'var(--danger)' : 'var(--success)'}">
-                        ${tx.value > 0 ? '-' : '+'}${tx.value} ${tx.token}
+                        ${tx.value > 0 ? '-' : '+'}${esc(tx.value)} ${esc(tx.token)}
                     </div>
-                    <div class="usd-value">${new Date(tx.timestamp).toLocaleDateString()}</div>
+                    <div class="usd-value">${esc(new Date(tx.timestamp).toLocaleDateString())}</div>
                 </div>
             </div>
         `).join('');
@@ -1226,9 +1240,9 @@ class TigerWalletApp {
             }
             container.innerHTML = assets.map(a => `
                 <div class="pool-card">
-                    <div class="pool-name">${this.escapeHtml(a.symbol || a.token || '')}</div>
-                    <div class="pool-apy">APY: ${a.apy ?? 0}%</div>
-                    <div class="asset-address">Min: ${a.min_stake ?? 0} · Lock: ${a.lock_period ?? 0}s</div>
+                    <div class="pool-name">${esc(a.symbol || a.token || '')}</div>
+                    <div class="pool-apy">APY: ${esc(a.apy ?? 0)}%</div>
+                    <div class="asset-address">Min: ${esc(a.min_stake ?? 0)} · Lock: ${esc(a.lock_period ?? 0)}s</div>
                 </div>`).join('');
         } catch (e) {
             container.innerHTML = '<div class="empty-state">Failed to load staking assets</div>';
@@ -1271,7 +1285,7 @@ class TigerWalletApp {
             // Populate chain selects from the public chain registry (no mocks).
             if (!this.chains || !this.chains.length) await this.loadChains();
             const opts = (this.chains || []).map(c =>
-                `<option value="${c.id}">${this.escapeHtml(c.name)} (${c.symbol})</option>`).join('');
+                `<option value="${c.id}">${esc(c.name)} (${c.symbol})</option>`).join('');
             fromSel.innerHTML = opts;
             toSel.innerHTML = opts;
         } catch (e) { /* fall back silently */ }
@@ -1289,7 +1303,7 @@ class TigerWalletApp {
             if (!res.ok) return;
             const q = await res.json();
             if (info) info.innerHTML =
-                `<div>Estimated Time: ${q.estimated_time || q.time || '—'}</div><div>Fee: ${q.fee ?? q.fee_percent ?? '—'}${q.fee_percent ? '%' : ''}</div>`;
+                `<div>Estimated Time: ${esc(q.estimated_time || q.time || '—')}</div><div>Fee: ${esc(q.fee ?? q.fee_percent ?? '—')}${q.fee_percent ? '%' : ''}</div>`;
         } catch (e) { /* ignore */ }
     }
 
@@ -1337,20 +1351,16 @@ class TigerWalletApp {
             if (!nfts.length) { grid.innerHTML = '<div class="empty-state">No NFTs in this wallet</div>'; return; }
             grid.innerHTML = nfts.map(n => `
                 <div class="nft-card">
-                    <div class="nft-image">${n.image_url ? `<img src="${this.escapeHtml(n.image_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🖼️'}</div>
-                    <div class="nft-name">${this.escapeHtml(n.name || '#' + (n.token_id || ''))}</div>
-                    <div class="nft-collection">${this.escapeHtml(n.collection || n.contract || '')}</div>
-                    <div class="asset-address">${n.standard || 'ERC-721'}</div>
+                    <div class="nft-image">${n.image_url ? `<img src="${esc(n.image_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🖼️'}</div>
+                    <div class="nft-name">${esc(n.name || '#' + (n.token_id || ''))}</div>
+                    <div class="nft-collection">${esc(n.collection || n.contract || '')}</div>
+                    <div class="asset-address">${esc(n.standard || 'ERC-721')}</div>
                 </div>`).join('');
         } catch (e) {
             grid.innerHTML = '<div class="empty-state">Failed to load NFTs</div>';
         }
     }
 
-    escapeHtml(s) {
-        if (s == null) return '';
-        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
 
     // ---- ENS resolution (real on-chain lookup via /api/v1/ens/resolve) ----
     async resolveENS() {
@@ -1364,7 +1374,7 @@ class TigerWalletApp {
             const res = await twFetch(`${twApiBase()}/ens/resolve?name=${encodeURIComponent(name)}`);
             if (!res.ok) { out.textContent = `Resolution failed (HTTP ${res.status})`; return; }
             const data = await res.json();
-            out.textContent = data.address ? `${this.escapeHtml(name)} → ${this.escapeHtml(data.address)}` : 'No address found';
+            out.textContent = data.address ? `${esc(name)} → ${esc(data.address)}` : 'No address found';
         } catch (e) {
             out.textContent = 'Resolution failed (backend unreachable)';
         }
@@ -1382,7 +1392,7 @@ class TigerWalletApp {
             const res = await twFetch(`${twApiBase()}/ens/lookup?address=${encodeURIComponent(address)}`);
             if (!res.ok) { out.textContent = `Lookup failed (HTTP ${res.status})`; return; }
             const data = await res.json();
-            out.textContent = data.name ? `${this.escapeHtml(address)} → ${this.escapeHtml(data.name)}` : 'No ENS name found';
+            out.textContent = data.name ? `${esc(address)} → ${esc(data.name)}` : 'No ENS name found';
         } catch (e) {
             out.textContent = 'Lookup failed (backend unreachable)';
         }
@@ -1398,8 +1408,8 @@ class TigerWalletApp {
             const res = await twFetch(`${twApiBase()}/wallet/kyc/status?address=${encodeURIComponent(wallet.address)}`);
             if (!res.ok) { box.innerHTML = '<div class="empty-state">KYC status unavailable</div>'; return; }
             const data = await res.json();
-            const status = this.escapeHtml(data.status || data.kyc_status || 'unknown');
-            box.innerHTML = `<div class="kyc-card"><strong>KYC status:</strong> ${status}</div>`;
+            const status = esc(data.status || data.kyc_status || 'unknown');
+            box.innerHTML = `<div class="kyc-card"><strong>KYC status:</strong> ${esc(status)}</div>`;
         } catch (e) {
             box.innerHTML = '<div class="empty-state">KYC status unavailable</div>';
         }
@@ -1417,8 +1427,8 @@ class TigerWalletApp {
             if (!providers.length) { box.innerHTML = '<div class="empty-state">No fiat providers configured</div>'; return; }
             box.innerHTML = providers.map(p => `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(p.name || p.id || 'Provider')}</div>
-                    <div class="asset-address">${this.escapeHtml(p.type || '')} ${p.supported_chains ? '· ' + this.escapeHtml(p.supported_chains.join(', ')) : ''}</div>
+                    <div class="nft-name">${esc(p.name || p.id || 'Provider')}</div>
+                    <div class="asset-address">${esc(p.type || '')} ${p.supported_chains ? '· ' + esc(p.supported_chains.join(', ')) : ''}</div>
                 </div>`).join('');
         } catch (e) {
             box.innerHTML = '<div class="empty-state">Ramp unavailable</div>';
@@ -1439,10 +1449,10 @@ class TigerWalletApp {
             if (!dapps.length) { box.innerHTML = '<div class="empty-state">No dApps available</div>'; return; }
             box.innerHTML = dapps.map(d => `
                 <div class="nft-card">
-                    <div class="nft-image">${d.icon_url ? `<img src="${this.escapeHtml(d.icon_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🌐'}</div>
-                    <div class="nft-name">${this.escapeHtml(d.name || '')}</div>
-                    <div class="nft-collection">${this.escapeHtml(d.category || '')}</div>
-                    <div class="asset-address">${d.url ? `<a href="${this.escapeHtml(d.url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>
+                    <div class="nft-image">${d.icon_url ? `<img src="${esc(d.icon_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🌐'}</div>
+                    <div class="nft-name">${esc(d.name || '')}</div>
+                    <div class="nft-collection">${esc(d.category || '')}</div>
+                    <div class="asset-address">${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>
                 </div>`).join('');
         } catch (e) {
             box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>';
@@ -1460,7 +1470,7 @@ class TigerWalletApp {
             const cats = Array.isArray(data.categories) ? data.categories : (Array.isArray(data) ? data : []);
             const all = [''].concat(cats);
             box.innerHTML = all.map(c =>
-                `<button class="category-chip" data-cat="${this.escapeHtml(c)}" style="margin-right:6px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:${(this._dappCategory || '') === c ? 'var(--accent)' : 'transparent'};color:var(--text);cursor:pointer">${c === '' ? 'All' : this.escapeHtml(c)}</button>`
+                `<button class="category-chip" data-cat="${esc(c)}" style="margin-right:6px;padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:${(this._dappCategory || '') === c ? 'var(--accent)' : 'transparent'};color:var(--text);cursor:pointer">${c === '' ? 'All' : esc(c)}</button>`
             ).join('');
             box.querySelectorAll('.category-chip').forEach(chip => {
                 chip.addEventListener('click', () => this.loadDApps(chip.dataset.cat || ''));
@@ -1499,14 +1509,14 @@ class TigerWalletApp {
             const list = data.pairings || data.data || [];
             if (!list.length) { box.innerHTML = '<div class="empty-state">No pending pairings</div>'; return; }
             box.innerHTML = list.map(p => {
-                const topic = this.escapeHtml(p.topic || '');
-                const name = this.escapeHtml(p.peer_name || p.name || topic);
-                const status = this.escapeHtml(p.status || 'pending');
+                const topic = esc(p.topic || '');
+                const name = esc(p.peer_name || p.name || topic);
+                const status = esc(p.status || 'pending');
                 return `<div class="asset-item" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
-                    <span>${name} · ${status}</span>
+                    <span>${esc(name)} · ${esc(status)}</span>
                     <span>
-                        <button class="btn-primary wc-approve" data-topic="${topic}" style="margin-right:6px">Approve</button>
-                        <button class="btn-secondary wc-reject" data-topic="${topic}">Reject</button>
+                        <button class="btn-primary wc-approve" data-topic="${esc(topic)}" style="margin-right:6px">Approve</button>
+                        <button class="btn-secondary wc-reject" data-topic="${esc(topic)}">Reject</button>
                     </span>
                 </div>`;
             }).join('');
@@ -1527,7 +1537,7 @@ class TigerWalletApp {
             const list = data.sessions || data.data || [];
             if (!list.length) { box.innerHTML = '<div class="empty-state">No active sessions</div>'; return; }
             box.innerHTML = list.map(s =>
-                `<div class="asset-item" style="padding:8px 0">${this.escapeHtml(s.peer_name || s.name || '')} · ${this.escapeHtml(s.topic || '')}</div>`
+                `<div class="asset-item" style="padding:8px 0">${esc(s.peer_name || s.name || '')} · ${esc(s.topic || '')}</div>`
             ).join('');
         } catch (e) {
             box.innerHTML = '';
@@ -1561,7 +1571,7 @@ class TigerWalletApp {
                     const data = await res.json();
                     const tiers = data.fees || data.data || [];
                     tiersBox.innerHTML = tiers.length
-                        ? tiers.map(t => `<div class="asset-item" style="padding:8px 0">${this.escapeHtml(t.name || t.tier || '')} — ${this.escapeHtml(String(t.rate_bps ?? t.rate ?? ''))} bps</div>`).join('')
+                        ? tiers.map(t => `<div class="asset-item" style="padding:8px 0">${esc(t.name || t.tier || '')} — ${esc(String(t.rate_bps ?? t.rate ?? ''))} bps</div>`).join('')
                         : '<div class="empty-state">No fee tiers configured</div>';
                 }
             }
@@ -1576,7 +1586,7 @@ class TigerWalletApp {
                     const data = await res.json();
                     const txs = data.transactions || data.data || [];
                     txBox.innerHTML = txs.length
-                        ? txs.slice(0, 25).map(t => `<div class="asset-item" style="padding:8px 0">${this.escapeHtml(String(t.tx_hash || '')).slice(0, 18)}… ${this.escapeHtml(String(t.fee_amount ?? t.amount ?? ''))} ${this.escapeHtml(t.token || '')}</div>`).join('')
+                        ? txs.slice(0, 25).map(t => `<div class="asset-item" style="padding:8px 0">${esc(String(t.tx_hash || '')).slice(0, 18)}… ${esc(String(t.fee_amount ?? t.amount ?? ''))} ${esc(t.token || '')}</div>`).join('')
                         : '<div class="empty-state">No settled fee transactions</div>';
                 }
             }
@@ -1594,7 +1604,7 @@ class TigerWalletApp {
             if (!res.ok) { box.innerHTML = '<div class="empty-state">Network status unavailable</div>'; return; }
             const data = await res.json();
             const bn = data.block_number != null ? String(data.block_number) : (data.note || '?');
-            box.innerHTML = `<div class="asset-item" style="padding:8px 0">Chain ${this.escapeHtml(String(data.chain_id ?? ''))} — latest block: ${this.escapeHtml(bn)}${data.latency_ms != null ? ' · ' + this.escapeHtml(String(data.latency_ms)) + 'ms' : ''}</div>`;
+            box.innerHTML = `<div class="asset-item" style="padding:8px 0">Chain ${esc(String(data.chain_id ?? ''))} — latest block: ${esc(bn)}${data.latency_ms != null ? ' · ' + esc(String(data.latency_ms)) + 'ms' : ''}</div>`;
         } catch (e) {
             box.innerHTML = '<div class="empty-state">Network status unavailable</div>';
         }
@@ -1625,7 +1635,7 @@ class TigerWalletApp {
             if (!out) return;
             if (!res.ok) { out.innerHTML = '<div class="empty-state">Session not found</div>'; return; }
             const data = await res.json();
-            out.innerHTML = `<div class="kyc-card"><strong>Session ${this.escapeHtml(id)}</strong><br>Status: ${this.escapeHtml(data.status || 'unknown')}${data.reviewed_at ? '<br>Reviewed: ' + this.escapeHtml(data.reviewed_at) : ''}</div>`;
+            out.innerHTML = `<div class="kyc-card"><strong>Session ${esc(id)}</strong><br>Status: ${esc(data.status || 'unknown')}${data.reviewed_at ? '<br>Reviewed: ' + esc(data.reviewed_at) : ''}</div>`;
         } catch (e) {
             if (out) out.innerHTML = '<div class="empty-state">Session unavailable</div>';
         }
@@ -1691,10 +1701,10 @@ class TigerWalletApp {
                 throw new Error(err.error || `HTTP ${res.status}`);
             }
             const data = await res.json();
-            if (out) out.innerHTML = `<div class="success-banner">Passkey wallet created: ${this.escapeHtml(data.address || data.wallet_id || '')}</div>`;
+            if (out) out.innerHTML = `<div class="success-banner">Passkey wallet created: ${esc(data.address || data.wallet_id || '')}</div>`;
             this.loadWalletData();
         } catch (e) {
-            if (out) out.innerHTML = `<div class="empty-state">Passkey registration failed: ${this.escapeHtml(e.message)}</div>`;
+            if (out) out.innerHTML = `<div class="empty-state">Passkey registration failed: ${esc(e.message)}</div>`;
         }
     }
 
@@ -1762,8 +1772,8 @@ class TigerWalletApp {
             if (!list.length) { box.innerHTML = '<div class="empty-state">No DeFi protocols available</div>'; return; }
             box.innerHTML = list.map(p => `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(p.name || p.protocol || '')}</div>
-                    <div class="asset-address">${this.escapeHtml(p.category || p.chain || '')}${p.tvl != null ? ' · TVL: ' + this.escapeHtml(p.tvl) : ''}${p.apy != null ? ' · APY: ' + this.escapeHtml(p.apy) + '%' : ''}</div>
+                    <div class="nft-name">${esc(p.name || p.protocol || '')}</div>
+                    <div class="asset-address">${esc(p.category || p.chain || '')}${p.tvl != null ? ' · TVL: ' + esc(p.tvl) : ''}${p.apy != null ? ' · APY: ' + esc(p.apy) + '%' : ''}</div>
                 </div>`).join('');
         } catch (e) {
             box.innerHTML = '<div class="empty-state">DeFi protocols unavailable</div>';
@@ -1786,12 +1796,12 @@ class TigerWalletApp {
             const list = Array.isArray(data.positions) ? data.positions : (Array.isArray(data) ? data : []);
             if (!list.length) { box.innerHTML = '<div class="empty-state">No open positions</div>'; return; }
             box.innerHTML = list.map(p => {
-                const id = this.escapeHtml(p.id ?? p.position_id ?? '');
+                const id = esc(p.id ?? p.position_id ?? '');
                 return `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(p.pair || '')} ${this.escapeHtml(p.side || '')}</div>
-                    <div class="asset-address">size=${this.escapeHtml(p.size ?? '')} lev=${this.escapeHtml(p.leverage ?? '')} pnl=${this.escapeHtml(p.pnl ?? p.unrealized_pnl ?? '0')}</div>
-                    <button class="btn-secondary" onclick="window.app.closeTradingPosition('${id}')">Close</button>
+                    <div class="nft-name">${esc(p.pair || '')} ${esc(p.side || '')}</div>
+                    <div class="asset-address">size=${esc(p.size ?? '')} lev=${esc(p.leverage ?? '')} pnl=${esc(p.pnl ?? p.unrealized_pnl ?? '0')}</div>
+                    <button class="btn-secondary" data-tp-close="${esc(id)}">Close</button>
                 </div>`;
             }).join('');
         } catch (e) {
@@ -1849,10 +1859,10 @@ class TigerWalletApp {
                 ? series.map(s => `
                     <div class="asset-item">
                         <div class="asset-info">
-                            <div class="asset-name">${this.escapeHtml((s.underlying || '') + '-' + (s.strike ?? '') + ' ' + (s.style || ''))}</div>
-                            <div class="asset-address">id: ${this.escapeHtml(s.id)} · exp ${this.escapeHtml(s.expiry_unix ? new Date(s.expiry_unix * 1000).toISOString().slice(0, 10) : '')}</div>
+                            <div class="asset-name">${esc((s.underlying || '') + '-' + (s.strike ?? '') + ' ' + (s.style || ''))}</div>
+                            <div class="asset-address">id: ${esc(s.id)} · exp ${esc(s.expiry_unix ? new Date(s.expiry_unix * 1000).toISOString().slice(0, 10) : '')}</div>
                         </div>
-                        <button class="btn-secondary" onclick="window.app.quoteOptions('${this.escapeHtml(s.id)}')">Quote</button>
+                        <button class="btn-secondary" data-opt-quote="${esc(s.id)}">Quote</button>
                     </div>`).join('')
                 : '<div class="no-transactions">No active options series. An operator must add series first.</div>';
         } catch (e) {
@@ -1866,7 +1876,7 @@ class TigerWalletApp {
         try {
             const q = await this._options?.getQuote(seriesId) || await new OptionsService().getQuote(seriesId);
             box.innerHTML = q
-                ? `<div class="asset-item"><div class="asset-info"><div class="asset-name">Quote</div><div class="asset-address">premium/contract: ${this.escapeHtml(q.premium_per_contract ?? '')} ${this.escapeHtml(q.quote_asset ?? '')} · underlying: ${this.escapeHtml(q.underlying_price ?? '')}</div></div></div>`
+                ? `<div class="asset-item"><div class="asset-info"><div class="asset-name">Quote</div><div class="asset-address">premium/contract: ${esc(q.premium_per_contract ?? '')} ${esc(q.quote_asset ?? '')} · underlying: ${esc(q.underlying_price ?? '')}</div></div></div>`
                 : '<div class="no-transactions">Quote unavailable</div>';
         } catch (e) {
             box.innerHTML = '<div class="no-transactions">Quote unavailable</div>';
@@ -1883,10 +1893,10 @@ class TigerWalletApp {
                 ? positions.map(p => `
                     <div class="asset-item">
                         <div class="asset-info">
-                            <div class="asset-name">${this.escapeHtml(p.id + ':' + ((p.underlying || '') + '-' + (p.strike ?? '')) + ' ' + (p.side || ''))}</div>
-                            <div class="asset-address">${this.escapeHtml('x' + (p.contracts ?? 0) + ' ' + (p.status || '') + ' pnl:' + (p.pnl ?? 0))}</div>
+                            <div class="asset-name">${esc(p.id + ':' + ((p.underlying || '') + '-' + (p.strike ?? '')) + ' ' + (p.side || ''))}</div>
+                            <div class="asset-address">${esc('x' + (p.contracts ?? 0) + ' ' + (p.status || '') + ' pnl:' + (p.pnl ?? 0))}</div>
                         </div>
-                        <button class="btn-secondary" onclick="window.app.closeOptions('${this.escapeHtml(p.id)}')">Close</button>
+                        <button class="btn-secondary" data-opt-close="${esc(p.id)}">Close</button>
                     </div>`).join('')
                 : '<div class="no-transactions">No open options positions</div>';
         } catch (e) {
@@ -1936,7 +1946,7 @@ class TigerWalletApp {
                     const data = await res.json();
                     const list = Array.isArray(data.pools) ? data.pools : (Array.isArray(data) ? data : []);
                     poolsBox.innerHTML = list.length
-                        ? list.map(p => `<div class="provider-card"><div class="nft-name">${this.escapeHtml(p.name || p.symbol || '')}</div><div class="asset-address">${this.escapeHtml(JSON.stringify(p))}</div></div>`).join('')
+                        ? list.map(p => `<div class="provider-card"><div class="nft-name">${esc(p.name || p.symbol || '')}</div><div class="asset-address">${esc(JSON.stringify(p))}</div></div>`).join('')
                         : '<div class="empty-state">No launchpool pools</div>';
                 }
             }
@@ -1950,7 +1960,7 @@ class TigerWalletApp {
                 const data = await res.json();
                 const list = Array.isArray(data.stakes) ? data.stakes : (Array.isArray(data) ? data : []);
                 stakesBox.innerHTML = list.length
-                    ? list.map(s => `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(s))}</div></div>`).join('')
+                    ? list.map(s => `<div class="provider-card"><div class="asset-address">${esc(JSON.stringify(s))}</div></div>`).join('')
                     : '<div class="empty-state">No stakes yet</div>';
             }
         } catch (e) {
@@ -1991,14 +2001,14 @@ class TigerWalletApp {
             const list = Array.isArray(data.sales) ? data.sales : (Array.isArray(data) ? data : []);
             if (!list.length) { box.innerHTML = '<div class="empty-state">No active token sales</div>'; return; }
             box.innerHTML = list.map(s => {
-                const id = this.escapeHtml(s.id ?? s.sale_id ?? '');
+                const id = esc(s.id ?? s.sale_id ?? '');
                 return `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(s.name || s.symbol || id)}</div>
-                    <div class="asset-address">${this.escapeHtml(JSON.stringify(s))}</div>
+                    <div class="nft-name">${esc(s.name || s.symbol || id)}</div>
+                    <div class="asset-address">${esc(JSON.stringify(s))}</div>
                     <div class="stake-input-row">
-                        <input type="text" id="sale-amount-${id}" placeholder="Amount" class="stake-input">
-                        <button class="btn-primary" onclick="window.app.participateTokenSale('${id}')">Participate</button>
+                        <input type="text" id="sale-amount-${esc(id)}" placeholder="Amount" class="stake-input">
+                        <button class="btn-primary" data-sale-part="${esc(id)}">Participate</button>
                     </div>
                 </div>`;
             }).join('');
@@ -2037,8 +2047,8 @@ class TigerWalletApp {
             if (!list.length) { box.innerHTML = '<div class="empty-state">No P2P adverts</div>'; return; }
             box.innerHTML = list.map(a => `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(a.asset || a.token || '')} @ ${this.escapeHtml(a.price ?? '')}</div>
-                    <div class="asset-address">id=${this.escapeHtml(a.id ?? a.advert_id ?? '')} · ${this.escapeHtml(a.side || a.type || '')}</div>
+                    <div class="nft-name">${esc(a.asset || a.token || '')} @ ${esc(a.price ?? '')}</div>
+                    <div class="asset-address">id=${esc(a.id ?? a.advert_id ?? '')} · ${esc(a.side || a.type || '')}</div>
                 </div>`).join('');
         } catch (e) {
             box.innerHTML = '<div class="empty-state">P2P adverts unavailable</div>';
@@ -2097,8 +2107,8 @@ class TigerWalletApp {
             const data = await this.finApi('/finance/accounts');
             const accounts = data.accounts || [];
             if (accounts.length === 0) { el.innerHTML = '<div class="no-transactions">No accounts yet</div>'; return; }
-            el.innerHTML = accounts.map(a => `<div class="asset-item"><div class="asset-info"><h4>${this.escapeHtml(a.currency)}</h4><p>Balance ${this.escapeHtml(a.balance)} · Locked ${this.escapeHtml(a.locked)} · Available ${this.escapeHtml(a.available)}</p></div>${a.usd_value !== undefined ? `<span class="asset-balance">$${Number(a.usd_value).toFixed(2)}</span>` : ''}</div>`).join('');
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+            el.innerHTML = accounts.map(a => `<div class="asset-item"><div class="asset-info"><h4>${esc(a.currency)}</h4><p>Balance ${esc(a.balance)} · Locked ${esc(a.locked)} · Available ${esc(a.available)}</p></div>${a.usd_value !== undefined ? `<span class="asset-balance">$${esc(Number(a.usd_value).toFixed(2))}</span>` : ''}</div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     async loadFinanceDeposits() {
@@ -2108,13 +2118,13 @@ class TigerWalletApp {
             const data = await this.finApi('/finance/deposit-addresses');
             const addrs = data.addresses || [];
             if (addrs.length === 0) { el.innerHTML = '<div class="no-transactions">Deposit addresses unavailable on this node</div>'; return; }
-            el.innerHTML = addrs.map(d => `<div class="asset-item"><div class="asset-info"><h4>${this.escapeHtml(d.asset)} <span style="font-weight:normal">(${this.escapeHtml(d.network)})</span></h4><p style="word-break:break-all;font-family:monospace">${this.escapeHtml(d.address)}</p></div><button class="btn-secondary fin-copy" data-addr="${this.escapeHtml(d.address)}">Copy</button><img class="fin-qr" data-asset="${this.escapeHtml(d.asset)}" alt="QR" width="96" height="96"></div>`).join('');
+            el.innerHTML = addrs.map(d => `<div class="asset-item"><div class="asset-info"><h4>${esc(d.asset)} <span style="font-weight:normal">(${esc(d.network)})</span></h4><p style="word-break:break-all;font-family:monospace">${esc(d.address)}</p></div><button class="btn-secondary fin-copy" data-addr="${esc(d.address)}">Copy</button><img class="fin-qr" data-asset="${esc(d.asset)}" alt="QR" width="96" height="96"></div>`).join('');
             el.querySelectorAll('.fin-copy').forEach(b => b.addEventListener('click', () => {
                 navigator.clipboard.writeText(b.dataset.addr);
                 this.finMsg('Address copied');
             }));
             el.querySelectorAll('.fin-qr').forEach(img => this.loadFinanceQr(img));
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     // Server-rendered QR fetched with the Bearer token (an <img> cannot
@@ -2150,8 +2160,8 @@ class TigerWalletApp {
             const data = await this.finApi('/finance/withdrawals');
             const list = data.withdrawals || [];
             el.innerHTML = list.length === 0 ? '<div class="no-transactions">No withdrawals</div>'
-                : list.map(w => `<div class="transaction-item"><div><strong>${this.escapeHtml(w.amount)} ${this.escapeHtml(w.currency)}</strong> → ${this.escapeHtml(w.to_address)}<p class="muted">risk ${w.risk_score} · ${this.escapeHtml(w.status)}</p></div></div>`).join('');
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+                : list.map(w => `<div class="transaction-item"><div><strong>${esc(w.amount)} ${esc(w.currency)}</strong> → ${esc(w.to_address)}<p class="muted">risk ${esc(w.risk_score)} · ${esc(w.status)}</p></div></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     async financeConvert() {
@@ -2174,8 +2184,8 @@ class TigerWalletApp {
             const data = await this.finApi('/finance/convert/rates');
             const rates = data.rates || [];
             el.innerHTML = rates.length === 0 ? '<div class="no-transactions">No rates configured</div>'
-                : rates.map(r => `<div class="asset-item"><h4>${this.escapeHtml(r.from_currency)}/${this.escapeHtml(r.to_currency)}</h4><span class="asset-balance">${this.escapeHtml(r.rate)}</span></div>`).join('');
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+                : rates.map(r => `<div class="asset-item"><h4>${esc(r.from_currency)}/${esc(r.to_currency)}</h4><span class="asset-balance">${esc(r.rate)}</span></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     async financeTransfer() {
@@ -2240,9 +2250,9 @@ class TigerWalletApp {
             const data = await this.finApi('/finance/p2p/escrow');
             const orders = data.orders || [];
             if (orders.length === 0) { el.innerHTML = '<div class="no-transactions">No open orders</div>'; return; }
-            el.innerHTML = orders.map(o => `<div class="asset-item"><div class="asset-info"><h4>${this.escapeHtml(o.amount)} ${this.escapeHtml(o.currency)} for ${this.escapeHtml(o.fiat_amount)} ${this.escapeHtml(o.fiat_currency)}</h4><p>${this.escapeHtml(o.payment_method_name || o.payment_method_code)} · ${this.escapeHtml(o.country_code)} · ${this.escapeHtml(o.status)}</p></div><div class="asset-actions">${o.status === 'open' ? `<button class="btn-secondary fin-ea" data-id="${o.id}" data-act="accept">Buy</button><button class="btn-secondary fin-ea" data-id="${o.id}" data-act="cancel">Cancel</button>` : ''}${o.status === 'escrowed' ? `<button class="btn-secondary fin-ea" data-id="${o.id}" data-act="paid">Mark paid</button><button class="btn-secondary fin-ea" data-id="${o.id}" data-act="dispute">Dispute</button>` : ''}${o.status === 'paid' ? `<button class="btn-secondary fin-ea" data-id="${o.id}" data-act="release">Release</button><button class="btn-secondary fin-ea" data-id="${o.id}" data-act="dispute">Dispute</button>` : ''}</div></div>`).join('');
+            el.innerHTML = orders.map(o => `<div class="asset-item"><div class="asset-info"><h4>${esc(o.amount)} ${esc(o.currency)} for ${esc(o.fiat_amount)} ${esc(o.fiat_currency)}</h4><p>${esc(o.payment_method_name || o.payment_method_code)} · ${esc(o.country_code)} · ${esc(o.status)}</p></div><div class="asset-actions">${o.status === 'open' ? `<button class="btn-secondary fin-ea" data-id="${esc(o.id)}" data-act="accept">Buy</button><button class="btn-secondary fin-ea" data-id="${esc(o.id)}" data-act="cancel">Cancel</button>` : ''}${o.status === 'escrowed' ? `<button class="btn-secondary fin-ea" data-id="${esc(o.id)}" data-act="paid">Mark paid</button><button class="btn-secondary fin-ea" data-id="${esc(o.id)}" data-act="dispute">Dispute</button>` : ''}${o.status === 'paid' ? `<button class="btn-secondary fin-ea" data-id="${esc(o.id)}" data-act="release">Release</button><button class="btn-secondary fin-ea" data-id="${esc(o.id)}" data-act="dispute">Dispute</button>` : ''}</div></div>`).join('');
             el.querySelectorAll('.fin-ea').forEach(b => b.addEventListener('click', () => this.financeEscrowAction(b.dataset.id, b.dataset.act)));
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     async loadFinanceHistory() {
@@ -2252,8 +2262,8 @@ class TigerWalletApp {
             const data = await this.finApi('/finance/history');
             const list = data.history || [];
             el.innerHTML = list.length === 0 ? '<div class="no-transactions">No ledger history yet</div>'
-                : list.map(h => `<div class="transaction-item"><div><strong>${this.escapeHtml(h.kind)}</strong> ${h.direction === 'debit' ? '−' : '+'}${this.escapeHtml(h.amount)} ${this.escapeHtml(h.currency)}<p class="muted">balance after ${this.escapeHtml(h.balance_after)}${h.memo ? ' · ' + this.escapeHtml(h.memo) : ''}</p></div></div>`).join('');
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+                : list.map(h => `<div class="transaction-item"><div><strong>${esc(h.kind)}</strong> ${h.direction === 'debit' ? '−' : '+'}${esc(h.amount)} ${esc(h.currency)}<p class="muted">balance after ${esc(h.balance_after)}${h.memo ? ' · ' + esc(h.memo) : ''}</p></div></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     async loadFinanceSwitches() {
@@ -2264,8 +2274,8 @@ class TigerWalletApp {
             const obj = data.switches || data.data || data;
             const entries = obj && typeof obj === 'object' ? Object.entries(obj) : [];
             el.innerHTML = entries.length === 0 ? '<div class="no-transactions">No per-token switches configured</div>'
-                : entries.map(([k, v]) => `<div class="transaction-item"><div><strong>${this.escapeHtml(k)}</strong></div><p class="muted">${this.escapeHtml(String(v))}</p></div></div>`).join('');
-        } catch (e) { el.innerHTML = `<div class="no-transactions">${this.escapeHtml(e.message)}</div>`; }
+                : entries.map(([k, v]) => `<div class="transaction-item"><div><strong>${esc(k)}</strong></div><p class="muted">${esc(String(v))}</p></div></div>`).join('');
+        } catch (e) { el.innerHTML = `<div class="no-transactions">${esc(e.message)}</div>`; }
     }
 
     async createP2POrder() {
@@ -2297,7 +2307,7 @@ class TigerWalletApp {
                 if (!res.ok) { balBox.innerHTML = '<div class="empty-state">Card balance unavailable</div>'; }
                 else {
                     const data = await res.json();
-                    balBox.innerHTML = `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(data))}</div></div>`;
+                    balBox.innerHTML = `<div class="provider-card"><div class="asset-address">${esc(JSON.stringify(data))}</div></div>`;
                 }
             }
         } catch (e) {
@@ -2310,7 +2320,7 @@ class TigerWalletApp {
                 const data = await res.json();
                 const entries = Object.entries(data.rates || data);
                 ratesBox.innerHTML = entries.length
-                    ? entries.map(([k, v]) => `<div class="provider-card"><div class="nft-name">${this.escapeHtml(k)}</div><div class="asset-address">$${this.escapeHtml(v)}</div></div>`).join('')
+                    ? entries.map(([k, v]) => `<div class="provider-card"><div class="nft-name">${esc(k)}</div><div class="asset-address">$${esc(v)}</div></div>`).join('')
                     : '<div class="empty-state">Rates unavailable</div>';
             }
         } catch (e) {
@@ -2323,7 +2333,7 @@ class TigerWalletApp {
                 const data = await res.json();
                 const list = Array.isArray(data.transactions) ? data.transactions : (Array.isArray(data) ? data : []);
                 txBox.innerHTML = list.length
-                    ? list.map(t => `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(t))}</div></div>`).join('')
+                    ? list.map(t => `<div class="provider-card"><div class="asset-address">${esc(JSON.stringify(t))}</div></div>`).join('')
                     : '<div class="no-transactions">No card transactions</div>';
             }
         } catch (e) {
@@ -2342,11 +2352,11 @@ class TigerWalletApp {
             const list = Array.isArray(data.alerts) ? data.alerts : (Array.isArray(data) ? data : []);
             if (!list.length) { box.innerHTML = '<div class="empty-state">No price alerts</div>'; return; }
             box.innerHTML = list.map(a => {
-                const id = this.escapeHtml(a.id ?? '');
+                const id = esc(a.id ?? '');
                 return `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(a.symbol || '')} ${this.escapeHtml(a.direction || '')} $${this.escapeHtml(a.target_price ?? '')}</div>
-                    <button class="btn-secondary" onclick="window.app.deletePriceAlert('${id}')">Delete</button>
+                    <div class="nft-name">${esc(a.symbol || '')} ${esc(a.direction || '')} $${esc(a.target_price ?? '')}</div>
+                    <button class="btn-secondary" data-alert-del="${esc(id)}">Delete</button>
                 </div>`;
             }).join('');
         } catch (e) {
@@ -2395,13 +2405,13 @@ class TigerWalletApp {
                     const data = await res.json();
                     const list = Array.isArray(data.proposals) ? data.proposals : (Array.isArray(data) ? data : []);
                     propBox.innerHTML = list.length ? list.map(p => {
-                        const id = this.escapeHtml(p.id ?? p.proposal_id ?? '');
+                        const id = esc(p.id ?? p.proposal_id ?? '');
                         return `
                         <div class="provider-card">
-                            <div class="nft-name">${this.escapeHtml(p.title || id)}</div>
-                            <div class="asset-address">${this.escapeHtml(p.description || '')}</div>
-                            <button class="btn-primary" onclick="window.app.daoVote('${id}', true)">For</button>
-                            <button class="btn-secondary" onclick="window.app.daoVote('${id}', false)">Against</button>
+                            <div class="nft-name">${esc(p.title || id)}</div>
+                            <div class="asset-address">${esc(p.description || '')}</div>
+                            <button class="btn-primary" data-dao-vote="${esc(id)}" data-dao-for="1">For</button>
+                            <button class="btn-secondary" data-dao-vote="${esc(id)}" data-dao-for="0">Against</button>
                         </div>`;
                     }).join('') : '<div class="empty-state">No active proposals</div>';
                 }
@@ -2416,7 +2426,7 @@ class TigerWalletApp {
                 const data = await res.json();
                 const list = Array.isArray(data.delegates) ? data.delegates : (Array.isArray(data) ? data : []);
                 delBox.innerHTML = list.length
-                    ? list.map(d => `<div class="provider-card"><div class="asset-address">${this.escapeHtml(JSON.stringify(d))}</div></div>`).join('')
+                    ? list.map(d => `<div class="provider-card"><div class="asset-address">${esc(JSON.stringify(d))}</div></div>`).join('')
                     : '<div class="empty-state">No delegates</div>';
             }
         } catch (e) {
@@ -2450,12 +2460,12 @@ class TigerWalletApp {
             const list = Array.isArray(data.approvals) ? data.approvals : (Array.isArray(data) ? data : []);
             if (!list.length) { box.innerHTML = '<div class="empty-state">No token approvals</div>'; return; }
             box.innerHTML = list.map(a => {
-                const id = this.escapeHtml(a.id ?? '');
+                const id = esc(a.id ?? '');
                 return `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(a.token || a.token_symbol || '')} → ${this.escapeHtml(a.spender || '')}</div>
-                    <div class="asset-address">allowance=${this.escapeHtml(a.allowance ?? a.amount ?? '')}</div>
-                    <button class="btn-secondary" onclick="window.app.revokeApproval('${id}')">Revoke</button>
+                    <div class="nft-name">${esc(a.token || a.token_symbol || '')} → ${esc(a.spender || '')}</div>
+                    <div class="asset-address">allowance=${esc(a.allowance ?? a.amount ?? '')}</div>
+                    <button class="btn-secondary" data-appr-revoke="${esc(id)}">Revoke</button>
                 </div>`;
             }).join('');
         } catch (e) {
@@ -2485,12 +2495,12 @@ class TigerWalletApp {
             const list = Array.isArray(data.contacts) ? data.contacts : (Array.isArray(data) ? data : []);
             if (!list.length) { box.innerHTML = '<div class="empty-state">No contacts</div>'; return; }
             box.innerHTML = list.map(c => {
-                const id = this.escapeHtml(c.id ?? '');
+                const id = esc(c.id ?? '');
                 return `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(c.label || c.name || '')}</div>
-                    <div class="asset-address">${this.escapeHtml(c.address || '')}</div>
-                    <button class="btn-secondary" onclick="window.app.deleteContact('${id}')">Delete</button>
+                    <div class="nft-name">${esc(c.label || c.name || '')}</div>
+                    <div class="asset-address">${esc(c.address || '')}</div>
+                    <button class="btn-secondary" data-contact-del="${esc(id)}">Delete</button>
                 </div>`;
             }).join('');
         } catch (e) {
@@ -2537,8 +2547,8 @@ class TigerWalletApp {
             if (!list.length) { box.innerHTML = '<div class="empty-state">No linked devices</div>'; return; }
             box.innerHTML = list.map(d => `
                 <div class="provider-card">
-                    <div class="nft-name">${this.escapeHtml(d.name || d.device_name || d.platform || '')}</div>
-                    <div class="asset-address">${this.escapeHtml(d.last_seen || d.synced_at || '')}</div>
+                    <div class="nft-name">${esc(d.name || d.device_name || d.platform || '')}</div>
+                    <div class="asset-address">${esc(d.last_seen || d.synced_at || '')}</div>
                 </div>`).join('');
         } catch (e) {
             box.innerHTML = '<div class="empty-state">Devices unavailable</div>';
@@ -2561,7 +2571,7 @@ class TigerWalletApp {
             const res = await twFetch(path);
             if (!res.ok) { out.textContent = `Check failed (HTTP ${res.status})`; return; }
             const data = await res.json();
-            out.textContent = data.safe ? `✓ Safe: ${this.escapeHtml(data.reason || 'no threats')}` : `⚠ Flagged: ${this.escapeHtml(data.reason || 'threat detected')}`;
+            out.textContent = data.safe ? `✓ Safe: ${esc(data.reason || 'no threats')}` : `⚠ Flagged: ${esc(data.reason || 'threat detected')}`;
         } catch (e) {
             out.textContent = 'Check failed (backend unreachable)';
         }
@@ -2584,7 +2594,7 @@ class TigerWalletApp {
             const data = await res.json();
             const threats = Array.isArray(data.threats) ? data.threats : [];
             out.textContent = threats.length
-                ? '⚠ Threats: ' + threats.map(t => this.escapeHtml(JSON.stringify(t))).join('; ')
+                ? '⚠ Threats: ' + threats.map(t => esc(JSON.stringify(t))).join('; ')
                 : '✓ Safe: no threats detected';
         } catch (e) {
             out.textContent = 'Scan failed (backend unreachable)';
@@ -2726,11 +2736,6 @@ class TigerWalletApp {
         return `${toHex(salt)}:${toHex(hash)}`;
     }
 
-    escapeHtml(str) {
-        const el = document.createElement('div');
-        el.textContent = String(str ?? '');
-        return el.innerHTML;
-    }
 
     async verifyPassword(password, stored) {
         const [saltHex, hashHex] = stored.split(':');
@@ -2766,7 +2771,7 @@ class TigerWalletApp {
         const status = document.getElementById('settings-api-base-status');
         if (!input || !input.value.trim()) { alert('Enter a backend URL'); return; }
         if (!twSetApiBase(input.value)) { alert('Invalid backend URL'); return; }
-        if (status) status.innerHTML = '<div class="asset-item"><div class="asset-name">Backend set to ' + this.escapeHtml(twApiOrigin()) + ' — reloading…</div></div>';
+        if (status) status.innerHTML = '<div class="asset-item"><div class="asset-name">Backend set to ' + esc(twApiOrigin()) + ' — reloading…</div></div>';
         setTimeout(() => location.reload(), 600);
     }
 
@@ -2781,7 +2786,7 @@ class TigerWalletApp {
         const prices = {};
         const render = () => {
             const rows = Object.entries(prices).map(([sym, t]) =>
-                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(sym)}</div></div>` +
+                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(sym)}</div></div>` +
                 `<div class="asset-balance"><div class="balance">$${Number(t.last_price).toLocaleString()}</div>` +
                 `<div class="usd-value">${Number(t.change_24h_pct || 0).toFixed(2)}% (24h)</div></div></div>`).join('');
             box.innerHTML = rows || '';
@@ -2808,7 +2813,7 @@ class TigerWalletApp {
             });
             if (!res.ok) { alert('KYC register failed: ' + await res.text()); return; }
             const data = await res.json();
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-name">Registered: ' + this.escapeHtml(JSON.stringify(data)) + '</div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-name">Registered: ' + esc(JSON.stringify(data)) + '</div></div>';
             this.loadKYCStatus();
         } catch (e) { alert('KYC register error: ' + e.message); }
     }
@@ -2849,15 +2854,15 @@ class TigerWalletApp {
         box.innerHTML = '<div class="no-transactions">Loading multisig wallets…</div>';
         try {
             const res = await twFetch(`${twApiBase()}/wallet/multisig/wallets`);
-            if (!res.ok) { box.innerHTML = '<div class="no-transactions">Multisig unavailable: ' + this.escapeHtml(await res.text()) + '</div>'; return; }
+            if (!res.ok) { box.innerHTML = '<div class="no-transactions">Multisig unavailable: ' + esc(await res.text()) + '</div>'; return; }
             const data = await res.json();
             const list = data.multisig_wallets || data.wallets || [];
             box.innerHTML = list.length ? list.map((w) =>
-                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(w.name || w.id)}</div>` +
-                `<div class="asset-address">${this.escapeHtml(w.id)} — chain ${w.chain_id}, ${w.threshold}-of-${(w.owners || []).length}</div></div></div>`).join('')
+                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(w.name || w.id)}</div>` +
+                `<div class="asset-address">${esc(w.id)} — chain ${esc(w.chain_id)}, ${esc(w.threshold)}-of-${esc((w.owners || []).length)}</div></div></div>`).join('')
                 : '<div class="no-transactions">No multisig wallets</div>';
         } catch (e) {
-            box.innerHTML = '<div class="no-transactions">Multisig unavailable: ' + this.escapeHtml(e.message) + '</div>';
+            box.innerHTML = '<div class="no-transactions">Multisig unavailable: ' + esc(e.message) + '</div>';
         }
     }
 
@@ -2901,17 +2906,17 @@ class TigerWalletApp {
         box.innerHTML = '<div class="no-transactions">Loading transactions…</div>';
         try {
             const res = await twFetch(`${twApiBase()}/wallet/multisig/wallets/${encodeURIComponent(wid)}/transactions`);
-            if (!res.ok) { box.innerHTML = '<div class="no-transactions">Failed: ' + this.escapeHtml(await res.text()) + '</div>'; return; }
+            if (!res.ok) { box.innerHTML = '<div class="no-transactions">Failed: ' + esc(await res.text()) + '</div>'; return; }
             const data = await res.json();
             const list = data.transactions || data.multisig_transactions || [];
             box.innerHTML = list.length ? list.map((t) =>
-                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(t.id)} → ${this.escapeHtml(t.to_address || '')}</div>` +
-                `<div class="asset-address">${this.escapeHtml(t.status || '')} — sigs ${t.signatures_collected ?? 0}</div></div>` +
-                `<div class="asset-balance"><button class="btn-secondary" onclick="window.app.multisigSign('${t.id}')">Sign</button> ` +
-                `<button class="btn-primary" onclick="window.app.multisigExecute('${t.id}')">Execute</button></div></div>`).join('')
+                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(t.id)} → ${esc(t.to_address || '')}</div>` +
+                `<div class="asset-address">${esc(t.status || '')} — sigs ${esc(t.signatures_collected ?? 0)}</div></div>` +
+                `<div class="asset-balance"><button class="btn-secondary" data-ms-sign="${esc(t.id)}">Sign</button> ` +
+                `<button class="btn-primary" data-ms-exec="${esc(t.id)}">Execute</button></div></div>`).join('')
                 : '<div class="no-transactions">No multisig transactions</div>';
         } catch (e) {
-            box.innerHTML = '<div class="no-transactions">Failed: ' + this.escapeHtml(e.message) + '</div>';
+            box.innerHTML = '<div class="no-transactions">Failed: ' + esc(e.message) + '</div>';
         }
     }
 
@@ -2950,7 +2955,7 @@ class TigerWalletApp {
             });
             if (!res.ok) { alert('Derive failed: ' + await res.text()); return; }
             const data = await res.json();
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + this.escapeHtml(chain) + '</div><div class="asset-address">' + this.escapeHtml(data.address || JSON.stringify(data)) + '</div></div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + esc(chain) + '</div><div class="asset-address">' + esc(data.address || JSON.stringify(data)) + '</div></div></div>';
         } catch (e) { alert('Derive error: ' + e.message); }
     }
 
@@ -2979,7 +2984,7 @@ class TigerWalletApp {
             });
             if (!res.ok) { alert('Non-EVM send failed: ' + await res.text()); return; }
             const data = await res.json();
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signed payload</div><div class="asset-address">' + this.escapeHtml((data.raw_tx || data.signature || '') + '') + '</div></div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signed payload</div><div class="asset-address">' + esc((data.raw_tx || data.signature || '') + '') + '</div></div></div>';
             alert('Signed. ' + (data.action || 'Transaction submitted to the blockchain network'));
         } catch (e) { alert('Non-EVM send error: ' + e.message); }
     }
@@ -2999,7 +3004,7 @@ class TigerWalletApp {
             });
             if (!res.ok) { alert('Sign failed: ' + await res.text()); return; }
             const data = await res.json();
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + this.escapeHtml(chain) + '</div><div class="asset-address">' + this.escapeHtml(data.signature || data.signed_message || JSON.stringify(data)) + '</div></div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + esc(chain) + '</div><div class="asset-address">' + esc(data.signature || data.signed_message || JSON.stringify(data)) + '</div></div></div>';
         } catch (e) { alert('Sign error: ' + e.message); }
     }
 
@@ -3013,11 +3018,11 @@ class TigerWalletApp {
                 const data = res.ok ? await res.json() : {};
                 const list = data.markets || data.data || (Array.isArray(data) ? data : []);
                 marketsBox.innerHTML = list.length ? list.map((m) =>
-                    `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(m.asset || m.symbol || m.id || 'market')}</div>` +
-                    `<div class="asset-address">supply APY ${m.supply_apy ?? m.apy ?? '—'}%</div></div></div>`).join('')
+                    `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(m.asset || m.symbol || m.id || 'market')}</div>` +
+                    `<div class="asset-address">supply APY ${esc(m.supply_apy ?? m.apy ?? '—')}%</div></div></div>`).join('')
                     : '<div class="no-transactions">No lending markets</div>';
             } catch (e) {
-                marketsBox.innerHTML = '<div class="no-transactions">Lending unavailable: ' + this.escapeHtml(e.message) + '</div>';
+                marketsBox.innerHTML = '<div class="no-transactions">Lending unavailable: ' + esc(e.message) + '</div>';
             }
         }
         if (posBox) {
@@ -3026,11 +3031,11 @@ class TigerWalletApp {
                 const data = res.ok ? await res.json() : {};
                 const list = data.positions || data.data || (Array.isArray(data) ? data : []);
                 posBox.innerHTML = list.length ? list.map((p) =>
-                    `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(p.asset || p.id || 'position')}</div>` +
-                    `<div class="asset-address">${this.escapeHtml(p.amount ?? '')} (${this.escapeHtml(p.kind || p.side || '')})</div></div></div>`).join('')
+                    `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(p.asset || p.id || 'position')}</div>` +
+                    `<div class="asset-address">${esc(p.amount ?? '')} (${esc(p.kind || p.side || '')})</div></div></div>`).join('')
                     : '<div class="no-transactions">No lending positions</div>';
             } catch (e) {
-                posBox.innerHTML = '<div class="no-transactions">Positions unavailable: ' + this.escapeHtml(e.message) + '</div>';
+                posBox.innerHTML = '<div class="no-transactions">Positions unavailable: ' + esc(e.message) + '</div>';
             }
         }
     }
@@ -3064,11 +3069,11 @@ class TigerWalletApp {
             const data = res.ok ? await res.json() : {};
             const list = data.markets || data.data || (Array.isArray(data) ? data : []);
             box.innerHTML = list.length ? list.map((m) =>
-                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(m.question || m.title || m.id || 'market')}</div>` +
-                `<div class="asset-address">id ${this.escapeHtml(String(m.id || ''))} — ${this.escapeHtml(m.status || '')}</div></div></div>`).join('')
+                `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(m.question || m.title || m.id || 'market')}</div>` +
+                `<div class="asset-address">id ${esc(String(m.id || ''))} — ${esc(m.status || '')}</div></div></div>`).join('')
                 : '<div class="no-transactions">No prediction markets</div>';
         } catch (e) {
-            box.innerHTML = '<div class="no-transactions">Prediction unavailable: ' + this.escapeHtml(e.message) + '</div>';
+            box.innerHTML = '<div class="no-transactions">Prediction unavailable: ' + esc(e.message) + '</div>';
         }
     }
 
@@ -3093,7 +3098,7 @@ class TigerWalletApp {
         const sel = document.getElementById('keystore-export-wallet');
         if (!sel) return;
         sel.innerHTML = this.wallets.map((w) =>
-            `<option value="${this.escapeHtml(String(w.wallet_id ?? w.id))}">${this.escapeHtml(w.label || w.address || (w.wallet_id ?? w.id))}</option>`).join('');
+            `<option value="${esc(String(w.wallet_id ?? w.id))}">${esc(w.label || w.address || (w.wallet_id ?? w.id))}</option>`).join('');
     }
 
     async exportKeystore() {
@@ -3133,7 +3138,7 @@ class TigerWalletApp {
             });
             if (!res.ok) { alert('Keystore import failed: ' + await res.text()); return; }
             const data = await res.json();
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Imported: ' + this.escapeHtml(data.address || '') + '</div><div class="asset-address">' + this.escapeHtml(data.wallet_id || '') + '</div></div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Imported: ' + esc(data.address || '') + '</div><div class="asset-address">' + esc(data.wallet_id || '') + '</div></div></div>';
             this.loadWalletData();
         } catch (e) { alert('Keystore import error: ' + e.message); }
     }
@@ -3150,7 +3155,7 @@ class TigerWalletApp {
         box.innerHTML = '<div class="no-transactions">Detecting…</div>';
         const device = await this.getHwManager().detectDevice();
         box.innerHTML = device
-            ? '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + this.escapeHtml(device.name) + ' (' + this.escapeHtml(device.model || '') + ')</div><div class="asset-address">vendor 0x' + (device.vendorId || 0).toString(16) + '</div></div></div>'
+            ? '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + esc(device.name) + ' (' + esc(device.model || '') + ')</div><div class="asset-address">vendor 0x' + (device.vendorId || 0).toString(16) + '</div></div></div>'
             : '<div class="no-transactions">No hardware wallet detected (WebHID/WebUSB required)</div>';
     }
 
@@ -3159,7 +3164,7 @@ class TigerWalletApp {
         const out = document.getElementById('hw-address-result');
         try {
             const address = await this.getHwManager().getAddress(chain);
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + this.escapeHtml(chain) + '</div><div class="asset-address">' + this.escapeHtml(address || 'unavailable') + '</div></div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">' + esc(chain) + '</div><div class="asset-address">' + esc(address || 'unavailable') + '</div></div></div>';
         } catch (e) { alert('Hardware address error: ' + e.message); }
     }
 
@@ -3169,7 +3174,7 @@ class TigerWalletApp {
         if (!message) { alert('Enter a message'); return; }
         try {
             const sig = await this.getHwManager().signMessage(message);
-            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signature</div><div class="asset-address">' + this.escapeHtml(sig || 'unavailable') + '</div></div></div>';
+            if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signature</div><div class="asset-address">' + esc(sig || 'unavailable') + '</div></div></div>';
         } catch (e) { alert('Hardware sign error: ' + e.message); }
     }
 
@@ -3194,9 +3199,9 @@ class TigerWalletApp {
         try {
             const res = await this.getHwManager().signTransaction(tx);
             if (out) out.innerHTML = '<div class="asset-item"><div class="asset-info"><div class="asset-name">Signed raw transaction</div>' +
-                '<div class="asset-address">' + this.escapeHtml(res.rawTransaction) + '</div>' +
-                '<div class="asset-address">v=' + res.v + ' r=' + this.escapeHtml(res.r) + ' s=' + this.escapeHtml(res.s) + '</div>' +
-                '<div class="asset-address">Broadcast via eth_sendRawTransaction on chain ' + this.escapeHtml(tx.chainId) + '</div></div></div>';
+                '<div class="asset-address">' + esc(res.rawTransaction) + '</div>' +
+                '<div class="asset-address">v=' + res.v + ' r=' + esc(res.r) + ' s=' + esc(res.s) + '</div>' +
+                '<div class="asset-address">Broadcast via eth_sendRawTransaction on chain ' + esc(tx.chainId) + '</div></div></div>';
         } catch (e) { alert('Hardware transaction sign error: ' + e.message); }
     }
 
@@ -3207,8 +3212,8 @@ class TigerWalletApp {
         if (!this._futures) this._futures = new FuturesService();
         const pairs = await this._futures.loadPairs();
         box.innerHTML = pairs.length ? pairs.slice(0, 50).map((p) =>
-            `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(p.symbol)}</div></div>` +
-            `<div class="asset-balance"><div class="balance">$${Number(p.price || 0).toLocaleString()}</div><div class="usd-value">${Number(p.change24h || 0).toFixed(2)}%</div></div></div>`).join('')
+            `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(p.symbol)}</div></div>` +
+            `<div class="asset-balance"><div class="balance">$${esc(Number(p.price || 0).toLocaleString())}</div><div class="usd-value">${esc(Number(p.change24h || 0).toFixed(2))}%</div></div></div>`).join('')
             : '<div class="no-transactions">No futures markets</div>';
     }
 
@@ -3218,8 +3223,8 @@ class TigerWalletApp {
         if (!this._copy) this._copy = new CopyTradingService();
         const traders = await this._copy.loadTraders();
         box.innerHTML = traders.length ? traders.map((t) =>
-            `<div class="asset-item"><div class="asset-info"><div class="asset-name">${this.escapeHtml(t.name || t.id)}</div>` +
-            `<div class="asset-address">${this.escapeHtml(String(t.id))}</div></div></div>`).join('')
+            `<div class="asset-item"><div class="asset-info"><div class="asset-name">${esc(t.name || t.id)}</div>` +
+            `<div class="asset-address">${esc(String(t.id))}</div></div></div>`).join('')
             : '<div class="no-transactions">No copy traders</div>';
     }
 
@@ -3382,6 +3387,27 @@ class TigerWalletApp {
         } catch (e) {
             alert('Margin open error: ' + e.message);
         }
+    }
+
+
+    // Delegated click handling for dynamically rendered lists. Inline on*="..."
+    // attributes are avoided entirely: values placed inside a JavaScript string
+    // in an attribute are still attacker-controlled even when HTML-escaped.
+    setupDelegatedActions() {
+        document.addEventListener('click', (ev) => {
+            const el = ev.target.closest('[data-tp-close],[data-opt-quote],[data-opt-close],[data-sale-part],[data-alert-del],[data-dao-vote],[data-appr-revoke],[data-contact-del],[data-ms-sign],[data-ms-exec]');
+            if (!el) return;
+            if (el.dataset.tpClose) this.closeTradingPosition(el.dataset.tpClose);
+            else if (el.dataset.optQuote) this.quoteOptions(el.dataset.optQuote);
+            else if (el.dataset.optClose) this.closeOptions(el.dataset.optClose);
+            else if (el.dataset.salePart) this.participateTokenSale(el.dataset.salePart);
+            else if (el.dataset.alertDel) this.deletePriceAlert(el.dataset.alertDel);
+            else if (el.dataset.daoVote) this.daoVote(el.dataset.daoVote, el.dataset.daoFor === '1');
+            else if (el.dataset.apprRevoke) this.revokeApproval(el.dataset.apprRevoke);
+            else if (el.dataset.contactDel) this.deleteContact(el.dataset.contactDel);
+            else if (el.dataset.msSign) this.multisigSign(el.dataset.msSign);
+            else if (el.dataset.msExec) this.multisigExecute(el.dataset.msExec);
+        });
     }
 
 }

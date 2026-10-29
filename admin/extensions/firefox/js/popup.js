@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 /**
  * TigerWallet Admin Firefox Extension - Popup Script
  * Complete production-ready admin functionality
@@ -392,9 +405,9 @@
         if (data.recentActivity && data.recentActivity.length > 0) {
             elements.activityList.innerHTML = data.recentActivity.map(activity => `
                 <li class="activity-item">
-                    <span class="activity-icon">${getActivityIcon(activity.type)}</span>
-                    <span class="activity-text">${activity.message}</span>
-                    <span class="activity-time">${activity.time}</span>
+                    <span class="activity-icon">${esc(getActivityIcon(activity.type))}</span>
+                    <span class="activity-text">${esc(activity.message)}</span>
+                    <span class="activity-time">${esc(activity.time)}</span>
                 </li>
             `).join('');
         }
@@ -415,9 +428,9 @@
         const activityItem = document.createElement('li');
         activityItem.className = 'activity-item';
         activityItem.innerHTML = `
-            <span class="activity-icon">${icon}</span>
-            <span class="activity-text">${text}</span>
-            <span class="activity-time">${time}</span>
+            <span class="activity-icon">${esc(icon)}</span>
+            <span class="activity-text">${esc(text)}</span>
+            <span class="activity-time">${esc(time)}</span>
         `;
         
         elements.activityList.insertBefore(activityItem, elements.activityList.firstChild);
@@ -457,7 +470,7 @@
     }
 
     function renderUsersUnavailable(message) {
-        elements.usersTableBody.innerHTML = `<tr><td colspan="5" class="empty">${message}</td></tr>`;
+        elements.usersTableBody.innerHTML = `<tr><td colspan="5" class="empty">${esc(message)}</td></tr>`;
     }
 
     function renderUsers(users) {
@@ -467,19 +480,19 @@
         }
 
         elements.usersTableBody.innerHTML = users.map(user => `
-            <tr data-user-id="${user.id}">
+            <tr data-user-id="${esc(user.id)}">
                 <td>
                     <div class="user-cell">
-                        <span class="user-email">${user.email}</span>
-                        <span class="user-id">${user.id?.substring(0, 8)}...</span>
+                        <span class="user-email">${esc(user.email)}</span>
+                        <span class="user-id">${esc(user.id?.substring(0, 8))}...</span>
                     </div>
                 </td>
-                <td><span class="status-badge status-${user.status}">${user.status}</span></td>
-                <td><span class="kyc-badge kyc-${user.kycStatus}">${user.kycStatus || 'none'}</span></td>
-                <td>${formatDate(user.createdAt)}</td>
+                <td><span class="status-badge status-${esc(user.status)}">${esc(user.status)}</span></td>
+                <td><span class="kyc-badge kyc-${esc(user.kycStatus)}">${esc(user.kycStatus || 'none')}</span></td>
+                <td>${esc(formatDate(user.createdAt))}</td>
                 <td>
-                    <button class="table-btn view-btn" data-action="view" data-user-id="${user.id}">View</button>
-                    <button class="table-btn edit-btn" data-action="edit" data-user-id="${user.id}">Edit</button>
+                    <button class="table-btn view-btn" data-action="view" data-user-id="${esc(user.id)}">View</button>
+                    <button class="table-btn edit-btn" data-action="edit" data-user-id="${esc(user.id)}">Edit</button>
                 </td>
             </tr>
         `).join('');
@@ -573,7 +586,7 @@
     }
 
     function renderTransactionsUnavailable(message) {
-        elements.transactionsTableBody.innerHTML = `<tr><td colspan="6" class="empty">${message}</td></tr>`;
+        elements.transactionsTableBody.innerHTML = `<tr><td colspan="6" class="empty">${esc(message)}</td></tr>`;
     }
 
     function renderTransactions(transactions) {
@@ -583,15 +596,15 @@
         }
 
         elements.transactionsTableBody.innerHTML = transactions.map(tx => `
-            <tr data-tx-id="${tx.id}">
-                <td><code class="tx-hash">${tx.hash?.substring(0, 18)}...</code></td>
-                <td>${tx.type}</td>
-                <td class="amount">${formatAmount(tx.amount)} ${tx.token || ''}</td>
-                <td><span class="status-badge status-${tx.status}">${tx.status}</span></td>
-                <td>${formatDate(tx.createdAt)}</td>
+            <tr data-tx-id="${esc(tx.id)}">
+                <td><code class="tx-hash">${esc(tx.hash?.substring(0, 18))}...</code></td>
+                <td>${esc(tx.type)}</td>
+                <td class="amount">${esc(formatAmount(tx.amount))} ${esc(tx.token || '')}</td>
+                <td><span class="status-badge status-${esc(tx.status)}">${esc(tx.status)}</span></td>
+                <td>${esc(formatDate(tx.createdAt))}</td>
                 <td>
-                    <button class="table-btn view-btn" data-action="view" data-tx-id="${tx.id}">View</button>
-                    <button class="table-btn flag-btn" data-action="flag" data-tx-id="${tx.id}">Flag</button>
+                    <button class="table-btn view-btn" data-action="view" data-tx-id="${esc(tx.id)}">View</button>
+                    <button class="table-btn flag-btn" data-action="flag" data-tx-id="${esc(tx.id)}">Flag</button>
                 </td>
             </tr>
         `).join('');
@@ -660,19 +673,19 @@
         }
 
         elements.kycTableBody.innerHTML = applications.map(app => `
-            <tr data-kyc-id="${app.id}">
+            <tr data-kyc-id="${esc(app.id)}">
                 <td>
                     <div class="user-cell">
-                        <span class="user-email">${app.email}</span>
+                        <span class="user-email">${esc(app.email)}</span>
                     </div>
                 </td>
-                <td><span class="kyc-level">Level ${app.level}</span></td>
-                <td>${formatDate(app.submittedAt)}</td>
-                <td><span class="status-badge status-${app.status}">${app.status}</span></td>
+                <td><span class="kyc-level">Level ${esc(app.level)}</span></td>
+                <td>${esc(formatDate(app.submittedAt))}</td>
+                <td><span class="status-badge status-${esc(app.status)}">${esc(app.status)}</span></td>
                 <td>
-                    <button class="table-btn approve-btn" data-action="approve" data-kyc-id="${app.id}">Approve</button>
-                    <button class="table-btn reject-btn" data-action="reject" data-kyc-id="${app.id}">Reject</button>
-                    <button class="table-btn view-btn" data-action="view" data-kyc-id="${app.id}">View</button>
+                    <button class="table-btn approve-btn" data-action="approve" data-kyc-id="${esc(app.id)}">Approve</button>
+                    <button class="table-btn reject-btn" data-action="reject" data-kyc-id="${esc(app.id)}">Reject</button>
+                    <button class="table-btn view-btn" data-action="view" data-kyc-id="${esc(app.id)}">View</button>
                 </td>
             </tr>
         `).join('');
@@ -754,12 +767,12 @@
         }
 
         elements.tokensGrid.innerHTML = tokens.map(token => `
-            <div class="token-card" data-token-id="${token.id}">
+            <div class="token-card" data-token-id="${esc(token.id)}">
                 <div class="token-header">
-                    <img src="${token.logo}" alt="${token.symbol}" class="token-logo" onerror="this.src='data:image/svg+xml,...'">
+                    <img src="${esc(token.logo)}" alt="${esc(token.symbol)}" class="token-logo" onerror="this.src='data:image/svg+xml,...'">
                     <div class="token-info">
-                        <span class="token-symbol">${token.symbol}</span>
-                        <span class="token-name">${token.name}</span>
+                        <span class="token-symbol">${esc(token.symbol)}</span>
+                        <span class="token-name">${esc(token.name)}</span>
                     </div>
                     <span class="token-status ${token.isActive ? 'active' : 'inactive'}">
                         ${token.isActive ? 'Active' : 'Inactive'}
@@ -768,23 +781,23 @@
                 <div class="token-details">
                     <div class="token-detail">
                         <span class="detail-label">Price</span>
-                        <span class="detail-value">$${token.price || '0.00'}</span>
+                        <span class="detail-value">$${esc(token.price || '0.00')}</span>
                     </div>
                     <div class="token-detail">
                         <span class="detail-label">Market Cap</span>
-                        <span class="detail-value">$${formatNumber(token.marketCap)}</span>
+                        <span class="detail-value">$${esc(formatNumber(token.marketCap))}</span>
                     </div>
                     <div class="token-detail">
                         <span class="detail-label">24h Volume</span>
-                        <span class="detail-value">$${formatNumber(token.volume24h)}</span>
+                        <span class="detail-value">$${esc(formatNumber(token.volume24h))}</span>
                     </div>
                 </div>
                 <div class="token-actions">
-                    <button class="table-btn view-btn" data-action="view" data-token-id="${token.id}">View</button>
-                    <button class="table-btn edit-btn" data-action="edit" data-token-id="${token.id}">Edit</button>
+                    <button class="table-btn view-btn" data-action="view" data-token-id="${esc(token.id)}">View</button>
+                    <button class="table-btn edit-btn" data-action="edit" data-token-id="${esc(token.id)}">Edit</button>
                     <button class="table-btn ${token.isActive ? 'danger-btn' : 'success-btn'}" 
                             data-action="${token.isActive ? 'deactivate' : 'activate'}" 
-                            data-token-id="${token.id}">
+                            data-token-id="${esc(token.id)}">
                         ${token.isActive ? 'Deactivate' : 'Activate'}
                     </button>
                 </div>
@@ -833,18 +846,18 @@
         }
 
         elements.withdrawalsTableBody.innerHTML = withdrawals.map(wd => `
-            <tr data-withdrawal-id="${wd.id}">
-                <td>${wd.userEmail}</td>
-                <td class="amount">${formatAmount(wd.amount)} ${wd.token}</td>
-                <td>${wd.chain}</td>
-                <td><code class="address">${wd.address?.substring(0, 10)}...</code></td>
-                <td><span class="status-badge status-${wd.status}">${wd.status}</span></td>
+            <tr data-withdrawal-id="${esc(wd.id)}">
+                <td>${esc(wd.userEmail)}</td>
+                <td class="amount">${esc(formatAmount(wd.amount))} ${esc(wd.token)}</td>
+                <td>${esc(wd.chain)}</td>
+                <td><code class="address">${esc(wd.address?.substring(0, 10))}...</code></td>
+                <td><span class="status-badge status-${esc(wd.status)}">${esc(wd.status)}</span></td>
                 <td>
                     ${wd.status === 'pending' ? `
-                        <button class="table-btn approve-btn" data-action="approve" data-withdrawal-id="${wd.id}">Approve</button>
-                        <button class="table-btn reject-btn" data-action="reject" data-withdrawal-id="${wd.id}">Reject</button>
+                        <button class="table-btn approve-btn" data-action="approve" data-withdrawal-id="${esc(wd.id)}">Approve</button>
+                        <button class="table-btn reject-btn" data-action="reject" data-withdrawal-id="${esc(wd.id)}">Reject</button>
                     ` : ''}
-                    <button class="table-btn view-btn" data-action="view" data-withdrawal-id="${wd.id}">View</button>
+                    <button class="table-btn view-btn" data-action="view" data-withdrawal-id="${esc(wd.id)}">View</button>
                 </td>
             </tr>
         `).join('');
@@ -961,15 +974,15 @@
                 sec.id = 'domain-' + d.id;
                 sec.className = 'content-section';
                 sec.innerHTML = `
-                    <h2>${d.label} Management</h2>
+                    <h2>${esc(d.label)} Management</h2>
                     <div class="domain-toolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                         <span class="domain-count" style="font-size:13px;opacity:0.8;"></span>
-                        <button class="action-btn" data-domain-refresh="${d.id}"><span>🔄</span> Refresh</button>
+                        <button class="action-btn" data-domain-refresh="${esc(d.id)}"><span>🔄</span> Refresh</button>
                     </div>
                     <div class="data-table-container">
                         <table class="data-table">
                             <thead><tr><th>#</th><th>ID</th><th>Status</th><th>Details</th><th>Created</th></tr></thead>
-                            <tbody><tr><td colspan="5" class="loading">Loading ${d.label.toLowerCase()}...</td></tr></tbody>
+                            <tbody><tr><td colspan="5" class="loading">Loading ${esc(d.label.toLowerCase())}...</td></tr></tbody>
                         </table>
                     </div>`;
                 main.appendChild(sec);
@@ -990,7 +1003,7 @@
         if (!sec) return;
         const tbody = sec.querySelector('tbody');
         const countEl = sec.querySelector('.domain-count');
-        tbody.innerHTML = `<tr><td colspan="5" class="loading">Loading ${d.label.toLowerCase()}...</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="loading">Loading ${esc(d.label.toLowerCase())}...</td></tr>`;
         countEl.textContent = '';
         const token = localStorage.getItem('admin_token');
         if (!token) {
@@ -1010,7 +1023,7 @@
             const json = await response.json();
             const items = Array.isArray(json) ? json : (json.data || json.items || json[d.endpoint] || []);
             if (!Array.isArray(items) || items.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="empty">No ${d.label.toLowerCase()} records found.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="empty">No ${esc(d.label.toLowerCase())} records found.</td></tr>`;
                 countEl.textContent = '0 records';
                 return;
             }
@@ -1021,16 +1034,16 @@
                 const created = escapeHtml(String(item.created_at || item.createdAt || item.created || '-'));
                 const details = escapeHtml(JSON.stringify(item).slice(0, 120));
                 return `<tr>
-                    <td>${idx + 1}</td>
-                    <td>${id}</td>
-                    <td><span class="status-badge">${status}</span></td>
-                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;">${details}</td>
-                    <td>${created}</td>
+                    <td>${esc(idx + 1)}</td>
+                    <td>${esc(id)}</td>
+                    <td><span class="status-badge">${esc(status)}</span></td>
+                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;">${esc(details)}</td>
+                    <td>${esc(created)}</td>
                 </tr>`;
             }).join('');
         } catch (error) {
             console.error(`${d.label} load error:`, error);
-            tbody.innerHTML = `<tr><td colspan="5" class="empty">${d.label} data is unavailable. Reconnect to the TigerWallet admin API and retry.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="empty">${esc(d.label)} data is unavailable. Reconnect to the TigerWallet admin API and retry.</td></tr>`;
         }
     }
 

@@ -241,7 +241,7 @@ impl PriceLevel {
 }
 
 /// Order book
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct OrderBook {
     /// Market
     pub market: String,

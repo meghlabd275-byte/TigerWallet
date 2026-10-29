@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 // Renderer: drives the 11 + 9 domain screens via the wlAdmin preload bridge.
 // Each screen renders the backend contract and binds the actions to IPC.
 const DOMAINS = [
@@ -47,7 +60,7 @@ function select(d) {
   title.textContent = d.label;
   subtitle.textContent = 'Governance records only - no fund movement.';
   endpointsEl.innerHTML = d.endpoints.map(([m, p, gov]) =>
-    `<div class="ep ${gov ? 'gov' : ''}"><span class="label">${m}</span><span class="path">${p}</span></div>`
+    `<div class="ep ${gov ? 'gov' : ''}"><span class="label">${esc(m)}</span><span class="path">${esc(p)}</span></div>`
   ).join('') + '<div class="note">Backend: http://localhost:8456 (WL admin)</div>';
   // Bind the domain's IPC contract (real calls issued on demand by future
   // table renderers; selection already exposes window.wlAdmin[d.key]).

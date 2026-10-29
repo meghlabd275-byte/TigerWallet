@@ -78,7 +78,7 @@ pub use self::{
     public_key_share::PublicKeyShare,
     threshold_signature::{ThresholdSignature, PartialSignature},
     key_gen::{KeyGenParams, KeyGenState, KeyGenStatus, KeyType},
-    mpc_node::MPCNode,
+    mpc_node::{MPCNode, NodeConfig, NodeRuntime},
     mpc_coordinator::MPCCoordinator,
     resharing::{ReshareRequest, KeyRotationRequest, RotationReason},
     encrypted_share::EncryptedShare,

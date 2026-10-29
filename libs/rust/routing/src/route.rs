@@ -1,5 +1,6 @@
 //! Route representation and quote results
 
+use num_traits::ToPrimitive;
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
@@ -134,8 +135,9 @@ impl Route {
     
     /// Calculate minimum output with slippage
     pub fn with_slippage(&mut self, slippage_bps: u32) {
-        let multiplier = 10000 - slippage_bps;
-        self.total_amount_out_min = (self.total_amount_out.clone() * multiplier) / 10000;
+        let multiplier = BigUint::from(10000u64 - slippage_bps as u64);
+        self.total_amount_out_min =
+            (self.total_amount_out.clone() * multiplier) / BigUint::from(10000u64);
     }
     
     /// Calculate gas cost in USD

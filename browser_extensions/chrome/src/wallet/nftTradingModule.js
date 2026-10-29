@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 /**
  * TigerWallet Browser Extension - NFT Trading Module
  * Complete NFT marketplace functionality for extension
@@ -244,10 +257,10 @@ class NFTTradingModule {
 
       gallery.innerHTML = nfts.map(nft => `
         <div class="tw-nft-card">
-          <img src="${nft.imageUrl || 'https://via.placeholder.com/150'}" alt="${nft.name}" />
+          <img src="${esc(nft.imageUrl || 'https://via.placeholder.com/150')}" alt="${esc(nft.name)}" />
           <div class="tw-nft-info">
-            <div class="tw-nft-name">${nft.name}</div>
-            <div class="tw-nft-collection">${nft.collection}</div>
+            <div class="tw-nft-name">${esc(nft.name)}</div>
+            <div class="tw-nft-collection">${esc(nft.collection)}</div>
           </div>
         </div>
       `).join('');
@@ -265,11 +278,11 @@ class NFTTradingModule {
       grid.innerHTML = collections.map(col => `
         <div class="tw-collection-card">
           <div class="tw-collection-image">
-            <img src="${col.image || 'https://via.placeholder.com/150'}" alt="${col.name}" />
+            <img src="${esc(col.image || 'https://via.placeholder.com/150')}" alt="${esc(col.name)}" />
           </div>
           <div class="tw-collection-info">
-            <div class="tw-collection-name">${col.name}</div>
-            <div class="tw-collection-floor">Floor: ${col.floorPrice}</div>
+            <div class="tw-collection-name">${esc(col.name)}</div>
+            <div class="tw-collection-floor">Floor: ${esc(col.floorPrice)}</div>
           </div>
         </div>
       `).join('');

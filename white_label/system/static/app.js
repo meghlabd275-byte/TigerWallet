@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 /**
  * TigerWallet White Label System - JavaScript
  * Light/Dark Theme Support & Full Functionality
@@ -246,10 +259,10 @@ async function loadOverviewData() {
         const tbody = document.getElementById('activity-log');
         tbody.innerHTML = logs.slice(0, 10).map(log => `
             <tr>
-                <td>${formatDate(log.timestamp)}</td>
-                <td>${log.action}</td>
-                <td>${log.details}</td>
-                <td>${log.ipAddress}</td>
+                <td>${esc(formatDate(log.timestamp))}</td>
+                <td>${esc(log.action)}</td>
+                <td>${esc(log.details)}</td>
+                <td>${esc(log.ipAddress)}</td>
             </tr>
         `).join('');
     } catch (error) {
@@ -265,19 +278,19 @@ async function loadClients() {
         const tbody = document.getElementById('clients-list');
         tbody.innerHTML = clients.map(client => `
             <tr>
-                <td>${client.name}</td>
-                <td>${client.domain}</td>
-                <td><span class="status-badge ${client.status}">${client.status}</span></td>
-                <td>${formatDate(client.createdAt)}</td>
+                <td>${esc(client.name)}</td>
+                <td>${esc(client.domain)}</td>
+                <td><span class="status-badge ${esc(client.status)}">${esc(client.status)}</span></td>
+                <td>${esc(formatDate(client.createdAt))}</td>
                 <td class="actions">
                     ${client.status === 'pending' ? 
-                        `<button class="btn btn-success" onclick="authorizeClient('${client.id}')">Authorize</button>` : ''}
+                        `<button class="btn btn-success" data-wl-act="authorizeClient" data-wl-id="${esc(client.id)}">Authorize</button>` : ''}
                     ${client.status === 'authorized' ? 
-                        `<button class="btn btn-danger" onclick="suspendClient('${client.id}')">Suspend</button>` : ''}
+                        `<button class="btn btn-danger" data-wl-act="suspendClient" data-wl-id="${esc(client.id)}">Suspend</button>` : ''}
                     ${client.status === 'suspended' ? 
-                        `<button class="btn btn-success" onclick="resumeClient('${client.id}')">Resume</button>` : ''}
+                        `<button class="btn btn-success" data-wl-act="resumeClient" data-wl-id="${esc(client.id)}">Resume</button>` : ''}
                     ${client.status !== 'halted' ? 
-                        `<button class="btn btn-danger" onclick="haltClient('${client.id}')">Halt</button>` : ''}
+                        `<button class="btn btn-danger" data-wl-act="haltClient" data-wl-id="${esc(client.id)}">Halt</button>` : ''}
                 </td>
             </tr>
         `).join('');
@@ -294,12 +307,12 @@ async function loadAdmins() {
         const tbody = document.getElementById('admins-list');
         tbody.innerHTML = admins.map(admin => `
             <tr>
-                <td>${admin.name}</td>
-                <td>${admin.email}</td>
-                <td>${admin.role}</td>
-                <td><span class="status-badge ${admin.status}">${admin.status}</span></td>
+                <td>${esc(admin.name)}</td>
+                <td>${esc(admin.email)}</td>
+                <td>${esc(admin.role)}</td>
+                <td><span class="status-badge ${esc(admin.status)}">${esc(admin.status)}</span></td>
                 <td class="actions">
-                    <button class="btn btn-danger" onclick="deleteAdmin('${admin.id}')">Delete</button>
+                    <button class="btn btn-danger" data-wl-act="deleteAdmin" data-wl-id="${esc(admin.id)}">Delete</button>
                 </td>
             </tr>
         `).join('');
@@ -316,12 +329,12 @@ async function loadProducts() {
         const tbody = document.getElementById('products-list');
         tbody.innerHTML = products.map(product => `
             <tr>
-                <td>${product.name}</td>
-                <td>${product.type}</td>
-                <td>${product.fee}%</td>
-                <td><span class="status-badge ${product.status}">${product.status}</span></td>
+                <td>${esc(product.name)}</td>
+                <td>${esc(product.type)}</td>
+                <td>${esc(product.fee)}%</td>
+                <td><span class="status-badge ${esc(product.status)}">${esc(product.status)}</span></td>
                 <td class="actions">
-                    <button class="btn btn-danger" onclick="deleteProduct('${product.id}')">Delete</button>
+                    <button class="btn btn-danger" data-wl-act="deleteProduct" data-wl-id="${esc(product.id)}">Delete</button>
                 </td>
             </tr>
         `).join('');
@@ -380,14 +393,14 @@ async function loadRevenue() {
         const tbody = document.getElementById('revenue-list');
         tbody.innerHTML = revenues.map(r => `
             <tr>
-                <td>${r.period}</td>
-                <td>${formatCurrency(r.grossRevenue)}</td>
-                <td>${formatCurrency(r.profitShare)}</td>
-                <td>${formatCurrency(r.netRevenue)}</td>
-                <td><span class="status-badge ${r.status}">${r.status}</span></td>
+                <td>${esc(r.period)}</td>
+                <td>${esc(formatCurrency(r.grossRevenue))}</td>
+                <td>${esc(formatCurrency(r.profitShare))}</td>
+                <td>${esc(formatCurrency(r.netRevenue))}</td>
+                <td><span class="status-badge ${esc(r.status)}">${esc(r.status)}</span></td>
                 <td class="actions">
                     ${r.status === 'pending' ? 
-                        `<button class="btn btn-success" onclick="payRevenue('${r.id}')">Pay</button>` : ''}
+                        `<button class="btn btn-success" data-wl-act="payRevenue" data-wl-id="${esc(r.id)}">Pay</button>` : ''}
                 </td>
             </tr>
         `).join('');
@@ -716,5 +729,24 @@ document.getElementById('password-form')?.addEventListener('submit', async (e) =
 document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
     if (e.target === document.getElementById('modal-overlay')) {
         closeModal();
+    }
+});
+
+// Delegated action handling. Dynamic rows carry data-wl-act/data-wl-id instead
+// of inline on*="..." attributes: a value interpolated into a JavaScript string
+// inside an attribute stays attacker-controlled even after HTML escaping.
+document.addEventListener('click', (ev) => {
+    const el = ev.target.closest('[data-wl-act]');
+    if (!el) return;
+    const id = el.dataset.wlId;
+    switch (el.dataset.wlAct) {
+        case 'authorizeClient': authorizeClient(id); break;
+        case 'suspendClient': suspendClient(id); break;
+        case 'resumeClient': resumeClient(id); break;
+        case 'haltClient': haltClient(id); break;
+        case 'deleteAdmin': deleteAdmin(id); break;
+        case 'deleteProduct': deleteProduct(id); break;
+        case 'payRevenue': payRevenue(id); break;
+        default: break;
     }
 });

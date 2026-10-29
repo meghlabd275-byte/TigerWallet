@@ -1,3 +1,16 @@
+
+// Hardened HTML escaper. Any value rendered into markup (token/chain/NFT names,
+// order fields, backend or RPC error text) is attacker-influenceable and must
+// pass through esc() before it reaches innerHTML.
+function esc(v) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "object") { try { v = JSON.stringify(v); } catch (_) { v = String(v); } }
+    return String(v).replace(/[&<>"'`=\\/]/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+        "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
+    }[c]));
+}
+
 /**
  * TigerWallet Admin - Desktop Renderer
  * Complete Dark/Light Theme Support and Navigation
@@ -124,11 +137,11 @@ class TigerAdminApp {
 
     tbody.innerHTML = users.map(user => `
       <tr>
-        <td>${user.id}</td>
-        <td>${user.name}</td>
-        <td>${user.email}</td>
-        <td><span class="status-badge status-${user.status.toLowerCase()}">${user.status}</span></td>
-        <td>${user.kyc}</td>
+        <td>${esc(user.id)}</td>
+        <td>${esc(user.name)}</td>
+        <td>${esc(user.email)}</td>
+        <td><span class="status-badge status-${esc(user.status.toLowerCase())}">${esc(user.status)}</span></td>
+        <td>${esc(user.kyc)}</td>
         <td>
           <button class="btn-action">View</button>
           <button class="btn-action">Edit</button>
@@ -150,11 +163,11 @@ class TigerAdminApp {
 
     tbody.innerHTML = transactions.map(tx => `
       <tr>
-        <td>${tx.hash}</td>
-        <td>${tx.type}</td>
-        <td>${tx.amount}</td>
-        <td><span class="status-badge status-${tx.status.toLowerCase()}">${tx.status}</span></td>
-        <td>${tx.time}</td>
+        <td>${esc(tx.hash)}</td>
+        <td>${esc(tx.type)}</td>
+        <td>${esc(tx.amount)}</td>
+        <td><span class="status-badge status-${esc(tx.status.toLowerCase())}">${esc(tx.status)}</span></td>
+        <td>${esc(tx.time)}</td>
       </tr>
     `).join('');
   }
@@ -172,8 +185,8 @@ class TigerAdminApp {
     list.innerHTML = requests.map(req => `
       <div class="kyc-card">
         <div class="kyc-info">
-          <h3>${req.name}</h3>
-          <p>${req.country} - ${req.type}</p>
+          <h3>${esc(req.name)}</h3>
+          <p>${esc(req.country)} - ${esc(req.type)}</p>
         </div>
         <div class="kyc-actions">
           <button class="btn-approve">Approve</button>

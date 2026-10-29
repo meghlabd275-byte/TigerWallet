@@ -43,9 +43,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let mut intent_ids = Vec::new();
     for (owner, sell, buy, amount, min_amount) in intents {
+        println!("Submitting intent: {} -> {} ({} {})", sell, buy, amount, min_amount);
         let intent = Intent::new(owner, sell, buy, amount, min_amount);
         let id = network.submit_intent(intent).await;
-        println!("Submitted intent: {} -> {} ({} {})", sell, buy, amount, min_amount);
+        println!("Submitted intent: {}", id);
         intent_ids.push(id);
     }
     

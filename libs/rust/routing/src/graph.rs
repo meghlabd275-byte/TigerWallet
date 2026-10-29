@@ -6,6 +6,7 @@ use crate::dijkstra::DijkstraRouter;
 use crate::fee;
 use ahash::AHashMap;
 use num_bigint::BigUint;
+use num_traits::ToPrimitive;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -164,7 +165,7 @@ impl RoutingGraph {
 
         let best_route = all_routes.first().cloned();
         
-        let mut result = QuoteResult::new(best_route, all_routes);
+        let mut result = QuoteResult::new(best_route, all_routes.clone());
         
         // Calculate split routes if beneficial
         if all_routes.len() >= 2 {
