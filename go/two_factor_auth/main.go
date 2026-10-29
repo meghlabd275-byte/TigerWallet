@@ -7,8 +7,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/asn1"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"math/big"
@@ -295,15 +295,23 @@ func (s *TwoFactorService) SendVerificationCode(userID, method, destination stri
 	}
 }
 
+// sendSMS delivers a verification code over SMS. The code is never written to
+// a log: a log sink is not an appropriate channel for a live credential.
 func (s *TwoFactorService) sendSMS(phone, code string) error {
-	// In production, integrate with Twilio or similar
-	log.Printf("SMS would be sent to %s: Your verification code is %s", phone, code)
+	message := fmt.Sprintf("%s verification code: %s. It expires in 5 minutes. Never share this code.", s.config.IssuerName, code)
+	if _, err := sendSMS(phone, message); err != nil {
+		return fmt.Errorf("SMS delivery failed: %w", err)
+	}
 	return nil
 }
 
+// sendEmail delivers a verification code by email.
 func (s *TwoFactorService) sendEmail(email, code string) error {
-	// In production, use actual SMTP
-	log.Printf("Email would be sent to %s: Your verification code is %s", email, code)
+	subject := fmt.Sprintf("%s verification code", s.config.IssuerName)
+	body := fmt.Sprintf("Your %s verification code is %s.\n\nIt expires in 5 minutes. Never share this code.", s.config.IssuerName, code)
+	if err := sendEmail(email, subject, body); err != nil {
+		return fmt.Errorf("email delivery failed: %w", err)
+	}
 	return nil
 }
 
