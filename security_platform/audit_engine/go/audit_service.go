@@ -1,7 +1,7 @@
 /**
  * TigerWallet Security Audit Platform
  * Production-ready security audit and transparency system
- * 
+ *
  * Features:
  * - Smart contract audits
  * - Security vulnerability scanning
@@ -15,14 +15,12 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -38,12 +36,12 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort      string
-	DBHost          string
-	DBPort          string
-	DBUser          string
-	DBPassword      string
-	DBName          string
+	ServerPort string
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
 }
 
 func LoadConfig() *Config {
@@ -69,142 +67,142 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type AuditReport struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	AuditID          string    `gorm:"uniqueIndex" json:"audit_id"`
-	ProjectName      string    `json:"project_name"`
-	ProjectType      string    `json:"project_type"` // smart_contract, wallet, protocol, infrastructure
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	AuditID     string `gorm:"uniqueIndex" json:"audit_id"`
+	ProjectName string `json:"project_name"`
+	ProjectType string `json:"project_type"` // smart_contract, wallet, protocol, infrastructure
+
 	// Audit Firm
-	AuditFirm        string    `json:"audit_firm"`
-	LeadAuditor      string    `json:"lead_auditor"`
-	AuditDate        time.Time `json:"audit_date"`
-	ReportURL        string    `json:"report_url"`
-	
+	AuditFirm   string    `json:"audit_firm"`
+	LeadAuditor string    `json:"lead_auditor"`
+	AuditDate   time.Time `json:"audit_date"`
+	ReportURL   string    `json:"report_url"`
+
 	// Scope
-	ContractAddresses string    `json:"contract_addresses"` // JSON array
-	CodeRepository   string    `json:"code_repository"`
-	CommitHash       string    `json:"commit_hash"`
-	
+	ContractAddresses string `json:"contract_addresses"` // JSON array
+	CodeRepository    string `json:"code_repository"`
+	CommitHash        string `json:"commit_hash"`
+
 	// Results
-	TotalIssues      int       `json:"total_issues"`
-	CriticalIssues  int       `json:"critical_issues"`
-	HighIssues      int       `json:"high_issues"`
-	MediumIssues    int       `json:"medium_issues"`
-	LowIssues       int       `json:"low_issues"`
-	Informational   int       `json:"informational"`
-	
+	TotalIssues    int `json:"total_issues"`
+	CriticalIssues int `json:"critical_issues"`
+	HighIssues     int `json:"high_issues"`
+	MediumIssues   int `json:"medium_issues"`
+	LowIssues      int `json:"low_issues"`
+	Informational  int `json:"informational"`
+
 	// Status
-	Status           string    `json:"status"` // scheduled, in_progress, completed, published
-	Score            float64   `json:"score"` // 0-100
-	
+	Status string  `json:"status"` // scheduled, in_progress, completed, published
+	Score  float64 `json:"score"`  // 0-100
+
 	// Verification
-	IsVerified       bool      `json:"is_verified"`
+	IsVerified       bool       `json:"is_verified"`
 	VerificationDate *time.Time `json:"verification_date"`
-	CertikReportID  string    `json:"certik_report_id,omitempty"`
-	SlowMistReportID string   `json:"slowmist_report_id,omitempty"`
-	
+	CertikReportID   string     `json:"certik_report_id,omitempty"`
+	SlowMistReportID string     `json:"slowmist_report_id,omitempty"`
+
 	// Certificate
-	CertificateID    string    `json:"certificate_id"`
-	CertificateURL   string    `json:"certificate_url"`
+	CertificateID  string `json:"certificate_id"`
+	CertificateURL string `json:"certificate_url"`
 }
 
 type Vulnerability struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	AuditID          string    `gorm:"index" json:"audit_id"`
-	VulnerabilityID   string    `gorm:"uniqueIndex" json:"vulnerability_id"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	AuditID         string `gorm:"index" json:"audit_id"`
+	VulnerabilityID string `gorm:"uniqueIndex" json:"vulnerability_id"`
+
 	// Classification
-	Title            string    `json:"title"`
-	Description      string    `json:"description"`
-	Category         string    `json:"category"` // reentrancy, overflow, access_control, etc.
-	Severity          string    `json:"severity"` // critical, high, medium, low, informational
-	CWEID            string    `json:"cwe_id"` // Common Weakness Enumeration
-	CVSSScore        float64   `json:"cvss_score"`
-	
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Category    string  `json:"category"` // reentrancy, overflow, access_control, etc.
+	Severity    string  `json:"severity"` // critical, high, medium, low, informational
+	CWEID       string  `json:"cwe_id"`   // Common Weakness Enumeration
+	CVSSScore   float64 `json:"cvss_score"`
+
 	// Location
-	ContractAddress   string    `json:"contract_address"`
-	FilePath         string    `json:"file_path"`
-	LineNumber       int       `json:"line_number"`
-	FunctionName     string    `json:"function_name"`
-	
+	ContractAddress string `json:"contract_address"`
+	FilePath        string `json:"file_path"`
+	LineNumber      int    `json:"line_number"`
+	FunctionName    string `json:"function_name"`
+
 	// Impact
-	Impact           string    `json:"impact"`
-	Exploitability   string    `json:"exploitability"`
-	Remediation      string    `json:"remediation"`
-	
+	Impact         string `json:"impact"`
+	Exploitability string `json:"exploitability"`
+	Remediation    string `json:"remediation"`
+
 	// Status
-	Status           string    `json:"status"` // identified, acknowledged, fixed, verified, wontfix
-	FixedAt          *time.Time `json:"fixed_at"`
+	Status  string     `json:"status"` // identified, acknowledged, fixed, verified, wontfix
+	FixedAt *time.Time `json:"fixed_at"`
 }
 
 type SecurityScan struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	ScanID           string    `gorm:"uniqueIndex" json:"scan_id"`
-	ProjectName      string    `json:"project_name"`
-	ScanType         string    `json:"scan_type"` // static, dynamic, symbolic
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	ScanID      string `gorm:"uniqueIndex" json:"scan_id"`
+	ProjectName string `json:"project_name"`
+	ScanType    string `json:"scan_type"` // static, dynamic, symbolic
+
 	// Results
-	TotalFindings    int       `json:"total_findings"`
-	CriticalFindings int       `json:"critical_findings"`
-	HighFindings     int       `json:"high_findings"`
-	MediumFindings   int       `json:"medium_findings"`
-	LowFindings      int       `json:"low_findings"`
-	
+	TotalFindings    int `json:"total_findings"`
+	CriticalFindings int `json:"critical_findings"`
+	HighFindings     int `json:"high_findings"`
+	MediumFindings   int `json:"medium_findings"`
+	LowFindings      int `json:"low_findings"`
+
 	// Details
-	ScanDuration     int       `json:"scan_duration"` // seconds
-	LinesOfCode     int       `json:"lines_of_code"`
-	Coverage        float64   `json:"coverage"` // percentage
-	
-	Status           string    `json:"status"` // queued, running, completed, failed
-	
-	Report           string    `json:"report"` // JSON report
+	ScanDuration int     `json:"scan_duration"` // seconds
+	LinesOfCode  int     `json:"lines_of_code"`
+	Coverage     float64 `json:"coverage"` // percentage
+
+	Status string `json:"status"` // queued, running, completed, failed
+
+	Report string `json:"report"` // JSON report
 }
 
 type TransparencyReport struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	ReportID         string    `gorm:"uniqueIndex" json:"report_id"`
-	ReportType       string    `json:"report_type"` // monthly, quarterly, annual
-	PeriodStart      time.Time `json:"period_start"`
-	PeriodEnd        time.Time `json:"period_end"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	ReportID    string    `gorm:"uniqueIndex" json:"report_id"`
+	ReportType  string    `json:"report_type"` // monthly, quarterly, annual
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+
 	// Content
-	Title            string    `json:"title"`
-	Summary          string    `json:"summary"`
-	Content          string    `json:"content"` // Markdown
-	
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+	Content string `json:"content"` // Markdown
+
 	// Metrics
-	TotalTransactions string    `json:"total_transactions"`
-	TotalVolume      string    `json:"total_volume"`
-	SecurityIncidents int      `json:"security_incidents"`
-	BugBountiesPaid  string    `json:"bug_bounties_paid"`
-	AuditsCompleted  int       `json:"audits_completed"`
-	
-	Status           string    `json:"status"` // draft, published
-	PublishedAt      *time.Time `json:"published_at"`
+	TotalTransactions string `json:"total_transactions"`
+	TotalVolume       string `json:"total_volume"`
+	SecurityIncidents int    `json:"security_incidents"`
+	BugBountiesPaid   string `json:"bug_bounties_paid"`
+	AuditsCompleted   int    `json:"audits_completed"`
+
+	Status      string     `json:"status"` // draft, published
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 type SecurityMetric struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	MetricType       string    `json:"metric_type"` // uptime, incidents, response_time, etc.
-	MetricValue      float64   `json:"metric_value"`
-	Unit             string    `json:"unit"` // percentage, milliseconds, count
-	
-	Timestamp        time.Time `json:"timestamp"`
-	Period           string    `json:"period"` // hourly, daily, weekly, monthly
-	
-	Metadata         string    `json:"metadata"` // JSON
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	MetricType  string  `json:"metric_type"` // uptime, incidents, response_time, etc.
+	MetricValue float64 `json:"metric_value"`
+	Unit        string  `json:"unit"` // percentage, milliseconds, count
+
+	Timestamp time.Time `json:"timestamp"`
+	Period    string    `json:"period"` // hourly, daily, weekly, monthly
+
+	Metadata string `json:"metadata"` // JSON
 }
 
 // ============================================================================
@@ -222,12 +220,12 @@ func NewAuditService(db *gorm.DB) *AuditService {
 // SubmitProjectForAudit submits a project for security audit
 func (s *AuditService) SubmitProjectForAudit(projectName, projectType, contractAddresses, codeRepository string) (*AuditReport, error) {
 	audit := &AuditReport{
-		AuditID:       uuid.New().String(),
-		ProjectName:   projectName,
-		ProjectType:   projectType,
-		Status:        "scheduled",
+		AuditID:           uuid.New().String(),
+		ProjectName:       projectName,
+		ProjectType:       projectType,
+		Status:            "scheduled",
 		ContractAddresses: contractAddresses,
-		CodeRepository: codeRepository,
+		CodeRepository:    codeRepository,
 	}
 
 	if err := s.db.Create(audit).Error; err != nil {
@@ -250,15 +248,15 @@ func (s *AuditService) GetAuditReport(auditID string) (*AuditReport, error) {
 func (s *AuditService) ListAudits(status string, limit, offset int) ([]AuditReport, error) {
 	var reports []AuditReport
 	query := s.db.Model(&AuditReport{}).Order("created_at DESC")
-	
+
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if err := query.Limit(limit).Offset(offset).Find(&reports).Error; err != nil {
 		return nil, err
 	}
-	
+
 	return reports, nil
 }
 
@@ -268,7 +266,7 @@ func (s *AuditService) UpdateAuditStatus(auditID, status string, findings map[st
 		"status": status,
 		"score":  score,
 	}
-	
+
 	if critical, ok := findings["critical"]; ok {
 		updates["critical_issues"] = critical
 	}
@@ -281,38 +279,38 @@ func (s *AuditService) UpdateAuditStatus(auditID, status string, findings map[st
 	if low, ok := findings["low"]; ok {
 		updates["low_issues"] = low
 	}
-	
+
 	total := findings["critical"] + findings["high"] + findings["medium"] + findings["low"] + findings["informational"]
 	updates["total_issues"] = total
-	
+
 	if status == "completed" {
 		now := time.Now()
 		updates["audit_date"] = now
 		updates["is_verified"] = true
 		updates["verification_date"] = &now
 	}
-	
+
 	return s.db.Model(&AuditReport{}).Where("audit_id = ?", auditID).Updates(updates).Error
 }
 
 // CreateVulnerability creates a new vulnerability record
 func (s *AuditService) CreateVulnerability(auditID string, vuln VulnerabilityInput) (*Vulnerability, error) {
 	vulnerability := &Vulnerability{
-		AuditID:        auditID,
+		AuditID:         auditID,
 		VulnerabilityID: uuid.New().String(),
-		Title:          vuln.Title,
-		Description:    vuln.Description,
-		Category:       vuln.Category,
-		Severity:       vuln.Severity,
-		CWEID:          vuln.CWEID,
-		CVSSScore:      vuln.CVSSScore,
+		Title:           vuln.Title,
+		Description:     vuln.Description,
+		Category:        vuln.Category,
+		Severity:        vuln.Severity,
+		CWEID:           vuln.CWEID,
+		CVSSScore:       vuln.CVSSScore,
 		ContractAddress: vuln.ContractAddress,
-		FilePath:       vuln.FilePath,
-		LineNumber:     vuln.LineNumber,
-		FunctionName:   vuln.FunctionName,
-		Impact:         vuln.Impact,
-		Remediation:    vuln.Remediation,
-		Status:         "identified",
+		FilePath:        vuln.FilePath,
+		LineNumber:      vuln.LineNumber,
+		FunctionName:    vuln.FunctionName,
+		Impact:          vuln.Impact,
+		Remediation:     vuln.Remediation,
+		Status:          "identified",
 	}
 
 	if err := s.db.Create(vulnerability).Error; err != nil {
@@ -326,62 +324,167 @@ func (s *AuditService) CreateVulnerability(auditID string, vuln VulnerabilityInp
 func (s *AuditService) GetVulnerabilities(auditID string, severity string) ([]Vulnerability, error) {
 	var vulns []Vulnerability
 	query := s.db.Where("audit_id = ?", auditID)
-	
+
 	if severity != "" {
 		query = query.Where("severity = ?", severity)
 	}
-	
+
 	if err := query.Order("CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END").Find(&vulns).Error; err != nil {
 		return nil, err
 	}
-	
+
 	return vulns, nil
 }
 
-// RunSecurityScan initiates a security scan
+// RunSecurityScan analyzes the submitted source and records the findings that
+// are actually present in it. An empty source is rejected rather than reported
+// as a clean scan, and the summary counters are derived from the findings, so a
+// scan never reports findings it did not observe.
 func (s *ScanService) RunSecurityScan(projectName, scanType, contractCode string) (*SecurityScan, error) {
+	if strings.TrimSpace(contractCode) == "" {
+		return nil, fmt.Errorf("contract source is required")
+	}
+	switch scanType {
+	case "static", "dynamic", "symbolic":
+	default:
+		return nil, fmt.Errorf("unsupported scan type %q", scanType)
+	}
+
+	started := time.Now()
+
 	scan := &SecurityScan{
 		ScanID:      uuid.New().String(),
 		ProjectName: projectName,
 		ScanType:    scanType,
-		Status:      "queued",
-		LinesOfCode: strings.Count(contractCode, "\n"),
+		Status:      "running",
+		LinesOfCode: countSourceLines(contractCode),
 	}
-
 	if err := s.db.Create(scan).Error; err != nil {
 		return nil, err
 	}
 
-	// In production, this would trigger actual scanning
-	// For now, simulate a scan
-	go func() {
-		time.Sleep(2 * time.Second)
-		s.db.Model(scan).Updates(map[string]interface{}{
-			"status":          "running",
-			"scan_duration":   120,
-			"coverage":        85.5,
-			"total_findings":  5,
-			"critical_findings": 0,
-			"high_findings":    1,
-			"medium_findings":  2,
-			"low_findings":    2,
-		})
-	}()
+	findings := AnalyzeSolidity(contractCode)
+
+	// Findings are persisted individually so they can be listed per scan, and
+	// the summary counters are derived from them rather than assumed.
+	var critical, high, medium, low int
+	for _, f := range findings {
+		vuln := Vulnerability{
+			AuditID:         scan.ScanID,
+			VulnerabilityID: uuid.New().String(),
+			Title:           f.Title,
+			Description:     f.Description,
+			Category:        f.Category,
+			Severity:        f.Severity,
+			CWEID:           f.CWEID,
+			CVSSScore:       f.CVSSScore,
+			LineNumber:      f.LineNumber,
+			FilePath:        projectName,
+		}
+		if err := s.db.Create(&vuln).Error; err != nil {
+			log.Printf("audit: failed to persist finding %q: %v", f.Title, err)
+		}
+		switch f.Severity {
+		case "critical":
+			critical++
+		case "high":
+			high++
+		case "medium":
+			medium++
+		case "low":
+			low++
+		}
+	}
+
+	updates := map[string]interface{}{
+		"status":            "completed",
+		"total_findings":    len(findings),
+		"critical_findings": critical,
+		"high_findings":     high,
+		"medium_findings":   medium,
+		"low_findings":      low,
+		"scan_duration":     int(time.Since(started).Seconds()),
+		"coverage":          100.0,
+	}
+	if err := s.db.Model(scan).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.First(scan, scan.ID).Error; err != nil {
+		return nil, err
+	}
 
 	return scan, nil
+}
+
+// countSourceLines counts non-empty lines of source.
+func countSourceLines(src string) int {
+	n := 0
+	for _, line := range strings.Split(src, "\n") {
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// GetScanHandler returns a stored scan by its scan id.
+func (s *ScanService) GetScanHandler(c *gin.Context) {
+	var scan SecurityScan
+	if err := s.db.Where("scan_id = ?", c.Param("id")).First(&scan).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "scan not found"})
+		return
+	}
+	c.JSON(http.StatusOK, scan)
+}
+
+// RunScanHandler submits source for a real static analysis pass.
+func (s *ScanService) RunScanHandler(c *gin.Context) {
+	var req struct {
+		ProjectName  string `json:"project_name" binding:"required"`
+		ScanType     string `json:"scan_type"`
+		ContractCode string `json:"contract_code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.ScanType == "" {
+		req.ScanType = "static"
+	}
+
+	scan, err := s.RunSecurityScan(req.ProjectName, req.ScanType, req.ContractCode)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, scan)
+}
+
+// ListFindingsHandler lists the findings recorded for a scan.
+func (s *ScanService) ListFindingsHandler(c *gin.Context) {
+	query := s.db.Where("audit_id = ?", c.Param("id"))
+	if severity := c.Query("severity"); severity != "" {
+		query = query.Where("severity = ?", severity)
+	}
+	var findings []Vulnerability
+	if err := query.Order("created_at ASC").Find(&findings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"findings": findings, "total": len(findings)})
 }
 
 // CreateTransparencyReport creates a new transparency report
 func (s *AuditService) CreateTransparencyReport(reportType string, periodStart, periodEnd time.Time, title, summary, content string) (*TransparencyReport, error) {
 	report := &TransparencyReport{
-		ReportID:     uuid.New().String(),
-		ReportType:   reportType,
-		PeriodStart:  periodStart,
-		PeriodEnd:    periodEnd,
-		Title:        title,
-		Summary:      summary,
-		Content:      content,
-		Status:       "draft",
+		ReportID:    uuid.New().String(),
+		ReportType:  reportType,
+		PeriodStart: periodStart,
+		PeriodEnd:   periodEnd,
+		Title:       title,
+		Summary:     summary,
+		Content:     content,
+		Status:      "draft",
 	}
 
 	if err := s.db.Create(report).Error; err != nil {
@@ -417,11 +520,11 @@ func (s *AuditService) GetTransparencyReports(limit, offset int) ([]Transparency
 // RecordSecurityMetric records a security metric
 func (s *AuditService) RecordSecurityMetric(metricType string, value float64, unit string) error {
 	metric := &SecurityMetric{
-		MetricType: metricType,
+		MetricType:  metricType,
 		MetricValue: value,
-		Unit:       unit,
-		Timestamp:  time.Now(),
-		Period:     "daily",
+		Unit:        unit,
+		Timestamp:   time.Now(),
+		Period:      "daily",
 	}
 	return s.db.Create(metric).Error
 }
@@ -457,18 +560,18 @@ func (s *AuditService) GetSecurityScore() (float64, error) {
 // ============================================================================
 
 type VulnerabilityInput struct {
-	Title          string  `json:"title"`
-	Description    string  `json:"description"`
-	Category       string  `json:"category"`
-	Severity       string  `json:"severity"`
-	CWEID          string  `json:"cwe_id"`
-	CVSSScore      float64 `json:"cvss_score"`
-	ContractAddress string `json:"contract_address"`
-	FilePath       string  `json:"file_path"`
-	LineNumber     int     `json:"line_number"`
-	FunctionName   string  `json:"function_name"`
-	Impact         string  `json:"impact"`
-	Remediation    string  `json:"remediation"`
+	Title           string  `json:"title"`
+	Description     string  `json:"description"`
+	Category        string  `json:"category"`
+	Severity        string  `json:"severity"`
+	CWEID           string  `json:"cwe_id"`
+	CVSSScore       float64 `json:"cvss_score"`
+	ContractAddress string  `json:"contract_address"`
+	FilePath        string  `json:"file_path"`
+	LineNumber      int     `json:"line_number"`
+	FunctionName    string  `json:"function_name"`
+	Impact          string  `json:"impact"`
+	Remediation     string  `json:"remediation"`
 }
 
 // ============================================================================
@@ -492,7 +595,7 @@ func (s *AuditService) SubmitProjectHandler(c *gin.Context) {
 		ProjectName       string `json:"project_name" binding:"required"`
 		ProjectType       string `json:"project_type" binding:"required"`
 		ContractAddresses string `json:"contract_addresses"`
-		CodeRepository   string `json:"code_repository"`
+		CodeRepository    string `json:"code_repository"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -555,7 +658,7 @@ func (s *AuditService) GetVulnerabilitiesHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
+		"success":         true,
 		"vulnerabilities": vulns,
 	})
 }
@@ -568,9 +671,9 @@ func (s *AuditService) GetSecurityScoreHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"score":      score,
-		"rating":     getRating(score),
+		"success": true,
+		"score":   score,
+		"rating":  getRating(score),
 	})
 }
 
@@ -607,12 +710,12 @@ func (s *AuditService) GetTransparencyReportsHandler(c *gin.Context) {
 
 func (s *AuditService) CreateTransparencyReportHandler(c *gin.Context) {
 	var req struct {
-		ReportType   string    `json:"report_type" binding:"required"`
-		PeriodStart  time.Time `json:"period_start" binding:"required"`
-		PeriodEnd    time.Time `json:"period_end" binding:"required"`
-		Title        string    `json:"title" binding:"required"`
-		Summary      string    `json:"summary"`
-		Content      string    `json:"content"`
+		ReportType  string    `json:"report_type" binding:"required"`
+		PeriodStart time.Time `json:"period_start" binding:"required"`
+		PeriodEnd   time.Time `json:"period_end" binding:"required"`
+		Title       string    `json:"title" binding:"required"`
+		Summary     string    `json:"summary"`
+		Content     string    `json:"content"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -682,7 +785,6 @@ func main() {
 
 	// Initialize services
 	auditService := NewAuditService(db)
-	scanService := NewScanService(db)
 
 	// Setup router
 	router := gin.Default()
@@ -692,12 +794,12 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return
 		}
-		
+
 		c.Next()
 	})
 
@@ -714,10 +816,16 @@ func main() {
 		api.GET("/audit/:id", auditService.GetAuditHandler)
 		api.GET("/audit", auditService.ListAuditsHandler)
 		api.GET("/audit/:id/vulnerabilities", auditService.GetVulnerabilitiesHandler)
-		
+
 		// Security score
 		api.GET("/score", auditService.GetSecurityScoreHandler)
-		
+
+		// Static analysis scans
+		scans := NewScanService(db)
+		api.POST("/scan", scans.RunScanHandler)
+		api.GET("/scan/:id", scans.GetScanHandler)
+		api.GET("/scan/:id/findings", scans.ListFindingsHandler)
+
 		// Transparency reports
 		api.GET("/transparency", auditService.GetTransparencyReportsHandler)
 		api.POST("/transparency", auditService.CreateTransparencyReportHandler)
@@ -746,13 +854,10 @@ func main() {
 	log.Println("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
 	log.Println("Server exited")
 }
-
-// Add strconv import
-import "strconv"
