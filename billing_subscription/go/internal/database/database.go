@@ -286,64 +286,64 @@ func runMigrations() error {
 func seedDefaultPlans() error {
 	plans := []models.Plan{
 		{
-			Name:             "Free",
-			Tier:             models.TierFree,
-			Description:      "Free tier for testing and small projects",
-			PriceMonthly:     0,
-			PriceYearly:      0,
-			FeatureFlags:     []string{"basic_wallet", "1_product"},
-			APIQuotaMonthly:  1000,
-			StorageQuotaGB:   1,
-			MaxUsers:         1,
-			MaxWallets:       5,
-			MaxBots:          1,
-			SupportLevel:     "community",
-			IsActive:         true,
+			Name:            "Free",
+			Tier:            models.TierFree,
+			Description:     "Free tier for testing and small projects",
+			PriceMonthly:    0,
+			PriceYearly:     0,
+			FeatureFlags:    []string{"basic_wallet", "1_product"},
+			APIQuotaMonthly: 1000,
+			StorageQuotaGB:  1,
+			MaxUsers:        1,
+			MaxWallets:      5,
+			MaxBots:         1,
+			SupportLevel:    "community",
+			IsActive:        true,
 		},
 		{
-			Name:             "Basic",
-			Tier:             models.TierBasic,
-			Description:      "Basic tier for small teams",
-			PriceMonthly:     9900, // $99/month
-			PriceYearly:      99000, // $990/year
-			FeatureFlags:     []string{"basic_wallet", "all_products", "email_support"},
-			APIQuotaMonthly:  50000,
-			StorageQuotaGB:   10,
-			MaxUsers:         5,
-			MaxWallets:       50,
-			MaxBots:          10,
-			SupportLevel:     "email",
-			IsActive:         true,
+			Name:            "Basic",
+			Tier:            models.TierBasic,
+			Description:     "Basic tier for small teams",
+			PriceMonthly:    9900,  // $99/month
+			PriceYearly:     99000, // $990/year
+			FeatureFlags:    []string{"basic_wallet", "all_products", "email_support"},
+			APIQuotaMonthly: 50000,
+			StorageQuotaGB:  10,
+			MaxUsers:        5,
+			MaxWallets:      50,
+			MaxBots:         10,
+			SupportLevel:    "email",
+			IsActive:        true,
 		},
 		{
-			Name:             "Pro",
-			Tier:             models.TierPro,
-			Description:      "Professional tier for growing businesses",
-			PriceMonthly:     29900, // $299/month
-			PriceYearly:      299000, // $2990/year
-			FeatureFlags:     []string{"all_features", "priority_support", "custom_branding"},
-			APIQuotaMonthly:  500000,
-			StorageQuotaGB:   100,
-			MaxUsers:         25,
-			MaxWallets:       500,
-			MaxBots:          100,
-			SupportLevel:     "priority",
-			IsActive:         true,
+			Name:            "Pro",
+			Tier:            models.TierPro,
+			Description:     "Professional tier for growing businesses",
+			PriceMonthly:    29900,  // $299/month
+			PriceYearly:     299000, // $2990/year
+			FeatureFlags:    []string{"all_features", "priority_support", "custom_branding"},
+			APIQuotaMonthly: 500000,
+			StorageQuotaGB:  100,
+			MaxUsers:        25,
+			MaxWallets:      500,
+			MaxBots:         100,
+			SupportLevel:    "priority",
+			IsActive:        true,
 		},
 		{
-			Name:             "Enterprise",
-			Tier:             models.TierEnterprise,
-			Description:      "Enterprise tier for large organizations",
-			PriceMonthly:     99900, // $999/month
-			PriceYearly:      999000, // $9990/year
-			FeatureFlags:     []string{"all_features", "dedicated_support", "sla", "custom_contracts"},
-			APIQuotaMonthly:  -1, // unlimited
-			StorageQuotaGB:   -1, // unlimited
-			MaxUsers:         -1, // unlimited
-			MaxWallets:       -1,
-			MaxBots:          -1,
-			SupportLevel:     "dedicated",
-			IsActive:         true,
+			Name:            "Enterprise",
+			Tier:            models.TierEnterprise,
+			Description:     "Enterprise tier for large organizations",
+			PriceMonthly:    99900,  // $999/month
+			PriceYearly:     999000, // $9990/year
+			FeatureFlags:    []string{"all_features", "dedicated_support", "sla", "custom_contracts"},
+			APIQuotaMonthly: -1, // unlimited
+			StorageQuotaGB:  -1, // unlimited
+			MaxUsers:        -1, // unlimited
+			MaxWallets:      -1,
+			MaxBots:         -1,
+			SupportLevel:    "dedicated",
+			IsActive:        true,
 		},
 	}
 

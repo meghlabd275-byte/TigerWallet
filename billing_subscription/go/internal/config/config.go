@@ -37,7 +37,7 @@ type RedisConfig struct {
 	Host     string
 	Port     int
 	Password string
-	DB      int
+	DB       int
 	PoolSize int
 }
 
@@ -54,12 +54,12 @@ type StripeConfig struct {
 }
 
 type SecurityConfig struct {
-	BCryptCost         int
-	MaxLoginAttempts   int
-	LockoutDuration    time.Duration
-	PasswordMinLength  int
-	RequireUppercase   bool
-	RequireLowercase   bool
+	BCryptCost        int
+	MaxLoginAttempts  int
+	LockoutDuration   time.Duration
+	PasswordMinLength int
+	RequireUppercase  bool
+	RequireLowercase  bool
 	RequireNumbers    bool
 	RequireSpecial    bool
 }
@@ -86,7 +86,7 @@ func Load() *Config {
 			Host:     getEnv("BILLING_REDIS_HOST", "localhost"),
 			Port:     getIntEnv("BILLING_REDIS_PORT", 6379),
 			Password: getEnv("BILLING_REDIS_PASSWORD", ""),
-			DB:      getIntEnv("BILLING_REDIS_DB", 0),
+			DB:       getIntEnv("BILLING_REDIS_DB", 0),
 			PoolSize: getIntEnv("BILLING_REDIS_POOL_SIZE", 50),
 		},
 		JWT: JWTConfig{

@@ -147,9 +147,3 @@ func main() {
 
 	log.Println("Server exited")
 }
-
-// Placeholder for Stripe webhook handler
-func handleStripeWebhook(c *gin.Context) {
-	// In production, this would verify the Stripe signature and process events
-	c.JSON(http.StatusOK, gin.H{"message": "webhook received"})
-}

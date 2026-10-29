@@ -1,9 +1,16 @@
 package middleware
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -186,29 +193,138 @@ func TenantIsolation() gin.HandlerFunc {
 	}
 }
 
-// API key authentication for programmatic access
+// APIKeyAuth authenticates programmatic access.
+//
+// The presented key is hashed with SHA-256 and compared against the configured
+// key hashes in constant time. An unset or empty configuration refuses every
+// request rather than accepting any key.
 func APIKeyAuth() gin.HandlerFunc {
+	hashes := configuredAPIKeyHashes()
+
 	return func(c *gin.Context) {
-		apiKey := c.GetHeader("X-API-Key")
+		apiKey := strings.TrimSpace(c.GetHeader("X-API-Key"))
 		if apiKey == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "API key required"})
 			c.Abort()
 			return
 		}
+		if len(hashes) == 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "API key authentication is not configured"})
+			c.Abort()
+			return
+		}
 
-		// In production, validate the API key against the database
-		// For now, we'll just pass through
+		presented := sha256.Sum256([]byte(apiKey))
+		authorized := false
+		for _, expected := range hashes {
+			if hmac.Equal(presented[:], expected) {
+				authorized = true
+				break
+			}
+		}
+		if !authorized {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid API key"})
+			c.Abort()
+			return
+		}
+
 		c.Set("api_key", apiKey)
-
 		c.Next()
 	}
 }
 
-// Rate limiting middleware (simplified - in production use Redis)
+// configuredAPIKeyHashes returns the SHA-256 hashes of the accepted API keys.
+//
+// Keys are configured as BILLING_API_KEY_HASHES, a comma-separated list of hex
+// SHA-256 digests, so the raw keys are not held in the process environment.
+// BILLING_API_KEYS is also accepted for deployments that can only supply the
+// keys themselves; those values are hashed at startup.
+func configuredAPIKeyHashes() [][]byte {
+	var out [][]byte
+
+	for _, raw := range strings.Split(os.Getenv("BILLING_API_KEY_HASHES"), ",") {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		decoded, err := hex.DecodeString(value)
+		if err != nil || len(decoded) != sha256.Size {
+			log.Printf("billing: ignoring malformed BILLING_API_KEY_HASHES entry (must be a hex SHA-256 digest)")
+			continue
+		}
+		out = append(out, decoded)
+	}
+
+	for _, raw := range strings.Split(os.Getenv("BILLING_API_KEYS"), ",") {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			continue
+		}
+		sum := sha256.Sum256([]byte(value))
+		out = append(out, sum[:])
+	}
+
+	return out
+}
+
+// RateLimiter bounds how many requests a caller may make in a window.
+//
+// The window is a fixed interval: the counter resets when it elapses. Entries
+// are keyed by client address and expired entries are swept so the map cannot
+// grow without bound.
 func RateLimiter(maxRequests int, window time.Duration) gin.HandlerFunc {
-	// In production, implement with Redis
+	if maxRequests <= 0 || window <= 0 {
+		// A misconfigured limiter must not silently disable itself; refusing
+		// traffic is the safe failure mode for a security control.
+		return func(c *gin.Context) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "rate limiter is not configured"})
+			c.Abort()
+		}
+	}
+
+	type bucket struct {
+		count     int
+		expiresAt time.Time
+	}
+
+	var (
+		mu      sync.Mutex
+		buckets = map[string]*bucket{}
+	)
+
 	return func(c *gin.Context) {
-		// Simplified implementation - always allow for now
+		key := c.ClientIP()
+		now := time.Now()
+
+		mu.Lock()
+		for k, b := range buckets {
+			if now.After(b.expiresAt) {
+				delete(buckets, k)
+			}
+		}
+		b, ok := buckets[key]
+		if !ok {
+			b = &bucket{expiresAt: now.Add(window)}
+			buckets[key] = b
+		}
+		b.count++
+		exceeded := b.count > maxRequests
+		remaining := maxRequests - b.count
+		if remaining < 0 {
+			remaining = 0
+		}
+		mu.Unlock()
+
+		c.Header("X-RateLimit-Limit", strconv.Itoa(maxRequests))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
+
+		if exceeded {
+			c.Header("Retry-After", strconv.Itoa(int(window.Seconds())))
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

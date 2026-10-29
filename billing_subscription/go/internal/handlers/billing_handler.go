@@ -138,8 +138,8 @@ func (h *BillingHandler) GetSubscription(c *gin.Context) {
 }
 
 type UpgradeSubscriptionRequest struct {
-	PlanID   uuid.UUID `json:"plan_id" binding:"required"`
-	BillingCycle string `json:"billing_cycle" binding:"required,oneof=monthly yearly"`
+	PlanID       uuid.UUID `json:"plan_id" binding:"required"`
+	BillingCycle string    `json:"billing_cycle" binding:"required,oneof=monthly yearly"`
 }
 
 func (h *BillingHandler) UpgradeSubscription(c *gin.Context) {
@@ -176,7 +176,7 @@ func (h *BillingHandler) UpgradeSubscription(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "subscription upgraded",
+		"message":      "subscription upgraded",
 		"subscription": sub,
 	})
 }
@@ -198,7 +198,7 @@ func (h *BillingHandler) CancelSubscription(c *gin.Context) {
 	sub.CancelAtPeriodEnd = true
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "subscription will be canceled at period end",
+		"message":      "subscription will be canceled at period end",
 		"subscription": sub,
 	})
 }

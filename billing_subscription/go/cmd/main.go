@@ -33,9 +33,9 @@ type Config struct {
 type PlanTier string
 
 const (
-	TierFree     PlanTier = "free"
-	TierStarter PlanTier = "starter"
-	TierBusiness PlanTier = "business"
+	TierFree       PlanTier = "free"
+	TierStarter    PlanTier = "starter"
+	TierBusiness   PlanTier = "business"
 	TierEnterprise PlanTier = "enterprise"
 )
 
@@ -43,7 +43,7 @@ type BillingCycle string
 
 const (
 	CycleMonthly  BillingCycle = "monthly"
-	CycleYearly  BillingCycle = "yearly"
+	CycleYearly   BillingCycle = "yearly"
 	CycleLifetime BillingCycle = "lifetime"
 )
 
@@ -51,61 +51,61 @@ type SubscriptionStatus string
 
 const (
 	SubActive    SubscriptionStatus = "active"
-	SubTrial    SubscriptionStatus = "trial"
-	SubPastDue  SubscriptionStatus = "past_due"
+	SubTrial     SubscriptionStatus = "trial"
+	SubPastDue   SubscriptionStatus = "past_due"
 	SubCancelled SubscriptionStatus = "cancelled"
 	SubExpired   SubscriptionStatus = "expired"
 )
 
 // Subscription Plan
 type Plan struct {
-	ID               uuid.UUID     `json:"id"`
-	Name            string       `json:"name"`
-	Tier            PlanTier     `json:"tier"`
-	Description     string       `json:"description"`
-	PriceMonthly    float64     `json:"price_monthly"`
-	PriceYearly     float64     `json:"price_yearly"`
-	Features        string       `json:"features"` // JSON array
-	Limits          string       `json:"limits"` // JSON object
-	IsActive        bool         `json:"is_active"`
-	CreatedAt       time.Time    `json:"created_at"`
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Tier         PlanTier  `json:"tier"`
+	Description  string    `json:"description"`
+	PriceMonthly float64   `json:"price_monthly"`
+	PriceYearly  float64   `json:"price_yearly"`
+	Features     string    `json:"features"` // JSON array
+	Limits       string    `json:"limits"`   // JSON object
+	IsActive     bool      `json:"is_active"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Client Subscription
 type Subscription struct {
-	ID              uuid.UUID         `json:"id"`
-	ClientID        uuid.UUID         `json:"client_id"`
-	PlanID          uuid.UUID         `json:"plan_id"`
-	Status          SubscriptionStatus `json:"status"`
-	BillingCycle    BillingCycle      `json:"billing_cycle"`
-	Amount          float64           `json:"amount"`
-	Currency        string            `json:"currency"` // USD
-	StartDate       time.Time         `json:"start_date"`
-	EndDate         *time.Time        `json:"end_date"`
-	TrialEndDate    *time.Time        `json:"trial_end_date"`
-	AutoRenew       bool              `json:"auto_renew"`
-	PaymentMethod   string            `json:"payment_method"` // card, bank, crypto
-	CreatedAt       time.Time         `json:"created_at"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	ID            uuid.UUID          `json:"id"`
+	ClientID      uuid.UUID          `json:"client_id"`
+	PlanID        uuid.UUID          `json:"plan_id"`
+	Status        SubscriptionStatus `json:"status"`
+	BillingCycle  BillingCycle       `json:"billing_cycle"`
+	Amount        float64            `json:"amount"`
+	Currency      string             `json:"currency"` // USD
+	StartDate     time.Time          `json:"start_date"`
+	EndDate       *time.Time         `json:"end_date"`
+	TrialEndDate  *time.Time         `json:"trial_end_date"`
+	AutoRenew     bool               `json:"auto_renew"`
+	PaymentMethod string             `json:"payment_method"` // card, bank, crypto
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
 }
 
 // Usage Record
 type UsageRecord struct {
-	ID             uuid.UUID   `json:"id"`
-	SubscriptionID uuid.UUID   `json:"subscription_id"`
-	ClientID       uuid.UUID   `json:"client_id"`
-	Metric         string     `json:"metric"` // api_calls, storage, bandwidth
-	Count          int64      `json:"count"`
-	Unit           string     `json:"unit"`
-	Period         string     `json:"period"` // daily, monthly
-	Timestamp      time.Time  `json:"timestamp"`
+	ID             uuid.UUID `json:"id"`
+	SubscriptionID uuid.UUID `json:"subscription_id"`
+	ClientID       uuid.UUID `json:"client_id"`
+	Metric         string    `json:"metric"` // api_calls, storage, bandwidth
+	Count          int64     `json:"count"`
+	Unit           string    `json:"unit"`
+	Period         string    `json:"period"` // daily, monthly
+	Timestamp      time.Time `json:"timestamp"`
 }
 
 // Invoice
 type Invoice struct {
-	ID              uuid.UUID   `json:"id"`
-	SubscriptionID  uuid.UUID   `json:"subscription_id"`
-	ClientID       uuid.UUID   `json:"client_id"`
+	ID             uuid.UUID  `json:"id"`
+	SubscriptionID uuid.UUID  `json:"subscription_id"`
+	ClientID       uuid.UUID  `json:"client_id"`
 	InvoiceNumber  string     `json:"invoice_number"`
 	Amount         float64    `json:"amount"`
 	Currency       string     `json:"currency"`
@@ -118,17 +118,17 @@ type Invoice struct {
 
 // Payment
 type Payment struct {
-	ID              uuid.UUID   `json:"id"`
-	InvoiceID       uuid.UUID   `json:"invoice_id"`
-	ClientID        uuid.UUID   `json:"client_id"`
-	Amount          float64    `json:"amount"`
-	Currency        string     `json:"currency"`
-	Status          string     `json:"status"` // pending, completed, failed, refunded
-	PaymentMethod   string     `json:"payment_method"`
-	TransactionID   string     `json:"transaction_id"`
-	Metadata        string     `json:"metadata"` // JSON
-	ProcessedAt     *time.Time `json:"processed_at"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID            uuid.UUID  `json:"id"`
+	InvoiceID     uuid.UUID  `json:"invoice_id"`
+	ClientID      uuid.UUID  `json:"client_id"`
+	Amount        float64    `json:"amount"`
+	Currency      string     `json:"currency"`
+	Status        string     `json:"status"` // pending, completed, failed, refunded
+	PaymentMethod string     `json:"payment_method"`
+	TransactionID string     `json:"transaction_id"`
+	Metadata      string     `json:"metadata"` // JSON
+	ProcessedAt   *time.Time `json:"processed_at"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 // Global variables
@@ -264,7 +264,7 @@ func HealthCheck(c *gin.Context) {
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
@@ -307,10 +307,10 @@ func GetPlans(c *gin.Context) {
 // CreateSubscription - Create new subscription
 func CreateSubscription(c *gin.Context) {
 	var req struct {
-		ClientID      uuid.UUID      `json:"client_id" binding:"required"`
-		PlanID        uuid.UUID      `json:"plan_id" binding:"required"`
-		BillingCycle  BillingCycle   `json:"billing_cycle"`
-		PaymentMethod string         `json:"payment_method"`
+		ClientID      uuid.UUID    `json:"client_id" binding:"required"`
+		PlanID        uuid.UUID    `json:"plan_id" binding:"required"`
+		BillingCycle  BillingCycle `json:"billing_cycle"`
+		PaymentMethod string       `json:"payment_method"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -334,19 +334,19 @@ func CreateSubscription(c *gin.Context) {
 	}
 
 	subscription := Subscription{
-		ID:             uuid.New(),
-		ClientID:       req.ClientID,
-		PlanID:         req.PlanID,
-		Status:         SubTrial,
-		BillingCycle:   req.BillingCycle,
-		Amount:         amount,
-		Currency:       "USD",
-		StartDate:      time.Now(),
-		TrialEndDate:   &[]time.Time{time.Now().Add(14 * 24 * time.Hour)}[0],
-		AutoRenew:      true,
-		PaymentMethod:  req.PaymentMethod,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:            uuid.New(),
+		ClientID:      req.ClientID,
+		PlanID:        req.PlanID,
+		Status:        SubTrial,
+		BillingCycle:  req.BillingCycle,
+		Amount:        amount,
+		Currency:      "USD",
+		StartDate:     time.Now(),
+		TrialEndDate:  &[]time.Time{time.Now().Add(14 * 24 * time.Hour)}[0],
+		AutoRenew:     true,
+		PaymentMethod: req.PaymentMethod,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	_, err = db.Exec(context.Background(), `
@@ -474,16 +474,16 @@ func CreateInvoice(c *gin.Context) {
 	invoiceNum := fmt.Sprintf("INV-%d-%s", time.Now().Unix(), uuid.New().String()[:8])
 
 	invoice := Invoice{
-		ID:              uuid.New(),
-		SubscriptionID:  req.SubscriptionID,
-		ClientID:        req.ClientID,
-		InvoiceNumber:   invoiceNum,
-		Amount:          req.Amount,
-		Currency:        "USD",
-		Status:          "pending",
-		DueDate:         time.Now().Add(30 * 24 * time.Hour),
-		Items:           req.Items,
-		CreatedAt:       time.Now(),
+		ID:             uuid.New(),
+		SubscriptionID: req.SubscriptionID,
+		ClientID:       req.ClientID,
+		InvoiceNumber:  invoiceNum,
+		Amount:         req.Amount,
+		Currency:       "USD",
+		Status:         "pending",
+		DueDate:        time.Now().Add(30 * 24 * time.Hour),
+		Items:          req.Items,
+		CreatedAt:      time.Now(),
 	}
 
 	_, err := db.Exec(context.Background(), `
@@ -544,16 +544,16 @@ func ProcessPayment(c *gin.Context) {
 	}
 
 	payment := Payment{
-		ID:              uuid.New(),
-		InvoiceID:       req.InvoiceID,
-		ClientID:        req.ClientID,
-		Amount:          req.Amount,
-		Currency:        "USD",
-		Status:          "completed",
-		PaymentMethod:   req.PaymentMethod,
-		TransactionID:   fmt.Sprintf("TXN-%s", uuid.New().String()[:16]),
-		ProcessedAt:     &[]time.Time{time.Now()}[0],
-		CreatedAt:       time.Now(),
+		ID:            uuid.New(),
+		InvoiceID:     req.InvoiceID,
+		ClientID:      req.ClientID,
+		Amount:        req.Amount,
+		Currency:      "USD",
+		Status:        "completed",
+		PaymentMethod: req.PaymentMethod,
+		TransactionID: fmt.Sprintf("TXN-%s", uuid.New().String()[:16]),
+		ProcessedAt:   &[]time.Time{time.Now()}[0],
+		CreatedAt:     time.Now(),
 	}
 
 	tx, err := db.Begin(context.Background())
