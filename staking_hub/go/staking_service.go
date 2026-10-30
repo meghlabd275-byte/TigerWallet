@@ -61,6 +61,9 @@ type StakePosition struct {
 	LockPeriod     int64    `json:"lock_period"`
 	StartTime      time.Time `json:"start_time"`
 	UnlockTime     time.Time `json:"unlock_time"`
+	// TxHash is the hash returned by the node for the stake/unstake
+	// transaction. Empty means nothing has been broadcast yet.
+	TxHash        string    `json:"tx_hash"`
 	Status        string   `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
@@ -92,6 +95,9 @@ type StakingService struct {
 	db      *gorm.DB
 	redis  *redis.Client
 	config StakingConfig
+	// onchain is nil when the on-chain integration is not configured; in that
+	// case operations are recorded as pending_broadcast and never given a hash.
+	onchain *OnChainStaking
 }
 
 // NewStakingService creates new service
@@ -119,10 +125,19 @@ func NewStakingService(cfg StakingConfig) (*StakingService, error) {
 		return nil, err
 	}
 
+	// On-chain integration is optional. When configured, stake/unstake/claim
+	// broadcast real transactions; when absent they are recorded as
+	// pending_broadcast with no hash rather than being reported as successful.
+	onchain, err := NewOnChainStakingFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
 	return &StakingService{
 		db:      db,
 		redis:  rdb,
 		config: cfg,
+		onchain: onchain,
 	}, nil
 }
 
@@ -133,10 +148,13 @@ func (s *StakingService) GeneratePositionID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// Stake stakes tokens
+// Stake stakes tokens. When the on-chain integration is configured the
+// transaction is broadcast and the node's hash recorded; otherwise the
+// position is stored as pending_broadcast with an empty hash. The rewards
+// figure is not invented here — it starts at zero and is credited by
+// ClaimRewards from what the contract actually reports.
 func (s *StakingService) Stake(req StakeRequest) (*StakePosition, error) {
 	positionID := s.GeneratePositionID()
-	rewards := calculateRewards(req.Amount, req.APY)
 
 	position := &StakePosition{
 		PositionID:     positionID,
@@ -146,27 +164,70 @@ func (s *StakingService) Stake(req StakeRequest) (*StakePosition, error) {
 		Token:        req.Token,
 		StakedAmount: req.Amount,
 		RewardsClaimed: "0",
-		RewardsPending: rewards,
+		RewardsPending: "0",
 		LockPeriod:    req.LockPeriod,
 		StartTime:    time.Now(),
 		UnlockTime:   time.Now().Add(time.Duration(req.LockPeriod) * 24 * time.Hour),
-		Status:       "staking",
+		Status:       "pending_broadcast",
 		CreatedAt:    time.Now(),
+	}
+
+	if s.onchain != nil {
+		amount, err := parseTokenAmount(req.Amount, tokenDecimals())
+		if err != nil {
+			return nil, fmt.Errorf("invalid stake amount: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		hash, err := s.onchain.Stake(ctx, amount)
+		if err != nil {
+			return nil, fmt.Errorf("stake broadcast failed: %w", err)
+		}
+		position.TxHash = hash
+		position.Status = "staking"
 	}
 
 	s.db.Create(position)
 	return position, nil
 }
 
-// Unstake initiates unstaking
+// Unstake initiates unstaking. The on-chain withdraw is broadcast when
+// configured; the position is only marked "unstaking" once that succeeds (or
+// immediately when the integration is absent, so an operator can complete it
+// manually).
 func (s *StakingService) Unstake(positionID string) error {
-	result := s.db.Model(&StakePosition{}).Where("position_id = ? AND status = ?", positionID, "staking").
-		Updates(map[string]interface{}{
-			"status":      "unstaking",
-			"unlock_time": time.Now().Add(24 * time.Hour),
-			"updated_at": time.Now(),
-		})
+	var position StakePosition
+	if err := s.db.Where("position_id = ? AND status = ?", positionID, "staking").First(&position).Error; err != nil {
+		return fmt.Errorf("position not found or cannot unstake")
+	}
 
+	if s.onchain != nil {
+		amount, err := parseTokenAmount(position.StakedAmount, tokenDecimals())
+		if err != nil {
+			return fmt.Errorf("invalid staked amount: %w", err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		hash, err := s.onchain.Withdraw(ctx, amount)
+		if err != nil {
+			return fmt.Errorf("unstake broadcast failed: %w", err)
+		}
+		position.TxHash = hash
+	}
+
+	updates := map[string]interface{}{
+		"status":      "unstaking",
+		"unlock_time": time.Now().Add(24 * time.Hour),
+		"updated_at":  time.Now(),
+	}
+	if position.TxHash != "" {
+		updates["tx_hash"] = position.TxHash
+	}
+
+	result := s.db.Model(&StakePosition{}).Where("position_id = ? AND status = ?", positionID, "staking").
+		Updates(updates)
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("position not found or cannot unstake")
 	}
@@ -187,7 +248,11 @@ func (s *StakingService) Withdraw(positionID string, txHash string) error {
 	return nil
 }
 
-// ClaimRewards claims pending rewards
+// ClaimRewards claims pending rewards. The on-chain getReward() call is
+// broadcast when configured and its real hash recorded; the claim is only
+// marked "confirmed" once that succeeds. When the integration is absent the
+// claim is stored as pending_broadcast with no hash rather than reporting a
+// fabricated transaction.
 func (s *StakingService) ClaimRewards(positionID string) (*ClaimRecord, error) {
 	position, err := s.GetPosition(positionID)
 	if err != nil {
@@ -199,22 +264,34 @@ func (s *StakingService) ClaimRewards(positionID string) (*ClaimRecord, error) {
 	}
 
 	claimID := s.GeneratePositionID()
-	txHash := "0x" + generateHash()
-
 	claim := &ClaimRecord{
 		ClaimID:    claimID,
 		PositionID: positionID,
 		UserAddr:  position.UserAddress,
 		Amount:   position.RewardsPending,
 		ChainID:  position.ChainID,
-		TxHash:  txHash,
-		Status:  "pending",
+		Status:   "pending_broadcast",
+	}
+
+	if s.onchain != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		hash, err := s.onchain.ClaimRewards(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("claim broadcast failed: %w", err)
+		}
+		claim.TxHash = hash
+		claim.Status = "confirmed"
 	}
 
 	s.db.Create(claim)
-	position.RewardsClaimed = addStrings(position.RewardsClaimed, position.RewardsPending)
-	position.RewardsPending = "0"
-	s.db.Save(position)
+
+	if claim.Status == "confirmed" {
+		position.RewardsClaimed = addStrings(position.RewardsClaimed, position.RewardsPending)
+		position.RewardsPending = "0"
+		s.db.Save(position)
+	}
 
 	return claim, nil
 }
@@ -368,12 +445,6 @@ func (s *StakingService) GetUserStatsHandler(c *gin.Context) {
 
 // Utility functions
 
-func calculateRewards(amount string, apy float64) string {
-	amountFloat := parseAmount(amount)
-	rewards := amountFloat * (apy / 100) / 365
-	return formatAmount(rewards)
-}
-
 func parseAmount(s string) float64 {
 	var f float64
 	fmt.Sscanf(s, "%f", &f)
@@ -394,12 +465,6 @@ func addStrings(a, b string) string {
 	af := parseAmount(a)
 	bf := parseAmount(b)
 	return formatAmount(af + bf)
-}
-
-func generateHash() string {
-	var b [32]byte
-	rand.Read(b[:])
-	return hex.EncodeToString(b[:])
 }
 
 // Main
