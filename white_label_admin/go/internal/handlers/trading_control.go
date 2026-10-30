@@ -56,9 +56,29 @@ func (s *Svc) auditTradingControl(c *gin.Context, action, kind, entity, detail s
 		uuid.New(), adminID, action, kind, entity, detail, tenant)
 }
 
+// wlTradingTables is the closed set of tables the tenant-scoped trading
+// helpers may touch. Table and column names cannot be bound as query
+// parameters, so they are interpolated into the SQL text; restricting them to
+// this allowlist keeps that interpolation from becoming an injection point.
+// Every call site passes a literal from this set.
+var wlTradingTables = map[string]bool{
+	"wl_trading_contracts": true,
+	"wl_liquidity_pools":   true,
+	"wl_trading_pairs":     true,
+	"wl_margin_markets":    true,
+}
+
+func wlValidTradingTable(table string) bool {
+	return wlTradingTables[table]
+}
+
 // ---- generic list (tenant-scoped) ----
 
 func (s *Svc) wlListTrading(c *gin.Context, table, outKey, columns string) {
+	if !wlValidTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	tenant := middleware.TenantID(c)
 	rows, err := s.db.Query(c.Request.Context(),
 		fmt.Sprintf(`SELECT %s FROM %s WHERE white_label_id=$1 ORDER BY created_at DESC LIMIT 500`, columns, table), tenant)
@@ -89,6 +109,10 @@ func (s *Svc) wlListTrading(c *gin.Context, table, outKey, columns string) {
 // ---- generic status transition (tenant-scoped) ----
 
 func (s *Svc) wlSetTradingStatus(c *gin.Context, table, kind, redisKeyExpr string) {
+	if !wlValidTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	tenant := middleware.TenantID(c)
 	var req struct {
 		Status string `json:"status"`
@@ -111,6 +135,10 @@ func (s *Svc) wlSetTradingStatus(c *gin.Context, table, kind, redisKeyExpr strin
 }
 
 func (s *Svc) wlDeleteTradingEntity(c *gin.Context, table, kind, redisKeyExpr string) {
+	if !wlValidTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	tenant := middleware.TenantID(c)
 	var entity string
 	err := s.db.QueryRow(c.Request.Context(),

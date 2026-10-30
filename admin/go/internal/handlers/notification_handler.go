@@ -465,12 +465,20 @@ func (h *NotificationHandler) sendNotificationEmail(n models.Notification) error
 	return smtp.SendMail(addr, auth, from, trimmedRecipients, []byte(msg))
 }
 
+// sanitizeEmailHeader strips CR and LF from a value that is about to be written
+// into an RFC 5322 header. Notification titles and messages are operator-supplied
+// and end up in the Subject header, so an embedded newline would otherwise let
+// the sender append arbitrary headers (a Bcc, for example) to the message.
+func sanitizeEmailHeader(value string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
+}
+
 // buildEmailMessage assembles an RFC 5322 message with the required headers.
 func buildEmailMessage(from, to, subject, body string) string {
 	var b strings.Builder
-	b.WriteString("From: " + from + "\r\n")
-	b.WriteString("To: " + to + "\r\n")
-	b.WriteString("Subject: " + subject + "\r\n")
+	b.WriteString("From: " + sanitizeEmailHeader(from) + "\r\n")
+	b.WriteString("To: " + sanitizeEmailHeader(to) + "\r\n")
+	b.WriteString("Subject: " + sanitizeEmailHeader(subject) + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")

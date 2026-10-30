@@ -183,9 +183,32 @@ var tradingVerticals = map[string]bool{
 	"options": true, "copy": true, "liquidity": true,
 }
 
+// tradingTables is the closed set of tables the generic trading-management
+// helpers may touch. Table and column names cannot be bound as query
+// parameters, so they are interpolated into the SQL text; restricting them to
+// this allowlist is what keeps that interpolation from becoming an injection
+// point. Every call site already passes a literal from this set, and the check
+// keeps it that way if the helpers are ever reused.
+var tradingTables = map[string]bool{
+	"trading_contracts":      true,
+	"liquidity_pools":        true,
+	"managed_trading_pairs":  true,
+	"margin_markets":         true,
+	"options_series":         true,
+	"copy_trader_registry":   true,
+}
+
+func validTradingTable(table string) bool {
+	return tradingTables[table]
+}
+
 // ---- Generic list helper ----
 
 func (svc *Service) listTradingEntity(c *gin.Context, table, kind string, columns string) {
+	if !validTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	svc.ensureTradingTables(c.Request.Context())
 	rows, err := svc.store.DB().Query(c.Request.Context(),
 		fmt.Sprintf(`SELECT %s FROM %s ORDER BY created_at DESC LIMIT 500`, columns, table))
@@ -216,6 +239,10 @@ func (svc *Service) listTradingEntity(c *gin.Context, table, kind string, column
 // ---- Status transitions (stop/resume/remove) ----
 
 func (svc *Service) setTradingStatus(c *gin.Context, table, kind, redisKeyExpr string) {
+	if !validTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	svc.ensureTradingTables(c.Request.Context())
 	var req struct {
 		Status string `json:"status"`
@@ -238,6 +265,10 @@ func (svc *Service) setTradingStatus(c *gin.Context, table, kind, redisKeyExpr s
 }
 
 func (svc *Service) deleteTradingEntity(c *gin.Context, table, kind, redisKeyExpr string) {
+	if !validTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	svc.ensureTradingTables(c.Request.Context())
 	var entity string
 	err := svc.store.DB().QueryRow(c.Request.Context(),
