@@ -49,7 +49,7 @@ services:
       WALLET_API_PORT: "8443"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
       ETHERSCAN_API_KEY: "${ETHERSCAN_API_KEY:-}"
       COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
       # Upstream DeFi/utility services proxied through /api/v1/* (defi_proxy.go).
@@ -100,7 +100,7 @@ services:
       DB_NAME: tigerwallet_admin
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_SECRET: "${ADMIN_JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set to a strong value}"
       SUPER_ADMIN_PORT: 8082
     depends_on:
       postgres:
@@ -125,7 +125,7 @@ services:
       DB_PASSWORD: tigerwallet
       DB_NAME: tigerwallet_admin
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${ADMIN_JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set to a strong value}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -194,7 +194,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
       ETHEREUM_RPC_URL: "${ETHEREUM_RPC_URL:-https://ethereum.publicnode.com}"
       WALLET_API_URL: "http://wallet-api:8443"
     depends_on:
@@ -214,7 +214,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -232,7 +232,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -250,7 +250,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -282,7 +282,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
       TRANSAK_ENV: "${TRANSAK_ENV:-staging}"
       TRANSAK_API_KEY: "${TRANSAK_API_KEY:-}"
       MOONPAY_API_KEY: "${MOONPAY_API_KEY:-}"
@@ -304,7 +304,7 @@ services:
     environment:
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
       COINGECKO_API_KEY: "${COINGECKO_API_KEY:-}"
     depends_on:
       postgres:
@@ -354,7 +354,7 @@ services:
       PORT: "8095"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "${WHITE_LABEL_JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${WHITE_LABEL_JWT_SECRET:?WHITE_LABEL_JWT_SECRET must be set to a strong value}"
       SUPER_ADMIN: "admin"
     depends_on:
       postgres:
@@ -423,12 +423,13 @@ services:
       dockerfile: go/Dockerfile
     container_name: tigerwallet-permission-service
     ports:
-      - "8085:8085"
+      - "8091:8091"
     environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
-      JWT_SECRET: "${ADMIN_JWT_SECRET:-change-me-in-production}"
-      SUPER_ADMIN_SECRET: "${SUPER_ADMIN_SECRET:-tigerwallet-super-admin-secret-change-me}"
+      PERMISSION_PORT: "8091"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:-tigerwallet}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set - permission-service signs admin JWTs with it}"
+      SUPER_ADMIN_SECRET: "${SUPER_ADMIN_SECRET:?SUPER_ADMIN_SECRET must be set - permission-service gates its control plane with it}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -443,10 +444,12 @@ services:
       dockerfile: go/Dockerfile
     container_name: tigerwallet-connection-api
     ports:
-      - "8086:8086"
+      - "8092:8092"
     environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
+      CONNECTION_PORT: "8092"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:-tigerwallet}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set - connection-api issues session JWTs signed with it}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -574,7 +577,7 @@ services:
       PORT: "8471"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-change-me-in-production}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
       BOT_CORE_URL: "http://bot-core:8472"
       PROJECT_PARTY_URL: "http://project-party-api:8106"
     depends_on:

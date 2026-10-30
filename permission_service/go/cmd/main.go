@@ -1019,6 +1019,26 @@ func corsMiddleware(allowed map[string]bool, headers string) gin.HandlerFunc {
 	}
 }
 
+// placeholderSecrets are values that appear in example configs and must never
+// be accepted as a real signing key. A deployment that leaves one of these in
+// place would otherwise issue tokens anyone could forge.
+var placeholderSecrets = map[string]bool{
+	"change-me-in-production": true,
+	"changeme":                true,
+	"change-me":               true,
+	"secret":                  true,
+	"password":                true,
+	"your-secret-here":        true,
+	"dev-only-change-me":      true,
+	"tigerwallet-super-admin-secret-change-me": true,
+}
+
+// isPlaceholderSecret reports whether a configured secret is a known
+// placeholder rather than a real key.
+func isPlaceholderSecret(value string) bool {
+	return placeholderSecrets[strings.ToLower(strings.TrimSpace(value))]
+}
+
 func main() {
 	logger = log.New(os.Stdout, "Permission Service: ", log.LstdFlags)
 	logger.Println("Starting Permission Service...")
@@ -1026,7 +1046,10 @@ func main() {
 	config.Port = getEnv("PERMISSION_PORT", "8091")
 	config.DatabaseURL = getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
 	config.RedisURL = getEnv("REDIS_URL", "redis://localhost:6379")
-	config.JWTSecret = getEnv("JWT_SECRET", "")
+	config.JWTSecret = os.Getenv("JWT_SECRET")
+	if len(config.JWTSecret) < 32 || isPlaceholderSecret(config.JWTSecret) {
+		logger.Fatalf("JWT_SECRET must be set to a non-placeholder value of at least 32 characters; refusing to issue tokens signed with a weak or empty key")
+	}
 	jwtSecret = []byte(config.JWTSecret)
 
 	permCache = &sync.Map{}
