@@ -740,6 +740,40 @@ func ValidateConnection(c *gin.Context) {
 
 // ============ MAIN ============
 
+// corsAllowedOrigins is the browser-origin allowlist for the API. When empty,
+// no cross-origin origin is echoed, so browsers treat the API as same-origin
+// only. A wildcard is deliberately not used: it would let any page read
+// responses from this API.
+func corsAllowedOrigins() map[string]bool {
+	allowed := make(map[string]bool)
+	for _, origin := range strings.Split(os.Getenv("CONNECTION_API_CORS_ORIGINS"), ",") {
+		if trimmed := strings.TrimSpace(origin); trimmed != "" {
+			allowed[trimmed] = true
+		}
+	}
+	return allowed
+}
+
+// corsMiddleware sets CORS headers only for allowlisted origins. Preflight
+// requests from unknown origins are answered without an allow header so the
+// browser blocks the call.
+func corsMiddleware(allowed map[string]bool, headers string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin != "" && allowed[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			c.Writer.Header().Set("Access-Control-Allow-Headers", headers)
+		}
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
+}
+
 func main() {
 	logger = log.New(os.Stdout, "Connection API: ", log.LstdFlags)
 	logger.Println("Starting Connection API Service...")
@@ -771,16 +805,7 @@ func main() {
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
-	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key, X-Session-Token")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-		c.Next()
-	})
+	router.Use(corsMiddleware(corsAllowedOrigins(), "Content-Type, Authorization, X-API-Key, X-Session-Token"))
 
 	router.GET("/health", HealthCheck)
 
