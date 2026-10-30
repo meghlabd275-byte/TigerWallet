@@ -25,6 +25,7 @@ export function AppLayout({ children, showNav = true, title = 'TigerWallet' }: A
     { href: '/perpetual', label: 'Perpetual' },
     { href: '/staking', label: 'Staking' },
     { href: '/launchpad', label: 'Launchpad' },
+    { href: '/prediction-markets', label: 'Predictions' },
     { href: '/super_admin', label: 'Admin' },
   ];
 

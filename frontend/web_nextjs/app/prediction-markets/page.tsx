@@ -39,6 +39,7 @@ export default function PredictionMarketsPage() {
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [betAmount, setBetAmount] = useState('')
   const [betOutcome, setBetOutcome] = useState<'YES' | 'NO'>('YES')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -68,21 +69,31 @@ export default function PredictionMarketsPage() {
   const handlePlaceBet = async () => {
     if (!selectedMarket || !betAmount || parseFloat(betAmount) <= 0) return
 
+    const token = typeof window !== 'undefined' ? localStorage.getItem('tigerwallet-token') : null
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers.Authorization = `Bearer ${token}`
+
     try {
-      await fetch('/api/v1/prediction/bets', {
+      const res = await fetch('/api/v1/prediction/bets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           market_id: selectedMarket.id,
           side: betOutcome === 'YES' ? 1 : 0,
-          amount: parseFloat(betAmount)
+          amount: betAmount
         })
       })
+      if (!res.ok) {
+        setError('Could not place the bet. Please try again.')
+        return
+      }
+      setError(null)
       fetchData()
       setSelectedMarket(null)
       setBetAmount('')
     } catch (error) {
       console.error('Failed to place bet:', error)
+      setError('Could not reach the prediction service.')
     }
   }
 
@@ -335,6 +346,9 @@ export default function PredictionMarketsPage() {
                   )}
                 </p>
               </div>
+            )}
+            {error && (
+              <p className={`mb-4 text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>{error}</p>
             )}
             <div className="flex gap-3">
               <button
