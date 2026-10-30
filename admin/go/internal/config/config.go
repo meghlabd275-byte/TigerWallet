@@ -95,8 +95,9 @@ func Load() *Config {
 		RedisDB:       getEnvAsInt("REDIS_DB", 0),
 		RedisPoolSize: getEnvAsInt("REDIS_POOL_SIZE", 10),
 
-		// JWT
-		JWTSecret:          getEnv("JWT_SECRET", ""),
+		// JWT. Fail closed: signing admin tokens with an empty or short
+		// key would let anyone forge a valid admin token.
+		JWTSecret:          getRequiredSecret("JWT_SECRET", 32),
 		JWTExpirationHours: getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
 		RefreshTokenExpiry: getEnvAsInt("REFRESH_TOKEN_EXPIRY_DAYS", 30),
 
@@ -128,6 +129,20 @@ func getRequiredEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		log.Fatalf("%s environment variable must be set", key)
+	}
+	return value
+}
+
+// getRequiredSecret reads a secret that must be set and at least minLen bytes
+// long. Short keys are brute-forceable, so they are rejected outright rather
+// than allowed to weaken the deployment silently.
+func getRequiredSecret(key string, minLen int) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	if len(value) < minLen {
+		log.Fatalf("%s must be at least %d characters", key, minLen)
 	}
 	return value
 }

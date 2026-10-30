@@ -1,6 +1,6 @@
 /**
  * TigerWallet CDN Service
- * 
+ *
  * CDN service for static asset delivery, caching, and content distribution.
  * Built with Go for high-load distributed operations.
  */
@@ -9,13 +9,15 @@ package cdn
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,15 +30,15 @@ import (
 
 // Asset represents a CDN asset
 type Asset struct {
-	ID          string    `json:"id"`
-	Key         string    `json:"key"`
-	ContentType string   `json:"content_type"`
-	Size        int64     `json:"size"`
-	Hash        string    `json:"hash"`
-	URL         string    `json:"url"`
-	CacheTTL    int64     `json:"cache_ttl"`
-	CreatedAt   int64     `json:"created_at"`
-	ExpiresAt   int64     `json:"expires_at"`
+	ID          string `json:"id"`
+	Key         string `json:"key"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+	Hash        string `json:"hash"`
+	URL         string `json:"url"`
+	CacheTTL    int64  `json:"cache_ttl"`
+	CreatedAt   int64  `json:"created_at"`
+	ExpiresAt   int64  `json:"expires_at"`
 }
 
 // AssetMetadata represents asset metadata
@@ -45,14 +47,14 @@ type AssetMetadata struct {
 	ContentType string            `json:"content_type"`
 	Size        int64             `json:"size"`
 	Tags        []string          `json:"tags"`
-	Metadata   map[string]string `json:"metadata"`
+	Metadata    map[string]string `json:"metadata"`
 }
 
 // CDNConfig represents CDN configuration
 type CDNConfig struct {
-	BaseURL       string
-	StoragePath   string
-	MaxFileSize   int64
+	BaseURL      string
+	StoragePath  string
+	MaxFileSize  int64
 	AllowedTypes []string
 	CacheTTL     int64
 	EnableGzip   bool
@@ -70,10 +72,10 @@ type UploadRequest struct {
 
 // CDNService manages CDN operations
 type CDNService struct {
-	config    *CDNConfig
-	assets   map[string]*Asset
-	mu       sync.RWMutex
-	storage  *MemoryStorage
+	config  *CDNConfig
+	assets  map[string]*Asset
+	mu      sync.RWMutex
+	storage *MemoryStorage
 }
 
 // MemoryStorage represents in-memory cache storage
@@ -99,14 +101,14 @@ func GetCDNService(config *CDNConfig) *CDNService {
 				BaseURL:     "https://cdn.tigerwallet.com",
 				StoragePath: "./cdn-storage",
 				MaxFileSize: 100 * 1024 * 1024, // 100MB
-				CacheTTL:    86400, // 24 hours
-				EnableGzip: true,
+				CacheTTL:    86400,             // 24 hours
+				EnableGzip:  true,
 			}
 		}
-		
+
 		cdnService = &CDNService{
-			config:   config,
-			assets:  make(map[string]*Asset),
+			config: config,
+			assets: make(map[string]*Asset),
 			storage: &MemoryStorage{
 				data: make(map[string][]byte),
 			},
@@ -135,9 +137,10 @@ func (s *CDNService) Upload(ctx context.Context, req *UploadRequest) (*Asset, er
 	id := "asset_" + uuid.New().String()
 	key := s.generateKey(req.Name)
 
-	// Calculate hash
-	hash := md5.Sum(req.Content)
-	hashStr := hex.EncodeToString(hash[:])
+	// Calculate integrity hash. SHA-256, not MD5: this value is published
+	// as an ETag and must not be forgeable by a collision attack.
+	sum := sha256.Sum256(req.Content)
+	hashStr := hex.EncodeToString(sum[:])
 
 	// Set expiry
 	now := time.Now().Unix()
@@ -362,10 +365,13 @@ func (s *CDNService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set headers
+	// Set headers. nosniff stops the browser from re-interpreting stored
+	// bytes as HTML/JS when the declared type would not normally execute.
 	w.Header().Set("Content-Type", asset.ContentType)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", asset.Size))
 	w.Header().Set("ETag", asset.Hash)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", asset.CacheTTL))
 
 	// Serve content
@@ -377,23 +383,76 @@ func (s *CDNService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // ============================================================================
 
 func (s *CDNService) generateKey(filename string) string {
-	// Generate unique key based on timestamp and random
-	hash := md5.Sum([]byte(filename + fmt.Sprintf("%d", time.Now().UnixNano())))
-	return hex.EncodeToString(hash[:]) + filepath.Ext(filename)
+	ext := strings.ToLower(filepath.Ext(filename))
+	if !safeExtension(ext) {
+		ext = ""
+	}
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		// crypto/rand is the only entropy source acceptable for a public
+		// object key; never fall back to time or math/rand.
+		panic("cdn: crypto/rand unavailable: " + err.Error())
+	}
+	return hex.EncodeToString(buf[:]) + ext
+}
+
+// safeExtension rejects any extension that is not a short alphanumeric token.
+// An attacker-supplied filename must never contribute path separators,
+// dots or null bytes to a stored object key.
+func safeExtension(ext string) bool {
+	if ext == "" || len(ext) > 16 {
+		return false
+	}
+	if ext[0] != '.' {
+		return false
+	}
+	for _, r := range ext[1:] {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (s *CDNService) isAllowedContentType(contentType string) bool {
+	// Media type parameters (charset etc.) are not part of the allowlist.
+	if i := strings.IndexByte(contentType, ';'); i != -1 {
+		contentType = contentType[:i]
+	}
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+
+	// Fail closed: without an explicit allowlist, only known-safe web
+	// asset types may be stored. Anything active (HTML, SVG, JS) is
+	// rejected because it would be served same-origin.
 	if len(s.config.AllowedTypes) == 0 {
-		return true // Allow all if not specified
+		return defaultAllowedTypes[contentType]
 	}
 
 	for _, allowed := range s.config.AllowedTypes {
-		if contentType == allowed {
+		if strings.EqualFold(strings.TrimSpace(allowed), contentType) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// defaultAllowedTypes is the fail-closed baseline used when the operator has
+// not configured an explicit allowlist.
+var defaultAllowedTypes = map[string]bool{
+	"image/png":                true,
+	"image/jpeg":               true,
+	"image/gif":                true,
+	"image/webp":               true,
+	"image/avif":               true,
+	"audio/mpeg":               true,
+	"audio/ogg":                true,
+	"video/mp4":                true,
+	"video/webm":               true,
+	"application/pdf":          true,
+	"application/octet-stream": true,
 }
 
 func getContentType(filename string) string {
@@ -426,6 +485,6 @@ func (s *CDNService) GetStats() map[string]interface{} {
 		"total_size":    totalSize,
 		"cache_ttl":     s.config.CacheTTL,
 		"max_file_size": s.config.MaxFileSize,
-		"base_url":       s.config.BaseURL,
+		"base_url":      s.config.BaseURL,
 	}
 }

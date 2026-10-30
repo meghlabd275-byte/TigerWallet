@@ -23,7 +23,11 @@ import (
 	"sync"
 	"time"
 
+	"os"
+	"strings"
+
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"nhooyr.io/websocket"
@@ -48,7 +52,7 @@ func LoadNotificationConfig() *NotificationConfig {
 	return &NotificationConfig{
 		Port:             getEnv("NOTIFICATION_PORT", "9096"),
 		RedisURL:         getEnv("REDIS_NOTIFICATION_URL", "redis://localhost:6379"),
-		JWTSecret:        getEnv("NOTIFICATION_JWT_SECRET", "notification-secret-key"),
+		JWTSecret:        getEnv("NOTIFICATION_JWT_SECRET", ""),
 		MaxConnections:   getEnvInt("MAX_CONNECTIONS", 10000),
 		ReadTimeout:      getEnvDuration("READ_TIMEOUT", 10*time.Second),
 		WriteTimeout:     getEnvDuration("WRITE_TIMEOUT", 10*time.Second),
@@ -374,18 +378,26 @@ func NewNotificationHandler(hub *NotificationHub, config *NotificationConfig, re
 	}
 }
 
-func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
-	adminID := c.Query("admin_id")
-	role := c.Query("role")
+// notificationClaims mirrors the admin JWT payload. The identity of the
+// connected admin is taken only from a verified token, never from a query
+// parameter.
+type notificationClaims struct {
+	AdminID uint   `json:"admin_id"`
+	Role    string `json:"role"`
+	jwt.RegisteredClaims
+}
 
-	if adminID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "admin_id required"})
+func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
+	adminID, role, ok := h.authenticate(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "valid token required"})
 		return
 	}
 
 	// Upgrade to WebSocket
 	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionContextTakeover,
+		OriginPatterns:  wsOriginPatterns(),
 	})
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
@@ -689,4 +701,56 @@ func (s *WSNotificationService) NotifySystem(message string) {
 	}
 
 	s.hub.Broadcast(notification)
+}
+
+// ============================================================================
+// Authentication
+// ============================================================================
+
+// authenticate validates the bearer token supplied either in the
+// Authorization header or, because browsers cannot set headers on a WebSocket
+// handshake, in the `token` query parameter. Without a configured secret the
+// handler refuses every connection rather than trusting unverified claims.
+func (h *NotificationHandler) authenticate(c *gin.Context) (string, string, bool) {
+	if strings.TrimSpace(h.config.JWTSecret) == "" {
+		log.Printf("notification websocket: NOTIFICATION_JWT_SECRET is not set; refusing connections")
+		return "", "", false
+	}
+
+	tokenString := strings.TrimSpace(c.GetHeader("Authorization"))
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	if tokenString == "" {
+		tokenString = strings.TrimSpace(c.Query("token"))
+	}
+	if tokenString == "" {
+		return "", "", false
+	}
+
+	claims := &notificationClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(h.config.JWTSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", "", false
+	}
+
+	return fmt.Sprintf("%d", claims.AdminID), claims.Role, true
+}
+
+// wsOriginPatterns converts WS_ALLOWED_ORIGINS into the host patterns that
+// nhooyr/websocket matches against the Origin header. With no allowlist
+// configured, no browser origin is accepted.
+func wsOriginPatterns() []string {
+	var patterns []string
+	for _, part := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		patterns = append(patterns, strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://"))
+	}
+	return patterns
 }

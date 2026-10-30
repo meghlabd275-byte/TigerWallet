@@ -2,9 +2,14 @@
 package websocket
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math/big"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,12 +17,32 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// upgrader configures WebSocket connections
+// wsAllowedOrigins is parsed once at startup from WS_ALLOWED_ORIGINS
+// (comma separated). Empty means no browser origin is accepted.
+var wsAllowedOrigins = func() map[string]bool {
+	allowed := make(map[string]bool)
+	for _, part := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+		if o := strings.TrimSpace(part); o != "" {
+			allowed[o] = true
+		}
+	}
+	return allowed
+}()
+
+// upgrader configures WebSocket connections. Origins are checked against an
+// explicit allowlist: returning true unconditionally lets any site open an
+// authenticated socket with the victim's cookies (cross-site WebSocket
+// hijacking).
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in development
+		origin := r.Header.Get("Origin")
+		// Non-browser clients (no Origin header) are not subject to CSWSH.
+		if origin == "" {
+			return true
+		}
+		return wsAllowedOrigins[origin]
 	},
 }
 
@@ -360,15 +385,25 @@ func HandleWebSocket(hub *Hub) gin.HandlerFunc {
 // Helper functions
 
 func generateClientID() string {
-	return time.Now().Format("20060102150405.000000") + "." + randomString(8)
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		panic("websocket: crypto/rand unavailable: " + err.Error())
+	}
+	return time.Now().UTC().Format("20060102150405.000000") + "." + hex.EncodeToString(buf[:])
 }
 
+// randomString returns n characters drawn from crypto/rand. It previously
+// derived every character from time.Now().UnixNano(), which made identifiers
+// predictable and prone to collision when called in a tight loop.
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
-		time.Sleep(time.Nanosecond)
+		v, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic("websocket: crypto/rand unavailable: " + err.Error())
+		}
+		b[i] = letters[v.Int64()]
 	}
 	return string(b)
 }
