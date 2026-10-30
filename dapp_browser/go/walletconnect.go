@@ -9,15 +9,23 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -46,6 +54,18 @@ type WCConfig struct {
 	// production this should be sourced from a KMS, HSM, or secure enclave
 	// rather than the environment.
 	SignerPrivateKey string `json:"signer_private_key"`
+
+	// RPCURL is the JSON-RPC endpoint used to broadcast transactions for
+	// eth_sendTransaction. When empty, the request is rejected rather than
+	// answered with a fabricated hash.
+	RPCURL string `json:"rpc_url"`
+
+	// ChainID is the EIP-155 chain id used to sign outgoing transactions.
+	ChainID int64 `json:"chain_id"`
+
+	// AllowedOrigins is the browser-origin allowlist for the WebSocket
+	// handshake (comma-separated in WC_ALLOWED_ORIGINS).
+	AllowedOrigins []string `json:"allowed_origins"`
 }
 
 // WalletConnect v2 Methods
@@ -204,14 +224,32 @@ func NewWalletConnectService(cfg WCConfig) (*WalletConnectService, error) {
 	}
 
 	return &WalletConnectService{
-		db:     db,
-		redis:  rdb,
-		config: cfg,
-		upgrader: websocket.Upgrader{
-			CheckOrigin: func(r *http.Request) bool { return true },
-		},
-		signer: signer,
+		db:       db,
+		redis:    rdb,
+		config:   cfg,
+		upgrader: walletConnectUpgrader(cfg.AllowedOrigins),
+		signer:   signer,
 	}, nil
+}
+
+// walletConnectUpgrader builds the WebSocket upgrader. CheckOrigin previously
+// returned true unconditionally, which lets any web page open a WalletConnect
+// socket against a logged-in wallet; only origins on the allowlist are
+// accepted, while non-browser clients (no Origin header) still connect.
+func walletConnectUpgrader(origins []string) websocket.Upgrader {
+	allowed := make(map[string]bool, len(origins))
+	for _, o := range origins {
+		allowed[o] = true
+	}
+	return websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser client
+			}
+			return allowed[origin]
+		},
+	}
 }
 
 // GenerateKeyPair generates a new key pair for pairing
@@ -578,8 +616,176 @@ func (s *WalletConnectService) handleEthSendTransaction(topic string, msg *WCMes
 		return
 	}
 
-	txHash := "0x" + generateHash()
-	s.SendResponse(topic, msg.ID, txHash)
+	// A session request may carry a nested transaction object.
+	if inner, ok := tx["transaction"].(map[string]interface{}); ok {
+		tx = inner
+	}
+
+	hash, err := s.broadcastTransaction(topic, tx)
+	if err != nil {
+		s.SendError(topic, msg.ID, -32000, err.Error())
+		return
+	}
+	s.SendResponse(topic, msg.ID, hash)
+}
+
+// broadcastTransaction builds, signs and broadcasts a real transaction and
+// returns the node's transaction hash. This previously returned a random hash
+// without contacting a node, so every dApp saw success for a transaction that
+// was never created.
+func (s *WalletConnectService) broadcastTransaction(topic string, tx map[string]interface{}) (string, error) {
+	if s.signer == nil {
+		return "", errSigningUnavailable
+	}
+	if strings.TrimSpace(s.config.RPCURL) == "" {
+		return "", errors.New("no rpc_url configured; cannot broadcast")
+	}
+
+	// Validate the request payload before touching the database or the network.
+	to, err := txFieldString(tx, "to")
+	if err != nil {
+		return "", err
+	}
+	toAddr, err := parseAddress(to)
+	if err != nil {
+		return "", fmt.Errorf("invalid 'to' address: %w", err)
+	}
+
+	value, err := txFieldBigInt(tx, "value")
+	if err != nil {
+		return "", err
+	}
+	data, err := txFieldBytes(tx, "data")
+	if err != nil {
+		return "", err
+	}
+
+	// The session must be authorised before anything is broadcast.
+	session, _ := s.GetSession(topic)
+	if session == nil {
+		return "", errors.New("unauthorized")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := ethclient.DialContext(ctx, s.config.RPCURL)
+	if err != nil {
+		return "", fmt.Errorf("rpc dial failed: %w", err)
+	}
+	defer client.Close()
+
+	from := crypto.PubkeyToAddress(s.signer.PublicKey)
+
+	nonce, err := client.PendingNonceAt(ctx, from)
+	if err != nil {
+		return "", fmt.Errorf("nonce lookup failed: %w", err)
+	}
+
+	chainID := big.NewInt(s.config.ChainID)
+	if chainID.Sign() == 0 {
+		id, cerr := client.ChainID(ctx)
+		if cerr != nil {
+			return "", errors.New("chain id unavailable")
+		}
+		chainID = id
+	}
+
+	gasTip, _ := client.SuggestGasTipCap(ctx)
+	gasFeeCap, err := client.SuggestGasPrice(ctx)
+	if err != nil {
+		return "", fmt.Errorf("gas price lookup failed: %w", err)
+	}
+
+	call := ethereum.CallMsg{From: from, To: &toAddr, Value: value, Data: data}
+	gasLimit, err := client.EstimateGas(ctx, call)
+	if err != nil || gasLimit == 0 {
+		// Fall back to the node's block gas limit when estimation fails.
+		header, herr := client.HeaderByNumber(ctx, nil)
+		if herr != nil || header == nil {
+			return "", fmt.Errorf("gas estimation failed: %w", err)
+		}
+		gasLimit = header.GasLimit
+	}
+
+	raw := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		GasTipCap: gasTip,
+		GasFeeCap: gasFeeCap,
+		Gas:       gasLimit,
+		To:        &toAddr,
+		Value:     value,
+		Data:      data,
+	})
+
+	signed, err := types.SignTx(raw, types.LatestSignerForChainID(chainID), s.signer)
+	if err != nil {
+		return "", fmt.Errorf("signing failed: %w", err)
+	}
+
+	if err := client.SendTransaction(ctx, signed); err != nil {
+		return "", fmt.Errorf("broadcast failed: %w", err)
+	}
+	return signed.Hash().Hex(), nil
+}
+
+// txFieldString reads a required string field.
+func txFieldString(tx map[string]interface{}, key string) (string, error) {
+	v, ok := tx[key]
+	if !ok || v == nil {
+		return "", fmt.Errorf("missing '%s'", key)
+	}
+	str, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("'%s' must be a string", key)
+	}
+	return str, nil
+}
+
+// txFieldBigInt parses a quantity field, which clients may send as hex.
+func txFieldBigInt(tx map[string]interface{}, key string) (*big.Int, error) {
+	v, ok := tx[key]
+	if !ok || v == nil {
+		return big.NewInt(0), nil
+	}
+	str, ok := v.(string)
+	if !ok {
+		return nil, fmt.Errorf("'%s' must be a string", key)
+	}
+	if str == "" {
+		return big.NewInt(0), nil
+	}
+	n, ok := new(big.Int).SetString(trimHexPrefix(str), 16)
+	if !ok {
+		return nil, fmt.Errorf("'%s' is not a valid quantity", key)
+	}
+	return n, nil
+}
+
+// txFieldBytes parses a 0x-prefixed hex payload.
+func txFieldBytes(tx map[string]interface{}, key string) ([]byte, error) {
+	v, ok := tx[key]
+	if !ok || v == nil {
+		return nil, nil
+	}
+	str, ok := v.(string)
+	if !ok || str == "" {
+		return nil, nil
+	}
+	raw, err := hex.DecodeString(trimHexPrefix(str))
+	if err != nil {
+		return nil, fmt.Errorf("'%s' is not valid hex", key)
+	}
+	return raw, nil
+}
+
+// parseAddress accepts a 0x-prefixed 20-byte hex address.
+func parseAddress(s string) (common.Address, error) {
+	if !common.IsHexAddress(s) {
+		return common.Address{}, errors.New("not a hex address")
+	}
+	return common.HexToAddress(s), nil
 }
 
 // API Handlers
@@ -745,12 +951,6 @@ func mustMarshalJSON(v interface{}) json.RawMessage {
 	return b
 }
 
-func generateHash() string {
-	var b [32]byte
-	rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
-
 // trimHexPrefix removes an optional "0x"/"0X" prefix from a hex string.
 func trimHexPrefix(s string) string {
 	if len(s) >= 2 && (s[:2] == "0x" || s[:2] == "0X") {
@@ -826,6 +1026,9 @@ func main() {
 		// eth_signTypedData_v4 requests. When unset, signing requests are
 		// rejected. Production should source this from a KMS/HSM, not env.
 		SignerPrivateKey: getEnv("WC_SIGNER_PRIVATE_KEY", ""),
+		RPCURL:           getEnv("WC_RPC_URL", ""),
+		ChainID:          getEnvInt("WC_CHAIN_ID", 1),
+		AllowedOrigins:   splitOrigins(getEnv("WC_ALLOWED_ORIGINS", "")),
 	}
 
 	service, err := NewWalletConnectService(cfg)
@@ -864,6 +1067,27 @@ func main() {
 	<-quit
 
 	fmt.Println("Shutting down...")
+}
+
+// splitOrigins parses a comma-separated origin allowlist.
+func splitOrigins(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// getEnvInt reads an integer environment variable.
+func getEnvInt(key string, defaultVal int64) int64 {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return defaultVal
 }
 
 func getEnv(key, defaultValue string) string {
