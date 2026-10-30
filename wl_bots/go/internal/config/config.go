@@ -8,6 +8,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"strconv"
 	"time"
 )
@@ -28,6 +29,9 @@ type Config struct {
 	BotCoreURL        string // Rust bot_core execution plane (BOT_CORE_URL)
 	ProjectPartyURL   string // WL ProjectParty backend for mm-configs linkage (PROJECT_PARTY_URL)
 	PPServiceToken    string // shared service-to-service token with project-party (PP_SERVICE_TOKEN)
+	// CORSAllowedOrigins is the browser-origin allowlist for the API.
+	// Empty means no cross-origin browser access.
+	CORSAllowedOrigins []string
 }
 
 func Load() *Config {
@@ -47,7 +51,24 @@ func Load() *Config {
 		BotCoreURL:        getEnv("BOT_CORE_URL", "http://localhost:8472"),
 		ProjectPartyURL:   getEnv("PROJECT_PARTY_URL", "http://localhost:8106"),
 		PPServiceToken:    getEnv("PP_SERVICE_TOKEN", ""),
+		CORSAllowedOrigins: splitCSV(getEnv("WL_BOTS_CORS_ORIGINS", "")),
 	}
+}
+
+// splitCSV parses a comma-separated list, dropping blank entries so a trailing
+// comma cannot introduce an empty origin or address.
+func splitCSV(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func getEnv(k, d string) string {

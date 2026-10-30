@@ -57,14 +57,26 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+	r.Use(func() gin.HandlerFunc {
+	// CORS: an explicit origin allowlist. A wildcard cannot be combined with
+	// AllowCredentials (browsers reject it), so this previously blocked
+	// credentialed cross-origin calls while appearing to permit them. With no
+	// allowlist configured the API serves same-origin only.
+	corsCfg := cors.Config{
+		AllowOrigins:     cfg.CORSAllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
-	}))
+	}
+	if len(cfg.CORSAllowedOrigins) == 0 {
+		// gin-contrib/cors rejects a config with no origins at all, so deny
+		// explicitly rather than panicking on an unconfigured deployment.
+		corsCfg.AllowOriginFunc = func(string) bool { return false }
+	}
+	return cors.New(corsCfg)
+}())
 
 	r.GET("/health", h.Health)
 

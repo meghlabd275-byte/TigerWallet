@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"strconv"
 	"time"
 )
@@ -41,6 +42,10 @@ type Config struct {
 
 	HeartbeatTimeout time.Duration // WL product is dead if no heartbeat for this long
 	GracePeriod      time.Duration // tolerance window before hard kill
+
+	// CORSAllowedOrigins is the browser-origin allowlist for the control-plane API.
+	// Empty means no cross-origin browser access.
+	CORSAllowedOrigins []string
 }
 
 func Load() *Config {
@@ -59,6 +64,7 @@ func Load() *Config {
 		SuperAdminSignerAddress: getEnv("SUPER_ADMIN_SIGNER_ADDRESS", ""),
 		HeartbeatTimeout:        getDuration("HEARTBEAT_TIMEOUT", 90*time.Second),
 		GracePeriod:             getDuration("HEARTBEAT_GRACE_PERIOD", 15*time.Second),
+		CORSAllowedOrigins:      splitCSV(os.Getenv("LICENSE_SERVICE_CORS_ORIGINS")),
 	}
 	if cfg.JWTSecret == "" {
 		// Fail-closed: a license control plane MUST have a JWT secret. We never
@@ -69,6 +75,22 @@ func Load() *Config {
 		panic("SUPER_ADMIN_PASSWORD environment variable is required to bootstrap the first superadmin")
 	}
 	return cfg
+}
+
+// splitCSV parses a comma-separated list, dropping blank entries so a trailing
+// comma cannot introduce an empty origin or address.
+func splitCSV(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func getEnv(key, def string) string {

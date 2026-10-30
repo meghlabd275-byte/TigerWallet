@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,9 @@ type Config struct {
 	CloudflareEmail    string
 	CloudflareZoneID   string
 	LogLevel           string
+	// CORSAllowedOrigins is the browser-origin allowlist for the admin API.
+	// Empty means no cross-origin browser access.
+	CORSAllowedOrigins []string
 }
 
 func Load() *Config {
@@ -77,6 +81,7 @@ func Load() *Config {
 		CloudflareEmail:    getEnv("CLOUDFLARE_EMAIL", ""),
 		CloudflareZoneID:   getEnv("CLOUDFLARE_ZONE_ID", ""),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
+		CORSAllowedOrigins: getEnvSlice("SUPER_ADMIN_CORS_ORIGINS"),
 	}
 }
 
@@ -126,6 +131,20 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
+// getEnvSlice parses a comma-separated environment variable into a slice,
+// dropping blank entries. It previously returned an empty slice unconditionally,
+// which silently disabled the IP allowlist that consumes it.
 func getEnvSlice(key string) []string {
-	return []string{}
+	raw := os.Getenv(key)
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }

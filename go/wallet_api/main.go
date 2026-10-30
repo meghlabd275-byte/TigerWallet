@@ -70,15 +70,24 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	// CORS — allow the Next.js frontend and all wallet clients
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+	// CORS: an explicit origin allowlist. A wildcard cannot be combined with
+	// AllowCredentials (browsers reject it), so this previously blocked
+	// credentialed cross-origin calls while appearing to permit them. With no
+	// allowlist configured the API serves same-origin only.
+	corsCfg := cors.Config{
+		AllowOrigins:     appConfig.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length", "X-Total-Count"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
-	}))
+	}
+	if len(appConfig.CORSAllowedOrigins) == 0 {
+		// gin-contrib/cors rejects a config with no origins at all, so deny
+		// explicitly rather than panicking on an unconfigured deployment.
+		corsCfg.AllowOriginFunc = func(string) bool { return false }
+	}
+	r.Use(cors.New(corsCfg))
 
 	// ---- Public routes ----
 	r.GET("/health", handleHealth)

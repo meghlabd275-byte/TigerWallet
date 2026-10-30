@@ -75,14 +75,26 @@ func main() {
 	svc := handlers.New(cfg, database.Pool, rdb)
 
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+	router.Use(func() gin.HandlerFunc {
+	// CORS: an explicit origin allowlist. A wildcard cannot be combined with
+	// AllowCredentials (browsers reject it), so this previously blocked
+	// credentialed cross-origin calls while appearing to permit them. With no
+	// allowlist configured the API serves same-origin only.
+	corsCfg := cors.Config{
+		AllowOrigins:     cfg.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
-	}))
+	}
+	if len(cfg.CORSAllowedOrigins) == 0 {
+		// gin-contrib/cors rejects a config with no origins at all, so deny
+		// explicitly rather than panicking on an unconfigured deployment.
+		corsCfg.AllowOriginFunc = func(string) bool { return false }
+	}
+	return cors.New(corsCfg)
+}())
 
 	router.GET("/health", svc.Health)
 	router.GET("/api/v1/scopes", func(c *gin.Context) {

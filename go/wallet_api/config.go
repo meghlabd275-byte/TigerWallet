@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // AppConfig holds runtime configuration sourced from environment with sane
@@ -28,6 +29,9 @@ type AppConfig struct {
 	// P2PServiceURL is the canonical P2P trading backend (p2p_trading, :8475).
 	// Used by the /p2p/* proxy (orders KYC-gated). Server-to-server only.
 	P2PServiceURL string
+	// CORSAllowedOrigins is the browser-origin allowlist for the API and the
+	// WebSocket handshake. Empty means no cross-origin browser access.
+	CORSAllowedOrigins []string
 }
 
 // LoadConfig reads configuration from environment variables. Every secret has
@@ -44,7 +48,24 @@ func LoadConfig() *AppConfig {
 		MasterWalletBackendURL: envOr("MASTER_WALLET_API_URL", "http://localhost:8450"),
 		ListingServiceURL:      envOr("LISTING_SERVICE_URL", "http://localhost:8010"),
 		P2PServiceURL:          envOr("P2P_SERVICE_URL", "http://localhost:8475"),
+		CORSAllowedOrigins:     splitAndTrim(os.Getenv("WALLET_API_CORS_ORIGINS")),
 	}
+}
+
+// splitAndTrim parses a comma-separated list, dropping empty entries so a
+// trailing comma cannot introduce a blank origin.
+func splitAndTrim(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 // envOr returns the env value or a fallback.
