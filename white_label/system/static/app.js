@@ -354,14 +354,14 @@ async function loadFetchers() {
 
         for (const fetcher of fetchers) {
             try {
-                const statsRes = await fetchWithAuth(`${API_BASE}/white-label/fetchers/${fetcher.name}/stats`);
+                const statsRes = await fetchWithAuth(`${API_BASE}/white-label/fetchers/${encodeURIComponent(fetcher.name)}/stats`);
                 const stats = await statsRes.json();
                 
                 statsGrid.innerHTML += `
                     <div class="stat-card">
-                        <div class="stat-value" style="font-size: 1rem;">${fetcher.name}</div>
-                        <div class="stat-label">Latency: ${stats.lastLatencyNs}ns</div>
-                        <div class="stat-label">Success: ${stats.successRate.toFixed(1)}%</div>
+                        <div class="stat-value" style="font-size: 1rem;">${esc(fetcher.name)}</div>
+                        <div class="stat-label">Latency: ${esc(stats.lastLatencyNs)}ns</div>
+                        <div class="stat-label">Success: ${Number.isFinite(Number(stats.successRate)) ? Number(stats.successRate).toFixed(1) : '0.0'}%</div>
                     </div>
                 `;
             } catch (e) {
