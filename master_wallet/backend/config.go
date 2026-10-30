@@ -32,6 +32,9 @@ type AppConfig struct {
 	// unset, AA endpoints delegate signing to the wallet owner's key).
 	BundlerURL      string
 	PaymasterURL    string
+	// CORSAllowedOrigins is the browser-origin allowlist for the API and the
+	// WebSocket handshake. Empty means no cross-origin browser access.
+	CORSAllowedOrigins []string
 }
 
 // LoadConfig reads configuration from environment variables with sensible
@@ -71,6 +74,7 @@ func LoadConfig() *AppConfig {
 		TreasuryKeyHex:  os.Getenv("MASTER_WALLET_TREASURY_KEY_HEX"),
 		BundlerURL:      os.Getenv("MASTER_WALLET_BUNDLER_URL"),
 		PaymasterURL:    os.Getenv("MASTER_WALLET_PAYMASTER_URL"),
+		CORSAllowedOrigins: splitAndTrim(os.Getenv("MASTER_WALLET_CORS_ORIGINS")),
 	}
 }
 
@@ -176,4 +180,15 @@ var placeholderSecrets = map[string]bool{
 // placeholder rather than a real key.
 func isPlaceholderSecret(value string) bool {
 	return placeholderSecrets[strings.ToLower(strings.TrimSpace(value))]
+}
+
+// splitAndTrim splits a comma-separated list and drops empty entries.
+func splitAndTrim(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }

@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,8 +19,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// wsAllowedOrigins is the browser-origin allowlist for WebSocket handshakes,
+// parsed once from MASTER_WALLET_CORS_ORIGINS. Empty means no browser origin
+// is accepted; returning true unconditionally would allow cross-site
+// WebSocket hijacking against an authenticated operator session.
+var wsAllowedOrigins = func() map[string]bool {
+	allowed := make(map[string]bool)
+	for _, o := range splitAndTrim(os.Getenv("MASTER_WALLET_CORS_ORIGINS")) {
+		allowed[o] = true
+	}
+	return allowed
+}()
+
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		// Non-browser clients send no Origin and are not CSWSH candidates.
+		if origin == "" {
+			return true
+		}
+		return wsAllowedOrigins[origin]
+	},
 }
 
 // wsClient is one connected WebSocket client.
@@ -119,10 +140,28 @@ func (c *wsClient) writePump() {
 	}
 }
 
-// HandleWebSocket upgrades the HTTP connection and registers a client. The
-// master_wallet_id query param scopes broadcasts to the relevant wallet.
+// HandleWebSocket upgrades the HTTP connection and registers a client.
+//
+// The caller must present a valid JWT (Authorization header, or the `token`
+// query parameter because browsers cannot set headers on a WebSocket
+// handshake), and the requested master_wallet_id must belong to that user
+// unless they are an admin. Without both checks any anonymous client could
+// subscribe to another operator's balance and transaction stream.
 func (svc *Service) HandleWebSocket(c *gin.Context) {
+	claims, ok := wsAuthenticate(c, svc.cfg.JWTSecret)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "valid token required"})
+		return
+	}
+
 	masterID := c.Query("master_wallet_id")
+	if masterID != "" {
+		if !svc.wsMayAccessWallet(c.Request.Context(), masterID, claims.UserID, claims.Role) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "wallet not accessible to this user"})
+			return
+		}
+	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("ws upgrade failed: %v", err)
@@ -136,6 +175,40 @@ func (svc *Service) HandleWebSocket(c *gin.Context) {
 	if masterID != "" {
 		go svc.pushInitialBalance(client, masterID)
 	}
+}
+
+// wsAuthenticate validates a JWT from the Authorization header or the token
+// query parameter.
+func wsAuthenticate(c *gin.Context, secret string) (*MasterClaims, bool) {
+	if strings.TrimSpace(secret) == "" {
+		return nil, false
+	}
+	tokenStr := strings.TrimPrefix(strings.TrimSpace(c.GetHeader("Authorization")), "Bearer ")
+	if tokenStr == "" {
+		tokenStr = strings.TrimSpace(c.Query("token"))
+	}
+	if tokenStr == "" {
+		return nil, false
+	}
+	claims, err := ParseJWT(secret, tokenStr)
+	if err != nil {
+		return nil, false
+	}
+	return claims, true
+}
+
+// wsMayAccessWallet reports whether the caller owns the wallet, or holds an
+// operator role. A wallet with no recorded owner is reachable only by admins.
+func (svc *Service) wsMayAccessWallet(ctx context.Context, masterID, userID, role string) bool {
+	if role == "admin" || role == "super_admin" {
+		return true
+	}
+	var createdBy string
+	if err := svc.store.db.QueryRow(ctx,
+		`SELECT COALESCE(created_by::text, '') FROM master_wallets WHERE id = $1`, masterID).Scan(&createdBy); err != nil {
+		return false
+	}
+	return createdBy != "" && createdBy == userID
 }
 
 // pushInitialBalance sends the live balance once on connect.

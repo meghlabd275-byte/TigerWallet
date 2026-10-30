@@ -58,14 +58,24 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+	// CORS: an explicit origin allowlist. AllowOrigins:["*"] together with
+	// AllowCredentials is rejected by browsers, so a wildcard could never have
+	// worked for credentialed requests anyway; with no allowlist configured the
+	// API serves same-origin only.
+	corsCfg := cors.Config{
+		AllowOrigins:     appConfig.CORSAllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length", "X-Total-Count"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
-	}))
+	}
+	if len(appConfig.CORSAllowedOrigins) == 0 {
+		// gin-contrib/cors rejects a config with no origins at all, so deny
+		// explicitly rather than panicking on an unconfigured deployment.
+		corsCfg.AllowOriginFunc = func(string) bool { return false }
+	}
+	r.Use(cors.New(corsCfg))
 
 	// Kill-switch control plane: a SuperAdmin global halt (written by the
 	// kill_switch service :8469 to the shared Redis kill:global key) 503-blocks
