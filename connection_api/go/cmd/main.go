@@ -7,8 +7,8 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	redislib "github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Configuration
@@ -64,7 +66,6 @@ type ConnectionState struct {
 	ClientID        uuid.UUID         `json:"client_id"`
 	Product         WhiteLevelProduct `json:"product"`
 	ConnectionKey   string            `json:"connection_key"`
-	SessionToken    string            `json:"session_token"`
 	Status          ConnectionStatus  `json:"status"`
 	IPAddress       string            `json:"ip_address"`
 	Region          string            `json:"region"`
@@ -130,17 +131,18 @@ var (
 )
 
 type rateLimiter struct {
-	requests int
-	window   time.Duration
+	requests  int
+	limit     int
+	window    time.Duration
 	lastReset time.Time
-	mu       sync.Mutex
+	mu        sync.Mutex
 }
 
-func newRateLimiter(requests int, window time.Duration) *rateLimiter {
+func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	return &rateLimiter{
-		requests:   requests,
-		window:     window,
-		lastReset:  time.Now(),
+		limit:     limit,
+		window:    window,
+		lastReset: time.Now(),
 	}
 }
 
@@ -153,11 +155,11 @@ func (r *rateLimiter) Allow() bool {
 		r.lastReset = time.Now()
 	}
 	
-	if r.requests >= 0 {
-		r.requests++
-		return true
+	if r.requests >= r.limit {
+		return false
 	}
-	return false
+	r.requests++
+	return true
 }
 
 // ============ INITIALIZATION ============
@@ -246,28 +248,57 @@ func generateSessionToken() string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-func hashAPIKey(apiKey string) string {
-	hash := sha256.Sum256([]byte(apiKey))
-	return hex.EncodeToString(hash[:])
+// APIKeyHash returns the value to store in connection_api_keys.api_key_hash.
+// The key is pre-hashed with SHA-256 so that any key length can be fed to
+// bcrypt (which silently truncates at 72 bytes) without weakening the stored
+// digest. A bare SHA-256 is never used on its own for storage.
+func APIKeyHash(apiKey string) (string, error) {
+	sum := sha256.Sum256([]byte(apiKey))
+	hash, err := bcrypt.GenerateFromPassword(sum[:], bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
+// validateAPIKey resolves an API key to its client id. The candidate is
+// matched against every active key for the product using a constant-time
+// bcrypt comparison, because the stored value is salted and therefore cannot
+// be looked up by equality.
 func validateAPIKey(apiKey string, product WhiteLevelProduct) (*uuid.UUID, error) {
-	keyHash := hashAPIKey(apiKey)
-	
-	var clientID uuid.UUID
-	err := db.QueryRow(context.Background(), `
-		SELECT client_id FROM connection_api_keys 
-		WHERE api_key_hash = $1 AND product = $2 AND is_active = true
-	`, keyHash, product).Scan(&clientID)
-
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, fmt.Errorf("invalid API key")
 	}
 
-	// Update last used
-	db.Exec(context.Background(), "UPDATE connection_api_keys SET last_used_at = NOW() WHERE api_key_hash = $1", keyHash)
-	
-	return &clientID, nil
+	rows, err := db.Query(context.Background(), `
+		SELECT id, client_id, api_key_hash
+		FROM connection_api_keys
+		WHERE product = $1 AND is_active = true
+		  AND (expires_at IS NULL OR expires_at > NOW())
+	`, product)
+	if err != nil {
+		return nil, fmt.Errorf("invalid API key")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id       uuid.UUID
+			clientID uuid.UUID
+			hash     string
+		)
+		if err := rows.Scan(&id, &clientID, &hash); err != nil {
+			continue
+		}
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(apiKey)) != nil {
+			continue
+		}
+		rows.Close()
+		db.Exec(context.Background(), "UPDATE connection_api_keys SET last_used_at = NOW() WHERE id = $1", id)
+		return &clientID, nil
+	}
+
+	return nil, fmt.Errorf("invalid API key")
 }
 
 func createConnection(req ConnectRequest) (*ConnectResponse, error) {
@@ -292,7 +323,6 @@ func createConnection(req ConnectRequest) (*ConnectResponse, error) {
 		ClientID:        *clientID,
 		Product:         req.Product,
 		ConnectionKey:   connKey,
-		SessionToken:    sessionToken,
 		Status:          StatusConnected,
 		IPAddress:       req.IPAddress,
 		Region:          req.Region,
@@ -307,9 +337,12 @@ func createConnection(req ConnectRequest) (*ConnectResponse, error) {
 	activeCount.Add(1)
 	totalConnects.Add(1)
 
-	// Store in Redis for distributed access
+	// Store in Redis for distributed access. The session token is written
+	// under its own key so that connection records can be listed without
+	// exposing the credential.
 	connJSON, _ := json.Marshal(conn)
 	redis.Set(context.Background(), "conn:"+connKey, connJSON, 24*time.Hour)
+	redis.Set(context.Background(), "conn_token:"+connKey, sessionToken, 24*time.Hour)
 
 	// Store session in database
 	ipAddr := req.IPAddress
@@ -342,6 +375,35 @@ func createConnection(req ConnectRequest) (*ConnectResponse, error) {
 		ExpiresAt:    expiresAt,
 		Config:       config,
 	}, nil
+}
+
+// requireSession authorises a request against a connection key. The caller
+// must present the session token issued by /connect in the X-Session-Token
+// header. The token is stored separately from the connection record so that
+// listing connections never discloses it.
+func requireSession(c *gin.Context, connectionKey string) (*ConnectionState, bool) {
+	token := strings.TrimSpace(c.GetHeader("X-Session-Token"))
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing session token"})
+		return nil, false
+	}
+
+	expected, err := redis.Get(context.Background(), "conn_token:"+connectionKey).Result()
+	if err != nil || expected == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
+		return nil, false
+	}
+	if subtle.ConstantTimeCompare([]byte(expected), []byte(token)) != 1 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
+		return nil, false
+	}
+
+	conn, ok := connections.Load(connectionKey)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+		return nil, false
+	}
+	return conn.(*ConnectionState), true
 }
 
 func processHeartbeat(req HeartbeatRequest) error {
@@ -405,8 +467,8 @@ func disconnect(req DisconnectRequest) error {
 	activeCount.Add(-1)
 	totalDisconnects.Add(1)
 
-	// Remove from Redis
-	redis.Del(context.Background(), "conn:"+req.ConnectionKey)
+	// Remove from Redis, including the stored credential.
+	redis.Del(context.Background(), "conn:"+req.ConnectionKey, "conn_token:"+req.ConnectionKey)
 
 	// Update database
 	db.Exec(context.Background(), `
@@ -529,14 +591,10 @@ func Heartbeat(c *gin.Context) {
 		return
 	}
 
-	// Validate session
-	sessionToken := c.GetHeader("X-Session-Token")
-	if sessionToken != "" {
-		conn, ok := connections.Load(req.ConnectionKey)
-		if !ok || conn.(*ConnectionState).SessionToken != sessionToken {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
-			return
-		}
+	// The connection key alone is not a credential: without this check any
+	// caller could keep a victim's connection alive or mark it timed out.
+	if _, ok := requireSession(c, req.ConnectionKey); !ok {
+		return
 	}
 
 	err := processHeartbeat(req)
@@ -556,6 +614,12 @@ func Disconnect(c *gin.Context) {
 		return
 	}
 
+	// Anyone who knows a connection key could otherwise tear down another
+	// client's connection.
+	if _, ok := requireSession(c, req.ConnectionKey); !ok {
+		return
+	}
+
 	err := disconnect(req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -568,14 +632,15 @@ func Disconnect(c *gin.Context) {
 // GetConnection - Get connection info
 func GetConnection(c *gin.Context) {
 	connKey := c.Param("connection_key")
-	
-	conn, ok := connections.Load(connKey)
+
+	// A connection key is not a credential: only the owning client may read
+	// the record back.
+	conn, ok := requireSession(c, connKey)
 	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, conn.(*ConnectionState))
+	c.JSON(http.StatusOK, conn)
 }
 
 // GetConnections - Get all connections for client
@@ -612,7 +677,6 @@ func GetConnections(c *gin.Context) {
 		ClientID      uuid.UUID         `json:"client_id"`
 		Product       WhiteLevelProduct `json:"product"`
 		ConnectionKey string            `json:"connection_key"`
-		SessionToken  string            `json:"session_token"`
 		Status        string            `json:"status"`
 		IPAddress     string            `json:"ip_address"`
 		Region        string            `json:"region"`
@@ -624,7 +688,7 @@ func GetConnections(c *gin.Context) {
 	var sessions []SessionInfo
 	for rows.Next() {
 		var s SessionInfo
-		if err := rows.Scan(&s.ID, &s.ClientID, &s.Product, &s.ConnectionKey, &s.SessionToken, &s.Status, &s.IPAddress, &s.Region, &s.Latency, &s.ConnectedAt, &s.ExpiresAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.ClientID, &s.Product, &s.ConnectionKey, &s.Status, &s.IPAddress, &s.Region, &s.Latency, &s.ConnectedAt, &s.ExpiresAt); err != nil {
 			continue
 		}
 		sessions = append(sessions, s)
