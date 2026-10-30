@@ -179,7 +179,7 @@ pub enum OrderType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_balance")]
+#[serde(rename_all = "snake_case")]
 pub enum OrderSide {
     Buy,
     Sell,
@@ -285,7 +285,11 @@ impl PredictionMarketService {
         resolution_time: u64,
         category: String,
     ) -> Result<Market, PredictionError> {
-        let market_id = { *self.next_market_id.write() += 1; market_id };
+        let market_id = {
+            let mut next = self.next_market_id.write();
+            *next += 1;
+            *next
+        };
         
         let outcomes: Vec<Outcome> = outcome_names
             .iter()
@@ -382,7 +386,7 @@ impl PredictionMarketService {
         }
         
         let total_cost = (amount * price) / 1_000_000;
-        let fee = (total_cost * *self.trading_fee_bps.read()) / 10000;
+        let fee = (total_cost * u64::from(*self.trading_fee_bps.read())) / 10000;
         let total_required = total_cost + fee;
         
         let balance = self.balances.read().get(&user_id).copied().unwrap_or(0);
@@ -392,7 +396,11 @@ impl PredictionMarketService {
         
         self.balances.write().insert(user_id, balance - total_required);
         
-        let order_id = { *self.next_order_id.write() += 1; order_id };
+        let order_id = {
+            let mut next = self.next_order_id.write();
+            *next += 1;
+            *next
+        };
         
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH).unwrap()
@@ -444,9 +452,13 @@ impl PredictionMarketService {
         }
         
         let fill_value = (fill_amount * fill_price) / 1_000_000;
-        let fee = (fill_value * *self.trading_fee_bps.read()) / 10000;
+        let fee = (fill_value * u64::from(*self.trading_fee_bps.read())) / 10000;
         
-        let trade_id = { *self.next_trade_id.write() += 1; trade_id };
+        let trade_id = {
+            let mut next = self.next_trade_id.write();
+            *next += 1;
+            *next
+        };
         
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH).unwrap()
@@ -492,26 +504,87 @@ impl PredictionMarketService {
         let key = (user_id, market_id, outcome_id);
         let cost = (amount * price) / 1_000_000;
         
-        if let Some(pos) = self.positions.write().get_mut(&key) {
-            let total_cost = pos.invested + cost;
-            let total_quantity = pos.quantity + amount;
-            pos.avg_price = if total_quantity > 0 { (total_cost * 1_000_000) / total_quantity } else { 0 };
-            pos.quantity = total_quantity;
-            pos.invested = total_cost;
-        } else {
-            self.positions.write().insert(key, Position {
-                market_id,
-                outcome_id,
-                user_id,
-                quantity: amount,
-                avg_price: price,
-                invested: cost,
-                current_value: cost,
-                profit_loss: 0,
-            });
+        // One guard for the whole update. Taking a second write lock in an
+        // else branch while the `if let` scrutinee still holds the first
+        // deadlocks the thread on the same mutex.
+        let mut positions = self.positions.write();
+        match positions.get_mut(&key) {
+            Some(pos) => {
+                let total_cost = pos.invested + cost;
+                let total_quantity = pos.quantity + amount;
+                pos.avg_price = if total_quantity > 0 {
+                    (total_cost * 1_000_000) / total_quantity
+                } else {
+                    0
+                };
+                pos.quantity = total_quantity;
+                pos.invested = total_cost;
+            }
+            None => {
+                positions.insert(key, Position {
+                    market_id,
+                    outcome_id,
+                    user_id,
+                    quantity: amount,
+                    avg_price: price,
+                    invested: cost,
+                    current_value: cost,
+                    profit_loss: 0,
+                });
+            }
         }
     }
     
+    /// Cancel a resting order. Only the owner may cancel it, and a fill that
+    /// has already consumed the order leaves nothing to cancel.
+    pub fn cancel_order(&self, order_id: u64) -> Result<(), PredictionError> {
+        let mut orders = self.orders.write();
+        let order = orders
+            .get_mut(&order_id)
+            .ok_or(PredictionError::OrderNotFound(order_id))?;
+
+        if order.status == OrderStatus::Cancelled {
+            return Err(PredictionError::OrderCancelled(order_id));
+        }
+        if order.status == OrderStatus::Filled {
+            return Err(PredictionError::OrderCancelled(order_id));
+        }
+
+        // Release the unfilled remainder of the escrowed cost.
+        let remaining = order.amount.saturating_sub(order.filled_amount);
+        let refund = (remaining * order.price) / 1_000_000;
+        let holder = order.user_id;
+        order.status = OrderStatus::Cancelled;
+
+        // The balance map is a separate lock, so the order guard is released
+        // before it is taken.
+        drop(orders);
+        if refund > 0 {
+            self.add_funds(holder, refund);
+        }
+
+        Ok(())
+    }
+
+    /// Cancel an order on behalf of its owner. Refuses if the caller does not
+    /// own the order.
+    pub fn cancel_order_for_user(
+        &self,
+        user_id: u32,
+        order_id: u64,
+    ) -> Result<(), PredictionError> {
+        {
+            let orders = self.orders.read();
+            let order = orders
+                .get(&order_id)
+                .ok_or(PredictionError::OrderNotFound(order_id))?;
+            if order.user_id != user_id {
+                return Err(PredictionError::OrderNotFound(order_id));
+            }
+        }
+        self.cancel_order(order_id)
+    }
+
     pub fn get_user_positions(&self, user_id: u32) -> Vec<Position> {
         self.positions.read()
             .values()
@@ -536,25 +609,48 @@ impl PredictionMarketService {
         market.status = MarketStatus::Resolved;
         market.resolved_outcome = Some(outcome_id);
         
-        let resolution_price = market.outcomes[outcome_id as usize].price;
-        
-        for (_, pos) in self.positions.write().iter_mut() {
-            if pos.market_id == market_id {
-                pos.current_value = (pos.quantity * resolution_price) / 1_000_000;
-                pos.profit_loss = pos.current_value as i64 - pos.invested as i64;
+        // A winning share is worth 1.0 at settlement and a losing share is
+        // worth nothing, so the payout is the share count for the winning
+        // outcome and zero for every other outcome. The payout is credited to
+        // the holder: marking a position without paying it would leave the
+        // winner with nothing.
+        let mut payouts: Vec<(u32, u64)> = Vec::new();
+        {
+            let mut positions = self.positions.write();
+            for (_, pos) in positions.iter_mut() {
+                if pos.market_id != market_id {
+                    continue;
+                }
+
+                let payout = if pos.outcome_id == outcome_id {
+                    pos.quantity
+                } else {
+                    0
+                };
+
+                pos.current_value = payout;
+                pos.profit_loss = payout as i64 - pos.invested as i64;
+                if payout > 0 {
+                    payouts.push((pos.user_id, payout));
+                }
             }
+        }
+
+        for (user_id, payout) in payouts {
+            self.add_funds(user_id, payout);
         }
         
         Ok(())
     }
     
     pub fn add_funds(&self, user_id: u32, amount: u64) {
-        let current = *self.balances.read().get(&user_id).get_or_insert(&0);
-        self.balances.write().insert(user_id, current + amount);
+        let mut balances = self.balances.write();
+        let entry = balances.entry(user_id).or_insert(0);
+        *entry = entry.saturating_add(amount);
     }
     
     pub fn get_balance(&self, user_id: u32) -> u64 {
-        *self.balances.read().get(&user_id).get_or_insert(&0)
+        self.balances.read().get(&user_id).copied().unwrap_or(0)
     }
     
     pub fn price_oracle(&self) -> Arc<PriceOracle> {

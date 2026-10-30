@@ -1,0 +1,19 @@
+[package]
+name = "tiger-prediction-backend"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "TigerWallet prediction market engine: order placement, settlement and position accounting."
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+parking_lot = "0.12"
+thiserror = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
