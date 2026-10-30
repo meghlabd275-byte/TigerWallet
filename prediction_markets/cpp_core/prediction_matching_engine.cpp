@@ -67,7 +67,7 @@ std::vector<Trade> OrderBook::match_orders(uint64_t timestamp) {
         trade.maker_order_id = (bid_order.timestamp < ask_order.timestamp) 
                                ? bid_order_id 
                                : ask_order_id;
-        trade.taker_order_id = (bid_order.timestamp < ask_order_timestamp) 
+        trade.taker_order_id = (bid_order.timestamp < ask_order.timestamp) 
                                ? ask_order_id 
                                : bid_order_id;
         trade.price = trade_price;
@@ -98,23 +98,27 @@ std::vector<Trade> OrderBook::match_orders(uint64_t timestamp) {
             orders_.erase(ask_it);
         }
         
-        // Update best prices
-        while (bid_idx < PRICE_LEVELS && bid_levels_[bid_idx].total_amount == 0) {
-            bid_idx++;
-            if (bid_idx >= PRICE_LEVELS) {
-                best_bid_price_ = 0;
-                break;
+        // Refresh the top of book. Bids are searched downward from the best
+        // and asks upward, so the two sides never scan in the same direction.
+        // A level with no remaining size holds no price.
+        if (bid_levels_[bid_idx].total_amount == 0) {
+            best_bid_price_ = 0;
+            for (size_t i = bid_idx; i-- > 0;) {
+                if (bid_levels_[i].total_amount > 0) {
+                    best_bid_price_ = bid_levels_[i].price;
+                    break;
+                }
             }
-            best_bid_price_ = bid_levels_[bid_idx].price;
         }
-        
-        while (ask_idx < PRICE_LEVELS && ask_levels_[ask_idx].total_amount == 0) {
-            if (ask_idx == 0) {
-                best_ask_price_ = MAX_PRICE;
-                break;
+
+        if (ask_levels_[ask_idx].total_amount == 0) {
+            best_ask_price_ = MAX_PRICE;
+            for (size_t i = ask_idx + 1; i < PRICE_LEVELS; ++i) {
+                if (ask_levels_[i].total_amount > 0) {
+                    best_ask_price_ = ask_levels_[i].price;
+                    break;
+                }
             }
-            ask_idx--;
-            best_ask_price_ = ask_levels_[ask_idx].price;
         }
     }
     
@@ -145,16 +149,20 @@ void PredictionMatchingEngine::start() {
     
     running_.store(true);
     
-    // Pin threads to CPU cores for better performance
-    cpu_set_t cpus;
-    CPU_ZERO(&cpus);
-    
+    // Each thread pins itself. The affinity set is built inside the thread, so
+    // it does not need to be captured, and a failed pin is reported rather than
+    // silently leaving the worker on an unintended core.
     for (uint32_t i = 0; i < num_threads_; ++i) {
-        CPU_SET(i, &cpus);
         worker_threads_.emplace_back([this, i]() {
+#if defined(__linux__)
+            cpu_set_t cpus;
             CPU_ZERO(&cpus);
             CPU_SET(i, &cpus);
-            TIGER_CPU_PIN(cpus);
+            if (sched_setaffinity(0, sizeof(cpu_set_t), &cpus) != 0) {
+                std::cerr << "[PredictionEngine] worker " << i
+                          << " could not be pinned to CPU " << i << std::endl;
+            }
+#endif
             worker_thread();
         });
     }
@@ -269,9 +277,21 @@ std::vector<Trade> PredictionMatchingEngine::process_order(const Order& order) {
     
     if (!order_book) return trades;
     
-    // For market orders, get the best price
+    // Every order needs its own identifier. A caller on the synchronous path
+    // may not have set one, and two orders sharing an identifier would occupy
+    // a single book entry, so the second would silently replace the first.
     Order processed_order = order;
-    if (order.order_type == OrderType::MARKET) {
+    if (processed_order.order_id == 0) {
+        processed_order.order_id = market_manager_->allocate_order_id();
+    }
+    if (processed_order.timestamp == 0) {
+        processed_order.timestamp =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+    }
+
+    // For market orders, get the best price
+    if (processed_order.order_type == OrderType::MARKET) {
         auto [best_bid, best_ask] = order_book->get_best_prices();
         processed_order.price = (order.side == OrderSide::BUY) ? best_ask : best_bid;
         
@@ -293,14 +313,14 @@ std::vector<Trade> PredictionMatchingEngine::process_order(const Order& order) {
     
     // Assign trade IDs
     for (auto& trade : trades) {
-        trade.trade_id = market_manager_->next_trade_id_++;
+        trade.trade_id = market_manager_->allocate_trade_id();
     }
     
     return trades;
 }
 
 uint64_t PredictionMatchingEngine::submit_order(const Order& order) {
-    uint64_t order_id = market_manager_->next_order_id_++;
+    uint64_t order_id = market_manager_->allocate_order_id();
     
     Order submitted_order = order;
     submitted_order.order_id = order_id;
@@ -337,9 +357,21 @@ bool PredictionMatchingEngine::cancel_order(
 
 uint32_t PredictionMatchingEngine::cancel_all_orders(uint32_t user_id) {
     uint32_t count = 0;
-    
-    // This would iterate through all markets and outcomes
-    // For now, return 0 - implementation depends on market manager iteration
+
+    for (uint64_t market_id : market_manager_->get_all_market_ids()) {
+        auto market = market_manager_->get_market(market_id);
+        if (!market.has_value()) continue;
+
+        for (uint32_t outcome_id = 0; outcome_id < market->num_outcomes; ++outcome_id) {
+            auto* order_book = market_manager_->get_order_book(market_id, outcome_id);
+            if (!order_book) continue;
+
+            std::vector<uint64_t> cancelled;
+            order_book->cancel_user_orders(user_id, cancelled);
+            count += static_cast<uint32_t>(cancelled.size());
+        }
+    }
+
     return count;
 }
 
@@ -370,7 +402,7 @@ PredictionMatchingEngine::EngineStats PredictionMatchingEngine::get_stats() cons
     }
     
     {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
+        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(queue_mutex_));
         stats.queue_size = static_cast<uint64_t>(order_queue_.size());
     }
     

@@ -17,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -169,8 +170,13 @@ private:
     uint32_t outcome_id_;
     mutable std::shared_mutex mutex_;
     
-    inline size_t price_to_index(uint64_t price) const {
-        // Convert price to index (price from 0.000001 to 1.0)
+inline size_t price_to_index(uint64_t price) const {
+        // Convert a price (0.000001 .. 1.0, scaled by MAX_PRICE) to a level
+        // index. The result is clamped: a price of exactly MAX_PRICE would
+        // otherwise index one element past the end of the level arrays.
+        if (price >= MAX_PRICE) {
+            return PRICE_LEVELS - 1;
+        }
         return (price * PRICE_LEVELS) / MAX_PRICE;
     }
     
@@ -233,6 +239,15 @@ private:
     std::unordered_map<std::string, std::vector<uint64_t>> markets_by_category_;
     
 public:
+    // Identifier allocation. The engine issues trade and order ids, so these
+    // are exposed rather than kept private.
+    uint64_t allocate_trade_id() { return next_trade_id_++; }
+    uint64_t allocate_order_id() { return next_order_id_++; }
+    uint64_t peek_trade_id() const { return next_trade_id_; }
+    uint64_t peek_order_id() const { return next_order_id_; }
+    void set_trade_id(uint64_t value) { next_trade_id_ = value; }
+    void set_order_id(uint64_t value) { next_order_id_ = value; }
+
     MarketManager();
     ~MarketManager() = default;
     
@@ -282,6 +297,10 @@ public:
     
     // Get order book for market outcome
     OrderBook* get_order_book(uint64_t market_id, uint32_t outcome_id);
+
+    // Identifiers of every known market. Used to sweep all books, for example
+    // when cancelling a user's resting orders.
+    std::vector<uint64_t> get_all_market_ids() const;
     
     // Get market statistics
     struct MarketStats {
@@ -292,6 +311,10 @@ public:
     };
     MarketStats get_stats() const;
 };
+
+// Forward declaration: the engine owns the manager and allocates identifiers
+// through it.
+class PredictionMatchingEngine;
 
 // Order matching engine - main class
 class PredictionMatchingEngine {
@@ -330,10 +353,7 @@ private:
     
     // Worker thread function
     void worker_thread();
-    
-    // Process single order
-    std::vector<Trade> process_order(const Order& order);
-    
+
 public:
     PredictionMatchingEngine(uint32_t num_threads = std::thread::hardware_concurrency());
     ~PredictionMatchingEngine();
@@ -346,9 +366,14 @@ public:
     void start();
     void stop();
     
-    // Submit order
+    // Submit order (asynchronous: a worker thread picks it up).
     uint64_t submit_order(const Order& order);
-    
+
+    // Process an order synchronously and return the trades it produced. This is
+    // the low-latency path: the caller receives the fills without waiting for a
+    // worker thread to be scheduled.
+    std::vector<Trade> process_order(const Order& order);
+
     // Cancel order
     bool cancel_order(uint64_t market_id, uint32_t outcome_id, uint64_t order_id, uint32_t user_id);
     
@@ -429,11 +454,9 @@ public:
 // Inline implementations for performance
 inline OrderBook::OrderBook(uint32_t outcome_id)
     : best_bid_price_(0), best_ask_price_(MAX_PRICE), outcome_id_(outcome_id) {
-    // Initialize bid levels in descending order
-    for (size_t i = 0; i < PRICE_LEVELS; ++i) {
-        bid_levels_[i].price = MAX_PRICE - i;
-        ask_levels_[i].price = 1 + i;
-    }
+    // A level records the price of the orders resting in it, which add_order
+    // sets. Seeding the levels from their index would put a price in the book
+    // that no participant quoted.
 }
 
 inline bool OrderBook::add_order(const Order& order) {
@@ -441,8 +464,9 @@ inline bool OrderBook::add_order(const Order& order) {
     
     auto price_idx = price_to_index(order.price);
     
-    if (order.side == OrderSide::BUY) {
+if (order.side == OrderSide::BUY) {
         auto& level = bid_levels_[price_idx];
+        level.price = order.price;
         level.orders.push_back(order.order_id);
         level.total_amount += order.amount;
         level.order_count++;
@@ -450,8 +474,9 @@ inline bool OrderBook::add_order(const Order& order) {
         if (order.price > best_bid_price_) {
             best_bid_price_ = order.price;
         }
-    } else {
+} else {
         auto& level = ask_levels_[price_idx];
+        level.price = order.price;
         level.orders.push_back(order.order_id);
         level.total_amount += order.amount;
         level.order_count++;
@@ -488,10 +513,11 @@ inline bool OrderBook::remove_order(uint64_t order_id) {
             }
         }
         
-        // Update best bid
+        // Update best bid. A better bid sits at a lower index, so the search
+        // walks down from the level that just emptied.
         if (level.total_amount == 0 && order.price == best_bid_price_) {
-            // Find next best bid
-            for (size_t i = price_idx; i < PRICE_LEVELS; --i) {
+            best_bid_price_ = 0;
+            for (size_t i = price_idx; i-- > 0;) {
                 if (bid_levels_[i].total_amount > 0) {
                     best_bid_price_ = bid_levels_[i].price;
                     break;
@@ -511,8 +537,10 @@ inline bool OrderBook::remove_order(uint64_t order_id) {
             }
         }
         
+        // Update best ask. A better ask sits at a higher index.
         if (level.total_amount == 0 && order.price == best_ask_price_) {
-            for (size_t i = price_idx; i < PRICE_LEVELS; ++i) {
+            best_ask_price_ = MAX_PRICE;
+            for (size_t i = price_idx + 1; i < PRICE_LEVELS; ++i) {
                 if (ask_levels_[i].total_amount > 0) {
                     best_ask_price_ = ask_levels_[i].price;
                     break;
@@ -843,6 +871,17 @@ inline std::vector<Market> MarketManager::get_markets(
     }
     
     return result;
+}
+
+inline std::vector<uint64_t> MarketManager::get_all_market_ids() const {
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+
+    std::vector<uint64_t> ids;
+    ids.reserve(markets_.size());
+    for (const auto& [market_id, _] : markets_) {
+        ids.push_back(market_id);
+    }
+    return ids;
 }
 
 inline OrderBook* MarketManager::get_order_book(uint64_t market_id, uint32_t outcome_id) {
