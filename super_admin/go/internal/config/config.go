@@ -2,6 +2,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -53,7 +54,9 @@ func Load() *Config {
 		RedisAddr:          getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:     getEnv("REDIS_PASSWORD", ""),
 		RedisDB:           getIntEnv("REDIS_DB", 0),
-		JWTSecret:          getEnv("JWT_SECRET", ""),
+		// Fail closed: a super-admin token signed with an empty or short key
+		// is forgeable, which would hand over the whole platform.
+		JWTSecret:          getRequiredSecret("JWT_SECRET", 32),
 		JWTExpiry:          getDurationEnv("JWT_EXPIRY", 24*time.Hour),
 		JWTRefreshExpiry:   getDurationEnv("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 		BCryptCost:         getIntEnv("BCRYPT_COST", 14),
@@ -75,6 +78,20 @@ func Load() *Config {
 		CloudflareZoneID:   getEnv("CLOUDFLARE_ZONE_ID", ""),
 		LogLevel:           getEnv("LOG_LEVEL", "info"),
 	}
+}
+
+// getRequiredSecret reads a secret that must be set and at least minLen bytes
+// long. Short keys are brute-forceable, so they are rejected outright rather
+// than allowed to weaken the deployment silently.
+func getRequiredSecret(key string, minLen int) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s environment variable must be set", key)
+	}
+	if len(value) < minLen {
+		log.Fatalf("%s must be at least %d characters", key, minLen)
+	}
+	return value
 }
 
 func getEnv(key, defaultValue string) string {

@@ -2,22 +2,48 @@
 package websocket
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math/big"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/tigerwallet/super-admin/internal/config"
 )
 
 // upgrader configures WebSocket connections
+// wsAllowedOrigins is the browser-origin allowlist for WebSocket handshakes,
+// parsed once from WS_ALLOWED_ORIGINS. Returning true unconditionally would
+// allow cross-site WebSocket hijacking against a logged-in super admin.
+var wsAllowedOrigins = func() map[string]bool {
+	allowed := make(map[string]bool)
+	for _, part := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+		if o := strings.TrimSpace(part); o != "" {
+			allowed[o] = true
+		}
+	}
+	return allowed
+}()
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in development
+		origin := r.Header.Get("Origin")
+		// Non-browser clients send no Origin and are not CSWSH candidates.
+		if origin == "" {
+			return true
+		}
+		return wsAllowedOrigins[origin]
 	},
 }
 
@@ -66,6 +92,13 @@ type Client struct {
 	Hub      *Hub
 	Channels map[string]bool
 	mu       sync.Mutex
+	// JWTSecret is used to re-verify the token sent in an auth frame.
+	JWTSecret string
+	// AdminID and Role are populated only from a verified token.
+	AdminID string
+	Role    string
+	// authed guards channel subscriptions.
+	authed bool
 }
 
 // Hub maintains the set of active clients
@@ -261,10 +294,30 @@ func (c *Client) handleMessage(data []byte) {
 
 	switch msg.Type {
 	case MsgTypeAuth:
-		// Handle authentication
+		// Re-authenticate with the token carried in the frame. This previously
+		// replied "authenticated" to every caller regardless of any credential.
+		var authPayload struct {
+			Token string `json:"token"`
+		}
+		_ = json.Unmarshal(msg.Payload, &authPayload)
+		claims, ok := wsVerifyToken(c.JWTSecret, strings.TrimSpace(authPayload.Token))
+		if !ok {
+			c.sendAuthResponse(false, "invalid token")
+			return
+		}
+		c.mu.Lock()
+		c.AdminID = claims.AdminID.String()
+		c.Role = claims.Role
+		c.authed = true
+		c.mu.Unlock()
 		c.sendAuthResponse(true, "authenticated")
 
 	case MsgTypeSubscribe:
+		// Subscriptions require a verified identity.
+		if !c.isAuthed() {
+			c.sendError("authentication required")
+			return
+		}
 		if msg.Channel != "" {
 			c.mu.Lock()
 			c.Channels[msg.Channel] = true
@@ -324,9 +377,22 @@ func (c *Client) sendError(message string) {
 	c.Send <- data
 }
 
-// HandleWebSocket handles WebSocket connections
-func HandleWebSocket(hub *Hub) gin.HandlerFunc {
+// HandleWebSocket handles WebSocket connections. The caller must present a
+// valid super-admin JWT (Authorization header, or a `token` query parameter
+// because browsers cannot set headers on a WebSocket handshake); otherwise the
+// connection is refused before the upgrade.
+func HandleWebSocket(hub *Hub, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if strings.TrimSpace(cfg.JWTSecret) == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "websocket authentication is not configured"})
+			return
+		}
+		claims, ok := wsVerifyToken(cfg.JWTSecret, bearerOrQueryToken(c))
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "valid token required"})
+			return
+		}
+
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			log.Printf("WebSocket upgrade error: %v", err)
@@ -339,11 +405,15 @@ func HandleWebSocket(hub *Hub) gin.HandlerFunc {
 		}
 
 		client := &Client{
-			ID:       clientID,
-			Conn:     conn,
-			Send:     make(chan []byte, 256),
-			Hub:      hub,
-			Channels: make(map[string]bool),
+			ID:        clientID,
+			Conn:      conn,
+			Send:      make(chan []byte, 256),
+			Hub:       hub,
+			Channels:  make(map[string]bool),
+			JWTSecret: cfg.JWTSecret,
+			AdminID:   claims.AdminID.String(),
+			Role:      claims.Role,
+			authed:    true,
 		}
 
 		// Subscribe to default channels
@@ -357,18 +427,73 @@ func HandleWebSocket(hub *Hub) gin.HandlerFunc {
 	}
 }
 
-// Helper functions
-
-func generateClientID() string {
-	return time.Now().Format("20060102150405.000000") + "." + randomString(8)
+// wsClaims mirrors the super-admin JWT payload. Declared here so the
+// transport layer does not depend on the HTTP middleware package.
+type wsClaims struct {
+	AdminID  uuid.UUID `json:"admin_id"`
+	Username string    `json:"username"`
+	Email    string    `json:"email"`
+	Role     string    `json:"role"`
+	jwt.RegisteredClaims
 }
 
+// bearerOrQueryToken returns the caller's JWT from the Authorization header,
+// falling back to the token query parameter.
+func bearerOrQueryToken(c *gin.Context) string {
+	if h := strings.TrimSpace(c.GetHeader("Authorization")); h != "" {
+		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+	}
+	return strings.TrimSpace(c.Query("token"))
+}
+
+// wsVerifyToken validates an HS256 super-admin token. The signing method is
+// pinned so that "none" or an asymmetric algorithm cannot be substituted.
+func wsVerifyToken(secret, tokenString string) (*wsClaims, bool) {
+	if tokenString == "" {
+		return nil, false
+	}
+	claims := &wsClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(secret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, false
+	}
+	return claims, true
+}
+
+// Helper functions
+
+// isAuthed reports whether this connection carries a verified identity.
+func (c *Client) isAuthed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.authed
+}
+
+func generateClientID() string {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		panic("websocket: crypto/rand unavailable: " + err.Error())
+	}
+	return time.Now().UTC().Format("20060102150405.000000") + "." + hex.EncodeToString(buf[:])
+}
+
+// randomString returns n characters drawn from crypto/rand. It previously
+// derived every character from time.Now().UnixNano(), which made identifiers
+// predictable and prone to collision when called in a tight loop.
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
-		time.Sleep(time.Nanosecond)
+		v, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic("websocket: crypto/rand unavailable: " + err.Error())
+		}
+		b[i] = letters[v.Int64()]
 	}
 	return string(b)
 }

@@ -40,6 +40,12 @@ func JWTAuth(cfg *config.Config) gin.HandlerFunc {
 		claims := &Claims{}
 
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+			// Pin the algorithm. Without this check a token using "none", or an
+			// asymmetric alg whose "public key" is the HMAC secret, would be
+			// accepted as valid.
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
 			return []byte(cfg.JWTSecret), nil
 		})
 
