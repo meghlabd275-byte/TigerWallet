@@ -3,16 +3,13 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,7 +33,7 @@ var (
 
 func main() {
 	// Initialize logger
-	output := zerolog.ConsoleWriter{Output: os.Stdout}
+	output := zerolog.ConsoleWriter{Out: os.Stdout}
 	logger = zerolog.New(output).With().Timestamp().Logger()
 
 	// Load configuration
@@ -121,68 +118,68 @@ func getEnv(key, def string) string {
 
 // ProtectionPolicy represents a user's fraud protection policy
 type ProtectionPolicy struct {
-	PolicyID          string    `json:"policyId"`
-	UserID            string    `json:"userId"`
-	Status            string    `json:"status"` // active, suspended, expired, cancelled
-	CoverageLimitUSD float64   `json:"coverageLimitUSD"`
-	CoverageUsedUSD   float64   `json:"coverageUsedUSD"`
-	PremiumUSD        float64   `json:"premiumUSD"`
-	StartDate        int64     `json:"startDate"`
-	EndDate          int64     `json:"endDate"`
-	AutoRenew        bool      `json:"autoRenew"`
-	Features         []string  `json:"features"` // fraud_detection, real_time_alerts, coverage
-	CreatedAt        int64     `json:"createdAt"`
-	UpdatedAt        int64     `json:"updatedAt"`
+	PolicyID         string   `json:"policyId"`
+	UserID           string   `json:"userId"`
+	Status           string   `json:"status"` // active, suspended, expired, cancelled
+	CoverageLimitUSD float64  `json:"coverageLimitUSD"`
+	CoverageUsedUSD  float64  `json:"coverageUsedUSD"`
+	PremiumUSD       float64  `json:"premiumUSD"`
+	StartDate        int64    `json:"startDate"`
+	EndDate          int64    `json:"endDate"`
+	AutoRenew        bool     `json:"autoRenew"`
+	Features         []string `json:"features"` // fraud_detection, real_time_alerts, coverage
+	CreatedAt        int64    `json:"createdAt"`
+	UpdatedAt        int64    `json:"updatedAt"`
 }
 
 // Claim represents a fraud claim
 type Claim struct {
-	ClaimID         string    `json:"claimId"`
-	PolicyID        string    `json:"policyId"`
-	UserID          string    `json:"userId"`
-	IncidentDate    int64     `json:"incidentDate"`
-	IncidentType    string    `json:"incidentType"` // unauthorized_access, phishing, rug_pull, exchange_hack
-	AmountUSD       float64   `json:"amountUSD"`
-	Status          string    `json:"status"` // pending, reviewing, approved, rejected, paid
-	Description     string    `json:"description"`
-	Evidence        []string  `json:"evidence"` // URLs to evidence
-	TxHashes        []string  `json:"txHashes"`
-	ApprovedAmount  float64   `json:"approvedAmount,omitempty"`
-	ProcessedAt     int64     `json:"processedAt,omitempty"`
-	PaidAt          int64     `json:"paidAt,omitempty"`
-	CreatedAt       int64     `json:"createdAt"`
+	ClaimID        string   `json:"claimId"`
+	PolicyID       string   `json:"policyId"`
+	UserID         string   `json:"userId"`
+	IncidentDate   int64    `json:"incidentDate"`
+	IncidentType   string   `json:"incidentType"` // unauthorized_access, phishing, rug_pull, exchange_hack
+	AmountUSD      float64  `json:"amountUSD"`
+	Status         string   `json:"status"` // pending, reviewing, approved, rejected, paid
+	Description    string   `json:"description"`
+	Evidence       []string `json:"evidence"` // URLs to evidence
+	TxHashes       []string `json:"txHashes"`
+	ApprovedAmount float64  `json:"approvedAmount,omitempty"`
+	ProcessedAt    int64    `json:"processedAt,omitempty"`
+	PaidAt         int64    `json:"paidAt,omitempty"`
+	CreatedAt      int64    `json:"createdAt"`
 }
 
 // TransactionAlert represents a real-time transaction alert
 type TransactionAlert struct {
-	AlertID       string    `json:"alertId"`
-	UserID        string    `json:"userId"`
-	TxHash        string    `json:"txHash"`
-	ChainID       uint64    `json:"chainId"`
-	FromAddress   string    `json:"fromAddress"`
-	ToAddress     string    `json:"toAddress"`
-	AmountUSD     float64   `json:"amountUSD"`
-	Token         string    `json:"token"`
-	RiskScore     float64   `json:"riskScore"` // 0-100
-	RiskLevel     string    `json:"riskLevel"` // low, medium, high, critical
-	Alerts        []string  `json:"alerts"` // suspicious_address, high_value, unusual_pattern
-	Recommendation string    `json:"recommendation"` // block, warn, allow
-	CreatedAt     int64     `json:"createdAt"`
+	AlertID        string   `json:"alertId"`
+	UserID         string   `json:"userId"`
+	TxHash         string   `json:"txHash"`
+	ChainID        uint64   `json:"chainId"`
+	FromAddress    string   `json:"fromAddress"`
+	ToAddress      string   `json:"toAddress"`
+	AmountUSD      float64  `json:"amountUSD"`
+	Token          string   `json:"token"`
+	RiskScore      float64  `json:"riskScore"`      // 0-100
+	RiskLevel      string   `json:"riskLevel"`      // low, medium, high, critical
+	Alerts         []string `json:"alerts"`         // suspicious_address, high_value, unusual_pattern
+	Recommendation string   `json:"recommendation"` // block, warn, allow
+	CreatedAt      int64    `json:"createdAt"`
 }
 
 // UserBehavior represents user behavior patterns
 type UserBehavior struct {
-	UserID             string    `json:"userId"`
-	AvgTransactionUSD  float64   `json:"avgTransactionUSD"`
-	MaxTransactionUSD  float64   `json:"maxTransactionUSD"`
-	TransactionCount   int       `json:"transactionCount"`
-	UniqueAddresses   int       `json:"uniqueAddresses"`
-	Timezone          string    `json:"timezone"`
-	ActiveHours       []int     `json:"activeHours"` // 0-23
-	PreferredChains   []uint64  `json:"preferredChains"`
-	LastActivity      int64     `json:"lastActivity"`
-	FirstActivity     int64     `json:"firstActivity"`
-	UpdatedAt         int64     `json:"updatedAt"`
+	UserID            string   `json:"userId"`
+	AvgTransactionUSD float64  `json:"avgTransactionUSD"`
+	MaxTransactionUSD float64  `json:"maxTransactionUSD"`
+	TransactionCount  int      `json:"transactionCount"`
+	UniqueAddresses   int      `json:"uniqueAddresses"`
+	Timezone          string   `json:"timezone"`
+	ActiveHours       []int    `json:"activeHours"` // 0-23
+	PreferredChains   []uint64 `json:"preferredChains"`
+	LastActivity      int64    `json:"lastActivity"`
+	FirstActivity     int64    `json:"firstActivity"`
+	UpdatedAt         int64    `json:"updatedAt"`
 }
 
 // ============================================================================
@@ -215,8 +212,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.AmountUSD > 1000
 			},
-			Severity:   "medium",
-			Weight:     20,
+			Severity: "medium",
+			Weight:   20,
 		},
 		{
 			Name:        "very_high_value_transaction",
@@ -224,8 +221,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.AmountUSD > 5000
 			},
-			Severity:   "high",
-			Weight:     50,
+			Severity: "high",
+			Weight:   50,
 		},
 		{
 			Name:        "unknown_recipient",
@@ -233,8 +230,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return !ctx.IsKnownRecipient
 			},
-			Severity:   "medium",
-			Weight:     30,
+			Severity: "medium",
+			Weight:   30,
 		},
 		{
 			Name:        "suspicious_address",
@@ -242,8 +239,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.IsSuspiciousAddress
 			},
-			Severity:   "critical",
-			Weight:     100,
+			Severity: "critical",
+			Weight:   100,
 		},
 		{
 			Name:        "unusual_time",
@@ -251,8 +248,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.IsUnusualTime
 			},
-			Severity:   "low",
-			Weight:     10,
+			Severity: "low",
+			Weight:   10,
 		},
 		{
 			Name:        "new_address",
@@ -260,8 +257,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.IsNewAddress
 			},
-			Severity:   "medium",
-			Weight:     25,
+			Severity: "medium",
+			Weight:   25,
 		},
 		{
 			Name:        "rapid_transactions",
@@ -269,8 +266,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.RecentTxCount > 5
 			},
-			Severity:   "high",
-			Weight:     40,
+			Severity: "high",
+			Weight:   40,
 		},
 		{
 			Name:        "cross_chain_unusual",
@@ -278,8 +275,8 @@ func (e *PolicyEngine) loadDefaultRules() {
 			Condition: func(ctx *RiskContext) bool {
 				return ctx.IsCrossChain && !ctx.IsPreferredChain
 			},
-			Severity:   "medium",
-			Weight:     25,
+			Severity: "medium",
+			Weight:   25,
 		},
 	}
 }
@@ -310,12 +307,12 @@ type RiskRule struct {
 
 func (e *PolicyEngine) EvaluateTransaction(ctx *RiskContext) *TransactionAlert {
 	alert := &TransactionAlert{
-		AlertID:     generateID(),
-		UserID:      ctx.UserID,
-		RiskScore:   0,
-		RiskLevel:   "low",
-		Alerts:      []string{},
-		CreatedAt:    time.Now().Unix(),
+		AlertID:   generateID(),
+		UserID:    ctx.UserID,
+		RiskScore: 0,
+		RiskLevel: "low",
+		Alerts:    []string{},
+		CreatedAt: time.Now().Unix(),
 	}
 
 	// Evaluate all rules
@@ -455,7 +452,7 @@ func corsMiddleware() gin.HandlerFunc {
 
 func createPolicy(c *gin.Context) {
 	var req struct {
-		UserID     string  `json:"userId" binding:"required"`
+		UserID    string  `json:"userId" binding:"required"`
 		Coverage  float64 `json:"coverage"`
 		AutoRenew bool    `json:"autoRenew"`
 	}
@@ -486,18 +483,18 @@ func createPolicy(c *gin.Context) {
 
 	now := time.Now()
 	policy := ProtectionPolicy{
-		PolicyID:          generateID(),
-		UserID:            req.UserID,
-		Status:            "active",
-		CoverageLimitUSD:  coverage,
-		CoverageUsedUSD:   0,
-		PremiumUSD:        4.99,
-		StartDate:         now.Unix(),
-		EndDate:           now.AddDate(0, 1, 0).Unix(),
-		AutoRenew:         req.AutoRenew,
-		Features:          []string{"fraud_detection", "real_time_alerts", "coverage"},
-		CreatedAt:         now.Unix(),
-		UpdatedAt:         now.Unix(),
+		PolicyID:         generateID(),
+		UserID:           req.UserID,
+		Status:           "active",
+		CoverageLimitUSD: coverage,
+		CoverageUsedUSD:  0,
+		PremiumUSD:       4.99,
+		StartDate:        now.Unix(),
+		EndDate:          now.AddDate(0, 1, 0).Unix(),
+		AutoRenew:        req.AutoRenew,
+		Features:         []string{"fraud_detection", "real_time_alerts", "coverage"},
+		CreatedAt:        now.Unix(),
+		UpdatedAt:        now.Unix(),
 	}
 
 	// Save to Redis
@@ -630,11 +627,11 @@ func cancelPolicy(c *gin.Context) {
 
 func createClaim(c *gin.Context) {
 	var req struct {
-		PolicyID     string  `json:"policyId" binding:"required"`
-		UserID       string  `json:"userId" binding:"required"`
-		IncidentType string  `json:"incidentType" binding:"required"`
-		AmountUSD    float64 `json:"amountUSD" binding:"required,gt=0"`
-		Description  string  `json:"description"`
+		PolicyID     string   `json:"policyId" binding:"required"`
+		UserID       string   `json:"userId" binding:"required"`
+		IncidentType string   `json:"incidentType" binding:"required"`
+		AmountUSD    float64  `json:"amountUSD" binding:"required,gt=0"`
+		Description  string   `json:"description"`
 		TxHashes     []string `json:"txHashes"`
 	}
 
@@ -678,10 +675,12 @@ func createClaim(c *gin.Context) {
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	// Save claim
-	claimKey := fmt.Sprintf("claim:%s", claim.ClaimID)
-	if data, err := json.Marshal(claim); err == nil {
-		redisClient.Set(context.Background(), claimKey, data, 365*24*time.Hour)
+	// Save claim and index it against its owner, so the user's claim list and
+	// coverage usage reflect it.
+	if err := saveClaim(context.Background(), redisClient, claim); err != nil {
+		logger.Error().Err(err).Str("claimId", claim.ClaimID).Msg("failed to persist claim")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "claim could not be recorded"})
+		return
 	}
 
 	c.JSON(http.StatusCreated, claim)
@@ -704,8 +703,17 @@ func getClaim(c *gin.Context) {
 
 func getUserClaims(c *gin.Context) {
 	userID := c.Param("userId")
-	// In production: query from database
-	c.JSON(http.StatusOK, []Claim{})
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userId is required"})
+		return
+	}
+
+	claims, err := listUserClaims(context.Background(), redisClient, userID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "claims are unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, claims)
 }
 
 func addEvidence(c *gin.Context) {
@@ -751,12 +759,10 @@ func analyzeTransaction(c *gin.Context) {
 
 	alert := policyEngine.EvaluateTransaction(&ctx)
 
-	// Save alert
-	if alert.RiskLevel == "high" || alert.RiskLevel == "critical" {
-		alertKey := fmt.Sprintf("alert:%s", alert.AlertID)
-		if data, err := json.Marshal(alert); err == nil {
-			redisClient.Set(context.Background(), alertKey, data, 7*24*time.Hour)
-		}
+	// Save alert and index it against its owner, so the user's alert list
+	// reflects it.
+	if err := saveAlert(context.Background(), redisClient, alert); err != nil {
+		logger.Error().Err(err).Str("alertId", alert.AlertID).Msg("failed to persist alert")
 	}
 
 	c.JSON(http.StatusOK, alert)
@@ -782,13 +788,39 @@ func analyzeBatch(c *gin.Context) {
 
 func getUserAlerts(c *gin.Context) {
 	userID := c.Param("userId")
-	// In production: query from Redis/DB
-	c.JSON(http.StatusOK, []TransactionAlert{})
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userId is required"})
+		return
+	}
+
+	alerts, err := listUserAlerts(context.Background(), redisClient, userID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "alerts are unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, alerts)
 }
 
+// resolveAlert marks an alert resolved.
+//
+// The alert must exist: previously this answered "Alert resolved" for any id,
+// including ones that were never recorded.
 func resolveAlert(c *gin.Context) {
 	id := c.Param("id")
-	c.JSON(http.StatusOK, gin.H{"message": "Alert resolved"})
+	ctx := context.Background()
+
+	alert, err := loadAlert(ctx, redisClient, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Alert not found"})
+		return
+	}
+
+	alert.Recommendation = "resolved"
+	if data, err := json.Marshal(alert); err == nil {
+		redisClient.Set(ctx, alertKeyFor(id), data, alertIndexTTL)
+	}
+
+	c.JSON(http.StatusOK, alert)
 }
 
 // ============================================================================
@@ -842,9 +874,9 @@ func getCoverage(c *gin.Context) {
 	data, err := redisClient.Get(context.Background(), existingKey).Bytes()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"hasCoverage":   false,
-			"coverageUSD":  0,
-			"maxCoverage":  10000,
+			"hasCoverage": false,
+			"coverageUSD": 0,
+			"maxCoverage": 10000,
 		})
 		return
 	}
@@ -853,38 +885,65 @@ func getCoverage(c *gin.Context) {
 	json.Unmarshal(data, &policy)
 
 	c.JSON(http.StatusOK, gin.H{
-		"hasCoverage":     policy.Status == "active",
-		"coverageUSD":     policy.CoverageLimitUSD - policy.CoverageUsedUSD,
-		"maxCoverage":     policy.CoverageLimitUSD,
-		"premiumUSD":      policy.PremiumUSD,
-		"renewalDate":    policy.EndDate,
-		"autoRenew":      policy.AutoRenew,
+		"hasCoverage": policy.Status == "active",
+		"coverageUSD": policy.CoverageLimitUSD - policy.CoverageUsedUSD,
+		"maxCoverage": policy.CoverageLimitUSD,
+		"premiumUSD":  policy.PremiumUSD,
+		"renewalDate": policy.EndDate,
+		"autoRenew":   policy.AutoRenew,
 	})
 }
 
 func getCoverageUsage(c *gin.Context) {
 	userID := c.Param("userId")
-	existingKey := fmt.Sprintf("policy:user:%s", userID)
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userId is required"})
+		return
+	}
+	ctx := context.Background()
 
-	data, err := redisClient.Get(context.Background(), existingKey).Bytes()
+	existingKey := fmt.Sprintf("policy:user:%s", userID)
+	data, err := redisClient.Get(ctx, existingKey).Bytes()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"totalUsedUSD":   0,
-			"claimsCount":   0,
-			"claimHistory":  []Claim{},
+			"totalUsedUSD": 0,
+			"remainingUSD": 0,
+			"claimsCount":  0,
+			"claimHistory": []Claim{},
 		})
 		return
 	}
 
 	var policy ProtectionPolicy
-	json.Unmarshal(data, &policy)
+	if err := json.Unmarshal(data, &policy); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "stored policy is unreadable"})
+		return
+	}
 
-	// In production: get actual claims from database
+	// Usage is derived from the claims that were actually filed. Reporting the
+	// policy's stored figure with a hardcoded claim count of zero meant the
+	// endpoint never reflected the claims a user had made.
+	claims, err := listUserClaims(ctx, redisClient, userID)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "claim history is unavailable"})
+		return
+	}
+
+	summary := summarizeCoverage(claims)
+	remaining := policy.CoverageLimitUSD - summary.TotalUsedUSD
+	if remaining < 0 {
+		remaining = 0
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"totalUsedUSD":  policy.CoverageUsedUSD,
-		"remainingUSD":  policy.CoverageLimitUSD - policy.CoverageUsedUSD,
-		"claimsCount":  0,
-		"claimHistory":  []Claim{},
+		"totalUsedUSD":     summary.TotalUsedUSD,
+		"remainingUSD":     remaining,
+		"coverageLimitUSD": policy.CoverageLimitUSD,
+		"claimsCount":      summary.ClaimsCount,
+		"pendingCount":     summary.PendingCount,
+		"approvedCount":    summary.ApprovedCount,
+		"rejectedCount":    summary.RejectedCount,
+		"claimHistory":     summary.ClaimHistory,
 	})
 }
 
