@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -76,7 +77,7 @@ func Load() *Config {
 			Host:     getEnv("BILLING_DB_HOST", "localhost"),
 			Port:     getIntEnv("BILLING_DB_PORT", 5432),
 			User:     getEnv("BILLING_DB_USER", "tigerwallet"),
-			Password: getEnv("BILLING_DB_PASSWORD", "password"),
+			Password: mustEnv("BILLING_DB_PASSWORD"),
 			DBName:   getEnv("BILLING_DB_NAME", "tigerwallet_billing"),
 			SSLMode:  getEnv("BILLING_DB_SSLMODE", "require"),
 			MaxConns: int32(getIntEnv("BILLING_DB_MAX_CONNS", 25)),
@@ -110,6 +111,17 @@ func Load() *Config {
 			RequireSpecial:    getBoolEnv("REQUIRE_SPECIAL", true),
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

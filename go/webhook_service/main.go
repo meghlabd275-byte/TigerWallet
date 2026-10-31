@@ -40,14 +40,21 @@ type Config struct {
 	MaxWorkers  int
 }
 
-var config = Config{
-	ListenAddr:  getEnv("WEBHOOK_LISTEN_ADDR", ":9002"),
-	DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet?sslmode=disable"),
-	SecretKey:   getEnv("WEBHOOK_SECRET", "your-secret-key"),
-	MaxRetries:  3,
-	Timeout:     time.Second * 30,
-	MaxWorkers:  20,
+// loadConfig reads the service configuration. It runs from main rather than a
+// package-level var so that the test binary does not require runtime secrets
+// (a package initialiser would abort every `go test` run).
+func loadConfig() Config {
+	return Config{
+		ListenAddr:  getEnv("WEBHOOK_LISTEN_ADDR", ":9002"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet?sslmode=disable"),
+		SecretKey:   mustEnv("WEBHOOK_SECRET"),
+		MaxRetries:  3,
+		Timeout:     time.Second * 30,
+		MaxWorkers:  20,
+	}
 }
+
+var config Config
 
 // ============================================================================
 // Models
@@ -715,6 +722,17 @@ func randomString(n int) string {
 	return string(b)
 }
 
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
+}
+
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -743,6 +761,8 @@ func main() {
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet Webhook Service")
 	fmt.Println("============================================")
+
+	config = loadConfig()
 
 	svc, err := NewWebhookService()
 	if err != nil {

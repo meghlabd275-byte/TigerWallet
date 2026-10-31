@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sort"
@@ -558,10 +559,13 @@ func (s *CopyTradingService) GetUserFollowings(ctx *gin.Context) {
 	var followings []Follower
 	s.db.Where("user_address = ? AND status = ?", userAddress, "ACTIVE").Find(&followings)
 
-	// Get trader details
+	// Trader is nested under its own key rather than embedded: Follower and
+	// Trader share eight field names (id, trader_id, user_address, status,
+	// total_pnl, chain_id, created_at, updated_at), and embedding both would
+	// make encoding/json silently drop one of each colliding pair.
 	type FollowingWithTrader struct {
 		Follower
-		Trader
+		Trader Trader `json:"trader"`
 	}
 
 	result := make([]FollowingWithTrader, len(followings))
@@ -570,7 +574,7 @@ func (s *CopyTradingService) GetUserFollowings(ctx *gin.Context) {
 		s.db.Where("trader_id = ?", f.TraderID).First(&t)
 		result[i] = FollowingWithTrader{
 			Follower: f,
-			Trader:  t,
+			Trader:   t,
 		}
 	}
 
@@ -620,7 +624,7 @@ func main() {
 		DBHost:           getEnv("DB_HOST", "localhost"),
 		DBPort:           getEnv("DB_PORT", "5432"),
 		DBUser:           getEnv("DB_USER", "tigerwallet"),
-		DBPassword:       getEnv("DB_PASSWORD", "password"),
+		DBPassword:       mustEnv("DB_PASSWORD"),
 		DBName:           getEnv("DB_NAME", "tigerwallet_copytrading"),
 		RedisHost:        getEnv("REDIS_HOST", "localhost"),
 		RedisPort:        getEnv("REDIS_PORT", "6379"),
@@ -632,6 +636,10 @@ func main() {
 		InstanceID:        getEnv("WL_INSTANCE_ID", "default"),
 		HeartbeatInterval: getDurationEnv("HEARTBEAT_INTERVAL", 30*time.Second),
 		JWTSecret:         getEnv("JWT_SECRET", ""),
+	}
+
+	if config.JWTSecret == "" {
+		log.Fatalf("JWT_SECRET environment variable is required")
 	}
 
 	// Fail-closed license gate (mirrors wl_shared/wlgate). The copy-trading
@@ -697,6 +705,17 @@ func main() {
 	<-quit
 	cancel()
 	fmt.Println("Shutting down copy trading service...")
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

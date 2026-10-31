@@ -59,11 +59,22 @@ func LoadConfig() *Config {
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
 		DBUser:     getEnv("DB_USER", "tigerwallet"),
-		DBPassword: getEnv("DB_PASSWORD", "password"),
+		DBPassword: mustEnv("DB_PASSWORD"),
 		DBName:     getEnv("DB_NAME", "tigerwallet"),
 		RedisHost:  getEnv("REDIS_HOST", "localhost"),
 		RedisPort:  getEnv("REDIS_PORT", "6379"),
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

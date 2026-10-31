@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"net/http"
 	"os"
@@ -1017,7 +1018,7 @@ func main() {
 		DBHost:      getEnv("DB_HOST", "localhost"),
 		DBPort:      getEnv("DB_PORT", "5432"),
 		DBUser:      getEnv("DB_USER", "postgres"),
-		DBPassword:  getEnv("DB_PASSWORD", "password"),
+		DBPassword:  mustEnv("DB_PASSWORD"),
 		DBName:      getEnv("DB_NAME", "walletconnect"),
 		RedisHost:   getEnv("REDIS_HOST", "localhost"),
 		RedisPort:   getEnv("REDIS_PORT", "6379"),
@@ -1081,6 +1082,17 @@ func splitOrigins(raw string) []string {
 }
 
 // getEnvInt reads an integer environment variable.
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
+}
+
 func getEnvInt(key string, defaultVal int64) int64 {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {

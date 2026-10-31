@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -51,7 +52,7 @@ func Load() *Config {
 		DBHost:           getEnv("DB_HOST", "localhost"),
 		DBPort:           getEnv("DB_PORT", "5432"),
 		DBUser:           getEnv("DB_USER", "tigerwallet"),
-		DBPassword:       getEnv("DB_PASSWORD", "tigerwallet"),
+		DBPassword:       mustEnv("DB_PASSWORD"),
 		DBName:           getEnv("DB_NAME", "tigerwallet_white_label"),
 		DBMaxConns:       50,
 		RedisHost:        getEnv("REDIS_HOST", "localhost"),
@@ -64,6 +65,17 @@ func Load() *Config {
 		LockoutDuration:  15 * time.Minute,
 		SuperAdminEmail:  "superadmin@tigerwallet.com",
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

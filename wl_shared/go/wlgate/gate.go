@@ -139,8 +139,11 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		}
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(parts[1], claims, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return []byte(secret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}))
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(401, gin.H{"error": "invalid or expired token"})
 			return

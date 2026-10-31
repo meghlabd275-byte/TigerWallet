@@ -176,7 +176,7 @@ func loadConfig() *Config {
 			Host:     getEnv("NOTIFICATION_DB_HOST", "localhost"),
 			Port:     getEnvInt("NOTIFICATION_DB_PORT", 5432),
 			User:     getEnv("NOTIFICATION_DB_USER", "tigerwallet"),
-			Password: getEnv("NOTIFICATION_DB_PASSWORD", "password"),
+			Password: mustEnv("NOTIFICATION_DB_PASSWORD"),
 			DBName:   getEnv("NOTIFICATION_DB_NAME", "tigerwallet_notifications"),
 		},
 		Redis: RedisConfig{
@@ -202,6 +202,17 @@ func loadConfig() *Config {
 			PrivateKey: getEnv("FCM_PRIVATE_KEY", ""),
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

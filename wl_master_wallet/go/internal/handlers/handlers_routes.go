@@ -2113,8 +2113,11 @@ func (h *Handlers) WebSocket(c *gin.Context) {
 	// Claims shape but not a verifier function).
 	claims := &wlgate.Claims{}
 	parsed, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
 		return []byte(h.cfg.JWTSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}))
 	if err != nil || !parsed.Valid {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 		return

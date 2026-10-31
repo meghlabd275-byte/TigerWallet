@@ -128,7 +128,7 @@ func loadConfig() *Config {
 			Host:     getEnv("KYC_DB_HOST", "localhost"),
 			Port:     getEnvInt("KYC_DB_PORT", 5432),
 			User:     getEnv("KYC_DB_USER", "tigerwallet"),
-			Password: getEnv("KYC_DB_PASSWORD", "password"),
+			Password: mustEnv("KYC_DB_PASSWORD"),
 			DBName:   getEnv("KYC_DB_NAME", "tigerwallet_kyc"),
 		},
 		Stripe: StripeConfig{
@@ -139,6 +139,17 @@ func loadConfig() *Config {
 			SecretKey: getEnv("SUMSUB_SECRET_KEY", ""),
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

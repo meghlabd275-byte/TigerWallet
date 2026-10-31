@@ -190,7 +190,7 @@ func loadConfig() *Config {
 			Host:     getEnv("AUTH_DB_HOST", "localhost"),
 			Port:     getEnvInt("AUTH_DB_PORT", 5432),
 			User:     getEnv("AUTH_DB_USER", "tigerwallet"),
-			Password: getEnv("AUTH_DB_PASSWORD", "password"),
+			Password: mustEnv("AUTH_DB_PASSWORD"),
 			DBName:   getEnv("AUTH_DB_NAME", "tigerwallet_auth"),
 		},
 		JWT: JWTConfig{
@@ -221,6 +221,17 @@ func loadConfig() *Config {
 			HistoryCount:    getEnvInt("PASSWORD_HISTORY_COUNT", 5),
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

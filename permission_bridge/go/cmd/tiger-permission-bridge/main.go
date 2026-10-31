@@ -124,10 +124,21 @@ func loadConfig() *Config {
 			Host:     getEnv("PERMISSION_DB_HOST", "localhost"),
 			Port:     getEnvInt("PERMISSION_DB_PORT", 5432),
 			User:     getEnv("PERMISSION_DB_USER", "tigerwallet"),
-			Password: getEnv("PERMISSION_DB_PASSWORD", "password"),
+			Password: mustEnv("PERMISSION_DB_PASSWORD"),
 			DBName:   getEnv("PERMISSION_DB_NAME", "tigerwallet_permissions"),
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {

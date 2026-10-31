@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -305,9 +306,20 @@ func loadConfig() *Config {
 		RedisURL:        getEnv("REDIS_URL", "redis://localhost:6379"),
 		JWTSecret:       getEnv("JWT_SECRET", generateRandomKey(32)),
 		SuperAdminEmail: getEnv("SUPER_ADMIN_EMAIL", "superadmin@tigerwallet.com"),
-		SuperAdminPass:  getEnv("SUPER_ADMIN_PASSWORD", "TigerWallet2026!"),
+		SuperAdminPass:  mustEnv("SUPER_ADMIN_PASSWORD"),
 		Environment:     getEnv("ENVIRONMENT", "production"),
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {
@@ -957,8 +969,11 @@ func generateTokens(userID, email, role, clientID, ipAddress string) (string, st
 
 func verifyToken(tokenString string) (map[string]interface{}, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret, nil
-	})
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+return jwtSecret, nil
+	}, jwt.WithValidMethods([]string{"HS256"}))
 
 	if err != nil {
 		return nil, err

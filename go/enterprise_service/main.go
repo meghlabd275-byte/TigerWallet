@@ -19,6 +19,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
@@ -27,9 +30,6 @@ import (
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/scrypt"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // ============================================================================
@@ -137,7 +137,7 @@ func LoadConfig() *Config {
 			Host:            getEnv("DB_HOST", "localhost"),
 			Port:            5432,
 			User:            getEnv("DB_USER", "tigerwallet"),
-			Password:        getEnv("DB_PASSWORD", "password"),
+			Password:        mustEnv("DB_PASSWORD"),
 			Database:        getEnv("DB_NAME", "tigerwallet"),
 			MaxOpenConns:    100,
 			MaxIdleConns:    10,
@@ -182,6 +182,17 @@ func LoadConfig() *Config {
 			WebhookTimeout:    30 * time.Second,
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {
@@ -596,8 +607,11 @@ func (s *AuthService) GenerateToken(user *User, permissions []string) (string, t
 
 func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(s.config.JWTSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}))
 
 	if err != nil {
 		return nil, err

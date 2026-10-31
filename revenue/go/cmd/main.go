@@ -106,13 +106,24 @@ func loadConfig() *Config {
 			Host:     getEnv("REVENUE_DB_HOST", "localhost"),
 			Port:     getEnvInt("REVENUE_DB_PORT", 5432),
 			User:     getEnv("REVENUE_DB_USER", "tigerwallet"),
-			Password: getEnv("REVENUE_DB_PASSWORD", "password"),
+			Password: mustEnv("REVENUE_DB_PASSWORD"),
 			DBName:   getEnv("REVENUE_DB_NAME", "tigerwallet_revenue"),
 		},
 		Stripe: StripeConfig{
 			SecretKey: getEnv("STRIPE_SECRET_KEY", ""),
 		},
 	}
+}
+
+// mustEnv returns the named environment variable or terminates the process.
+// A secret has no safe default: a committed fallback would ship a known
+// credential to every deployment.
+func mustEnv(key string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	log.Fatalf("%s must be set", key)
+	return ""
 }
 
 func getEnv(key, defaultValue string) string {
