@@ -17,6 +17,7 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	sharedauth "github.com/tigerwallet/sharedauth"
 	"github.com/tigerwallet/airdrop-service/airdrop"
 )
 
@@ -35,6 +36,9 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	if _, err := sharedauth.Secret(); err != nil {
+		log.Fatalf("JWT_SECRET must be set: %v", err)
+	}
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -79,6 +83,9 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		if _, ok := sharedauth.RequireAdmin(w, r); !ok {
+			return
+		}
 		var c airdrop.AirdropCampaign
 		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
@@ -102,11 +109,19 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		var claim airdrop.AirdropClaim
 		if err := json.NewDecoder(r.Body).Decode(&claim); err != nil {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
 		}
+		// The claim belongs to the caller. The amount comes from the
+		// campaign allocation, never from the request body.
+		claim.UserID = caller.UserID
+		claim.Amount = ""
 		created, err := svc.CreateClaim(r.Context(), &claim)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
@@ -150,6 +165,10 @@ func main() {
 			writeJSON(w, 400, apiResponse{Error: "invalid path; expected /api/v1/airdrop/claim/{id}/confirm"})
 			return
 		}
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		var body struct {
 			TxHash string `json:"tx_hash"`
 		}
@@ -157,7 +176,7 @@ func main() {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
 		}
-		if err := svc.ClaimTokens(r.Context(), parts[0], body.TxHash); err != nil {
+		if err := svc.ClaimTokensFor(r.Context(), parts[0], caller.UserID, caller.IsAdmin(), body.TxHash); err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return
 		}

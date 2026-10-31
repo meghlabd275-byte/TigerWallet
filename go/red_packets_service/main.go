@@ -15,6 +15,7 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	sharedauth "github.com/tigerwallet/sharedauth"
 	redpackets "github.com/tigerwallet/red-packets-service/redpacket"
 )
 
@@ -33,6 +34,9 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	if _, err := sharedauth.Secret(); err != nil {
+		log.Fatalf("JWT_SECRET must be set: %v", err)
+	}
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -63,6 +67,12 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		// The sender is the authenticated caller. A body-supplied sender_id
+		// would let anyone create a packet charged to another account.
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		// Decode the request body including the plaintext password, which is
 		// immediately hashed by CreateRedPacket and never persisted in plaintext.
 		var body struct {
@@ -82,7 +92,7 @@ func main() {
 			return
 		}
 		p := redpackets.RedPacket{
-			SenderID:      body.SenderID,
+			SenderID:      caller.UserID,
 			SenderAddress: body.SenderAddress,
 			TokenAddress:  body.TokenAddress,
 			ChainID:       body.ChainID,
@@ -111,6 +121,10 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		var body struct {
 			PacketID       string `json:"packet_id"`
 			ClaimerID      string `json:"claimer_id"`
@@ -121,7 +135,8 @@ func main() {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
 		}
-		claim, err := svc.Claim(r.Context(), body.PacketID, body.ClaimerID, body.ClaimerAddress, body.Password)
+		// The claimer is the authenticated caller, never the body value.
+		claim, err := svc.Claim(r.Context(), body.PacketID, caller.UserID, body.ClaimerAddress, body.Password)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return
@@ -135,8 +150,11 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
-		userID := r.URL.Query().Get("user_id")
-		packets, err := svc.GetSentPackets(r.Context(), userID)
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
+		packets, err := svc.GetSentPackets(r.Context(), caller.UserID)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return
@@ -150,8 +168,11 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
-		userID := r.URL.Query().Get("user_id")
-		packets, err := svc.GetReceivedPackets(r.Context(), userID)
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
+		packets, err := svc.GetReceivedPackets(r.Context(), caller.UserID)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return

@@ -40,3 +40,10 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
+
+replace github.com/tigerwallet/sharedauth => ../sharedauth
+
+require (
+	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/tigerwallet/sharedauth v0.0.0
+)

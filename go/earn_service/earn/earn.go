@@ -665,7 +665,48 @@ func (s *EarnService) GetUserDepositsByProduct(ctx context.Context, userID, prod
 // ============================================================================
 
 // Withdraw withdraws from a deposit
-func (s *EarnService) Withdraw(ctx context.Context, depositID string, amount string) (string, error) {
+// WithdrawFor releases funds from a deposit. The deposit must belong to the
+// caller unless the caller is an admin: without this check any authenticated
+// user could drain another user's position by guessing its id.
+func (s *EarnService) WithdrawFor(ctx context.Context, depositID, userID string, isAdmin bool, amount string) (string, error) {
+	if s.pg == nil {
+		return "0", fmt.Errorf("database not configured")
+	}
+	if !isAdmin {
+		var owner string
+		err := s.pg.QueryRow(ctx, `SELECT user_id FROM earn_deposits WHERE id=$1`, depositID).Scan(&owner)
+		if err != nil {
+			return "0", fmt.Errorf("deposit not found")
+		}
+		if owner != userID {
+			return "0", fmt.Errorf("deposit does not belong to this user")
+		}
+	}
+	return s.withdraw(ctx, depositID, amount)
+}
+
+// ClaimFor claims accrued interest. The deposit must belong to the caller
+// unless the caller is an admin.
+func (s *EarnService) ClaimFor(ctx context.Context, depositID, userID string, isAdmin bool) (string, error) {
+	if s.pg == nil {
+		return "0", fmt.Errorf("database not configured")
+	}
+	if !isAdmin {
+		var owner string
+		err := s.pg.QueryRow(ctx, `SELECT user_id FROM earn_deposits WHERE id=$1`, depositID).Scan(&owner)
+		if err != nil {
+			return "0", fmt.Errorf("deposit not found")
+		}
+		if owner != userID {
+			return "0", fmt.Errorf("deposit does not belong to this user")
+		}
+	}
+	return s.claim(ctx, depositID)
+}
+
+// withdraw is the unchecked withdrawal path. Callers must use WithdrawFor,
+// which verifies ownership first.
+func (s *EarnService) withdraw(ctx context.Context, depositID string, amount string) (string, error) {
 	if s.pg == nil {
 		return "0", fmt.Errorf("database not configured")
 	}
@@ -777,7 +818,9 @@ func (s *EarnService) Withdraw(ctx context.Context, depositID string, amount str
 }
 
 // Claim claims matured deposit
-func (s *EarnService) Claim(ctx context.Context, depositID string) (string, error) {
+// claim is the unchecked claim path. Callers must use ClaimFor, which
+// verifies ownership first.
+func (s *EarnService) claim(ctx context.Context, depositID string) (string, error) {
 	if s.pg == nil {
 		return "0", fmt.Errorf("database not configured")
 	}

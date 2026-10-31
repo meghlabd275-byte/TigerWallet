@@ -15,6 +15,7 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	sharedauth "github.com/tigerwallet/sharedauth"
 	"github.com/tigerwallet/coupon-service/coupon"
 )
 
@@ -33,6 +34,9 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	if _, err := sharedauth.Secret(); err != nil {
+		log.Fatalf("JWT_SECRET must be set: %v", err)
+	}
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -63,6 +67,9 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		if _, ok := sharedauth.Authenticate(w, r); !ok {
+			return
+		}
 		var body struct {
 			Code    string `json:"code"`
 			ChainID string `json:"chain_id"`
@@ -88,6 +95,9 @@ func main() {
 
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
+			return
+		}
+		if _, ok := sharedauth.RequireAdmin(w, r); !ok {
 			return
 		}
 		var c coupon.Coupon

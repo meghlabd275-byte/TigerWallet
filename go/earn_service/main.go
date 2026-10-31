@@ -15,6 +15,7 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	sharedauth "github.com/tigerwallet/sharedauth"
 	"github.com/tigerwallet/earn-service/earn"
 )
 
@@ -33,6 +34,9 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 }
 
 func main() {
+	if _, err := sharedauth.Secret(); err != nil {
+		log.Fatalf("JWT_SECRET must be set: %v", err)
+	}
 	ctx := context.Background()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -102,11 +106,18 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		var d earn.UserDeposit
 		if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
 		}
+		// A deposit belongs to the caller; a body-supplied user_id would let
+		// anyone open a position charged to another account.
+		d.UserID = caller.UserID
 		created, err := svc.Deposit(r.Context(), &d)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
@@ -125,6 +136,10 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		var body struct {
 			DepositID string `json:"deposit_id"`
 			Amount    string `json:"amount"`
@@ -133,7 +148,7 @@ func main() {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
 		}
-		result, err := svc.Withdraw(r.Context(), body.DepositID, body.Amount)
+		result, err := svc.WithdrawFor(r.Context(), body.DepositID, caller.UserID, caller.IsAdmin(), body.Amount)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return
@@ -151,6 +166,10 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
+			return
+		}
 		var body struct {
 			DepositID string `json:"deposit_id"`
 		}
@@ -158,7 +177,7 @@ func main() {
 			writeJSON(w, 400, apiResponse{Error: "invalid request body"})
 			return
 		}
-		result, err := svc.Claim(r.Context(), body.DepositID)
+		result, err := svc.ClaimFor(r.Context(), body.DepositID, caller.UserID, caller.IsAdmin())
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return
@@ -172,12 +191,13 @@ func main() {
 			writeJSON(w, 405, apiResponse{Error: "method not allowed"})
 			return
 		}
-		userID := r.URL.Query().Get("user_id")
-		if userID == "" {
-			writeJSON(w, 400, apiResponse{Error: "user_id is required"})
+		caller, ok := sharedauth.Authenticate(w, r)
+		if !ok {
 			return
 		}
-		deposits, err := svc.GetUserDeposits(r.Context(), userID)
+		// A user may only list their own deposits. Reading them from the query
+		// string would expose any account to anyone with a valid token.
+		deposits, err := svc.GetUserDeposits(r.Context(), caller.UserID)
 		if err != nil {
 			writeJSON(w, 500, apiResponse{Error: err.Error()})
 			return

@@ -25,6 +25,7 @@ import (
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"github.com/skip2/go-qrcode"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 // ============================================================================
@@ -35,6 +36,7 @@ type Config struct {
 	Port       string
 	IssuerName string
 	SMTPServer string
+	JWTSecret  string
 	SMTPPort   int
 	SMTPUser   string
 	SMTPPass   string
@@ -46,6 +48,7 @@ func LoadConfig() *Config {
 		Port:       getEnv("PORT", "8446"),
 		IssuerName: getEnv("ISSUER_NAME", "TigerWallet"),
 		SMTPServer: getEnv("SMTP_SERVER", "smtp.gmail.com"),
+		JWTSecret:  getEnv("JWT_SECRET", ""),
 		SMTPPort:   587,
 		SMTPUser:   getEnv("SMTP_USER", ""),
 		SMTPPass:   getEnv("SMTP_PASS", ""),
@@ -580,6 +583,11 @@ func (s *TwoFactorService) RegisterRoutes(r *gin.Engine) {
 	})
 
 	api := r.Group("/api/v1/2fa")
+	// Every 2FA operation acts on exactly one account, so each route first
+	// establishes which account the caller owns. The handlers used to trust the
+	// userId in the request body, which let anyone enrol, verify against, or
+	// disable another user's second factor.
+	api.Use(s.requireCaller())
 	{
 		// TOTP Setup
 		api.POST("/setup", s.handleSetup2FA)
@@ -603,6 +611,52 @@ func (s *TwoFactorService) RegisterRoutes(r *gin.Engine) {
 	}
 }
 
+// requireCaller authenticates the request and records the caller's identity.
+// The service is fail-closed when no signing secret is configured.
+func (s *TwoFactorService) requireCaller() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if s.config.JWTSecret == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is not configured"})
+			return
+		}
+		h := c.GetHeader("Authorization")
+		if len(h) < 8 || !strings.EqualFold(h[:7], "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			return
+		}
+		id, err := sharedauth.Parse(s.config.JWTSecret, strings.TrimSpace(h[7:]))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		c.Set("callerID", id.UserID)
+		c.Set("callerIsAdmin", id.IsAdmin())
+		c.Next()
+	}
+}
+
+// callerID returns the authenticated user id for the current request.
+func callerID(c *gin.Context) string {
+	v, _ := c.Get("callerID")
+	s, _ := v.(string)
+	return s
+}
+
+// rejectForeign writes 403 and reports true unless the caller may act on the
+// target account. A user may only act on their own account; an admin may act
+// on any, which keeps support workflows possible.
+func (s *TwoFactorService) rejectForeign(c *gin.Context, target string) bool {
+	if target == callerID(c) {
+		return false
+	}
+	v, _ := c.Get("callerIsAdmin")
+	if admin, _ := v.(bool); admin {
+		return false
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "cannot act on another user's 2FA"})
+	return true
+}
+
 func (s *TwoFactorService) handleSetup2FA(c *gin.Context) {
 	var req struct {
 		UserID string `json:"userId" binding:"required"`
@@ -611,6 +665,10 @@ func (s *TwoFactorService) handleSetup2FA(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.rejectForeign(c, req.UserID) {
 		return
 	}
 
@@ -644,6 +702,10 @@ func (s *TwoFactorService) handleEnable2FA(c *gin.Context) {
 		return
 	}
 
+	if s.rejectForeign(c, req.UserID) {
+		return
+	}
+
 	if !s.CheckRateLimit(req.UserID + ":enable") {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many attempts"})
 		return
@@ -668,6 +730,10 @@ func (s *TwoFactorService) handleDisable2FA(c *gin.Context) {
 		return
 	}
 
+	if s.rejectForeign(c, req.UserID) {
+		return
+	}
+
 	if !s.ValidateCode(req.UserID, req.Code) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid code"})
 		return
@@ -685,6 +751,10 @@ func (s *TwoFactorService) handleVerify2FA(c *gin.Context) {
 	var req VerifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.rejectForeign(c, req.UserID) {
 		return
 	}
 
@@ -715,6 +785,9 @@ func (s *TwoFactorService) handleVerify2FA(c *gin.Context) {
 
 func (s *TwoFactorService) handleGet2FAStatus(c *gin.Context) {
 	userID := c.Param("userId")
+	if s.rejectForeign(c, userID) {
+		return
+	}
 	user := s.GetUser2FA(userID)
 
 	if user == nil {
@@ -737,6 +810,10 @@ func (s *TwoFactorService) handleRegenerateBackupCodes(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.rejectForeign(c, req.UserID) {
 		return
 	}
 
@@ -767,6 +844,10 @@ func (s *TwoFactorService) handleSendCode(c *gin.Context) {
 		return
 	}
 
+	if s.rejectForeign(c, req.UserID) {
+		return
+	}
+
 	if !s.CheckRateLimit(req.UserID + ":send") {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many attempts"})
 		return
@@ -791,6 +872,10 @@ func (s *TwoFactorService) handleVerifyCode(c *gin.Context) {
 		return
 	}
 
+	if s.rejectForeign(c, req.UserID) {
+		return
+	}
+
 	valid := s.VerifyPendingCode(req.UserID, req.Code)
 
 	c.JSON(http.StatusOK, gin.H{"valid": valid})
@@ -806,6 +891,10 @@ func (s *TwoFactorService) handleWebAuthnRegister(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.rejectForeign(c, req.UserID) {
 		return
 	}
 
@@ -832,6 +921,10 @@ func (s *TwoFactorService) handleWebAuthnVerify(c *gin.Context) {
 		return
 	}
 
+	if s.rejectForeign(c, req.UserID) {
+		return
+	}
+
 	valid := s.VerifyWebAuthn(req.UserID, req.CredentialID, req.ClientDataJSON, req.AuthenticatorData, req.Signature)
 
 	c.JSON(http.StatusOK, gin.H{"valid": valid})
@@ -839,6 +932,9 @@ func (s *TwoFactorService) handleWebAuthnVerify(c *gin.Context) {
 
 func (s *TwoFactorService) handleGetWebAuthnCredentials(c *gin.Context) {
 	userID := c.Param("userId")
+	if s.rejectForeign(c, userID) {
+		return
+	}
 	credentials := s.GetWebAuthnCredentials(userID)
 
 	// Don't expose public keys
@@ -860,6 +956,10 @@ func (s *TwoFactorService) handleDeleteWebAuthnCredential(c *gin.Context) {
 	userID := c.Param("userId")
 	credentialID := c.Param("credentialId")
 
+	if s.rejectForeign(c, userID) {
+		return
+	}
+
 	if err := s.DeleteWebAuthnCredential(userID, credentialID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -874,6 +974,9 @@ func (s *TwoFactorService) handleDeleteWebAuthnCredential(c *gin.Context) {
 
 func main() {
 	config := LoadConfig()
+	if config.JWTSecret == "" {
+		log.Fatal("JWT_SECRET must be set: the 2FA service authenticates callers with it")
+	}
 	service := NewTwoFactorService(config)
 
 	gin.SetMode(gin.ReleaseMode)

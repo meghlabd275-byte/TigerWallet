@@ -488,8 +488,8 @@ services:
   # Airdrop Service
   airdrop-service:
     build:
-      context: ./go/airdrop_service
-      dockerfile: Dockerfile
+      context: ./go
+      dockerfile: airdrop_service/Dockerfile
     container_name: tigerwallet-airdrop
     ports:
       - "8465:8465"
@@ -497,6 +497,7 @@ services:
       - PORT=8465
       - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
       - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set - the airdrop service authenticates callers with it}
     depends_on:
       postgres:
         condition: service_healthy
@@ -507,8 +508,8 @@ services:
   # Earn Service
   earn-service:
     build:
-      context: ./go/earn_service
-      dockerfile: Dockerfile
+      context: ./go
+      dockerfile: earn_service/Dockerfile
     container_name: tigerwallet-earn
     ports:
       - "8466:8466"
@@ -516,6 +517,7 @@ services:
       - PORT=8466
       - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
       - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set - the earn service authenticates callers with it}
     depends_on:
       postgres:
         condition: service_healthy
@@ -526,8 +528,8 @@ services:
   # Coupon Service
   coupon-service:
     build:
-      context: ./go/coupon_service
-      dockerfile: Dockerfile
+      context: ./go
+      dockerfile: coupon_service/Dockerfile
     container_name: tigerwallet-coupon
     ports:
       - "8467:8467"
@@ -535,6 +537,7 @@ services:
       - PORT=8467
       - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
       - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set - the coupon service authenticates callers with it}
     depends_on:
       postgres:
         condition: service_healthy
@@ -545,8 +548,8 @@ services:
   # Red Packets Service
   red-packets-service:
     build:
-      context: ./go/red_packets_service
-      dockerfile: Dockerfile
+      context: ./go
+      dockerfile: red_packets_service/Dockerfile
     container_name: tigerwallet-red-packets
     ports:
       - "8468:8468"
@@ -554,6 +557,7 @@ services:
       - PORT=8468
       - DATABASE_URL=postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable
       - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set - the red packets service authenticates callers with it}
     depends_on:
       postgres:
         condition: service_healthy

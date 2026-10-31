@@ -217,7 +217,10 @@ func (s *AirdropService) CreateClaim(ctx context.Context, claim *AirdropClaim) (
 	return claim, nil
 }
 
-func (s *AirdropService) ClaimTokens(ctx context.Context, claimID, txHash string) error {
+// ClaimTokens marks a claim as paid. Callers must use ClaimTokensFor, which
+// verifies that the caller owns the claim; this variant performs no ownership
+// check and is unexported for that reason.
+func (s *AirdropService) claimTokens(ctx context.Context, claimID, txHash string) error {
 	if s.pg == nil {
 		return fmt.Errorf("database not configured")
 	}
@@ -260,6 +263,27 @@ func (s *AirdropService) ClaimTokens(ctx context.Context, claimID, txHash string
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// ClaimTokensFor confirms a claim on behalf of a specific caller. The claim is
+// only settled when it belongs to that user, or when the caller is an admin.
+// Without this check any authenticated caller could confirm someone else's
+// claim by guessing its id.
+func (s *AirdropService) ClaimTokensFor(ctx context.Context, claimID, userID string, isAdmin bool, txHash string) error {
+	if s.pg == nil {
+		return fmt.Errorf("database not configured")
+	}
+	if !isAdmin {
+		var owner string
+		err := s.pg.QueryRow(ctx, `SELECT user_id FROM airdrop_claims WHERE id=$1`, claimID).Scan(&owner)
+		if err != nil {
+			return fmt.Errorf("claim not found")
+		}
+		if owner != userID {
+			return fmt.Errorf("claim does not belong to this user")
+		}
+	}
+	return s.claimTokens(ctx, claimID, txHash)
 }
 
 func (s *AirdropService) GetUserClaims(ctx context.Context, userID string) ([]*AirdropClaim, error) {
