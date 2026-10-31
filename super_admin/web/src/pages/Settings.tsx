@@ -73,7 +73,7 @@ export default function Settings() {
     setActionLoading(true);
     try {
       const r = await superAdminApi.verify2FASetup(twoFa.user_id, twoFaSetup.secret, verifyCode);
-      alert(`2FA verified: ${r.status}`);
+      alert(r.enabled ? '2FA enabled' : '2FA verification did not enable 2FA');
       setTwoFaSetup(null);
       setVerifyCode('');
     } catch (err: any) {
@@ -135,7 +135,9 @@ export default function Settings() {
             {twoFaSetup && (
               <div className="alert alert-info mb-4">
                 <p className="text-secondary">Secret: <strong>{twoFaSetup.secret}</strong></p>
-                {twoFaSetup.qr_code_url && <p className="text-secondary">QR: {twoFaSetup.qr_code_url}</p>}
+                {twoFaSetup.qr_code_png && (
+                  <img src={twoFaSetup.qr_code_png} alt="Two-factor authentication QR code" className="w-48 h-48" />
+                )}
                 <form onSubmit={handleVerify2FA} className="flex gap-3 mt-3">
                   <div className="form-group flex-1"><label className="text-secondary">Verification Code</label><input className="input w-full" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} required /></div>
                   <div className="form-group" style={{ alignSelf: 'flex-end' }}><button className="btn btn-primary" disabled={actionLoading} type="submit">Verify</button></div>

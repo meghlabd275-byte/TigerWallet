@@ -59,7 +59,7 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, onThemeToggle }) => {
       return response.json();
     },
     onSuccess: (data) => {
-      setQrCode(data.qr_code);
+      setQrCode(data.qr_code_png);
       setSecret(data.secret);
       setBackupCodes(data.backup_codes);
       setSetupDialogOpen(true);
@@ -418,7 +418,7 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, onThemeToggle }) => {
                   Scan this QR code with your authenticator app
                 </Typography>
                 <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCode)}`} 
+                  src={qrCode}
                   alt="2FA QR Code"
                   style={{ borderRadius: 8 }}
                 />

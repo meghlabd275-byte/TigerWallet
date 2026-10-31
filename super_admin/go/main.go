@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +22,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+	"github.com/skip2/go-qrcode"
 	"github.com/tigerwallet/super-admin/internal/config"
 	"github.com/tigerwallet/super-admin/internal/database"
 	"github.com/tigerwallet/super-admin/internal/middleware"
@@ -61,25 +64,25 @@ func main() {
 	router := gin.Default()
 
 	router.Use(func() gin.HandlerFunc {
-	// CORS: an explicit origin allowlist. A wildcard cannot be combined with
-	// AllowCredentials (browsers reject it), so this previously blocked
-	// credentialed cross-origin calls while appearing to permit them. With no
-	// allowlist configured the API serves same-origin only.
-	corsCfg := cors.Config{
-		AllowOrigins:     cfg.CORSAllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}
-	if len(cfg.CORSAllowedOrigins) == 0 {
-		// gin-contrib/cors rejects a config with no origins at all, so deny
-		// explicitly rather than panicking on an unconfigured deployment.
-		corsCfg.AllowOriginFunc = func(string) bool { return false }
-	}
-	return cors.New(corsCfg)
-}())
+		// CORS: an explicit origin allowlist. A wildcard cannot be combined with
+		// AllowCredentials (browsers reject it), so this previously blocked
+		// credentialed cross-origin calls while appearing to permit them. With no
+		// allowlist configured the API serves same-origin only.
+		corsCfg := cors.Config{
+			AllowOrigins:     cfg.CORSAllowedOrigins,
+			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+			ExposeHeaders:    []string{"Content-Length"},
+			AllowCredentials: true,
+			MaxAge:           12 * time.Hour,
+		}
+		if len(cfg.CORSAllowedOrigins) == 0 {
+			// gin-contrib/cors rejects a config with no origins at all, so deny
+			// explicitly rather than panicking on an unconfigured deployment.
+			corsCfg.AllowOriginFunc = func(string) bool { return false }
+		}
+		return cors.New(corsCfg)
+	}())
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin"})
@@ -416,6 +419,12 @@ func main() {
 			admin.POST("/logout", handleLogout)
 			admin.POST("/change-password", handleChangePassword)
 			admin.POST("/2fa/enable", handleEnable2FA)
+			// The admin panel has always called /2fa/setup to begin enrolment
+			// and /2fa/verify-setup to finish it, but only /2fa/enable and
+			// /2fa/verify were registered, so the setup screen could never obtain
+			// a secret or a QR code. Both spellings now reach the same handlers.
+			admin.POST("/2fa/setup", handleEnable2FA)
+			admin.POST("/2fa/verify-setup", handleVerify2FA)
 			admin.POST("/2fa/verify", handleVerify2FA)
 			admin.POST("/2fa/disable", handleDisable2FA)
 
@@ -623,7 +632,9 @@ func handleLogin(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "two_factor_required", "two_factor_required": true})
 			return
 		}
-		if !totp.Validate(code, twoFactorSecret) {
+		// A one-time backup code is accepted when the authenticator is unavailable.
+		// The code is consumed on success, so it cannot be replayed.
+		if !totp.Validate(code, twoFactorSecret) && !consumeBackupCode(c, id, code) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid two-factor code"})
 			return
 		}
@@ -777,12 +788,31 @@ func handleEnable2FA(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// Render the enrolment URI here. The admin panel previously received only the
+	// raw otpauth URI and had no way to turn it into an image without handing the
+	// TOTP secret to a third-party QR service, so the setup screen showed no
+	// scannable code at all.
+	png, err := qrcode.Encode(key.URL(), qrcode.Medium, 200)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to render QR code"})
+		return
+	}
+
+	// Issue fresh backup codes, replacing any previous set. Only bcrypt hashes are
+	// stored, so the plaintext exists solely in this response.
+	codes, err := replaceBackupCodes(c, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to issue backup codes"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"secret":  key.Secret(),
-		"otpauth": key.URL(),
-		"qr_data": key.URL(),
-		"message": "Scan the QR with your authenticator, then POST /2fa/verify with a 6-digit code to enable",
-		"enabled": false,
+		"secret":       key.Secret(),
+		"otpauth":      key.URL(),
+		"qr_code_png":  "data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
+		"backup_codes": codes,
+		"message":      "Scan the QR with your authenticator, then POST /2fa/verify with a 6-digit code to enable",
+		"enabled":      false,
 	})
 }
 
@@ -818,12 +848,85 @@ func handleVerify2FA(c *gin.Context) {
 }
 
 func handleDisable2FA(c *gin.Context) {
-	// Clear both the secret and the flag so a re-enroll requires a fresh setup.
+	// Clear the secret, the flag, and any backup codes so a re-enroll requires a
+	// fresh setup. Leaving old codes valid after a disable would let a previously
+	// issued code bypass a later re-enrolment.
 	if _, err := dbExec(c, `UPDATE admin_users SET two_factor_enabled=false, two_factor_secret=NULL, updated_at=NOW() WHERE id=$1`, c.GetString("user_id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if _, err := dbExec(c, `DELETE FROM two_factor_backup_codes WHERE admin_id=$1`, c.GetString("user_id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "2FA disabled"})
+}
+
+// backupCodeAlphabet excludes characters that are easy to confuse when a code is
+// read from a screen and typed back in.
+const backupCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// generateBackupCode returns a 10-character recovery code drawn from
+// crypto/rand.
+func generateBackupCode() (string, error) {
+	b := make([]byte, 10)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	out := make([]byte, len(b))
+	for i, v := range b {
+		out[i] = backupCodeAlphabet[int(v)%len(backupCodeAlphabet)]
+	}
+	return string(out), nil
+}
+
+// replaceBackupCodes issues a fresh set of recovery codes for an admin, deleting
+// any codes issued earlier. Only bcrypt hashes reach the database.
+func replaceBackupCodes(c *gin.Context, adminID string) ([]string, error) {
+	if _, err := dbExec(c, `DELETE FROM two_factor_backup_codes WHERE admin_id=$1`, adminID); err != nil {
+		return nil, err
+	}
+	codes := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		code, err := generateBackupCode()
+		if err != nil {
+			return nil, err
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := dbExec(c, `INSERT INTO two_factor_backup_codes (admin_id, code_hash) VALUES ($1,$2)`, adminID, string(hash)); err != nil {
+			return nil, err
+		}
+		codes = append(codes, code)
+	}
+	return codes, nil
+}
+
+// consumeBackupCode marks a matching unused code as used. The update is
+// conditional on used_at IS NULL so two concurrent logins cannot both redeem the
+// same code.
+func consumeBackupCode(c *gin.Context, adminID, code string) bool {
+	rows, err := dbQuery(c, `SELECT id, code_hash FROM two_factor_backup_codes WHERE admin_id=$1 AND used_at IS NULL`, adminID)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, hash string
+		if err := rows.Scan(&id, &hash); err != nil {
+			continue
+		}
+		if bcrypt.CompareHashAndPassword([]byte(hash), []byte(code)) != nil {
+			continue
+		}
+		if _, err := dbExec(c, `UPDATE two_factor_backup_codes SET used_at=NOW() WHERE id=$1 AND used_at IS NULL`, id); err != nil {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 // ---- Users ----

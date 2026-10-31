@@ -1509,7 +1509,12 @@ class SuperAdminApiService {
 
   async setup2FA(user_id: string, method?: string, phone?: string, email?: string): Promise<{
     secret: string;
-    qr_code_url: string;
+    // A data: URL holding a locally rendered PNG of the otpauth URI. The
+    // backend no longer proxies the QR image through a third-party service,
+    // because doing so disclosed the TOTP secret in a query string.
+    qr_code_png: string;
+    // One-time recovery codes, issued at setup and shown once.
+    backup_codes: string[];
   }> {
     return this.request('/2fa/setup', {
       method: 'POST',
@@ -1517,13 +1522,15 @@ class SuperAdminApiService {
     });
   }
 
-  async verify2FASetup(user_id: string, secret: string, code: string): Promise<{
-    status: string;
-    backup_codes: string[];
+  // Completes enrolment. The secret already belongs to the authenticated admin
+  // (stored at setup), so only the code is sent - echoing the secret back would
+  // add nothing and would widen where it can leak.
+  async verify2FASetup(_user_id: string, _secret: string, code: string): Promise<{
+    enabled: boolean;
   }> {
     return this.request('/2fa/verify-setup', {
       method: 'POST',
-      body: JSON.stringify({ user_id, secret, code }),
+      body: JSON.stringify({ code }),
     });
   }
 

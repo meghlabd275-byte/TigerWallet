@@ -19,11 +19,13 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -37,6 +39,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/skip2/go-qrcode"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -803,8 +806,13 @@ type Setup2FARequest struct {
 }
 
 type Setup2FAResponse struct {
-	Secret    string `json:"secret"`
-	QRCodeURL string `json:"qrCodeUrl"`
+	Secret string `json:"secret"`
+	// QRCodePNG is a data: URL carrying a locally rendered PNG of the otpauth
+	// URI. It replaces the previous qrserver.com URL: that URL embedded the TOTP
+	// shared secret in a query string sent to a third party, which both disclosed
+	// the second factor and let the third party serve arbitrary image bytes into
+	// the setup screen. Rendering here keeps the secret inside this process.
+	QRCodePNG string `json:"qr_code_png"`
 }
 
 func setup2FA(c *gin.Context) {
@@ -820,12 +828,19 @@ func setup2FA(c *gin.Context) {
 	// Store temporarily (in production, store in database)
 	twoFactorSecrets.Store(req.UserID, secret)
 
-	// Generate QR code URL (in production, generate actual QR)
-	qrCodeURL := fmt.Sprintf("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/TigerWallet:%s?secret=%s", req.UserID, secret)
+	// Render the otpauth URI locally. The issuer and account label are escaped
+	// because ':' and '?' delimit the URI's own fields.
+	otpauth := fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s",
+		url.PathEscape("TigerWallet"), url.PathEscape(req.UserID), secret, url.QueryEscape("TigerWallet"))
+	png, err := qrcode.Encode(otpauth, qrcode.Medium, 200)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to render QR code"})
+		return
+	}
 
 	c.JSON(http.StatusOK, Setup2FAResponse{
 		Secret:    secret,
-		QRCodeURL: qrCodeURL,
+		QRCodePNG: "data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
 	})
 }
 

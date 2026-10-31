@@ -336,6 +336,16 @@ func runMigrations(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_bots_clients_status ON bots_clients(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_project_team_members_team ON project_team_members(team_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_user_wallets_master ON user_wallets(master_wallet_id)`,
+		// Two-factor backup codes. Stored as bcrypt hashes only: a code is shown
+		// to the admin once at enrolment and can never be read back.
+		`CREATE TABLE IF NOT EXISTS two_factor_backup_codes (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			admin_id UUID NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+			code_hash VARCHAR(255) NOT NULL,
+			used_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_2fa_backup_admin ON two_factor_backup_codes(admin_id) WHERE used_at IS NULL`,
 	}
 
 	for _, migration := range migrations {

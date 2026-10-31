@@ -59,7 +59,8 @@ export default function Security() {
     try {
       const result = await superAdminApi.setup2FA('current_user');
       setSecret(result.secret);
-      setQrCode(result.qr_code_url);
+      setQrCode(result.qr_code_png);
+      setBackupCodes(result.backup_codes ?? []);
       setSetupStep(2);
     } catch (error) {
       console.error('Failed to setup 2FA:', error);
@@ -71,8 +72,7 @@ export default function Security() {
   const handleVerify2FA = async () => {
     setTwoFALoading(true);
     try {
-      const result = await superAdminApi.verify2FASetup('current_user', secret, verifyCode);
-      setBackupCodes(result.backup_codes);
+      await superAdminApi.verify2FASetup('current_user', secret, verifyCode);
       setTwoFAEnabled(true);
       setSetupStep(3);
     } catch (error) {

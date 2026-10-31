@@ -26,6 +26,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+	"github.com/skip2/go-qrcode"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -33,85 +34,85 @@ import (
 // TwoFactorConfig - 2FA Configuration
 type TwoFactorConfig struct {
 	// Service Settings
-	ServiceName    string `json:"service_name"`
-	ServiceURL     string `json:"service_url"`
-	Issuer         string `json:"issuer"`
-	
+	ServiceName string `json:"service_name"`
+	ServiceURL  string `json:"service_url"`
+	Issuer      string `json:"issuer"`
+
 	// TOTP Settings
-	TOTPDigits     int    `json:"totp_digits"`     // 6 or 8
-	TOTPPeriod     int    `json:"totp_period"`     // seconds
-	TOTPSkew       int    `json:"totp_skew"`       // allowed period skew
-	Algorithm      string `json:"algorithm"`       // SHA1, SHA256, SHA512
-	
+	TOTPDigits int    `json:"totp_digits"` // 6 or 8
+	TOTPPeriod int    `json:"totp_period"` // seconds
+	TOTPSkew   int    `json:"totp_skew"`   // allowed period skew
+	Algorithm  string `json:"algorithm"`   // SHA1, SHA256, SHA512
+
 	// Backup Codes
-	BackupCodeCount   int    `json:"backup_code_count"`   // number of backup codes
-	BackupCodeLength  int    `json:"backup_code_length"`  // length of each code
-	
+	BackupCodeCount  int `json:"backup_code_count"`  // number of backup codes
+	BackupCodeLength int `json:"backup_code_length"` // length of each code
+
 	// Security Settings
 	MaxAttempts     int           `json:"max_attempts"`     // max failed attempts
 	LockoutDuration time.Duration `json:"lockout_duration"` // lockout duration
 	RateLimitWindow time.Duration `json:"rate_limit_window"`
 	RateLimitMax    int           `json:"rate_limit_max"`
-	
+
 	// Encryption
 	EncryptionKey string `json:"encryption_key"` // base64 encoded key
-	
+
 	// Database Settings
 	DBHost     string `json:"db_host"`
 	DBPort     string `json:"db_port"`
 	DBUser     string `json:"db_user"`
 	DBPassword string `json:"db_password"`
 	DBName     string `json:"db_name"`
-	
+
 	// Redis Settings
 	RedisHost string `json:"redis_host"`
 	RedisPort string `json:"redis_port"`
-	
+
 	// Server
 	ServerPort string `json:"server_port"`
 }
 
 // User2FA - User 2FA configuration
 type User2FA struct {
-	ID                uint      `gorm:"primaryKey" json:"id"`
-	UserID            string    `gorm:"uniqueIndex;index" json:"user_id"`
-	Enabled           bool      `gorm:"default:false" json:"enabled"`
-	SecretEncrypted   string    `gorm:"type:text" json:"-"` // encrypted TOTP secret
-	Method            string    `json:"method"` // totp, sms, email
-	Phone             string    `json:"phone"`
-	Email             string    `json:"email"`
-	RecoveryEnabled   bool      `gorm:"default:false" json:"recovery_enabled"`
-	BackupCodesHashed string    `gorm:"type:text" json:"-"` // hashed backup codes
-	TrustedDevices    string    `gorm:"type:jsonb" json:"trusted_devices"`
-	FailedAttempts    int       `gorm:"default:0" json:"failed_attempts"`
+	ID                uint       `gorm:"primaryKey" json:"id"`
+	UserID            string     `gorm:"uniqueIndex;index" json:"user_id"`
+	Enabled           bool       `gorm:"default:false" json:"enabled"`
+	SecretEncrypted   string     `gorm:"type:text" json:"-"` // encrypted TOTP secret
+	Method            string     `json:"method"`             // totp, sms, email
+	Phone             string     `json:"phone"`
+	Email             string     `json:"email"`
+	RecoveryEnabled   bool       `gorm:"default:false" json:"recovery_enabled"`
+	BackupCodesHashed string     `gorm:"type:text" json:"-"` // hashed backup codes
+	TrustedDevices    string     `gorm:"type:jsonb" json:"trusted_devices"`
+	FailedAttempts    int        `gorm:"default:0" json:"failed_attempts"`
 	LockedUntil       *time.Time `json:"locked_until"`
 	LastUsedAt        *time.Time `json:"last_used_at"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // BackupCode - Single backup code
 type BackupCode struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      string    `gorm:"index" json:"user_id"`
-	CodeHash    string    `gorm:"index" json:"code_hash"`
-	Used        bool      `gorm:"default:false" json:"used"`
-	UsedAt      *time.Time `json:"used_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	UserID    string     `gorm:"index" json:"user_id"`
+	CodeHash  string     `gorm:"index" json:"code_hash"`
+	Used      bool       `gorm:"default:false" json:"used"`
+	UsedAt    *time.Time `json:"used_at"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // TwoFactorLog - 2FA activity log
 type TwoFactorLog struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      string    `gorm:"index" json:"user_id"`
-	Action      string    `json:"action"` // enabled, disabled, verified, failed, locked, backup_used
-	Method      string    `json:"method"` // totp, sms, email, backup
-	IPAddress   string    `json:"ip_address"`
-	UserAgent   string    `json:"user_agent"`
-	DeviceInfo  string    `json:"device_info"`
-	Success     bool      `json:"success"`
-	ErrorMsg    string    `json:"error_msg"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	UserID     string    `gorm:"index" json:"user_id"`
+	Action     string    `json:"action"` // enabled, disabled, verified, failed, locked, backup_used
+	Method     string    `json:"method"` // totp, sms, email, backup
+	IPAddress  string    `json:"ip_address"`
+	UserAgent  string    `json:"user_agent"`
+	DeviceInfo string    `json:"device_info"`
+	Success    bool      `json:"success"`
+	ErrorMsg   string    `json:"error_msg"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // TrustedDevice - Trusted device information
@@ -127,11 +128,11 @@ type TrustedDevice struct {
 
 // TwoFactorService - Main 2FA service
 type TwoFactorService struct {
-	config      TwoFactorConfig
-	db          *gorm.DB
-	redis       *redis.Client
+	config        TwoFactorConfig
+	db            *gorm.DB
+	redis         *redis.Client
 	encryptionKey []byte
-	templates   *template.Template
+	templates     *template.Template
 }
 
 // NewTwoFactorService - Create new 2FA service
@@ -139,41 +140,41 @@ func NewTwoFactorService(cfg TwoFactorConfig) (*TwoFactorService, error) {
 	// Connect to database
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
-	
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	
+
 	// Auto migrate
 	err = db.AutoMigrate(&User2FA{}, &BackupCode{}, &TwoFactorLog{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-	
+
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 	})
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
-	
+
 	// Get encryption key
 	encryptionKey, err := getOrCreateEncryptionKey(cfg.EncryptionKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get encryption key: %w", err)
 	}
-	
+
 	// Load templates
 	templates, err := loadTemplates()
 	if err != nil {
 		log.Printf("Warning: Failed to load templates: %v", err)
 	}
-	
+
 	// Set defaults
 	if cfg.TOTPDigits == 0 {
 		cfg.TOTPDigits = 6
@@ -196,7 +197,7 @@ func NewTwoFactorService(cfg TwoFactorConfig) (*TwoFactorService, error) {
 	if cfg.LockoutDuration == 0 {
 		cfg.LockoutDuration = 15 * time.Minute
 	}
-	
+
 	return &TwoFactorService{
 		config:        cfg,
 		db:            db,
@@ -211,14 +212,14 @@ func getOrCreateEncryptionKey(keyStr string) ([]byte, error) {
 	if keyStr != "" {
 		return base64.StdEncoding.DecodeString(keyStr)
 	}
-	
+
 	// Generate new key
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return key, nil
 }
 
@@ -316,11 +317,11 @@ func (s *TwoFactorService) GenerateSecret(userID string) (string, error) {
 		Digits:      otp.DigitsSix,
 		Period:      uint(s.config.TOTPPeriod),
 	})
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	return key.Secret(), nil
 }
 
@@ -330,18 +331,18 @@ func (s *TwoFactorService) EncryptSecret(secret string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	_, err = io.ReadFull(rand.Reader, nonce)
 	if err != nil {
 		return "", err
 	}
-	
+
 	ciphertext := gcm.Seal(nonce, nonce, []byte(secret), nil)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
@@ -352,38 +353,38 @@ func (s *TwoFactorService) DecryptSecret(encrypted string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	block, err := aes.NewCipher(s.encryptionKey)
 	if err != nil {
 		return "", err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
-	
+
 	nonceSize := gcm.NonceSize()
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	
+
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(plaintext), nil
 }
 
 // GenerateBackupCodes - Generate backup codes
 func (s *TwoFactorService) GenerateBackupCodes(count int) []string {
 	codes := make([]string, count)
-	
+
 	for i := 0; i < count; i++ {
 		code := generateRandomCode(s.config.BackupCodeLength)
 		// Format as XXXX-XXXX
 		codes[i] = fmt.Sprintf("%s-%s", code[:4], code[4:])
 	}
-	
+
 	return codes
 }
 
@@ -419,10 +420,10 @@ func (s *TwoFactorService) Enable2FA(userID, secret, method, phone, email string
 	if err != nil {
 		return err
 	}
-	
+
 	// Generate backup codes
 	backupCodes := s.GenerateBackupCodes(s.config.BackupCodeCount)
-	
+
 	// Store backup codes
 	for _, code := range backupCodes {
 		codeHash := s.HashBackupCode(code)
@@ -433,21 +434,21 @@ func (s *TwoFactorService) Enable2FA(userID, secret, method, phone, email string
 		}
 		s.db.Create(backupCode)
 	}
-	
+
 	// Store user 2FA config
 	user2FA := &User2FA{
-		UserID:            userID,
-		Enabled:           true,
-		SecretEncrypted:   encryptedSecret,
-		Method:            method,
-		Phone:             phone,
-		Email:             email,
-		RecoveryEnabled:   true,
-		FailedAttempts:    0,
-		TrustedDevices:    "[]",
-		CreatedAt:         time.Now(),
+		UserID:          userID,
+		Enabled:         true,
+		SecretEncrypted: encryptedSecret,
+		Method:          method,
+		Phone:           phone,
+		Email:           email,
+		RecoveryEnabled: true,
+		FailedAttempts:  0,
+		TrustedDevices:  "[]",
+		CreatedAt:       time.Now(),
 	}
-	
+
 	// Check if user already has 2FA
 	var existing User2FA
 	result := s.db.Where("user_id = ?", userID).First(&existing)
@@ -459,10 +460,10 @@ func (s *TwoFactorService) Enable2FA(userID, secret, method, phone, email string
 	} else {
 		s.db.Create(user2FA)
 	}
-	
+
 	// Log
 	s.logAction(userID, "enabled", method, "", "", "", true, "")
-	
+
 	return nil
 }
 
@@ -470,20 +471,20 @@ func (s *TwoFactorService) Enable2FA(userID, secret, method, phone, email string
 func (s *TwoFactorService) Disable2FA(userID, reason string) error {
 	// Delete backup codes
 	s.db.Where("user_id = ?", userID).Delete(&BackupCode{})
-	
+
 	// Update user 2FA
 	s.db.Model(&User2FA{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
-		"enabled":           false,
-		"secret_encrypted":  "",
-		"method":            "",
-		"recovery_enabled":  false,
+		"enabled":             false,
+		"secret_encrypted":    "",
+		"method":              "",
+		"recovery_enabled":    false,
 		"backup_codes_hashed": "",
-		"updated_at":        time.Now(),
+		"updated_at":          time.Now(),
 	})
-	
+
 	// Log
 	s.logAction(userID, "disabled", "totp", "", "", "", true, reason)
-	
+
 	return nil
 }
 
@@ -495,18 +496,18 @@ func (s *TwoFactorService) VerifyCode(userID, code, ipAddress, userAgent string)
 	if result.Error != nil {
 		return false, result.Error
 	}
-	
+
 	// Check lockout
 	if user2FA.LockedUntil != nil && user2FA.LockedUntil.After(time.Now()) {
 		return false, fmt.Errorf("account locked until %s", user2FA.LockedUntil.Format("15:04:05"))
 	}
-	
+
 	// Decrypt secret
 	secret, err := s.DecryptSecret(user2FA.SecretEncrypted)
 	if err != nil {
 		return false, err
 	}
-	
+
 	// Verify code with skew tolerance
 	valid := totp.Validate(code, secret)
 	if !valid {
@@ -529,19 +530,19 @@ func (s *TwoFactorService) VerifyCode(userID, code, ipAddress, userAgent string)
 		s.db.Model(&user2FA).Updates(map[string]interface{}{
 			"failed_attempts": 0,
 			"locked_until":    nil,
-			"last_used_at":   time.Now(),
+			"last_used_at":    time.Now(),
 		})
-		
+
 		// Log success
 		s.logAction(userID, "verified", user2FA.Method, ipAddress, userAgent, "", true, "")
-		
+
 		return true, nil
 	}
-	
+
 	// Increment failed attempts
 	user2FA.FailedAttempts++
 	locked := false
-	
+
 	if user2FA.FailedAttempts >= s.config.MaxAttempts {
 		lockedUntil := time.Now().Add(s.config.LockoutDuration)
 		s.db.Model(&user2FA).Updates(map[string]interface{}{
@@ -552,14 +553,14 @@ func (s *TwoFactorService) VerifyCode(userID, code, ipAddress, userAgent string)
 	} else {
 		s.db.Model(&user2FA).Update("failed_attempts", user2FA.FailedAttempts)
 	}
-	
+
 	// Log failure
 	errMsg := "invalid code"
 	if locked {
 		errMsg = fmt.Sprintf("account locked after %d failed attempts", user2FA.FailedAttempts)
 	}
 	s.logAction(userID, "failed", user2FA.Method, ipAddress, userAgent, "", false, errMsg)
-	
+
 	return false, errors.New(errMsg)
 }
 
@@ -571,9 +572,9 @@ func (s *TwoFactorService) VerifyBackupCode(userID, code, ipAddress, userAgent s
 	if result.Error != nil {
 		return false, result.Error
 	}
-	
+
 	codeHash := s.HashBackupCode(code)
-	
+
 	// Find unused backup code
 	var backupCode BackupCode
 	result = s.db.Where("user_id = ? AND code_hash = ? AND used = ?", userID, codeHash, false).First(&backupCode)
@@ -582,20 +583,20 @@ func (s *TwoFactorService) VerifyBackupCode(userID, code, ipAddress, userAgent s
 		s.logAction(userID, "failed", "backup", ipAddress, userAgent, "", false, "invalid or used backup code")
 		return false, fmt.Errorf("invalid or used backup code")
 	}
-	
+
 	// Mark code as used
 	now := time.Now()
 	s.db.Model(&backupCode).Updates(map[string]interface{}{
-		"used":   true,
+		"used":    true,
 		"used_at": now,
 	})
-	
+
 	// Log success
 	s.logAction(userID, "backup_used", "backup", ipAddress, userAgent, "", true, "")
-	
+
 	// Update last used
 	s.db.Model(&user2FA).Update("last_used_at", now)
-	
+
 	return true, nil
 }
 
@@ -606,11 +607,11 @@ func (s *TwoFactorService) GetUser2FA(userID string) (*User2FA, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Don't return encrypted secret
 	user2FA.SecretEncrypted = ""
 	user2FA.BackupCodesHashed = ""
-	
+
 	return &user2FA, nil
 }
 
@@ -632,10 +633,10 @@ func (s *TwoFactorService) GetRemainingBackupCodes(userID string) (int, error) {
 func (s *TwoFactorService) RegenerateBackupCodes(userID string) ([]string, error) {
 	// Delete old backup codes
 	s.db.Where("user_id = ?", userID).Delete(&BackupCode{})
-	
+
 	// Generate new backup codes
 	backupCodes := s.GenerateBackupCodes(s.config.BackupCodeCount)
-	
+
 	// Store new backup codes
 	for _, code := range backupCodes {
 		codeHash := s.HashBackupCode(code)
@@ -646,10 +647,10 @@ func (s *TwoFactorService) RegenerateBackupCodes(userID string) ([]string, error
 		}
 		s.db.Create(backupCode)
 	}
-	
+
 	// Log
 	s.logAction(userID, "backup_codes_regenerated", "recovery", "", "", "", true, "")
-	
+
 	return backupCodes, nil
 }
 
@@ -659,10 +660,10 @@ func (s *TwoFactorService) AddTrustedDevice(userID string, device TrustedDevice)
 	if err := s.db.Where("user_id = ?", userID).First(&user2FA).Error; err != nil {
 		return err
 	}
-	
+
 	var devices []TrustedDevice
 	json.Unmarshal([]byte(user2FA.TrustedDevices), &devices)
-	
+
 	// Check if device already exists
 	for i, d := range devices {
 		if d.ID == device.ID {
@@ -671,15 +672,15 @@ func (s *TwoFactorService) AddTrustedDevice(userID string, device TrustedDevice)
 			goto save
 		}
 	}
-	
+
 	device.LastSeen = time.Now()
 	device.ExpiresAt = time.Now().Add(30 * 24 * time.Hour)
 	devices = append(devices, device)
-	
+
 save:
 	data, _ := json.Marshal(devices)
 	s.db.Model(&user2FA).Update("trusted_devices", string(data))
-	
+
 	return nil
 }
 
@@ -689,20 +690,20 @@ func (s *TwoFactorService) RemoveTrustedDevice(userID, deviceID string) error {
 	if err := s.db.Where("user_id = ?", userID).First(&user2FA).Error; err != nil {
 		return err
 	}
-	
+
 	var devices []TrustedDevice
 	json.Unmarshal([]byte(user2FA.TrustedDevices), &devices)
-	
+
 	newDevices := make([]TrustedDevice, 0)
 	for _, d := range devices {
 		if d.ID != deviceID {
 			newDevices = append(newDevices, d)
 		}
 	}
-	
+
 	data, _ := json.Marshal(newDevices)
 	s.db.Model(&user2FA).Update("trusted_devices", string(data))
-	
+
 	return nil
 }
 
@@ -719,7 +720,7 @@ func (s *TwoFactorService) logAction(userID, action, method, ipAddress, userAgen
 		ErrorMsg:   errorMsg,
 		CreatedAt:  time.Now(),
 	}
-	
+
 	s.db.Create(logEntry)
 }
 
@@ -738,27 +739,35 @@ func (s *TwoFactorService) Setup2FAHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	method := req.Method
 	if method == "" {
 		method = "totp"
 	}
-	
+
 	// Generate secret
 	secret, err := s.GenerateSecret(req.UserID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
-	// Generate QR code URL
-	qrCodeURL := fmt.Sprintf("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=%s", 
-		url.QueryEscape(fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s", 
-			s.config.Issuer, req.UserID, secret, s.config.Issuer)))
-	
+
+	// Render the otpauth URI locally. The previous implementation pointed the
+	// client at api.qrserver.com with the TOTP shared secret in the query
+	// string, which sent the second factor to a third party and let that party
+	// serve arbitrary image bytes into the setup screen. Nothing here leaves
+	// the process.
+	otpauth := fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s",
+		url.PathEscape(s.config.Issuer), url.PathEscape(req.UserID), secret, url.QueryEscape(s.config.Issuer))
+	png, err := qrcode.Encode(otpauth, qrcode.Medium, 200)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to render QR code"})
+		return
+	}
+
 	c.JSON(200, gin.H{
-		"secret":     secret,
-		"qr_code_url": qrCodeURL,
+		"secret":      secret,
+		"qr_code_png": "data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
 	})
 }
 
@@ -774,7 +783,7 @@ func (s *TwoFactorService) VerifySetupHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Verify code
 	valid := totp.Validate(req.Code, req.Secret)
 	if !valid {
@@ -796,26 +805,26 @@ func (s *TwoFactorService) VerifySetupHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "invalid code"})
 		return
 	}
-	
+
 	// Enable 2FA
 	err := s.Enable2FA(req.UserID, req.Secret, "totp", "", "")
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Generate backup codes to return
 	backupCodes, _ := s.RegenerateBackupCodes(req.UserID)
-	
+
 	c.JSON(200, gin.H{
-		"status":        "enabled",
-		"backup_codes":  backupCodes,
+		"status":       "enabled",
+		"backup_codes": backupCodes,
 	})
 }
 
 type Verify2FARequest struct {
-	UserID string `json:"user_id" binding:"required"`
-	Code   string `json:"code"`
+	UserID     string `json:"user_id" binding:"required"`
+	Code       string `json:"code"`
 	BackupCode string `json:"backup_code"`
 }
 
@@ -825,10 +834,10 @@ func (s *TwoFactorService) Verify2FAHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	ipAddress := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
-	
+
 	// Try TOTP code first. VerifyCode reports a wrong code as (false, nil) and
 	// only returns an error for lockout or storage failures, so the boolean must
 	// be checked - treating a nil error as success would accept any code.
@@ -879,53 +888,53 @@ func (s *TwoFactorService) Disable2FAHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Verify before disabling
 	valid, err := s.VerifyCode(req.UserID, req.Code, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
 		c.JSON(401, gin.H{"error": "invalid code"})
 		return
 	}
-	
+
 	if !valid {
 		c.JSON(401, gin.H{"error": "invalid code"})
 		return
 	}
-	
+
 	err = s.Disable2FA(req.UserID, "user_requested")
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "disabled"})
 }
 
 func (s *TwoFactorService) GetUser2FAHandler(c *gin.Context) {
 	userID := c.Param("user_id")
-	
+
 	user2FA, err := s.GetUser2FA(userID)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "2FA not enabled"})
 		return
 	}
-	
+
 	// Get remaining backup codes
 	remaining, _ := s.GetRemainingBackupCodes(userID)
 	user2FA.FailedAttempts = remaining // Reuse field for remaining backup codes
-	
+
 	c.JSON(200, user2FA)
 }
 
 func (s *TwoFactorService) Is2FAEnabledHandler(c *gin.Context) {
 	userID := c.Param("user_id")
-	
+
 	enabled, err := s.Is2FAEnabled(userID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"enabled": enabled})
 }
 
@@ -940,25 +949,25 @@ func (s *TwoFactorService) RegenerateCodesHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Verify before regenerating
 	valid, err := s.VerifyCode(req.UserID, req.Code, c.ClientIP(), c.GetHeader("User-Agent"))
 	if err != nil {
 		c.JSON(401, gin.H{"error": "invalid code"})
 		return
 	}
-	
+
 	if !valid {
 		c.JSON(401, gin.H{"error": "invalid code"})
 		return
 	}
-	
+
 	codes, err := s.RegenerateBackupCodes(req.UserID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"backup_codes": codes})
 }
 
@@ -966,33 +975,33 @@ func (s *TwoFactorService) RegenerateCodesHandler(c *gin.Context) {
 
 func main() {
 	cfg := TwoFactorConfig{
-		ServiceName:    getEnv("SERVICE_NAME", "TigerWallet"),
-		ServiceURL:     getEnv("SERVICE_URL", "https://tigerwallet.com"),
-		Issuer:         getEnv("2FA_ISSUER", "TigerWallet"),
-		TOTPDigits:     getEnvInt("TOTP_DIGITS", 6),
-		TOTPPeriod:     getEnvInt("TOTP_PERIOD", 30),
-		BackupCodeCount: getEnvInt("BACKUP_CODE_COUNT", 10),
+		ServiceName:      getEnv("SERVICE_NAME", "TigerWallet"),
+		ServiceURL:       getEnv("SERVICE_URL", "https://tigerwallet.com"),
+		Issuer:           getEnv("2FA_ISSUER", "TigerWallet"),
+		TOTPDigits:       getEnvInt("TOTP_DIGITS", 6),
+		TOTPPeriod:       getEnvInt("TOTP_PERIOD", 30),
+		BackupCodeCount:  getEnvInt("BACKUP_CODE_COUNT", 10),
 		BackupCodeLength: getEnvInt("BACKUP_CODE_LENGTH", 8),
-		MaxAttempts:    getEnvInt("2FA_MAX_ATTEMPTS", 5),
-		LockoutDuration: getEnvDuration("2FA_LOCKOUT_DURATION", 15*time.Minute),
-		EncryptionKey:  getEnv("2FA_ENCRYPTION_KEY", ""),
-		DBHost:         getEnv("DB_HOST", "localhost"),
-		DBPort:         getEnv("DB_PORT", "5432"),
-		DBUser:         getEnv("DB_USER", "postgres"),
-		DBPassword:     getEnv("DB_PASSWORD", "password"),
-		DBName:         getEnv("DB_NAME", "twofactor_db"),
-		RedisHost:      getEnv("REDIS_HOST", "localhost"),
-		RedisPort:      getEnv("REDIS_PORT", "6379"),
-		ServerPort:     getEnv("2FA_SERVER_PORT", "8090"),
+		MaxAttempts:      getEnvInt("2FA_MAX_ATTEMPTS", 5),
+		LockoutDuration:  getEnvDuration("2FA_LOCKOUT_DURATION", 15*time.Minute),
+		EncryptionKey:    getEnv("2FA_ENCRYPTION_KEY", ""),
+		DBHost:           getEnv("DB_HOST", "localhost"),
+		DBPort:           getEnv("DB_PORT", "5432"),
+		DBUser:           getEnv("DB_USER", "postgres"),
+		DBPassword:       getEnv("DB_PASSWORD", "password"),
+		DBName:           getEnv("DB_NAME", "twofactor_db"),
+		RedisHost:        getEnv("REDIS_HOST", "localhost"),
+		RedisPort:        getEnv("REDIS_PORT", "6379"),
+		ServerPort:       getEnv("2FA_SERVER_PORT", "8090"),
 	}
-	
+
 	service, err := NewTwoFactorService(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize 2FA service: %v", err)
 	}
-	
+
 	r := gin.Default()
-	
+
 	// 2FA Routes
 	r.POST("/2fa/setup", service.Setup2FAHandler)
 	r.POST("/2fa/verify-setup", service.VerifySetupHandler)
@@ -1001,11 +1010,11 @@ func main() {
 	r.GET("/2fa/status/:user_id", service.Is2FAEnabledHandler)
 	r.GET("/2fa/config/:user_id", service.GetUser2FAHandler)
 	r.POST("/2fa/regenerate-codes", service.RegenerateCodesHandler)
-	
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "healthy", "service": "2fa"})
 	})
-	
+
 	log.Printf("2FA Service starting on port %s", cfg.ServerPort)
 	if err := r.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
@@ -1037,4 +1046,3 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	}
 	return defaultValue
 }
-

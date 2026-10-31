@@ -13,6 +13,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+	"github.com/skip2/go-qrcode"
 )
 
 // ============================================================================
@@ -175,9 +177,20 @@ func (s *TwoFactorService) GenerateSecret(userID, email string) (string, error) 
 	return secret, nil
 }
 
-func (s *TwoFactorService) GenerateQRCodeURL(secret, userID, email string) string {
-	return fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s&algorithm=SHA1&digits=6&period=30",
-		s.config.IssuerName, email, secret, s.config.IssuerName)
+// GenerateQRCodePNG renders the otpauth enrolment URI to a PNG and returns it as
+// a data: URL. The client used to build an api.qrserver.com URL from the secret
+// it received here, which sent the TOTP shared secret to a third party and let
+// that party serve arbitrary image bytes into the 2FA setup screen. Rendering
+// locally keeps the secret inside this process.
+func (s *TwoFactorService) GenerateQRCodePNG(secret, userID, email string) (string, error) {
+	// The label and issuer are escaped: ':' and '?' delimit the URI's own fields.
+	uri := fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s&algorithm=SHA1&digits=6&period=30",
+		url.PathEscape(s.config.IssuerName), url.PathEscape(email), secret, url.QueryEscape(s.config.IssuerName))
+	png, err := qrcode.Encode(uri, qrcode.Medium, 200)
+	if err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), nil
 }
 
 func (s *TwoFactorService) ValidateCode(userID, code string) bool {
@@ -612,11 +625,15 @@ func (s *TwoFactorService) handleSetup2FA(c *gin.Context) {
 		return
 	}
 
-	qrURL := s.GenerateQRCodeURL(secret, req.UserID, req.Email)
+	qrPNG, err := s.GenerateQRCodePNG(secret, req.UserID, req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to render QR code"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"secret": secret,
-		"qrUrl":  qrURL,
+		"secret":    secret,
+		"qrCodePng": qrPNG,
 	})
 }
 
