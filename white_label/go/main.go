@@ -51,22 +51,22 @@ type Config struct {
 
 // White Label Client
 type WhiteLabelClient struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Domain            string   `json:"domain"`
-	CustomBranding    bool     `json:"customBranding"`
-	LogoURL           string   `json:"logoUrl"`
-	PrimaryColor      string   `json:"primaryColor"`
-	SecondaryColor    string   `json:"secondaryColor"`
-	Status            string   `json:"status"` // active, suspended, halted
-	CreatedAt         int64    `json:"createdAt"`
-	UpdatedAt         int64    `json:"updatedAt"`
-	AdminIDs          []string `json:"adminIds"`
-	Permissions       []string `json:"permissions"`
-	Products          []string `json:"products"`
-	BlockchainAccess  []uint64 `json:"blockchainAccess"`
-	APIKey            string   `json:"apiKey"`
-	SecretKey         string   `json:"secretKey"`
+	ID               string   `json:"id"`
+	Name             string   `json:"name"`
+	Domain           string   `json:"domain"`
+	CustomBranding   bool     `json:"customBranding"`
+	LogoURL          string   `json:"logoUrl"`
+	PrimaryColor     string   `json:"primaryColor"`
+	SecondaryColor   string   `json:"secondaryColor"`
+	Status           string   `json:"status"` // active, suspended, halted
+	CreatedAt        int64    `json:"createdAt"`
+	UpdatedAt        int64    `json:"updatedAt"`
+	AdminIDs         []string `json:"adminIds"`
+	Permissions      []string `json:"permissions"`
+	Products         []string `json:"products"`
+	BlockchainAccess []uint64 `json:"blockchainAccess"`
+	APIKey           string   `json:"apiKey"`
+	SecretKey        string   `json:"secretKey"`
 }
 
 // White Label Admin
@@ -87,8 +87,8 @@ type WhiteLabelAdmin struct {
 type Product struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
-	Type       string   `json:"type"`     // trading, wallet, staking, nft, etc
-	Status     string   `json:"status"`   // enabled, disabled, maintenance
+	Type       string   `json:"type"`   // trading, wallet, staking, nft, etc
+	Status     string   `json:"status"` // enabled, disabled, maintenance
 	Fee        float64  `json:"fee"`
 	MinDeposit float64  `json:"minDeposit"`
 	MaxDeposit float64  `json:"maxDeposit"`
@@ -144,7 +144,7 @@ type MarketMakerBot struct {
 	ClientID  string                 `json:"clientId"`
 	Name      string                 `json:"name"`
 	PairIDs   []string               `json:"pairIds"`
-	Status    string                 `json:"status"` // running, stopped, error
+	Status    string                 `json:"status"`   // running, stopped, error
 	Strategy  string                 `json:"strategy"` // arbitrage, market_making, liquidity
 	Params    map[string]interface{} `json:"params"`
 	Profit    float64                `json:"profit"`
@@ -765,8 +765,8 @@ func loginAdmin(c *gin.Context) {
 
 	const cols = `id,client_id,email,name,role,permissions,status,created_at,last_login,two_factor_enabled,password_hash`
 	var (
-		a           WhiteLabelAdmin
-		permissions []byte
+		a            WhiteLabelAdmin
+		permissions  []byte
 		passwordHash string
 	)
 	err := pg.QueryRow(c.Request.Context(),
@@ -813,8 +813,8 @@ func loginAdmin(c *gin.Context) {
 	recordAuditLog(c, a.ClientID, a.ID, a.Email, "LOGIN", "admin", a.ID, "success", nil)
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":  token,
-		"admin":  a,
+		"token":     token,
+		"admin":     a,
 		"expiresAt": time.Unix(now, 0).Add(jwtTTL).Format(time.RFC3339),
 	})
 }
@@ -1456,15 +1456,67 @@ func listTradingPairsPaginated(c *gin.Context) {
 // DASHBOARD SUMMARY (real aggregate counts from PostgreSQL)
 // ============================================================================
 
-func countWhere(ctx context.Context, table, where string) int64 {
-	if pg == nil {
-		return 0
+// allowedCountTables is the allow-list of tables countWhere, countRows and
+// sumColumn may name. A table or column identifier cannot be a bind parameter, so
+// these helpers build their SQL by concatenation and must reject anything that is
+// not a known literal.
+var allowedCountTables = map[string]bool{
+	"wl_clients":           true,
+	"wl_admins":            true,
+	"wl_products":          true,
+	"wl_trading_pairs":     true,
+	"wl_liquidity_pools":   true,
+	"wl_token_configs":     true,
+	"wl_market_maker_bots": true,
+}
+
+var allowedSumColumns = map[string]bool{"value_usd": true}
+
+// allowedWhereClauses is the allow-list of WHERE fragments countWhere accepts.
+// Every caller passes a literal, so no fragment is ever assembled from input.
+var allowedWhereClauses = map[string]bool{
+	"status='active'":  true,
+	"status='pending'": true,
+}
+
+// countQuery builds the COUNT statement, refusing any table or WHERE fragment
+// that is not on the allow-list.
+func countQuery(table, where string) (string, error) {
+	if !allowedCountTables[table] {
+		return "", fmt.Errorf("countQuery: unknown table %q", table)
 	}
-	var count int64
+	if where != "" && !allowedWhereClauses[where] {
+		return "", fmt.Errorf("countQuery: unknown WHERE clause %q", where)
+	}
 	q := `SELECT COUNT(*) FROM ` + table
 	if where != "" {
 		q += " WHERE " + where
 	}
+	return q, nil
+}
+
+// sumQuery builds the SUM statement, refusing any table or column that is not on
+// the allow-list.
+func sumQuery(table, column string) (string, error) {
+	if !allowedCountTables[table] {
+		return "", fmt.Errorf("sumQuery: unknown table %q", table)
+	}
+	if !allowedSumColumns[column] {
+		return "", fmt.Errorf("sumQuery: unknown column %q", column)
+	}
+	return `SELECT COALESCE(SUM(` + column + `),0) FROM ` + table, nil
+}
+
+func countWhere(ctx context.Context, table, where string) int64 {
+	if pg == nil {
+		return 0
+	}
+	q, err := countQuery(table, where)
+	if err != nil {
+		logger.Error().Err(err).Str("table", table).Str("where", where).Msg("countWhere rejected")
+		return 0
+	}
+	var count int64
 	if err := pg.QueryRow(ctx, q).Scan(&count); err != nil {
 		logger.Warn().Err(err).Str("table", table).Msg("Failed to count rows")
 		return 0
@@ -1476,8 +1528,13 @@ func sumColumn(ctx context.Context, table, column string) float64 {
 	if pg == nil {
 		return 0
 	}
+	q, err := sumQuery(table, column)
+	if err != nil {
+		logger.Error().Err(err).Str("table", table).Str("column", column).Msg("sumColumn rejected")
+		return 0
+	}
 	var sum float64
-	if err := pg.QueryRow(ctx, `SELECT COALESCE(SUM(`+column+`),0) FROM `+table).Scan(&sum); err != nil {
+	if err := pg.QueryRow(ctx, q).Scan(&sum); err != nil {
 		logger.Warn().Err(err).Str("table", table).Msg("Failed to sum column")
 		return 0
 	}
@@ -1502,14 +1559,14 @@ func getDashboardSummary(c *gin.Context) {
 		"totalBots":         countRows(ctx, "wl_market_maker_bots"),
 		"totalLiquidityUsd": liquidityValue,
 		// No real user/revenue tables exist yet — honest zeros.
-		"totalUsers":  int64(0),
-		"volume24h":   0.0,
-		"volume7d":    0.0,
-		"volume30d":   0.0,
-		"revenue24h":  0.0,
-		"revenue7d":   0.0,
-		"revenue30d":  0.0,
-		"timestamp":   time.Now().Unix(),
+		"totalUsers": int64(0),
+		"volume24h":  0.0,
+		"volume7d":   0.0,
+		"volume30d":  0.0,
+		"revenue24h": 0.0,
+		"revenue7d":  0.0,
+		"revenue30d": 0.0,
+		"timestamp":  time.Now().Unix(),
 	})
 }
 
@@ -1620,7 +1677,6 @@ func setStatusAndLog(c *gin.Context, status, action string) *WhiteLabelClient {
 	recordAuditLog(c, cl.ID, currentAdminID(c), currentAdminEmail(c), action, "client", id, "success", gin.H{"status": status})
 	return cl
 }
-
 
 // ============================================================================
 // JSONB HELPERS
@@ -1956,7 +2012,7 @@ func resumeClient(c *gin.Context) {
 		"error": "product resume requires TigerWallet SuperAdmin approval via the license control plane",
 	})
 }
-func haltClient(c *gin.Context)    { setClientStatus(c, "halted") }
+func haltClient(c *gin.Context) { setClientStatus(c, "halted") }
 
 // ============================================================================
 // ADMIN MANAGEMENT
@@ -2749,7 +2805,7 @@ func createLiquidityPool(c *gin.Context) {
 		TokenB:    req.TokenB,
 		AmountA:   req.AmountA,
 		AmountB:   req.AmountB,
-		ValueUSD:   req.AmountA * 1000, // Simplified
+		ValueUSD:  req.AmountA * 1000, // Simplified
 		Status:    "active",
 		CreatedAt: time.Now().Unix(),
 	}
@@ -3503,8 +3559,13 @@ func countRows(ctx context.Context, table string) int64 {
 	if pg == nil {
 		return 0
 	}
+	q, err := countQuery(table, "")
+	if err != nil {
+		logger.Error().Err(err).Str("table", table).Msg("countRows rejected")
+		return 0
+	}
 	var count int64
-	if err := pg.QueryRow(ctx, `SELECT COUNT(*) FROM `+table).Scan(&count); err != nil {
+	if err := pg.QueryRow(ctx, q).Scan(&count); err != nil {
 		logger.Warn().Err(err).Str("table", table).Msg("Failed to count rows")
 		return 0
 	}
@@ -3515,13 +3576,13 @@ func getDashboard(c *gin.Context) {
 	ctx := c.Request.Context()
 	c.JSON(http.StatusOK, gin.H{
 		"totalClients":  countRows(ctx, "wl_clients"),
-		"totalAdmins":  countRows(ctx, "wl_admins"),
+		"totalAdmins":   countRows(ctx, "wl_admins"),
 		"totalProducts": countRows(ctx, "wl_products"),
-		"totalPairs":   countRows(ctx, "wl_trading_pairs"),
-		"totalPools":   countRows(ctx, "wl_liquidity_pools"),
-		"totalTokens":  countRows(ctx, "wl_token_configs"),
-		"totalBots":    countRows(ctx, "wl_market_maker_bots"),
-		"timestamp":    time.Now().Unix(),
+		"totalPairs":    countRows(ctx, "wl_trading_pairs"),
+		"totalPools":    countRows(ctx, "wl_liquidity_pools"),
+		"totalTokens":   countRows(ctx, "wl_token_configs"),
+		"totalBots":     countRows(ctx, "wl_market_maker_bots"),
+		"timestamp":     time.Now().Unix(),
 	})
 }
 
