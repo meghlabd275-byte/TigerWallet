@@ -613,7 +613,12 @@ func verifyWebAuthnAssertion(lc *lockCredential, req unlockReq) error {
 	}
 	if signCount != 0 {
 		lc.PasskeySignCount = signCount
-		_ = upsertLockCredential(context.Background(), lc)
+		// The sign counter is the replay defence. Failing to persist it would
+		// let the same assertion be replayed, so surface the error instead of
+		// discarding it.
+		if err := upsertLockCredential(context.Background(), lc); err != nil {
+			return fmt.Errorf("failed to persist passkey sign counter: %w", err)
+		}
 	}
 	return nil
 }

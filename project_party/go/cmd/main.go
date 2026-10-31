@@ -1534,8 +1534,19 @@ func contributeHandler(db *pgxpool.Pool) gin.HandlerFunc {
 			})
 			return
 		}
-		// Persist the real tx hash + token claim.
-		_ = persistOnChainContribution(db, ctx, contrib.ID.String(), txHash, tokenClaim)
+		// Persist the real tx hash + token claim. The funds already moved
+		// on-chain, so a failure here must not be reported as success: the
+		// response is what the client stores, and the DB row is what the claim
+		// path reads. Both have to agree.
+		if err := persistOnChainContribution(db, ctx, contrib.ID.String(), txHash, tokenClaim); err != nil {
+			log.Printf("error: on-chain contribution confirmed but persistence failed (tx %s): %v", txHash, err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "contribution confirmed on-chain but could not be recorded",
+				"detail":  "the transaction is on-chain; contact support with the tx hash",
+				"tx_hash": txHash,
+			})
+			return
+		}
 		contrib.TxHash = txHash
 		contrib.Status = "confirmed"
 		contrib.TokenAmount = tokenClaim.String()

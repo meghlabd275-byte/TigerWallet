@@ -1438,7 +1438,13 @@ func handleUpdateFeatureFlag(c *gin.Context) {
 	}
 	// Resolve the feature name by id so we can publish the live state to Redis.
 	var name string
-	_ = dbQueryRow(c, `SELECT name FROM feature_flags WHERE id=$1`, c.Param("id")).Scan(&name)
+	// Resolving the name can fail independently of the UPDATE. Swallowing the
+	// error would skip the publish below and leave the running services on the
+	// old state, so report it.
+	if err := dbQueryRow(c, `SELECT name FROM feature_flags WHERE id=$1`, c.Param("id")).Scan(&name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "feature flag not found"})
+		return
+	}
 	if _, err := dbExec(c, `UPDATE feature_flags SET is_enabled=$1, updated_by=$2 WHERE id=$3`, isEnabled, c.GetString("user_id"), c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1452,7 +1458,10 @@ func handleUpdateFeatureFlag(c *gin.Context) {
 func handleDeleteFeatureFlag(c *gin.Context) {
 	// Resolve the feature name by id so we can delete the live state from Redis.
 	var name string
-	_ = dbQueryRow(c, `SELECT name FROM feature_flags WHERE id=$1`, c.Param("id")).Scan(&name)
+	if err := dbQueryRow(c, `SELECT name FROM feature_flags WHERE id=$1`, c.Param("id")).Scan(&name); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "feature flag not found"})
+		return
+	}
 	if _, err := dbExec(c, `DELETE FROM feature_flags WHERE id=$1`, c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
