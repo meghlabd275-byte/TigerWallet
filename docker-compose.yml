@@ -7,7 +7,7 @@ services:
     container_name: tigerwallet-postgres
     environment:
       POSTGRES_USER: tigerwallet
-      POSTGRES_PASSWORD: tigerwallet
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set - a committed default is a known credential}"
       POSTGRES_DB: tigerwallet_admin
     ports:
       - "5432:5432"
@@ -96,7 +96,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: tigerwallet
-      DB_PASSWORD: tigerwallet
+      DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       DB_NAME: tigerwallet_admin
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -122,7 +122,7 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: tigerwallet
-      DB_PASSWORD: tigerwallet
+      DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       DB_NAME: tigerwallet_admin
       REDIS_ADDR: "redis:6379"
       JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set to a strong value}"
@@ -146,7 +146,7 @@ services:
       PROJECT_PARTY_DB_HOST: postgres
       PROJECT_PARTY_DB_PORT: 5432
       PROJECT_PARTY_DB_USER: tigerwallet
-      PROJECT_PARTY_DB_PASSWORD: tigerwallet
+      PROJECT_PARTY_DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       PROJECT_PARTY_DB_NAME: tigerwallet_project_party
       PROJECT_PARTY_REDIS_ADDR: "redis:6379"
       # On-chain launchpad (fail-closed 503 on contribute/claim when unset).
@@ -325,7 +325,7 @@ services:
       DB_HOST: "postgres"
       DB_PORT: "5432"
       DB_USER: "tigerwallet"
-      DB_PASSWORD: "tigerwallet"
+      DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       DB_NAME: "walletconnect"
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
@@ -426,7 +426,7 @@ services:
       - "8091:8091"
     environment:
       PERMISSION_PORT: "8091"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:-tigerwallet}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
       JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set - permission-service signs admin JWTs with it}"
       SUPER_ADMIN_SECRET: "${SUPER_ADMIN_SECRET:?SUPER_ADMIN_SECRET must be set - permission-service gates its control plane with it}"
@@ -447,7 +447,7 @@ services:
       - "8092:8092"
     environment:
       CONNECTION_PORT: "8092"
-      DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:-tigerwallet}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
       JWT_SECRET: "${ADMIN_JWT_SECRET:?ADMIN_JWT_SECRET must be set - connection-api issues session JWTs signed with it}"
     depends_on:
@@ -639,7 +639,7 @@ services:
       LICENSE_PORT: "8460"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_URL: "redis://redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-tigerwallet-license-secret-change-me}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set - a committed default would let anyone mint license tokens}"
       GATE_ED25519_PUBLIC_KEY: "${GATE_ED25519_PUBLIC_KEY:-}"
     depends_on:
       postgres:
@@ -664,7 +664,7 @@ services:
       PORT: "8469"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/tigerwallet?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${JWT_SECRET:-tigerwallet-license-secret-change-me}"
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set - a committed default would let anyone mint license tokens}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -685,7 +685,7 @@ services:
     environment:
       PORT: "8443"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_userwallet?sslmode=disable"
-      JWT_SECRET: "${WL_JWT_SECRET:-wl-user-wallet-jwt-secret-change-me}"
+      JWT_SECRET: "${WL_JWT_SECRET:?WL_JWT_SECRET must be set - a committed default would let anyone mint tenant tokens}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       WL_LICENSE_KEY: "${WL_LICENSE_KEY}"
       WL_PRODUCT: "user_wallet"
@@ -713,7 +713,7 @@ services:
     environment:
       PORT: "8450"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_masterwallet?sslmode=disable"
-      JWT_SECRET: "${WL_MW_JWT_SECRET:-wl-master-wallet-jwt-secret-change-me}"
+      JWT_SECRET: "${WL_MW_JWT_SECRET:?WL_MW_JWT_SECRET must be set - a committed default would let anyone mint tenant tokens}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       WL_LICENSE_KEY: "${WL_MW_LICENSE_KEY}"
       WL_PRODUCT: "master_wallet"
@@ -741,7 +741,7 @@ services:
     environment:
       PORT: "8471"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_bots?sslmode=disable"
-      JWT_SECRET: "${WL_BOTS_JWT_SECRET:-wl-bots-jwt-secret-change-me}"
+      JWT_SECRET: "${WL_BOTS_JWT_SECRET:?WL_BOTS_JWT_SECRET must be set - a committed default would let anyone mint tenant tokens}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       WL_LICENSE_KEY: "${WL_BOTS_LICENSE_KEY}"
       WL_PRODUCT: "bots"
@@ -774,7 +774,7 @@ services:
     environment:
       PORT: "8106"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_projectparty?sslmode=disable"
-      JWT_SECRET: "${WL_PP_JWT_SECRET:-wl-project-party-jwt-secret-change-me}"
+      JWT_SECRET: "${WL_PP_JWT_SECRET:?WL_PP_JWT_SECRET must be set - a committed default would let anyone mint tenant tokens}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       WL_LICENSE_KEY: "${WL_PP_LICENSE_KEY}"
       WL_PRODUCT: "project_party"
@@ -802,7 +802,7 @@ services:
     environment:
       LIQ_PORT: "8462"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_liquidity?sslmode=disable"
-      JWT_SECRET: "${WL_LIQ_JWT_SECRET:-wl-liquidity-jwt-secret-change-me}"
+      JWT_SECRET: "${WL_LIQ_JWT_SECRET:?WL_LIQ_JWT_SECRET must be set - a committed default would let anyone mint tenant tokens}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       WL_LICENSE_KEY: "${WL_LIQ_LICENSE_KEY}"
       WL_PRODUCT: "liquidity"
@@ -826,8 +826,8 @@ services:
     environment:
       CARD_PORT: "8463"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_card?sslmode=disable"
-      JWT_SECRET: "${WL_CARD_JWT_SECRET:-wl-card-jwt-secret-change-me}"
-      CARD_ENC_KEY: "${WL_CARD_ENC_KEY:-wl-card-enc-key-change-me}"
+      JWT_SECRET: "${WL_CARD_JWT_SECRET:?WL_CARD_JWT_SECRET must be set - a committed default would let anyone mint tenant tokens}"
+      CARD_ENC_KEY: "${WL_CARD_ENC_KEY:?WL_CARD_ENC_KEY must be set - this key encrypts stored card data}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       WL_LICENSE_KEY: "${WL_CARD_LICENSE_KEY}"
       WL_PRODUCT: "card"
@@ -858,7 +858,7 @@ services:
       SERVER_PORT: "8456"
       DATABASE_URL: "postgres://tigerwallet:tigerwallet@postgres:5432/wl_admin?sslmode=disable"
       REDIS_ADDR: "redis:6379"
-      JWT_SECRET: "${WL_ADMIN_JWT_SECRET:-wl-admin-jwt-secret-change-me}"
+      JWT_SECRET: "${WL_ADMIN_JWT_SECRET:?WL_ADMIN_JWT_SECRET must be set - a committed default would let anyone mint admin tokens}"
       WL_CLIENT_ID: "${WL_CLIENT_ID}"
       LICENSE_KEY: "${WL_ADMIN_LICENSE_KEY}"
       WL_PRODUCT: "white_label_admin"

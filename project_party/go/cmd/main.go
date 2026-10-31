@@ -269,7 +269,7 @@ func loadConfig() *Config {
 			Host:     getEnv("PROJECT_PARTY_DB_HOST", "localhost"),
 			Port:     getEnvInt("PROJECT_PARTY_DB_PORT", 5432),
 			User:     getEnv("PROJECT_PARTY_DB_USER", "tigerwallet"),
-			Password: getEnv("PROJECT_PARTY_DB_PASSWORD", "password"),
+			Password: requireEnv("PROJECT_PARTY_DB_PASSWORD"),
 			DBName:   getEnv("PROJECT_PARTY_DB_NAME", "tigerwallet_project_party"),
 		},
 		Redis: RedisConfig{
@@ -280,6 +280,17 @@ func loadConfig() *Config {
 		WalletAPIURL:   getEnv("WALLET_API_URL", "http://localhost:8443"),
 		WalletAPIToken: getEnv("WALLET_API_ADMIN_TOKEN", ""),
 	}
+}
+
+// requireEnv returns the value of key, or exits when it is unset. Database
+// credentials have no safe default: a fallback would silently connect with a
+// well-known password, which is the same as having no password at all.
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("%s is required", key)
+	}
+	return value
 }
 
 func getEnv(key, defaultValue string) string {

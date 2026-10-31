@@ -17,16 +17,20 @@ metadata:
   name: tigerwallet-secrets
   namespace: tigerwallet
 type: Opaque
-stringData:
-  jwt-secret: "YOUR-JWT-SECRET-KEY-CHANGE-IN-PROD"
-  db-user: "tigerwallet"
-  db-password: "CHANGE-ME-IN-PROD"
-  redis-password: "CHANGE-ME-IN-PROD"
-  grafana-password: "CHANGE-ME-IN-PROD"
-  binance-api-key: ""
-  binance-api-secret: ""
-  coinbase-api-key: ""
-  coinbase-api-secret: ""
+# No values are committed. Create this Secret out-of-band from a secret
+# manager so a placeholder never reaches a running cluster:
+#
+#   kubectl -n tigerwallet create secret generic tigerwallet-secrets \
+#     --from-literal=jwt-secret="$(openssl rand -base64 48)" \
+#     --from-literal=db-user=tigerwallet \
+#     --from-literal=db-password="$(openssl rand -base64 32)" \
+#     --from-literal=redis-password="$(openssl rand -base64 32)" \
+#     --from-literal=grafana-password="$(openssl rand -base64 32)" \
+#     --from-literal=binance-api-key=... \
+#     --from-literal=binance-api-secret=... \
+#     --from-literal=coinbase-api-key=... \
+#     --from-literal=coinbase-api-secret=...
+data: {}
 
 ---
 apiVersion: v1

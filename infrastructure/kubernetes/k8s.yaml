@@ -24,19 +24,22 @@ data:
   ENVIRONMENT: "production"
 ---
 # Secrets
-apiVersion: v1
-kind: Secret
-metadata:
-  name: tigerwallet-secrets
-  namespace: tigerwallet
-type: Opaque
-stringData:
-  DB_PASSWORD: "CHANGE_ME_IN_PRODUCTION"
-  JWT_SECRET: "CHANGE_ME_IN_PRODUCTION"
-  STRIPE_SECRET_KEY: ""
-  STRIPE_WEBHOOK_SECRET: ""
-  SMTP_PASSWORD: ""
-  TWILIO_AUTH_TOKEN: ""
+#
+# This Secret is deliberately NOT defined here. Committing placeholder values
+# means anyone who applies this manifest gets those exact credentials, and a
+# placeholder that looks like a real value tends to survive into production.
+# Create it out-of-band instead, from a secret manager:
+#
+#   kubectl -n tigerwallet create secret generic tigerwallet-secrets \
+#     --from-literal=DB_PASSWORD="$(openssl rand -base64 32)" \
+#     --from-literal=JWT_SECRET="$(openssl rand -base64 48)" \
+#     --from-literal=STRIPE_SECRET_KEY=... \
+#     --from-literal=STRIPE_WEBHOOK_SECRET=... \
+#     --from-literal=SMTP_PASSWORD=... \
+#     --from-literal=TWILIO_AUTH_TOKEN=...
+#
+# The pods reference tigerwallet-secrets by name, so a missing Secret fails the
+# rollout loudly rather than starting with a weak default.
 ---
 # PostgreSQL Service
 apiVersion: v1
