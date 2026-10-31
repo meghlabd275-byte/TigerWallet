@@ -422,9 +422,31 @@ func handleAdminUpdateTradingContract(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "contract updated"})
 }
 
+// tradingTables is the set of tables the generic status/delete helpers below
+// are allowed to name. They interpolate the table into SQL with Sprintf, so
+// the value must never be reachable from a request: every call site passes a
+// literal from this set, and the guard keeps it that way if the helpers are
+// reused.
+var tradingTables = map[string]bool{
+	"trading_contracts":     true,
+	"liquidity_pools":       true,
+	"managed_trading_pairs": true,
+	"margin_markets":        true,
+	"options_series":        true,
+	"copy_trader_registry":  true,
+}
+
+func validTradingTable(table string) bool {
+	return tradingTables[table]
+}
+
 // handleAdminSetTradingContractStatus implements stop / resume / remove for
 // contracts (and is reused by the other entity handlers below).
 func setTradingEntityStatus(c *gin.Context, table, kind, redisKey string) {
+	if !validTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	var req struct {
 		Status string `json:"status" binding:"required"`
 	}
@@ -450,6 +472,10 @@ func setTradingEntityStatus(c *gin.Context, table, kind, redisKey string) {
 }
 
 func deleteTradingEntity(c *gin.Context, table, kind, redisKey string) {
+	if !validTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	var symbol string
 	err := store.PG.QueryRow(c.Request.Context(),
 		fmt.Sprintf(`DELETE FROM %s WHERE id=$1 RETURNING %s`, table, redisKey), c.Param("id")).Scan(&symbol)

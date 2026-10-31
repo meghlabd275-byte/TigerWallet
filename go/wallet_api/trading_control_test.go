@@ -67,6 +67,30 @@ func TestValidTradingStatus(t *testing.T) {
 	}
 }
 
+// TestValidTradingTable pins the allow-list that gates the Sprintf-built
+// table names in setTradingEntityStatus and deleteTradingEntity. Those helpers
+// interpolate the table directly into SQL, so a value outside this set must be
+// refused; the test also fails if a call site is ever wired to a real table
+// that the allow-list forgot.
+func TestValidTradingTable(t *testing.T) {
+	for _, ok := range []string{
+		"trading_contracts", "liquidity_pools", "managed_trading_pairs",
+		"margin_markets", "options_series", "copy_trader_registry",
+	} {
+		if !validTradingTable(ok) {
+			t.Fatalf("table %s should be allowed", ok)
+		}
+	}
+	for _, bad := range []string{
+		"", "users", "wallet_keystores", "trading_contracts; DROP TABLE users--",
+		"trading_contracts WHERE 1=1", "TRADING_CONTRACTS",
+	} {
+		if validTradingTable(bad) {
+			t.Fatalf("table %q must be refused", bad)
+		}
+	}
+}
+
 func TestTradingVerticalsAndKinds(t *testing.T) {
 	for _, v := range []string{"spot", "perpetual", "futures", "margin", "options", "copy", "liquidity"} {
 		if !tradingVerticals[v] {
