@@ -266,8 +266,53 @@ func stringSliceContains(list []string, v string) bool {
 	return false
 }
 
+// rateWindowSeconds is the length of the sliding window the limiter counts over.
+// APIKey.RateLimit is documented as requests per minute, so the window is a
+// minute and the stored limit is the number of permitted requests in it.
+const rateWindowSeconds = 60
+
+// rateBuckets holds per-key request timestamps for the current window.
+var (
+	rateBuckets   = make(map[string][]int64)
+	rateBucketsMu sync.Mutex
+)
+
+// checkRateLimit enforces APIKey.RateLimit per minute.
+//
+// This previously returned true unconditionally, so the caller's
+// "rate limit exceeded" branch was unreachable and no API key was ever
+// throttled. A single key could drive unlimited traffic through the gateway,
+// including the request-signing path.
 func checkRateLimit(apiKey *APIKey) bool {
-	// Simplified rate limiting
+	limit := apiKey.RateLimit
+	if limit <= 0 {
+		// A key with no configured limit is treated as the default rather than
+		// as unlimited, so a missing field cannot disable throttling.
+		limit = getDefaultRateLimit(apiKey.KeyType)
+	}
+
+	now := time.Now().Unix()
+	cutoff := now - rateWindowSeconds
+
+	rateBucketsMu.Lock()
+	defer rateBucketsMu.Unlock()
+
+	// Keep only the timestamps inside the window. Doing this on every call also
+	// bounds the slice, so memory does not grow with total request count.
+	times := rateBuckets[apiKey.ID]
+	kept := times[:0]
+	for _, t := range times {
+		if t > cutoff {
+			kept = append(kept, t)
+		}
+	}
+
+	if len(kept) >= limit {
+		rateBuckets[apiKey.ID] = kept
+		return false
+	}
+
+	rateBuckets[apiKey.ID] = append(kept, now)
 	return true
 }
 

@@ -37,14 +37,13 @@ export default function Users() {
       });
       setUsers(result.data);
       setTotalPages(result.total_pages);
-    } catch (err) {
-      // Fallback mock data
-      setUsers([
-        { id: '1', email: 'user1@example.com', username: 'user1', wallet_address: '0x123...', kyc_status: 'verified', status: 'active', created_at: new Date().toISOString(), last_login: new Date().toISOString(), balance: { USDT: 1000 }, two_factor_enabled: true, ip_address: '192.168.1.1', country: 'US', risk_score: 10, total_volume: 50000, verification_level: 3 },
-        { id: '2', email: 'user2@example.com', username: 'user2', wallet_address: '0x456...', kyc_status: 'pending', status: 'active', created_at: new Date().toISOString(), last_login: new Date().toISOString(), balance: { BTC: 0.5 }, two_factor_enabled: false, ip_address: '192.168.1.2', country: 'UK', risk_score: 30, total_volume: 10000, verification_level: 1 },
-        { id: '3', email: 'user3@example.com', username: 'user3', wallet_address: '0x789...', kyc_status: 'rejected', status: 'suspended', created_at: new Date().toISOString(), last_login: new Date().toISOString(), balance: { ETH: 2 }, two_factor_enabled: true, ip_address: '192.168.1.3', country: 'DE', risk_score: 80, total_volume: 1000, verification_level: 0 },
-      ]);
-      setTotalPages(5);
+    } catch (err: any) {
+      // Never substitute placeholder rows here: an operator would read
+      // fabricated accounts as real users and could suspend or inspect them.
+      // Surface the failure and leave the table empty.
+      setUsers([]);
+      setTotalPages(1);
+      setError(err?.message || 'Failed to load users');
     } finally {
       setLoading(false);
     }
@@ -90,6 +89,12 @@ export default function Users() {
 
   return (
     <div className="p-6">
+      {error && (
+        <div className="card mb-6 border-l-4 border-red-500">
+          <div className="card-body text-red-600">{error}</div>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
