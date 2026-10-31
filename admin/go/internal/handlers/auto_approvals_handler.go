@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // AutoApprovalsHandler proxies the admin panel's approval actions to the
@@ -108,12 +109,29 @@ func masterWalletID(c *gin.Context) string {
 	return strings.TrimSpace(body.MasterWalletID)
 }
 
+// masterWalletIDPathSafe returns the resolved master wallet id only when it is a
+// well-formed UUID.
+//
+// The id is interpolated into the upstream path
+// (/api/v1/master-wallet/<id>/transactions), so an unvalidated value containing
+// "/" or "?" would let a caller retarget the request at a different MasterWallet
+// endpoint - an approval could be turned into a send, for example. The value
+// also comes from the MASTER_WALLET_ID environment variable, which would make
+// that a deployment-wide issue rather than a per-request one.
+func masterWalletIDPathSafe(c *gin.Context) (string, bool) {
+	id := masterWalletID(c)
+	if _, err := uuid.Parse(id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "master_wallet_id must be a UUID"})
+		return "", false
+	}
+	return id, true
+}
+
 // ListPending GET /api/v1/admin/auto-approvals/pending?master_wallet_id=<id>
 // Lists pending user transactions awaiting approval on the MasterWallet.
 func (h *AutoApprovalsHandler) ListPending(c *gin.Context) {
-	mwID := masterWalletID(c)
-	if mwID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "master_wallet_id is required (query param or MASTER_WALLET_ID env)"})
+	mwID, ok := masterWalletIDPathSafe(c)
+	if !ok {
 		return
 	}
 	h.forward(c, http.MethodGet,
@@ -124,12 +142,14 @@ func (h *AutoApprovalsHandler) ListPending(c *gin.Context) {
 // Approves a pending user transaction on the MasterWallet (counts toward its
 // approval threshold and resolves its approval request).
 func (h *AutoApprovalsHandler) Approve(c *gin.Context) {
-	mwID := masterWalletID(c)
-	if mwID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "master_wallet_id is required (query param or MASTER_WALLET_ID env)"})
+	mwID, ok := masterWalletIDPathSafe(c)
+	if !ok {
 		return
 	}
-	txID := c.Param("id")
+	txID, ok := pathSafeID(c, c.Param("id"), "transaction id")
+	if !ok {
+		return
+	}
 	h.forward(c, http.MethodPost,
 		fmt.Sprintf("/api/v1/master-wallet/%s/transactions/%s/approve", mwID, txID), nil)
 }
@@ -138,12 +158,14 @@ func (h *AutoApprovalsHandler) Approve(c *gin.Context) {
 // Rejects a pending user transaction; an optional {"reason": "..."} body is
 // forwarded as the reject reason.
 func (h *AutoApprovalsHandler) Reject(c *gin.Context) {
-	mwID := masterWalletID(c)
-	if mwID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "master_wallet_id is required (query param or MASTER_WALLET_ID env)"})
+	mwID, ok := masterWalletIDPathSafe(c)
+	if !ok {
 		return
 	}
-	txID := c.Param("id")
+	txID, ok := pathSafeID(c, c.Param("id"), "transaction id")
+	if !ok {
+		return
+	}
 	reason := strings.TrimSpace(c.Query("reason"))
 	if reason == "" && c.Request.Body != nil {
 		var body struct {
@@ -158,6 +180,16 @@ func (h *AutoApprovalsHandler) Reject(c *gin.Context) {
 		path += "?reason=" + urlQueryEscape(reason)
 	}
 	h.forward(c, http.MethodPost, path, nil)
+}
+
+// pathSafeID validates a path segment before it is concatenated into an
+// upstream URL, so a caller cannot use "/" or "?" to retarget the request.
+func pathSafeID(c *gin.Context, raw, label string) (string, bool) {
+	if _, err := uuid.Parse(raw); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": label + " must be a UUID"})
+		return "", false
+	}
+	return raw, true
 }
 
 // urlQueryEscape escapes a value for use in a query string.
