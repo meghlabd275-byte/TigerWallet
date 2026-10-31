@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -172,76 +173,97 @@ func getEnvInt(key string, defaultValue int) int {
 // ============== Models ==============
 
 type KYCApplication struct {
-	ID                  uuid.UUID  `json:"id" db:"id"`
-	UserID             uuid.UUID `json:"user_id" db:"user_id"`
-	TenantID           uuid.UUID `json:"tenant_id" db:"tenant_id"`
-	Level              string    `json:"level" db:"level"`
-	Status             string    `json:"status" db:"status"` // pending, in_review, approved, rejected, needs_more_info
-	RejectionReason   *string   `json:"rejection_reason" db:"rejection_reason"`
-	ReviewerID        *uuid.UUID `json:"reviewer_id" db:"reviewer_id"`
-	ReviewedAt        *time.Time `json:"reviewed_at" db:"reviewed_at"`
-	FirstName         string    `json:"first_name" db:"first_name"`
-	LastName          string    `json:"last_name" db:"last_name"`
-	DateOfBirth      string    `json:"date_of_birth" db:"date_of_birth"`
-	Nationality       string    `json:"nationality" db:"nationality"`
-	CountryOfResidence string   `json:"country_of_residence" db:"country_of_residence"`
-	Address           string    `json:"address" db:"address"`
-	City              string    `json:"city" db:"city"`
-	State             string    `json:"state" db:"state"`
-	PostalCode        string    `json:"postal_code" db:"postal_code"`
-	PhoneNumber       string    `json:"phone_number" db:"phone_number"`
-	SumSubApplicantID *string   `json:"sumsub_applicant_id" db:"sumsub_applicant_id"`
-	AMLCheckPassed    *bool     `json:"aml_check_passed" db:"aml_check_passed"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	ID                 uuid.UUID  `json:"id" db:"id"`
+	UserID             uuid.UUID  `json:"user_id" db:"user_id"`
+	TenantID           uuid.UUID  `json:"tenant_id" db:"tenant_id"`
+	Level              string     `json:"level" db:"level"`
+	Status             string     `json:"status" db:"status"` // pending, in_review, approved, rejected, needs_more_info
+	RejectionReason    *string    `json:"rejection_reason" db:"rejection_reason"`
+	ReviewerID         *uuid.UUID `json:"reviewer_id" db:"reviewer_id"`
+	ReviewedAt         *time.Time `json:"reviewed_at" db:"reviewed_at"`
+	FirstName          string     `json:"first_name" db:"first_name"`
+	LastName           string     `json:"last_name" db:"last_name"`
+	DateOfBirth        string     `json:"date_of_birth" db:"date_of_birth"`
+	Nationality        string     `json:"nationality" db:"nationality"`
+	CountryOfResidence string     `json:"country_of_residence" db:"country_of_residence"`
+	Address            string     `json:"address" db:"address"`
+	City               string     `json:"city" db:"city"`
+	State              string     `json:"state" db:"state"`
+	PostalCode         string     `json:"postal_code" db:"postal_code"`
+	PhoneNumber        string     `json:"phone_number" db:"phone_number"`
+	SumSubApplicantID  *string    `json:"sumsub_applicant_id" db:"sumsub_applicant_id"`
+	AMLCheckPassed     *bool      `json:"aml_check_passed" db:"aml_check_passed"`
+	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 type KYCDocument struct {
-	ID            uuid.UUID `json:"id" db:"id"`
-	ApplicationID uuid.UUID `json:"application_id" db:"application_id"`
-	Type         string    `json:"type" db:"type"` // id_card, passport, driver_license, utility_bill, bank_statement
-	Side         string    `json:"side" db:"side"` // front, back
-	FileURL      string    `json:"file_url" db:"file_url"`
-	FileHash     string    `json:"file_hash" db:"file_hash"`
-	Status       string    `json:"status" db:"status"` // pending, verified, rejected
-	VerifiedAt   *time.Time `json:"verified_at" db:"verified_at"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	ID            uuid.UUID  `json:"id" db:"id"`
+	ApplicationID uuid.UUID  `json:"application_id" db:"application_id"`
+	Type          string     `json:"type" db:"type"` // id_card, passport, driver_license, utility_bill, bank_statement
+	Side          string     `json:"side" db:"side"` // front, back
+	FileURL       string     `json:"file_url" db:"file_url"`
+	FileHash      string     `json:"file_hash" db:"file_hash"`
+	Status        string     `json:"status" db:"status"` // pending, verified, rejected
+	VerifiedAt    *time.Time `json:"verified_at" db:"verified_at"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 }
 
 type AMLCheck struct {
-	ID                  uuid.UUID `json:"id" db:"id"`
-	UserID             uuid.UUID `json:"user_id" db:"user_id"`
-	ApplicationID      uuid.UUID `json:"application_id" db:"application_id"`
-	Status             string    `json:"status" db:"status"` // pending, completed, failed
-	PepMatch          bool      `json:"pep_match" db:"pep_match"`
-	SanctionMatch     bool      `json:"sanction_match" db:"sanction_match"`
-	AdverseMediaMatch bool      `json:"adverse_media_match" db:"adverse_media_match"`
-	RiskScore         int       `json:"risk_score" db:"risk_score"`
-	RiskLevel         string    `json:"risk_level" db:"risk_level"` // low, medium, high
+	ID                uuid.UUID              `json:"id" db:"id"`
+	UserID            uuid.UUID              `json:"user_id" db:"user_id"`
+	ApplicationID     uuid.UUID              `json:"application_id" db:"application_id"`
+	Status            string                 `json:"status" db:"status"` // pending, completed, failed
+	PepMatch          bool                   `json:"pep_match" db:"pep_match"`
+	SanctionMatch     bool                   `json:"sanction_match" db:"sanction_match"`
+	AdverseMediaMatch bool                   `json:"adverse_media_match" db:"adverse_media_match"`
+	RiskScore         int                    `json:"risk_score" db:"risk_score"`
+	RiskLevel         string                 `json:"risk_level" db:"risk_level"` // low, medium, high
 	Details           map[string]interface{} `json:"details" db:"details"`
-	CheckedAt         time.Time `json:"checked_at" db:"checked_at"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	CheckedAt         time.Time              `json:"checked_at" db:"checked_at"`
+	CreatedAt         time.Time              `json:"created_at" db:"created_at"`
 }
 
 type WatchlistEntry struct {
-	ID           uuid.UUID `json:"id" db:"id"`
-	Name         string    `json:"name" db:"name"`
-	EntityType   string    `json:"entity_type" db:"entity_type"` // person, organization, vessel
-	Country      string    `json:"country" db:"country"`
-	ListType     string    `json:"list_type" db:"list_type"` // pep, sanction, adverse_media
-	RiskLevel    string    `json:"risk_level" db:"risk_level"`
-	Details      map[string]interface{} `json:"details" db:"details"`
-	AddedBy      uuid.UUID `json:"added_by" db:"added_by"`
-	AddedAt      time.Time `json:"added_at" db:"added_at"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	ID         uuid.UUID              `json:"id" db:"id"`
+	Name       string                 `json:"name" db:"name"`
+	EntityType string                 `json:"entity_type" db:"entity_type"` // person, organization, vessel
+	Country    string                 `json:"country" db:"country"`
+	ListType   string                 `json:"list_type" db:"list_type"` // pep, sanction, adverse_media
+	RiskLevel  string                 `json:"risk_level" db:"risk_level"`
+	Details    map[string]interface{} `json:"details" db:"details"`
+	AddedBy    uuid.UUID              `json:"added_by" db:"added_by"`
+	AddedAt    time.Time              `json:"added_at" db:"added_at"`
+	CreatedAt  time.Time              `json:"created_at" db:"created_at"`
 }
 
 // ============== HTTP Handlers ==============
 
+// allowedOrigin reports whether origin appears in
+// TIGERWALLET_ALLOWED_ORIGINS (comma separated). Access is granted only to an
+// origin that is explicitly listed: an empty allow-list must not match every
+// caller, and "*" is refused because this service sends
+// Access-Control-Allow-Credentials, which a browser will not honour alongside
+// a wildcard origin.
+func allowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, item := range strings.Split(os.Getenv("TIGERWALLET_ALLOWED_ORIGINS"), ",") {
+		if candidate := strings.TrimSpace(item); candidate != "" && candidate != "*" && candidate == origin {
+			return true
+		}
+	}
+	return false
+}
+
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		if allowedOrigin(c.Request.Header.Get("Origin")) {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", c.Request.Header.Get("Origin"))
+			c.Writer.Header().Add("Vary", "Origin")
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
@@ -256,14 +278,14 @@ func corsMiddleware() gin.HandlerFunc {
 
 func submitKYCHandler(c *gin.Context) {
 	var req struct {
-		UserID              uuid.UUID `json:"user_id" binding:"required"`
+		UserID             uuid.UUID `json:"user_id" binding:"required"`
 		TenantID           uuid.UUID `json:"tenant_id" binding:"required"`
 		Level              string    `json:"level" binding:"required"`
 		FirstName          string    `json:"first_name" binding:"required"`
 		LastName           string    `json:"last_name" binding:"required"`
-		DateOfBirth       string    `json:"date_of_birth" binding:"required"`
+		DateOfBirth        string    `json:"date_of_birth" binding:"required"`
 		Nationality        string    `json:"nationality" binding:"required"`
-		CountryOfResidence string   `json:"country_of_residence" binding:"required"`
+		CountryOfResidence string    `json:"country_of_residence" binding:"required"`
 		Address            string    `json:"address" binding:"required"`
 		City               string    `json:"city" binding:"required"`
 		State              string    `json:"state"`
@@ -277,23 +299,23 @@ func submitKYCHandler(c *gin.Context) {
 	}
 
 	application := KYCApplication{
-		ID:                   uuid.New(),
-		UserID:              req.UserID,
-		TenantID:            req.TenantID,
-		Level:               req.Level,
-		Status:              "pending",
-		FirstName:           req.FirstName,
-		LastName:            req.LastName,
+		ID:                 uuid.New(),
+		UserID:             req.UserID,
+		TenantID:           req.TenantID,
+		Level:              req.Level,
+		Status:             "pending",
+		FirstName:          req.FirstName,
+		LastName:           req.LastName,
 		DateOfBirth:        req.DateOfBirth,
-		Nationality:         req.Nationality,
+		Nationality:        req.Nationality,
 		CountryOfResidence: req.CountryOfResidence,
-		Address:             req.Address,
+		Address:            req.Address,
 		City:               req.City,
-		State:               req.State,
+		State:              req.State,
 		PostalCode:         req.PostalCode,
-		PhoneNumber:         req.PhoneNumber,
+		PhoneNumber:        req.PhoneNumber,
 		CreatedAt:          time.Now(),
-		UpdatedAt:           time.Now(),
+		UpdatedAt:          time.Now(),
 	}
 
 	// In production, create SumSub applicant here
@@ -314,13 +336,13 @@ func getKYCStatusHandler(c *gin.Context) {
 
 	// Return mock data
 	status := map[string]interface{}{
-		"user_id":       uid.String(),
-		"status":        "approved",
-		"level":         "advanced",
-		"verified_at":   time.Now().Add(-24 * time.Hour),
-		"documents":     []string{"id_card", "passport"},
-		"aml_check":     "passed",
-		"expiry_date":   time.Now().Add(365 * 24 * time.Hour),
+		"user_id":     uid.String(),
+		"status":      "approved",
+		"level":       "advanced",
+		"verified_at": time.Now().Add(-24 * time.Hour),
+		"documents":   []string{"id_card", "passport"},
+		"aml_check":   "passed",
+		"expiry_date": time.Now().Add(365 * 24 * time.Hour),
 	}
 
 	c.JSON(http.StatusOK, status)
@@ -334,30 +356,30 @@ func listApplicationsHandler(c *gin.Context) {
 	// Return mock data
 	applications := []map[string]interface{}{
 		{
-			"id":          uuid.New().String(),
-			"user_id":     uuid.New().String(),
-			"status":      "pending",
-			"first_name":  "John",
-			"last_name":   "Doe",
-			"level":       "basic",
+			"id":         uuid.New().String(),
+			"user_id":    uuid.New().String(),
+			"status":     "pending",
+			"first_name": "John",
+			"last_name":  "Doe",
+			"level":      "basic",
 			"created_at": time.Now(),
 		},
 		{
-			"id":          uuid.New().String(),
-			"user_id":     uuid.New().String(),
-			"status":      "approved",
-			"first_name":  "Jane",
-			"last_name":   "Smith",
-			"level":       "advanced",
-			"created_at":  time.Now().Add(-24 * time.Hour),
+			"id":         uuid.New().String(),
+			"user_id":    uuid.New().String(),
+			"status":     "approved",
+			"first_name": "Jane",
+			"last_name":  "Smith",
+			"level":      "advanced",
+			"created_at": time.Now().Add(-24 * time.Hour),
 		},
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"applications": applications,
-		"total":       100,
-		"limit":       limit,
-		"offset":      offset,
+		"total":        100,
+		"limit":        limit,
+		"offset":       offset,
 	})
 }
 
@@ -370,13 +392,13 @@ func getApplicationHandler(c *gin.Context) {
 	}
 
 	application := map[string]interface{}{
-		"id":                    aid.String(),
+		"id":                   aid.String(),
 		"user_id":              uuid.New().String(),
 		"status":               "in_review",
 		"first_name":           "John",
 		"last_name":            "Doe",
 		"date_of_birth":        "1990-01-01",
-		"nationality":           "US",
+		"nationality":          "US",
 		"country_of_residence": "US",
 		"address":              "123 Main St",
 		"city":                 "New York",
@@ -457,7 +479,7 @@ func uploadDocumentHandler(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"document": document,
-		"message": "document uploaded successfully",
+		"message":  "document uploaded successfully",
 	})
 }
 
@@ -466,12 +488,12 @@ func getDocumentsHandler(c *gin.Context) {
 
 	documents := []map[string]interface{}{
 		{
-			"id":            uuid.New().String(),
-			"type":          "id_card",
-			"side":          "front",
-			"status":        "verified",
-			"verified_at":   time.Now(),
-			"created_at":    time.Now(),
+			"id":          uuid.New().String(),
+			"type":        "id_card",
+			"side":        "front",
+			"status":      "verified",
+			"verified_at": time.Now(),
+			"created_at":  time.Now(),
 		},
 	}
 
@@ -498,18 +520,18 @@ func runAMLChecksHandler(c *gin.Context) {
 
 	// In production, integrate with AML service provider
 	amlCheck := AMLCheck{
-		ID:                  uuid.New(),
-		UserID:              req.UserID,
-		ApplicationID:       req.ApplicationID,
-		Status:              "completed",
-		PepMatch:            false,
-		SanctionMatch:       false,
-		AdverseMediaMatch:  false,
-		RiskScore:           10,
-		RiskLevel:           "low",
-		Details:             map[string]interface{}{},
-		CheckedAt:           time.Now(),
-		CreatedAt:           time.Now(),
+		ID:                uuid.New(),
+		UserID:            req.UserID,
+		ApplicationID:     req.ApplicationID,
+		Status:            "completed",
+		PepMatch:          false,
+		SanctionMatch:     false,
+		AdverseMediaMatch: false,
+		RiskScore:         10,
+		RiskLevel:         "low",
+		Details:           map[string]interface{}{},
+		CheckedAt:         time.Now(),
+		CreatedAt:         time.Now(),
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -523,12 +545,12 @@ func getAMLHistoryHandler(c *gin.Context) {
 
 	history := []map[string]interface{}{
 		{
-			"id":                uuid.New().String(),
-			"risk_score":        10,
-			"risk_level":        "low",
-			"pep_match":        false,
-			"sanction_match":   false,
-			"checked_at":       time.Now(),
+			"id":             uuid.New().String(),
+			"risk_score":     10,
+			"risk_level":     "low",
+			"pep_match":      false,
+			"sanction_match": false,
+			"checked_at":     time.Now(),
 		},
 	}
 
@@ -537,11 +559,11 @@ func getAMLHistoryHandler(c *gin.Context) {
 
 func addToWatchlistHandler(c *gin.Context) {
 	var req struct {
-		Name       string    `json:"name" binding:"required"`
-		EntityType string    `json:"entity_type" binding:"required"`
-		Country    string    `json:"country"`
-		ListType   string    `json:"list_type" binding:"required"`
-		RiskLevel  string    `json:"risk_level" binding:"required"`
+		Name       string                 `json:"name" binding:"required"`
+		EntityType string                 `json:"entity_type" binding:"required"`
+		Country    string                 `json:"country"`
+		ListType   string                 `json:"list_type" binding:"required"`
+		RiskLevel  string                 `json:"risk_level" binding:"required"`
 		Details    map[string]interface{} `json:"details"`
 	}
 
@@ -558,8 +580,8 @@ func addToWatchlistHandler(c *gin.Context) {
 		ListType:   req.ListType,
 		RiskLevel:  req.RiskLevel,
 		Details:    req.Details,
-		AddedAt:   time.Now(),
-		CreatedAt: time.Now(),
+		AddedAt:    time.Now(),
+		CreatedAt:  time.Now(),
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"entry": entry, "message": "added to watchlist"})
@@ -600,11 +622,11 @@ func generateComplianceReportHandler(c *gin.Context) {
 	endDate := c.Query("end_date")
 
 	report := map[string]interface{}{
-		"period":           map[string]string{"start": startDate, "end": endDate},
+		"period":             map[string]string{"start": startDate, "end": endDate},
 		"total_applications": 100,
-		"approved":        85,
-		"rejected":         10,
-		"pending":          5,
+		"approved":           85,
+		"rejected":           10,
+		"pending":            5,
 		"aml_checks": map[string]int{
 			"passed": 95,
 			"failed": 5,
@@ -620,12 +642,12 @@ func generateAuditReportHandler(c *gin.Context) {
 	endDate := c.Query("end_date")
 
 	report := map[string]interface{}{
-		"period":         map[string]string{"start": startDate, "end": endDate},
-		"total_actions":  500,
+		"period":        map[string]string{"start": startDate, "end": endDate},
+		"total_actions": 500,
 		"by_type": map[string]int{
-			"approved":  200,
-			"rejected":  50,
-			"reviewed":   250,
+			"approved": 200,
+			"rejected": 50,
+			"reviewed": 250,
 		},
 		"by_reviewer": map[string]int{
 			"admin1": 150,

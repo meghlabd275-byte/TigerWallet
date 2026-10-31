@@ -426,16 +426,39 @@ type ComplianceAudit struct {
 
 // ============== HTTP Handlers ==============
 
+// allowedOrigin reports whether origin appears in
+// TIGERWALLET_ALLOWED_ORIGINS (comma separated). Access is granted only to an
+// origin that is explicitly listed: an empty allow-list must not match every
+// caller, and "*" is refused because this service sends
+// Access-Control-Allow-Credentials, which a browser will not honour alongside
+// a wildcard origin.
+func allowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, item := range strings.Split(os.Getenv("TIGERWALLET_ALLOWED_ORIGINS"), ",") {
+		if candidate := strings.TrimSpace(item); candidate != "" && candidate != "*" && candidate == origin {
+			return true
+		}
+	}
+	return false
+}
+
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		if allowedOrigin(c.Request.Header.Get("Origin")) {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", c.Request.Header.Get("Origin"))
+			c.Writer.Header().Add("Vary", "Origin")
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
+
 		c.Next()
 	}
 }

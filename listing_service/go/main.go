@@ -53,18 +53,18 @@ var (
 )
 
 type User struct {
-	ID                string    `json:"id"`
-	Email             string    `json:"email"`
-	Username          string    `json:"username"`
-	PasswordHash      string    `json:"-"`
-	Role              string    `json:"role"`
-	KYCStatus         string    `json:"kyc_status"`
-	IsActive          bool      `json:"is_active"`
-	EmailVerified     bool      `json:"email_verified"`
-	TwoFactorEnabled  bool      `json:"two_factor_enabled"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	LastLoginAt       *time.Time `json:"last_login_at"`
+	ID               string     `json:"id"`
+	Email            string     `json:"email"`
+	Username         string     `json:"username"`
+	PasswordHash     string     `json:"-"`
+	Role             string     `json:"role"`
+	KYCStatus        string     `json:"kyc_status"`
+	IsActive         bool       `json:"is_active"`
+	EmailVerified    bool       `json:"email_verified"`
+	TwoFactorEnabled bool       `json:"two_factor_enabled"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	LastLoginAt      *time.Time `json:"last_login_at"`
 }
 
 type TokenListing struct {
@@ -86,24 +86,24 @@ type TokenListing struct {
 	FeeAmount       float64    `json:"fee_amount"`
 	FeeToken        string     `json:"fee_token"`
 	Status          string     `json:"status"`
-	RejectionReason string    `json:"rejection_reason"`
+	RejectionReason string     `json:"rejection_reason"`
 	ListedAt        *time.Time `json:"listed_at"`
 	ApprovedBy      string     `json:"approved_by"`
 	ApprovedAt      *time.Time `json:"approved_at"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type Payment struct {
-	ID            string     `json:"id"`
-	ListingID     string     `json:"listing_id"`
-	UserID        string     `json:"user_id"`
-	Amount        float64    `json:"amount"`
-	Token         string     `json:"token"`
-	TxHash        string     `json:"tx_hash"`
-	Status        string     `json:"status"`
-	ConfirmedAt   *time.Time `json:"confirmed_at"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID          string     `json:"id"`
+	ListingID   string     `json:"listing_id"`
+	UserID      string     `json:"user_id"`
+	Amount      float64    `json:"amount"`
+	Token       string     `json:"token"`
+	TxHash      string     `json:"tx_hash"`
+	Status      string     `json:"status"`
+	ConfirmedAt *time.Time `json:"confirmed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type AdminAction struct {
@@ -260,7 +260,7 @@ func GenerateToken(user *User) (string, error) {
 	claims := Claims{
 		UserID: user.ID,
 		Email:  user.Email,
-		Role:    user.Role,
+		Role:   user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(JWT_EXPIRY)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -1046,8 +1046,8 @@ func ProcessPayment(c *gin.Context) {
 	}()
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"message":  "Payment submitted. Confirmation may take a few minutes.",
+		"success":    true,
+		"message":    "Payment submitted. Confirmation may take a few minutes.",
 		"payment_id": payment.ID,
 	})
 }
@@ -1065,13 +1065,13 @@ func GetPaymentStatus(c *gin.Context) {
 }
 
 type ListingStats struct {
-	TotalListings    int               `json:"total_listings"`
-	PendingListings  int               `json:"pending_listings"`
-	ApprovedListings int               `json:"approved_listings"`
-	RejectedListings int               `json:"rejected_listings"`
-	TotalRevenue     float64           `json:"total_revenue"`
-	ByTier           map[string]int    `json:"by_tier"`
-	ByChain          map[string]int    `json:"by_chain"`
+	TotalListings    int            `json:"total_listings"`
+	PendingListings  int            `json:"pending_listings"`
+	ApprovedListings int            `json:"approved_listings"`
+	RejectedListings int            `json:"rejected_listings"`
+	TotalRevenue     float64        `json:"total_revenue"`
+	ByTier           map[string]int `json:"by_tier"`
+	ByChain          map[string]int `json:"by_chain"`
 }
 
 func GetListingStats(c *gin.Context) {
@@ -1133,10 +1133,31 @@ func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, health)
 }
 
+// allowedOrigin reports whether origin appears in
+// TIGERWALLET_ALLOWED_ORIGINS (comma separated). Access is granted only to an
+// origin that is explicitly listed: an empty allow-list must not match every
+// caller, and "*" is refused because this service sends
+// Access-Control-Allow-Credentials, which a browser will not honour alongside
+// a wildcard origin.
+func allowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, item := range strings.Split(os.Getenv("TIGERWALLET_ALLOWED_ORIGINS"), ",") {
+		if candidate := strings.TrimSpace(item); candidate != "" && candidate != "*" && candidate == origin {
+			return true
+		}
+	}
+	return false
+}
+
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		if allowedOrigin(c.Request.Header.Get("Origin")) {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", c.Request.Header.Get("Origin"))
+			c.Writer.Header().Add("Vary", "Origin")
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 

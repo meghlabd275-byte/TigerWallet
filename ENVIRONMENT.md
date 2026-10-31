@@ -85,6 +85,24 @@ at runtime — they are never embedded in source.
 | Connection API (`connection_api`) | `CONNECTION_PORT` | 8092 |
 | Fetcher gateway (`fetcher_gateway`, Rust) | `FETCHER_PORT` | 8093 |
 
+### Cross-origin requests (CORS)
+
+Browser-facing APIs allow cross-origin calls only from origins listed in
+`TIGERWALLET_ALLOWED_ORIGINS` (comma-separated, exact match). Services that
+send `Access-Control-Allow-Credentials: true` — `api_gateway`, `white_label`,
+`white_label_service`, `listing_service`, `project_party`, `notifications`,
+`prediction_markets` — never answer with a wildcard origin, because a browser
+refuses a wildcard alongside credentials. An unset or empty list therefore
+denies every cross-origin caller rather than admitting all of them; set it to
+the exact origins of your deployed front ends, for example:
+
+```
+TIGERWALLET_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+```
+
+A literal `*` entry is ignored: these endpoints are credentialed, so a wildcard
+would be both rejected by the browser and unsafe if it were not.
+
 ---
 
 ## White-label products (self-hosted)
