@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { proxyMutationFrom, SOCIAL_RECOVERY_SERVICE_URL } from '../../../_proxy';
+import { proxyMutationFrom, SOCIAL_RECOVERY_SERVICE_URL, encodePathSegment } from '../../../_proxy';
 
 export async function DELETE(req: NextRequest, { params }: { params: { address: string } }) {
   // The guardian is removed from a wallet; the wallet id is read from the
@@ -10,5 +10,5 @@ export async function DELETE(req: NextRequest, { params }: { params: { address: 
   if (!walletId) {
     return Response.json({ success: false, error: 'wallet_id required in body' }, { status: 400 });
   }
-  return proxyMutationFrom(req, SOCIAL_RECOVERY_SERVICE_URL, `/api/v1/social-recovery/wallets/${walletId}/guardians/${params.address}`, 'DELETE');
+  return proxyMutationFrom(req, SOCIAL_RECOVERY_SERVICE_URL, `/api/v1/social-recovery/wallets/${walletId}/guardians/${encodePathSegment(params.address)}`, 'DELETE');
 }

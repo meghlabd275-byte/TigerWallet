@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { proxyMutation } from '../../../_proxy';
+import { proxyMutation, encodePathSegment } from '../../../_proxy';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  return proxyMutation(req, `/devices/${params.id}/sync`, 'POST');
+  return proxyMutation(req, `/devices/${encodePathSegment(params.id)}/sync`, 'POST');
 }

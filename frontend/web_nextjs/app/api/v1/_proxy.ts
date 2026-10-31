@@ -247,3 +247,17 @@ export async function swapProxyMutation(
 ): Promise<NextResponse> {
   return serviceProxyMutation(req, SWAP_SERVICE_URL, path, method);
 }
+
+
+/**
+ * Encode a dynamic route parameter for use as a single URL path segment.
+ *
+ * Next.js hands a dynamic segment over in decoded form, so a request for
+ * `.../orders/%2F..%2F..%2Fadmin%2Fusers` arrives here as `/../../admin/users`.
+ * Interpolated into an upstream path, that rewrites the request into a
+ * different endpoint. encodeURIComponent escapes `/`, `?` and `#`, so the value
+ * stays one segment and cannot alter the path or inject a query string.
+ */
+export function encodePathSegment(value: string): string {
+  return encodeURIComponent(value);
+}
