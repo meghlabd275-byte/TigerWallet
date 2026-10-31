@@ -150,3 +150,47 @@ func nilIfEmpty(s string) interface{} {
 	}
 	return s
 }
+
+// ---------------------------------------------------------------------------
+// Master-wallet ownership
+// ---------------------------------------------------------------------------
+
+// mayAccessMasterWallet reports whether the caller may act on the master wallet
+// identified by masterID. The owner is master_wallets.created_by, which
+// CreateMasterWallet sets to the authenticated user; an operator role may also
+// act on any wallet. A wallet with no recorded owner is reachable only by an
+// operator, so a row created outside the API cannot be driven by any tenant.
+//
+// This mirrors the rule websocket.go already applied to the live feed, but the
+// REST handlers under /api/v1/master-wallet/:id did not apply it at all, so any
+// authenticated user could read another tenant's wallet, spend from it, or
+// manage its multisig and treasury.
+func (svc *Service) mayAccessMasterWallet(ctx context.Context, masterID, userID, role string) bool {
+	if role == "admin" || role == "super_admin" || role == "operator" {
+		return true
+	}
+	var createdBy string
+	if err := svc.store.db.QueryRow(ctx,
+		`SELECT COALESCE(created_by::text, '') FROM master_wallets WHERE id = $1`, masterID).Scan(&createdBy); err != nil {
+		return false
+	}
+	return createdBy != "" && createdBy == userID
+}
+
+// requireMasterWalletAccess resolves the :id parameter and enforces ownership.
+// It writes the 403/400 response itself and returns false when the caller must
+// not proceed, so handlers can `if !svc.requireMasterWalletAccess(c) { return }`.
+func (svc *Service) requireMasterWalletAccess(c *gin.Context) (string, bool) {
+	masterID := c.Param("id")
+	if masterID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "wallet id required"})
+		return "", false
+	}
+	if !svc.mayAccessMasterWallet(c.Request.Context(), masterID, currentUserID(c), currentRole(c)) {
+		// The same response is returned for "does not exist" and "not yours" so
+		// the endpoint cannot be used to enumerate other tenants' wallet ids.
+		c.JSON(http.StatusForbidden, gin.H{"error": "not your master wallet"})
+		return "", false
+	}
+	return masterID, true
+}

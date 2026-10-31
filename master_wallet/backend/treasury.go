@@ -19,7 +19,10 @@ import (
 
 // TreasuryOverview returns the live treasury state for a master wallet.
 func (svc *Service) TreasuryOverview(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 	defer cancel()
 
@@ -71,7 +74,10 @@ type treasuryTransferReq struct {
 }
 
 func (svc *Service) TreasuryTransfer(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req treasuryTransferReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -154,7 +160,10 @@ func (svc *Service) TreasuryTransfer(c *gin.Context) {
 
 // TreasuryTransactions lists treasury transaction history (from DB).
 func (svc *Service) TreasuryTransactions(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	limit := parseLimit(c.Query("limit"), 50, 200)
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
@@ -206,7 +215,10 @@ type sweepReq struct {
 }
 
 func (svc *Service) TreasurySweep(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req sweepReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

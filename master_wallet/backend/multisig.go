@@ -28,7 +28,10 @@ type createMultisigReq struct {
 }
 
 func (svc *Service) CreateMultisigWallet(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req createMultisigReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -78,7 +81,10 @@ func (svc *Service) CreateMultisigWallet(c *gin.Context) {
 }
 
 func (svc *Service) GetMultisigWallets(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
 		`SELECT id, name, chain_id, threshold, owners, nonce, created_at FROM multisig_wallets WHERE master_wallet_id = $1`, masterID)
@@ -108,7 +114,15 @@ type createMultisigTxReq struct {
 }
 
 func (svc *Service) CreateMultisigTransaction(c *gin.Context) {
-	walletID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
+	walletID := c.Param("wid")
+	if walletID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "wid required"})
+		return
+	}
 	var req createMultisigTxReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -120,8 +134,11 @@ func (svc *Service) CreateMultisigTransaction(c *gin.Context) {
 	ctx := c.Request.Context()
 	var nonce int
 	var threshold int
+	// Scoped by master_wallet_id so a wid belonging to another master wallet is
+	// not addressable through this URL.
 	err := svc.store.db.QueryRow(ctx,
-		`SELECT nonce, threshold FROM multisig_wallets WHERE id = $1`, walletID).Scan(&nonce, &threshold)
+		`SELECT nonce, threshold FROM multisig_wallets WHERE id = $1 AND master_wallet_id = $2`,
+		walletID, masterID).Scan(&nonce, &threshold)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "multisig wallet not found"})
 		return
@@ -139,8 +156,8 @@ func (svc *Service) CreateMultisigTransaction(c *gin.Context) {
 }
 
 type signMultisigTxReq struct {
-	Signature string `json:"signature" binding:"required"` // 65-byte hex r||s||v
-	Signer    string `json:"signer" binding:"required"`     // address of signer
+	Signature   string `json:"signature" binding:"required"`    // 65-byte hex r||s||v
+	Signer      string `json:"signer" binding:"required"`       // address of signer
 	MessageHash string `json:"message_hash" binding:"required"` // the hash that was signed
 }
 
@@ -148,7 +165,12 @@ type signMultisigTxReq struct {
 // hash, checks the signer is an owner, and records it. When threshold is met,
 // the transaction can be executed.
 func (svc *Service) SignMultisigTransaction(c *gin.Context) {
-	txID := c.Param("id")
+	if _, ok := svc.requireMasterWalletAccess(c); !ok {
+		return
+	}
+	// The route is /:id/multisig/transactions/:tid/sign. Reading :id here used the
+	// master wallet id as the transaction id, so no transaction was ever found.
+	txID := c.Param("tid")
 	var req signMultisigTxReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -207,14 +229,28 @@ func (svc *Service) SignMultisigTransaction(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "signer is not an owner of this multisig wallet"})
 		return
 	}
-	// Append the signature to the JSONB array (dedupe by signer).
-	_, err = svc.store.db.Exec(ctx,
+	// Append the signature, refusing a second entry from a signer who has already
+	// signed. The NOT EXISTS is evaluated by PostgreSQL inside the UPDATE, so two
+	// concurrent requests from the same owner cannot both append and inflate the
+	// count towards the threshold.
+	signerHex := signerAddr.Hex()
+	sigEntry := `[{"signer":"` + signerHex + `","signature":"` + req.Signature +
+		`","message_hash":"` + req.MessageHash + `","signed_at":"` + time.Now().UTC().Format(time.RFC3339) + `"}]`
+	tag, err := svc.store.db.Exec(ctx,
 		`UPDATE multisig_transactions
 		 SET signatures = signatures || $1::jsonb
-		 WHERE id = $2`,
-		`[{"signer":"`+signerAddr.Hex()+`","signature":"`+req.Signature+`","message_hash":"`+req.MessageHash+`","signed_at":"`+time.Now().UTC().Format(time.RFC3339)+`"}]`, txID)
+		 WHERE id = $2
+		   AND NOT EXISTS (
+		         SELECT 1 FROM jsonb_array_elements(signatures) e
+		         WHERE lower(e->>'signer') = lower($3)
+		       )`,
+		sigEntry, txID, signerHex)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "this signer has already signed this transaction"})
 		return
 	}
 	// Count signatures.
@@ -226,11 +262,22 @@ func (svc *Service) SignMultisigTransaction(c *gin.Context) {
 }
 
 func (svc *Service) GetMultisigTransactions(c *gin.Context) {
-	walletID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
+	// The route is /:id/multisig/wallets/:wid/transactions. Reading :id here used
+	// the master wallet id as the multisig wallet id, so the list was always empty.
+	walletID := c.Param("wid")
 	ctx := c.Request.Context()
+	// Join through multisig_wallets so the wid must belong to the master wallet in
+	// the URL, not merely exist.
 	rows, err := svc.store.db.Query(ctx,
-		`SELECT id, to_address, value, data, nonce, status, signatures, created_at
-		 FROM multisig_transactions WHERE multisig_wallet_id = $1 ORDER BY created_at DESC`, walletID)
+		`SELECT mt.id, mt.to_address, mt.value, mt.data, mt.nonce, mt.status, mt.signatures, mt.created_at
+		 FROM multisig_transactions mt
+		 JOIN multisig_wallets mw ON mw.id = mt.multisig_wallet_id
+		 WHERE mt.multisig_wallet_id = $1 AND mw.master_wallet_id = $2
+		 ORDER BY mt.created_at DESC`, walletID, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -253,18 +300,30 @@ func (svc *Service) GetMultisigTransactions(c *gin.Context) {
 // threshold signatures are collected. Uses a configured executor key (env) to
 // submit the assembled call; fail-closed when no executor key is set.
 func (svc *Service) ExecuteMultisigTransaction(c *gin.Context) {
-	txID := c.Param("id")
+	if _, ok := svc.requireMasterWalletAccess(c); !ok {
+		return
+	}
+	// Same :id/:tid mix-up as SignMultisigTransaction; the route parameter that
+	// identifies the transaction is :tid.
+	txID := c.Param("tid")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 	var toAddr, value, data string
 	var walletID string
 	var threshold int
+	var status string
 	err := svc.store.db.QueryRow(ctx,
-		`SELECT mt.to_address, mt.value, mt.data, mw.id::text, mw.threshold
+		`SELECT mt.to_address, mt.value, mt.data, mw.id::text, mw.threshold, mt.status
 		 FROM multisig_transactions mt JOIN multisig_wallets mw ON mt.multisig_wallet_id = mw.id
-		 WHERE mt.id = $1`, txID).Scan(&toAddr, &value, &data, &walletID, &threshold)
+		 WHERE mt.id = $1`, txID).Scan(&toAddr, &value, &data, &walletID, &threshold, &status)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "multisig transaction not found"})
+		return
+	}
+	// Refuse to broadcast twice. Without this an execute replay would submit the
+	// same call again under a fresh nonce, moving the funds a second time.
+	if status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "transaction is not pending (status=" + status + ")"})
 		return
 	}
 	var sigCount int
@@ -319,7 +378,21 @@ func (svc *Service) ExecuteMultisigTransaction(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	_, _ = svc.store.db.Exec(ctx, `UPDATE multisig_transactions SET status='executed', executed_at=NOW() WHERE id=$1`, txID)
+	// The status flip is conditional on 'pending' and happens after the broadcast.
+	// If it does not match, another replica executed this transaction between our
+	// read and here; the tx is already on-chain, so report that rather than
+	// pretending we are the one who executed it.
+	tag, err := svc.store.db.Exec(ctx,
+		`UPDATE multisig_transactions SET status='executed', executed_at=NOW()
+		 WHERE id=$1 AND status='pending'`, txID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "broadcast succeeded but status update failed", "transaction_hash": txHash})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "transaction was already executed", "transaction_hash": txHash})
+		return
+	}
 	svc.store.audit(ctx, "", "multisig.execute", "multisig", "user", currentUserID(c), "multisig_tx", txID, "high", gin.H{"tx_hash": txHash})
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "multisig_tx_id": txID, "status": "executed"})
 }

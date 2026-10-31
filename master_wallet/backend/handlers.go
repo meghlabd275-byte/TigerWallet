@@ -247,7 +247,10 @@ func (svc *Service) GetMasterWallets(c *gin.Context) {
 }
 
 func (svc *Service) GetMasterWallet(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	var name, blockchain, address, pubKey, walletType string
 	var chainID int64
@@ -274,7 +277,10 @@ func (svc *Service) GetMasterWallet(c *gin.Context) {
 }
 
 func (svc *Service) DeleteMasterWallet(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	_, err := svc.store.db.Exec(ctx, `DELETE FROM master_wallets WHERE id = $1`, id)
 	if err != nil {
@@ -287,7 +293,10 @@ func (svc *Service) DeleteMasterWallet(c *gin.Context) {
 
 // GetMasterWalletBalance returns the LIVE native + token balances from the RPC node.
 func (svc *Service) GetMasterWalletBalance(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
@@ -371,7 +380,10 @@ type sendReq struct {
 }
 
 func (svc *Service) SignTransaction(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req sendReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -415,7 +427,10 @@ func (svc *Service) SignTransaction(c *gin.Context) {
 // approves via the control plane. Only after BOTH approvals can SignTransaction
 // (with the withdrawal_id) broadcast. This is the "request" half of the gate.
 func (svc *Service) WithdrawalRequest(c *gin.Context) {
-	walletID := c.Param("id")
+	walletID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	walletUUID, err := uuid.Parse(walletID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid wallet id"})
@@ -449,7 +464,10 @@ func (svc *Service) WithdrawalRequest(c *gin.Context) {
 // without SuperAdmin collaboration, regardless of amount. The caller supplies
 // a pre-approved withdrawal_id; the gate is checked fail-closed before broadcast.
 func (svc *Service) RevenuePayout(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		To           string `json:"to" binding:"required"`
 		Amount       string `json:"amount" binding:"required"`
@@ -561,7 +579,10 @@ func (svc *Service) buildSignBroadcast(c *gin.Context, walletID string, req send
 // --- Sub-wallet handlers ---
 
 func (svc *Service) GetSubWallets(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	if masterID == "" {
 		masterID = c.Query("master_wallet_id")
 	}
@@ -605,7 +626,10 @@ type createSubWalletReq struct {
 }
 
 func (svc *Service) CreateSubWallet(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req createSubWalletReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -659,7 +683,10 @@ func (svc *Service) CreateSubWallet(c *gin.Context) {
 }
 
 func (svc *Service) GetSubWalletBalance(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 	var address string
@@ -686,7 +713,10 @@ func (svc *Service) GetSubWalletBalance(c *gin.Context) {
 }
 
 func (svc *Service) TransferFromSubWallet(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req sendReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -778,7 +808,10 @@ func int64Ptr(i *int64) int64 {
 }
 
 func (svc *Service) GetTransaction(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	var txHash, txType, status, blockchain, fromAddr, toAddr, amount *string
 	var tokenSym *string
@@ -812,7 +845,10 @@ type createTxReq struct {
 }
 
 func (svc *Service) CreateTransaction(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req createTxReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -860,7 +896,10 @@ func (svc *Service) CreateTransaction(c *gin.Context) {
 
 // ApproveTransaction records a signer's approval (multisig flow).
 func (svc *Service) ApproveTransaction(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	userID := currentUserID(c)
 	ctx := c.Request.Context()
 	// Record signature.
@@ -881,7 +920,10 @@ func (svc *Service) ApproveTransaction(c *gin.Context) {
 }
 
 func (svc *Service) RejectTransaction(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	userID := currentUserID(c)
 	ctx := c.Request.Context()
 	_, err := svc.store.db.Exec(ctx,

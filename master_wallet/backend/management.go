@@ -56,7 +56,10 @@ func (svc *Service) GetPolicies(c *gin.Context) {
 }
 
 func (svc *Service) CreatePolicy(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req policyReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -130,7 +133,10 @@ type feeReq struct {
 }
 
 func (svc *Service) GetFeeConfigs(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	if masterID == "" {
 		masterID = c.Query("master_wallet_id")
 	}
@@ -157,7 +163,10 @@ func (svc *Service) GetFeeConfigs(c *gin.Context) {
 }
 
 func (svc *Service) CreateFeeConfig(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req feeReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -194,7 +203,10 @@ type feeUpdateReq struct {
 // UserWallet fee (percentage / fixed / active state). Fee percentage is capped
 // at 20%, matching the client-side cap in master_wallet/rust local_fee_config.
 func (svc *Service) UpdateFeeConfig(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	fid := c.Param("fid")
 	var req feeUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -254,7 +266,10 @@ type autoSignReq struct {
 }
 
 func (svc *Service) GetAutoSignRules(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	if masterID == "" {
 		masterID = c.Query("master_wallet_id")
 	}
@@ -280,7 +295,10 @@ func (svc *Service) GetAutoSignRules(c *gin.Context) {
 }
 
 func (svc *Service) CreateAutoSignRule(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req autoSignReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -315,7 +333,10 @@ type autoSignUpdateReq struct {
 // UpdateAutoSignRule — PUT /:id/auto-sign/:rid. MasterWallet owner edits an
 // auto-sign rule in place (name/conditions/limit/active state).
 func (svc *Service) UpdateAutoSignRule(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	rid := c.Param("rid")
 	var req autoSignUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -402,7 +423,10 @@ func (svc *Service) GetUsers(c *gin.Context) {
 }
 
 func (svc *Service) CreateUser(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req userReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -447,7 +471,10 @@ var validMWRoles = map[string]bool{"user": true, "admin": true, "operator": true
 // role, active state, or password. Role changes are validated against the
 // closed role set; a user cannot be deleted here (use DELETE).
 func (svc *Service) UpdateUser(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	uid := c.Param("uid")
 	var req userUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -601,7 +628,10 @@ type notificationReq struct {
 }
 
 func (svc *Service) CreateNotification(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req notificationReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -621,7 +651,10 @@ func (svc *Service) CreateNotification(c *gin.Context) {
 }
 
 func (svc *Service) GetNotifications(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
 		`SELECT id, notification_type, category, title, message, priority, is_read, created_at FROM notifications WHERE master_wallet_id = $1 ORDER BY created_at DESC LIMIT 50`, masterID)
@@ -655,7 +688,10 @@ type notificationUpdateReq struct {
 // UpdateNotification — PUT /:id/notifications/:nid. Supports marking
 // read/unread and correcting title/message/priority.
 func (svc *Service) UpdateNotification(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	nid := c.Param("nid")
 	var req notificationUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -706,7 +742,10 @@ type webhookUpdateReq struct {
 // UpdateWebhook — PUT /:id/webhooks/:wid. MasterWallet owner edits a webhook
 // endpoint's name/url/events/active state/retry policy in place.
 func (svc *Service) UpdateWebhook(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	wid := c.Param("wid")
 	var req webhookUpdateReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -738,7 +777,10 @@ func (svc *Service) UpdateWebhook(c *gin.Context) {
 }
 
 func (svc *Service) CreateWebhook(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req webhookReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -757,7 +799,10 @@ func (svc *Service) CreateWebhook(c *gin.Context) {
 }
 
 func (svc *Service) GetWebhooks(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
 		`SELECT id, name, url, events, is_active, is_verified, total_delivered, total_failed, created_at FROM webhooks WHERE master_wallet_id = $1`, masterID)

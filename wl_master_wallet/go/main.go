@@ -141,8 +141,11 @@ func main() {
 			mw.GET("/master-wallet/:id/multisig", svc.GetMultisigWallets)
 			mw.POST("/master-wallet/:id/multisig/:wid/transactions", svc.CreateMultisigTransaction)
 			mw.GET("/master-wallet/:id/multisig/:wid/transactions", svc.GetMultisigTransactions)
-			mw.POST("/multisig/transactions/:tid/sign", svc.SignMultisigTransaction)
-			mw.POST("/multisig/transactions/:tid/execute", svc.ExecuteMultisigTransaction)
+			// The handlers resolve the owning master wallet from :id via
+			// loadOwnedWallet, so :id must be present or every call is rejected as
+			// an invalid id before the signature is ever examined.
+			mw.POST("/master-wallet/:id/multisig/transactions/:tid/sign", svc.SignMultisigTransaction)
+			mw.POST("/master-wallet/:id/multisig/transactions/:tid/execute", svc.ExecuteMultisigTransaction)
 
 			// Treasury (two-party gate REQUIRED before broadcast — fail-closed).
 			mw.POST("/transfer", svc.TreasuryTransfer)

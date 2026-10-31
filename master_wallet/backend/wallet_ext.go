@@ -41,7 +41,10 @@ type updateWalletReq struct {
 }
 
 func (svc *Service) UpdateMasterWallet(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req updateWalletReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -144,7 +147,10 @@ func validNumeric(s string) bool {
 // ---------------------------------------------------------------------------
 
 func (svc *Service) GetMasterWalletTransaction(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	tid := c.Param("tid")
 	ctx := c.Request.Context()
 
@@ -196,7 +202,10 @@ func (svc *Service) GetMasterWalletTransaction(c *gin.Context) {
 // ---------------------------------------------------------------------------
 
 func (svc *Service) GetMultisigWalletDetail(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	wid := c.Param("wid")
 	ctx := c.Request.Context()
 
@@ -261,7 +270,10 @@ type passkeyRegisterReq struct {
 }
 
 func (svc *Service) RegisterPasskey(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req passkeyRegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -320,7 +332,10 @@ func (svc *Service) RegisterPasskey(c *gin.Context) {
 }
 
 func (svc *Service) ListPasskeys(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
 		`SELECT id, credential_id, sign_count, transports, label, created_at, updated_at
@@ -352,7 +367,10 @@ func (svc *Service) ListPasskeys(c *gin.Context) {
 }
 
 func (svc *Service) DeletePasskey(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	credID := c.Param("credId")
 	ctx := c.Request.Context()
 	tag, err := svc.store.db.Exec(ctx,
@@ -383,7 +401,10 @@ type passkeyVerifyReq struct {
 // authenticatorData || SHA256(clientDataJSON). Returns true ONLY on a valid
 // ECDSA signature; fail-closed on any error.
 func (svc *Service) VerifyPasskeyAssertion(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req passkeyVerifyReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

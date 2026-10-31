@@ -231,7 +231,10 @@ func userWalletMigrations() []string {
 
 // ListUserEVMChains GET /api/v1/master-wallet/:id/user-chains/evm
 func (svc *Service) ListUserEVMChains(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	rows, err := store.DB().Query(c.Request.Context(), `
 		SELECT id, chain_id, name, symbol, rpc_url, explorer_url, decimals,
 			derivation_path, is_active, created_at::text, updated_at::text
@@ -258,7 +261,10 @@ func (svc *Service) ListUserEVMChains(c *gin.Context) {
 
 // AddUserEVMChain POST /api/v1/master-wallet/:id/user-chains/evm
 func (svc *Service) AddUserEVMChain(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req UserChainEVM
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -291,7 +297,10 @@ func (svc *Service) AddUserEVMChain(c *gin.Context) {
 
 // UpdateUserEVMChain PUT /api/v1/master-wallet/:id/user-chains/evm/:chainId
 func (svc *Service) UpdateUserEVMChain(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	chainID := c.Param("chainId")
 	var req UserChainEVM
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -314,7 +323,10 @@ func (svc *Service) UpdateUserEVMChain(c *gin.Context) {
 
 // RemoveUserEVMChain DELETE /api/v1/master-wallet/:id/user-chains/evm/:chainId
 func (svc *Service) RemoveUserEVMChain(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	chainID := c.Param("chainId")
 	_, err := store.DB().Exec(c.Request.Context(), `DELETE FROM user_chains_evm WHERE master_wallet_id=$1 AND chain_id=$2`, masterID, chainID)
 	if err != nil {
@@ -331,7 +343,10 @@ func (svc *Service) RemoveUserEVMChain(c *gin.Context) {
 
 // ListUserNonEVMChains GET /api/v1/master-wallet/:id/user-chains/nonevm
 func (svc *Service) ListUserNonEVMChains(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	rows, err := store.DB().Query(c.Request.Context(), `
 		SELECT id, chain_id, name, symbol, chain_type, rpc_url, explorer_url,
 			decimals, derivation_path, address_prefix, is_active,
@@ -359,7 +374,10 @@ func (svc *Service) ListUserNonEVMChains(c *gin.Context) {
 
 // AddUserNonEVMChain POST /api/v1/master-wallet/:id/user-chains/nonevm
 func (svc *Service) AddUserNonEVMChain(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req UserChainNonEVM
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -387,7 +405,10 @@ func (svc *Service) AddUserNonEVMChain(c *gin.Context) {
 
 // UpdateUserNonEVMChain PUT /api/v1/master-wallet/:id/user-chains/nonevm/:chainId
 func (svc *Service) UpdateUserNonEVMChain(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	chainID := c.Param("chainId")
 	var req UserChainNonEVM
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -411,7 +432,10 @@ func (svc *Service) UpdateUserNonEVMChain(c *gin.Context) {
 
 // RemoveUserNonEVMChain DELETE /api/v1/master-wallet/:id/user-chains/nonevm/:chainId
 func (svc *Service) RemoveUserNonEVMChain(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	chainID := c.Param("chainId")
 	_, err := store.DB().Exec(c.Request.Context(), `DELETE FROM user_chains_nonevm WHERE master_wallet_id=$1 AND chain_id=$2`, masterID, chainID)
 	if err != nil {
@@ -428,7 +452,10 @@ func (svc *Service) RemoveUserNonEVMChain(c *gin.Context) {
 
 // ListUserTokens GET /api/v1/master-wallet/:id/user-tokens
 func (svc *Service) ListUserTokens(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	chainID := c.Query("chain_id")
 	q := `SELECT id, chain_id, contract_address, symbol, name, decimals, logo_uri,
 			is_native, is_active, created_at::text, updated_at::text
@@ -462,7 +489,10 @@ func (svc *Service) ListUserTokens(c *gin.Context) {
 
 // AddUserToken POST /api/v1/master-wallet/:id/user-tokens
 func (svc *Service) AddUserToken(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req UserToken
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -492,7 +522,10 @@ func (svc *Service) AddUserToken(c *gin.Context) {
 
 // UpdateUserToken PUT /api/v1/master-wallet/:id/user-tokens/:tokenId
 func (svc *Service) UpdateUserToken(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	tokenID := c.Param("tokenId")
 	var req UserToken
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -515,7 +548,10 @@ func (svc *Service) UpdateUserToken(c *gin.Context) {
 
 // RemoveUserToken DELETE /api/v1/master-wallet/:id/user-tokens/:tokenId
 func (svc *Service) RemoveUserToken(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	tokenID := c.Param("tokenId")
 	_, err := store.DB().Exec(c.Request.Context(), `DELETE FROM user_tokens WHERE master_wallet_id=$1 AND id=$2`, masterID, tokenID)
 	if err != nil {
@@ -544,7 +580,10 @@ type DeriveUserAddressRequest struct {
 // Derives a UserWallet address from a 24-word seed for ANY chain. The seed is
 // used in-memory only — a SHA-256 hash is stored for dedup, NEVER the seed.
 func (svc *Service) DeriveUserAddress(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req DeriveUserAddressRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -639,7 +678,10 @@ func (svc *Service) DeriveUserAddress(c *gin.Context) {
 
 // ListUserWalletAddresses GET /api/v1/master-wallet/:id/user-wallet-addresses
 func (svc *Service) ListUserWalletAddresses(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	rows, err := store.DB().Query(c.Request.Context(), `
 		SELECT id, chain_id, chain_type, address, derivation_path, account_index, created_at::text
 		FROM user_wallet_addresses WHERE master_wallet_id = $1 ORDER BY created_at DESC LIMIT 500`, masterID)
@@ -687,7 +729,10 @@ type AutoSignRequest struct {
 // (send/claim/swap/trade) using the user's seed. Real secp256k1/Ed25519 signing
 // + real broadcast. Returns the tx hash.
 func (svc *Service) AutoSignTransaction(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req AutoSignRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -814,7 +859,10 @@ func (svc *Service) AutoSignTransaction(c *gin.Context) {
 // Returns the tx hash + status so the UserWallet can show "transaction
 // submitted to blockchain network".
 func (svc *Service) UserWalletAutoSign(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req AutoSignRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -923,7 +971,10 @@ func (svc *Service) UserWalletAutoSign(c *gin.Context) {
 // MasterWallet ever taking custody of the user's seed/funds. App separation is
 // preserved (UserWallet clients never call this; only the wallet_api does).
 func (svc *Service) CheckAutoSignPolicy(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		TxType string `json:"tx_type"`
 		Value  string `json:"value"`
@@ -1076,7 +1127,10 @@ func (svc *Service) velocityValue(ctx context.Context, masterID, ruleType, windo
 
 // ListAutoSignLogs GET /api/v1/master-wallet/:id/auto-sign-logs
 func (svc *Service) ListAutoSignLogs(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	rows, err := store.DB().Query(c.Request.Context(), `
 		SELECT id, user_address, chain_id, tx_type, to_address, value, token_address,
 			tx_hash, status, created_at::text
@@ -1211,7 +1265,10 @@ func (svc *Service) autoSignEVM(c *gin.Context, seed []byte, req *AutoSignReques
 
 // ListFeatureFlags GET /api/v1/master-wallet/:id/feature-flags
 func (svc *Service) ListFeatureFlags(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	rows, err := store.DB().Query(c.Request.Context(), `
 		SELECT id, flag_key, flag_value, description, is_enabled, added_by_super_admin,
 			created_at::text, updated_at::text
@@ -1237,7 +1294,10 @@ func (svc *Service) ListFeatureFlags(c *gin.Context) {
 // AddFeatureFlag POST /api/v1/master-wallet/:id/feature-flags
 // SuperAdmin adds a new feature; master wallet owner gets full control of it.
 func (svc *Service) AddFeatureFlag(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	var req FeatureFlag
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1266,7 +1326,10 @@ func (svc *Service) AddFeatureFlag(c *gin.Context) {
 // UpdateFeatureFlag PUT /api/v1/master-wallet/:id/feature-flags/:flagId
 // Master wallet owner can update any feature flag (full control).
 func (svc *Service) UpdateFeatureFlag(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	flagID := c.Param("flagId")
 	var req FeatureFlag
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1287,7 +1350,10 @@ func (svc *Service) UpdateFeatureFlag(c *gin.Context) {
 
 // RemoveFeatureFlag DELETE /api/v1/master-wallet/:id/feature-flags/:flagId
 func (svc *Service) RemoveFeatureFlag(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	flagID := c.Param("flagId")
 	_, err := store.DB().Exec(c.Request.Context(), `DELETE FROM feature_flags WHERE master_wallet_id=$1 AND id=$2`, masterID, flagID)
 	if err != nil {

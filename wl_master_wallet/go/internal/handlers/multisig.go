@@ -123,13 +123,18 @@ type createMultisigTxReq struct {
 
 // CreateMultisigTransaction POST /master-wallet/:id/multisig/wallets/:wid/transactions
 func (h *Handlers) CreateMultisigTransaction(c *gin.Context) {
-	_, ok := h.loadOwnedWallet(c)
+	mw, ok := h.loadOwnedWallet(c)
 	if !ok {
 		return
 	}
 	walletID := c.Param("wid")
 	if walletID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "wid required"})
+		return
+	}
+	// The multisig wallet must belong to the master wallet in the URL, otherwise a
+	// caller could address another tenant's multisig wallet by guessing its id.
+	if !h.multisigWalletBelongsTo(c, walletID, mw.ID.String()) {
 		return
 	}
 	var req createMultisigTxReq
@@ -159,6 +164,21 @@ func (h *Handlers) CreateMultisigTransaction(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"id": txID, "to_address": req.ToAddress, "value": req.Value, "nonce": nonce, "required_signatures": threshold, "status": "pending"})
+}
+
+// multisigWalletBelongsTo verifies that wid is a multisig wallet of masterID,
+// writing the 404 itself when it is not. A non-existent wid and a wid owned by
+// another master wallet are reported identically so ids cannot be enumerated.
+func (h *Handlers) multisigWalletBelongsTo(c *gin.Context, wid, masterID string) bool {
+	var exists bool
+	err := h.store.DB().QueryRow(c.Request.Context(),
+		`SELECT EXISTS(SELECT 1 FROM multisig_wallets WHERE id = $1 AND master_wallet_id = $2)`,
+		wid, masterID).Scan(&exists)
+	if err != nil || !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "multisig wallet not found"})
+		return false
+	}
+	return true
 }
 
 type signMultisigTxReq struct {
@@ -231,13 +251,26 @@ func (h *Handlers) SignMultisigTransaction(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "signer is not an owner of this multisig wallet"})
 		return
 	}
+	// Refuse a second entry from a signer who has already signed. The NOT EXISTS is
+	// evaluated by PostgreSQL inside the UPDATE, so two concurrent requests from
+	// the same owner cannot both append and inflate the count towards the threshold.
 	sigEntry := fmt.Sprintf(`[{"signer":"%s","signature":"%s","message_hash":"%s","signed_at":"%s"}]`,
 		signerAddr.Hex(), req.Signature, req.MessageHash, time.Now().UTC().Format(time.RFC3339))
-	_, err = h.store.DB().Exec(ctx,
-		`UPDATE multisig_transactions SET signatures = signatures || $1::jsonb WHERE id = $2`,
-		sigEntry, txID)
+	tag, err := h.store.DB().Exec(ctx,
+		`UPDATE multisig_transactions
+		 SET signatures = signatures || $1::jsonb
+		 WHERE id = $2
+		   AND NOT EXISTS (
+		         SELECT 1 FROM jsonb_array_elements(signatures) e
+		         WHERE lower(e->>'signer') = lower($3)
+		       )`,
+		sigEntry, txID, signerAddr.Hex())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "this signer has already signed this transaction"})
 		return
 	}
 	var sigCount int
@@ -248,7 +281,7 @@ func (h *Handlers) SignMultisigTransaction(c *gin.Context) {
 
 // GetMultisigTransactions GET /master-wallet/:id/multisig/wallets/:wid/transactions
 func (h *Handlers) GetMultisigTransactions(c *gin.Context) {
-	_, ok := h.loadOwnedWallet(c)
+	mw, ok := h.loadOwnedWallet(c)
 	if !ok {
 		return
 	}
@@ -257,9 +290,17 @@ func (h *Handlers) GetMultisigTransactions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "wid required"})
 		return
 	}
+	if !h.multisigWalletBelongsTo(c, walletID, mw.ID.String()) {
+		return
+	}
+	// Join through multisig_wallets so the wid must belong to the master wallet in
+	// the URL, not merely exist.
 	rows, err := h.store.DB().Query(c.Request.Context(),
-		`SELECT id, to_address, value, data, nonce, status, signatures, created_at
-		 FROM multisig_transactions WHERE multisig_wallet_id = $1 ORDER BY created_at DESC`, walletID)
+		`SELECT mt.id, mt.to_address, mt.value, mt.data, mt.nonce, mt.status, mt.signatures, mt.created_at
+		 FROM multisig_transactions mt
+		 JOIN multisig_wallets mw ON mw.id = mt.multisig_wallet_id
+		 WHERE mt.multisig_wallet_id = $1 AND mw.master_wallet_id = $2
+		 ORDER BY mt.created_at DESC`, walletID, mw.ID.String())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -300,12 +341,19 @@ func (h *Handlers) ExecuteMultisigTransaction(c *gin.Context) {
 	var toAddr, value, data string
 	var walletID string
 	var threshold int
+	var status string
 	err := h.store.DB().QueryRow(ctx,
-		`SELECT mt.to_address, mt.value, mt.data, mw.id::text, mw.threshold
+		`SELECT mt.to_address, mt.value, mt.data, mw.id::text, mw.threshold, mt.status
 		 FROM multisig_transactions mt JOIN multisig_wallets mw ON mt.multisig_wallet_id = mw.id
-		 WHERE mt.id = $1`, txID).Scan(&toAddr, &value, &data, &walletID, &threshold)
+		 WHERE mt.id = $1`, txID).Scan(&toAddr, &value, &data, &walletID, &threshold, &status)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "multisig transaction not found"})
+		return
+	}
+	// Refuse to broadcast twice: an execute replay would submit the same call again
+	// under a fresh nonce and move the funds a second time.
+	if status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "transaction is not pending (status=" + status + ")"})
 		return
 	}
 	var sigCount int
@@ -371,7 +419,18 @@ func (h *Handlers) ExecuteMultisigTransaction(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	_, _ = h.store.DB().Exec(ctx, `UPDATE multisig_transactions SET status='executed', executed_at=NOW() WHERE id=$1`, txID)
+	// Conditional on 'pending' so a concurrent executor cannot be overwritten.
+	tag, err := h.store.DB().Exec(ctx,
+		`UPDATE multisig_transactions SET status='executed', executed_at=NOW()
+		 WHERE id=$1 AND status='pending'`, txID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "broadcast succeeded but status update failed", "transaction_hash": txHash})
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "transaction was already executed", "transaction_hash": txHash})
+		return
+	}
 	_ = h.store.Audit(ctx, uuid.Nil, "multisig.execute", "multisig_tx", txID, "critical", mustJSON(gin.H{"tx_hash": txHash}))
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "multisig_tx_id": txID, "status": "executed"})
 }
