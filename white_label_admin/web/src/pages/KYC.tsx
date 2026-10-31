@@ -5,6 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { whiteLabelAdminApi } from '../services/api';
 import { useTheme } from '../context/ThemeContext';
+import { DocumentLink } from '../utils/safeUrl';
 
 export default function KYC() {
   const { isDark } = useTheme();
@@ -72,7 +73,7 @@ export default function KYC() {
               {requests.map((req) => (
                 <tr key={req.id}>
                   <td className={`px-6 py-4 font-mono text-xs ${muted}`}>{short(req.user_id)}</td>
-                  <td className={`px-6 py-4 ${cardText}`}>{req.doc_type}{req.document_url ? <a href={req.document_url} target="_blank" rel="noreferrer" className="ml-2 text-blue-600 hover:underline">view</a> : null}</td>
+                  <td className={`px-6 py-4 ${cardText}`}>{req.doc_type}<DocumentLink url={req.document_url} /></td>
                   <td className="px-6 py-4"><span className={badge(req.status)}>{req.status}</span></td>
                   <td className={`px-6 py-4 text-xs ${muted}`}>{req.submitted_at ? new Date(req.submitted_at).toLocaleString() : '—'}</td>
                   <td className="px-6 py-4 space-x-2">

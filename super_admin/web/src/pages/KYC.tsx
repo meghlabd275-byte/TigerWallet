@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import superAdminApi from '../services/api';
 import type { KYCRequest } from '../types';
+import { DocumentLink } from '../utils/safeUrl';
 
 export default function KYC() {
   const [requests, setRequests] = useState<KYCRequest[]>([]);
@@ -15,6 +16,7 @@ export default function KYC() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<KYCRequest | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadRequests();
@@ -30,13 +32,13 @@ export default function KYC() {
       });
       setRequests(result.data);
       setTotalPages(result.total_pages);
-    } catch (err) {
-      setRequests([
-        { id: '1', user_id: 'u1', user_email: 'user1@example.com', doc_type: 'identity', status: 'pending', document_url: '', submitted_at: new Date().toISOString(), risk_level: 'low' },
-        { id: '2', user_id: 'u2', user_email: 'user2@example.com', doc_type: 'passport', status: 'pending', document_url: '', submitted_at: new Date().toISOString(), risk_level: 'medium' },
-        { id: '3', user_id: 'u3', user_email: 'user3@example.com', doc_type: 'drivers_license', status: 'approved', document_url: '', submitted_at: new Date().toISOString(), reviewed_at: new Date().toISOString(), risk_level: 'low' },
-      ]);
-      setTotalPages(5);
+    } catch (err: any) {
+      // Never substitute placeholder rows here: an operator reading this table
+      // would take fabricated identities for real pending KYC work and could
+      // act on them. Surface the failure instead.
+      setRequests([]);
+      setTotalPages(1);
+      setError(err?.message || 'Failed to load KYC requests');
     } finally {
       setLoading(false);
     }
@@ -76,6 +78,12 @@ export default function KYC() {
           <p className="text-secondary mt-1">Review and manage identity verification requests</p>
         </div>
       </div>
+
+      {error && (
+        <div className="card mb-6 border-l-4 border-red-500">
+          <div className="card-body text-red-600">{error}</div>
+        </div>
+      )}
 
       <div className="card mb-6">
         <div className="card-body">
@@ -180,6 +188,66 @@ export default function KYC() {
           )}
         </div>
       </div>
+
+      {selectedRequest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedRequest(null)}>
+          <div className="card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-primary">KYC Request</h2>
+                <button onClick={() => setSelectedRequest(null)} className="btn-ghost px-2 py-1" title="Close">✕</button>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-secondary">User</dt>
+                  <dd className="text-primary">{selectedRequest.user_email || selectedRequest.user_id}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-secondary">Document type</dt>
+                  <dd className="text-primary capitalize">{selectedRequest.doc_type}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-secondary">Status</dt>
+                  <dd className="text-primary">{selectedRequest.status}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-secondary">Submitted</dt>
+                  <dd className="text-primary">
+                    {selectedRequest.submitted_at ? new Date(selectedRequest.submitted_at).toLocaleString() : '—'}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-secondary">Document</dt>
+                  <dd className="text-primary">
+                    <DocumentLink url={selectedRequest.document_url} />
+                    {!selectedRequest.document_url && '—'}
+                  </dd>
+                </div>
+                {selectedRequest.reject_reason && (
+                  <div className="flex justify-between">
+                    <dt className="text-secondary">Rejection reason</dt>
+                    <dd className="text-primary">{selectedRequest.reject_reason}</dd>
+                  </div>
+                )}
+              </dl>
+              {selectedRequest.status === 'pending' && (
+                <div className="flex gap-2 mt-6">
+                  <button
+                    onClick={() => { const id = selectedRequest.id; setSelectedRequest(null); handleApprove(id); }}
+                    disabled={actionLoading}
+                    className="btn-primary px-4 py-2"
+                  >Approve</button>
+                  <button
+                    onClick={() => { const id = selectedRequest.id; setSelectedRequest(null); handleReject(id); }}
+                    disabled={actionLoading}
+                    className="btn-secondary px-4 py-2"
+                  >Reject</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between mt-4">
         <p className="text-secondary">Page {page} of {totalPages}</p>
