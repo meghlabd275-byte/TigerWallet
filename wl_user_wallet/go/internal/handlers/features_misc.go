@@ -6,6 +6,7 @@ package handlers
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/tigerwallet/wl-user-wallet/internal/middleware"
 )
 
@@ -25,7 +27,9 @@ func (s *Svc) GetWallet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	w, err := s.store.GetWallet(c.Request.Context(), id)
+	// Scoped to the caller: an unscoped read returns another tenant's
+	// wallet record, including its encrypted seed.
+	w, err := s.store.GetWalletOwned(c.Request.Context(), middleware.UserID(c), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
 		return
@@ -46,7 +50,11 @@ func (s *Svc) UpdateWallet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := s.store.UpdateWalletLabel(c.Request.Context(), id, req.Label); err != nil {
+	if err := s.store.UpdateWalletLabel(c.Request.Context(), middleware.UserID(c), id, req.Label); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -59,7 +67,11 @@ func (s *Svc) DeleteWallet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	if err := s.store.DeleteWallet(c.Request.Context(), id); err != nil {
+	if err := s.store.DeleteWallet(c.Request.Context(), middleware.UserID(c), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "wallet not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

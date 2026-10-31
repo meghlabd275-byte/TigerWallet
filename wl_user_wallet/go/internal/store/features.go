@@ -12,14 +12,43 @@ import (
 )
 
 // Wallets CRUD / extras / guest / users-list (needed by misc handlers).
-func (s *Store) UpdateWalletLabel(ctx context.Context, id uuid.UUID, label string) error {
-        _, err := s.db.Exec(ctx, `UPDATE wallets SET label=$1 WHERE id=$2`, label, id)
-        return err
+//
+// Every wallet mutation is scoped to the owning user. Scoping only by wallet id
+// would let any authenticated tenant relabel or delete another tenant's wallet,
+// and deleting the row also destroys the encrypted seed stored on it.
+func (s *Store) UpdateWalletLabel(ctx context.Context, userID, id uuid.UUID, label string) error {
+        tag, err := s.db.Exec(ctx, `UPDATE wallets SET label=$1 WHERE id=$2 AND user_id=$3`, label, id, userID)
+        if err != nil {
+                return err
+        }
+        if tag.RowsAffected() == 0 {
+                return pgx.ErrNoRows
+        }
+        return nil
 }
 
-func (s *Store) DeleteWallet(ctx context.Context, id uuid.UUID) error {
-        _, err := s.db.Exec(ctx, `DELETE FROM wallets WHERE id=$1`, id)
-        return err
+func (s *Store) DeleteWallet(ctx context.Context, userID, id uuid.UUID) error {
+        tag, err := s.db.Exec(ctx, `DELETE FROM wallets WHERE id=$1 AND user_id=$2`, id, userID)
+        if err != nil {
+                return err
+        }
+        if tag.RowsAffected() == 0 {
+                return pgx.ErrNoRows
+        }
+        return nil
+}
+
+// GetWalletOwned returns a wallet only when it belongs to the given user.
+func (s *Store) GetWalletOwned(ctx context.Context, userID, id uuid.UUID) (*Wallet, error) {
+        var w Wallet
+        err := s.db.QueryRow(ctx,
+                `SELECT id, user_id, label, address, encrypted_seed, chain_id, created_at FROM wallets WHERE id=$1 AND user_id=$2`,
+                id, userID).
+                Scan(&w.ID, &w.UserID, &w.Label, &w.Address, &w.EncryptedSeed, &w.ChainID, &w.CreatedAt)
+        if err != nil {
+                return nil, err
+        }
+        return &w, nil
 }
 
 type UserRecord struct {
