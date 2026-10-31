@@ -4,32 +4,28 @@
 package main
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
-	mathrand "math/rand"
-	"net/http"
+	"math/big"
+	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/pquerna/otp"
-	"github.com/pquerna/totp"
-	"golang.org/x/crypto/pbkdf2"
+	"github.com/pquerna/otp/totp"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -399,11 +395,19 @@ func (s *TwoFactorService) HashBackupCode(code string) string {
 }
 
 // GenerateRandomCode - Generate random alphanumeric code
+//
+// Used for 2FA backup codes, which are a second authentication factor. The
+// system CSPRNG is required here: math/rand is seeded deterministically, so the
+// code sequence would be reproducible and an attacker could precompute it.
 func generateRandomCode(length int) string {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // No similar looking chars
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = chars[mathrand.Intn(len(chars))]
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			log.Fatalf("2fa: failed to read from the system CSPRNG: %v", err)
+		}
+		b[i] = chars[idx.Int64()]
 	}
 	return string(b)
 }
@@ -506,22 +510,20 @@ func (s *TwoFactorService) VerifyCode(userID, code, ipAddress, userAgent string)
 	// Verify code with skew tolerance
 	valid := totp.Validate(code, secret)
 	if !valid {
-		// Try previous and next period
-		valid = totp.ValidateCustom(code, secret, time.Now().Add(-30*time.Second), totp.ValidateOpts{
-			Digits:    otp.DigitsSix,
-			Algorithm: otp.AlgorithmSHA1,
-			Period:    uint(s.config.TOTPPeriod),
-		})
-		
-		if !valid {
-			valid = totp.ValidateCustom(code, secret, time.Now().Add(30*time.Second), totp.ValidateOpts{
+		// Tolerate one period of clock drift in either direction.
+		for _, skew := range []time.Duration{-30 * time.Second, 30 * time.Second} {
+			ok, err := totp.ValidateCustom(code, secret, time.Now().Add(skew), totp.ValidateOpts{
 				Digits:    otp.DigitsSix,
 				Algorithm: otp.AlgorithmSHA1,
 				Period:    uint(s.config.TOTPPeriod),
 			})
+			if err == nil && ok {
+				valid = true
+				break
+			}
 		}
 	}
-	
+
 	if valid {
 		// Reset failed attempts
 		s.db.Model(&user2FA).Updates(map[string]interface{}{
@@ -558,7 +560,7 @@ func (s *TwoFactorService) VerifyCode(userID, code, ipAddress, userAgent string)
 	}
 	s.logAction(userID, "failed", user2FA.Method, ipAddress, userAgent, "", false, errMsg)
 	
-	return false, fmt.Errorf(errMsg)
+	return false, errors.New(errMsg)
 }
 
 // VerifyBackupCode - Verify backup code
@@ -776,14 +778,20 @@ func (s *TwoFactorService) VerifySetupHandler(c *gin.Context) {
 	// Verify code
 	valid := totp.Validate(req.Code, req.Secret)
 	if !valid {
-		// Try with skew tolerance
-		valid = totp.ValidateCustom(req.Code, req.Secret, time.Now().Add(-30*time.Second), totp.ValidateOpts{
-			Digits:    otp.DigitsSix,
-			Algorithm: otp.AlgorithmSHA1,
-			Period:    uint(s.config.TOTPPeriod),
-		})
+		// Tolerate one period of clock drift.
+		for _, skew := range []time.Duration{-30 * time.Second, 30 * time.Second} {
+			ok, err := totp.ValidateCustom(req.Code, req.Secret, time.Now().Add(skew), totp.ValidateOpts{
+				Digits:    otp.DigitsSix,
+				Algorithm: otp.AlgorithmSHA1,
+				Period:    uint(s.config.TOTPPeriod),
+			})
+			if err == nil && ok {
+				valid = true
+				break
+			}
+		}
 	}
-	
+
 	if !valid {
 		c.JSON(400, gin.H{"error": "invalid code"})
 		return
@@ -821,18 +829,24 @@ func (s *TwoFactorService) Verify2FAHandler(c *gin.Context) {
 	ipAddress := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
 	
-	// Try TOTP code first
+	// Try TOTP code first. VerifyCode reports a wrong code as (false, nil) and
+	// only returns an error for lockout or storage failures, so the boolean must
+	// be checked - treating a nil error as success would accept any code.
 	if req.Code != "" {
 		valid, err := s.VerifyCode(req.UserID, req.Code, ipAddress, userAgent)
 		if err != nil {
 			c.JSON(401, gin.H{"error": err.Error(), "remaining_attempts": s.config.MaxAttempts})
 			return
 		}
-		
+		if !valid {
+			c.JSON(401, gin.H{"error": "invalid code", "method": "totp"})
+			return
+		}
+
 		c.JSON(200, gin.H{"status": "verified", "method": "totp"})
 		return
 	}
-	
+
 	// Try backup code
 	if req.BackupCode != "" {
 		valid, err := s.VerifyBackupCode(req.UserID, req.BackupCode, ipAddress, userAgent)
@@ -841,11 +855,16 @@ func (s *TwoFactorService) Verify2FAHandler(c *gin.Context) {
 			c.JSON(401, gin.H{"error": err.Error(), "remaining_backup_codes": remaining})
 			return
 		}
-		
+		if !valid {
+			remaining, _ := s.GetRemainingBackupCodes(req.UserID)
+			c.JSON(401, gin.H{"error": "invalid backup code", "remaining_backup_codes": remaining})
+			return
+		}
+
 		c.JSON(200, gin.H{"status": "verified", "method": "backup"})
 		return
 	}
-	
+
 	c.JSON(400, gin.H{"error": "code or backup_code required"})
 }
 
@@ -1019,7 +1038,3 @@ func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
-// Need to import url
-import (
-	"net/url"
-)

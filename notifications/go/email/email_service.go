@@ -6,11 +6,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"fmt"
 	"html/template"
 	"log"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/smtp"
 	"os"
@@ -523,6 +524,14 @@ func WithHeaders(headers map[string]string) EmailOption {
 	return func(o *EmailOptions) { o.Headers = headers }
 }
 
+// sanitizeHeader folds CR and LF out of a value destined for an RFC 5322
+// header. Subjects, recipient names and custom header values can all originate
+// from API callers, and an embedded newline would let them inject additional
+// headers into the outgoing message.
+func sanitizeHeader(value string) string {
+	return strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
+}
+
 // buildEmail - Build email message
 func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName, subject, bodyHTML, bodyText string, opts *EmailOptions) error {
 	from := opts.From
@@ -531,24 +540,24 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 	}
 	
 	// Headers
-	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
-	buf.WriteString(fmt.Sprintf("To: %s <%s>\r\n", toName, toEmail))
-	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
-	buf.WriteString(fmt.Sprintf("Message-ID: %s\r\n", messageID))
+	buf.WriteString(fmt.Sprintf("From: %s\r\n", sanitizeHeader(from)))
+	buf.WriteString(fmt.Sprintf("To: %s <%s>\r\n", sanitizeHeader(toName), sanitizeHeader(toEmail)))
+	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", sanitizeHeader(subject)))
+	buf.WriteString(fmt.Sprintf("Message-ID: %s\r\n", sanitizeHeader(messageID)))
 	buf.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	buf.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\n"))
 	
 	if opts.ReplyTo != "" {
-		buf.WriteString(fmt.Sprintf("Reply-To: %s\r\n", opts.ReplyTo))
+		buf.WriteString(fmt.Sprintf("Reply-To: %s\r\n", sanitizeHeader(opts.ReplyTo)))
 	}
 	if opts.CC != "" {
-		buf.WriteString(fmt.Sprintf("Cc: %s\r\n", opts.CC))
+		buf.WriteString(fmt.Sprintf("Cc: %s\r\n", sanitizeHeader(opts.CC)))
 	}
 	
 	// Custom headers
 	if opts.Headers != nil {
 		for k, v := range opts.Headers {
-			buf.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+			buf.WriteString(fmt.Sprintf("%s: %s\r\n", sanitizeHeader(k), sanitizeHeader(v)))
 		}
 	}
 	
@@ -587,9 +596,11 @@ func (s *EmailService) sendSMTP(to string, data []byte) error {
 	var err error
 	
 	if s.config.UseTLS {
+		if s.config.SkipVerification {
+			return fmt.Errorf("SMTP_SKIP_VERIFY is not permitted: refusing to send mail over an unverified TLS connection")
+		}
 		conn, err = tls.Dial("tcp", addr, &tls.Config{
-			ServerName:         s.config.SMTPHost,
-			InsecureSkipVerify: s.config.SkipVerification,
+			ServerName: s.config.SMTPHost,
 		})
 	} else {
 		conn, err = net.Dial("tcp", addr)
@@ -1097,11 +1108,19 @@ func (s *EmailService) AddRecipientHandler(c *gin.Context) {
 
 // Utility functions
 
+// randomString returns n cryptographically random alphanumeric characters. It
+// backs unsubscribe tokens, MIME boundaries and Message-IDs, so it must not be
+// predictable. Callers treat a failure as fatal because a zero-filled token
+// would be worse than no token at all.
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			log.Fatalf("email service: failed to read from the system CSPRNG: %v", err)
+		}
+		b[i] = letters[idx.Int64()]
 	}
 	return string(b)
 }
@@ -1220,7 +1239,6 @@ func main() {
 		SMTPFromName:      getEnv("SMTP_FROM_NAME", "TigerWallet"),
 		SMTPFromEmail:     getEnv("SMTP_FROM_EMAIL", "noreply@tigerwallet.com"),
 		UseTLS:            getEnvBool("SMTP_USE_TLS", true),
-		SkipVerification:  getEnvBool("SMTP_SKIP_VERIFY", false),
 		MaxRetries:        getEnvInt("EMAIL_MAX_RETRIES", 3),
 		RetryDelay:        getEnvDuration("EMAIL_RETRY_DELAY", 5*time.Second),
 		WorkerCount:       getEnvInt("EMAIL_WORKERS", 5),

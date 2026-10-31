@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -431,13 +430,19 @@ func (s *FraudDetectionService) GetAlerts(userID string, status string, limit in
 }
 
 // ResolveAlert - Resolve fraud alert
-func (s *FraudAlert) Resolve(resolvedBy, resolution string) error {
-	now := time.Now()
-	return gorm.Model(FraudAlert{}).Where("id = ?", FraudAlert.ID).Updates(map[string]interface{}{
-		"status":      resolution,
-		"resolved_by": resolvedBy,
-		"resolved_at": now,
-	}).Error
+//
+// This was declared on *FraudAlert and built its query from gorm.Model(FraudAlert{}),
+// which is not a query builder: gorm.Model is a struct, and the conversion does
+// not compile. It also referenced FraudAlert.ID (the type, not a value). The
+// method belongs on the service, which owns the database handle.
+func (s *FraudDetectionService) ResolveAlert(alertID, resolvedBy, resolution string) error {
+	return s.db.Model(&FraudAlert{}).
+		Where("alert_id = ?", alertID).
+		Updates(map[string]interface{}{
+			"status":      resolution,
+			"resolved_by": resolvedBy,
+			"resolved_at": time.Now(),
+		}).Error
 }
 
 // BlockUser - Block user

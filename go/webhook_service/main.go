@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
+	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -571,17 +573,29 @@ func generateID() string {
 	return fmt.Sprintf("wh_%d_%s", time.Now().UnixNano(), randomString(8))
 }
 
+// generateSecret returns the HMAC-SHA256 signing key for outbound webhook
+// deliveries. The system CSPRNG is required: math/rand is seeded
+// deterministically, so keys derived from it are reproducible and an attacker
+// who recovers the sequence can forge webhook signatures.
 func generateSecret() string {
-	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("webhook service: failed to read from the system CSPRNG: %v", err)
+	}
+	return hex.EncodeToString(b)
 }
 
+// randomString backs webhook identifiers. It uses the system CSPRNG so the IDs
+// are unpredictable.
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			log.Fatalf("webhook service: failed to read from the system CSPRNG: %v", err)
+		}
+		b[i] = letters[idx.Int64()]
 	}
 	return string(b)
 }
@@ -598,8 +612,6 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet Webhook Service")
 	fmt.Println("============================================")

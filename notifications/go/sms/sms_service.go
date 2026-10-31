@@ -6,12 +6,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -1015,15 +1016,30 @@ func formatPhoneNumber(phone string) string {
 	return "+" + phone
 }
 
+// generateVerificationCode returns a 6-digit SMS one-time password. It must
+// come from the system CSPRNG: math/rand is seeded deterministically, so the
+// code sequence would be reproducible and an observer of one code could
+// predict later ones.
 func generateVerificationCode() string {
-	return fmt.Sprintf("%06d", rand.Intn(1000000))
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		log.Fatalf("sms service: failed to read from the system CSPRNG: %v", err)
+	}
+	return fmt.Sprintf("%06d", n.Int64())
 }
 
+// randomString returns n cryptographically random alphanumeric characters. It
+// backs SMS message IDs, which must not be predictable. A failure to read the
+// system CSPRNG is fatal: a zero-filled ID would be worse than no ID.
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			log.Fatalf("sms service: failed to read from the system CSPRNG: %v", err)
+		}
+		b[i] = letters[idx.Int64()]
 	}
 	return string(b)
 }
