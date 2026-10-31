@@ -8,6 +8,7 @@
 
 #include "web_socket_service.hpp"
 #include "api_client.hpp"
+#include "ws_frame_reader.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -35,13 +36,6 @@ namespace master {
 namespace websocket {
 
 namespace {
-
-constexpr uint8_t OPCODE_CONTINUE = 0x0;
-constexpr uint8_t OPCODE_TEXT = 0x1;
-constexpr uint8_t OPCODE_BINARY = 0x2;
-constexpr uint8_t OPCODE_CLOSE = 0x8;
-constexpr uint8_t OPCODE_PING = 0x9;
-constexpr uint8_t OPCODE_PONG = 0xA;
 
 std::string toHex(const unsigned char* data, size_t len) {
     std::ostringstream ss;
@@ -427,6 +421,8 @@ void WebSocketService::handleClient(const std::string& clientId, const std::stri
     // --- Read loop: parse real frames from the backend ---
     std::string accum = leftover;
     bool closed = false;
+    std::string fragmentBuffer;
+    bool fragmented = false;
     while (!closed) {
         {
             std::lock_guard<std::mutex> lock(clientsMutex_);
@@ -444,79 +440,45 @@ void WebSocketService::handleClient(const std::string& clientId, const std::stri
         }
         if (closed) break;
 
-        uint8_t b0 = static_cast<uint8_t>(accum[0]);
-        uint8_t b1 = static_cast<uint8_t>(accum[1]);
-        bool fin = (b0 & 0x80) != 0;
-        uint8_t opcode = b0 & 0x0F;
-        bool masked = (b1 & 0x80) != 0;
-        uint64_t payloadLen = b1 & 0x7F;
-        size_t headerLen = 2;
-
-        if (payloadLen == 126) {
-            while (accum.size() < headerLen + 2) {
-                char tmp[2048]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-                if (n <= 0) { closed = true; break; }
-                accum.append(tmp, n);
-            }
-            if (closed) break;
-            payloadLen = (static_cast<uint8_t>(accum[2]) << 8) | static_cast<uint8_t>(accum[3]);
-            headerLen += 2;
-        } else if (payloadLen == 127) {
-            while (accum.size() < headerLen + 8) {
-                char tmp[2048]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-                if (n <= 0) { closed = true; break; }
-                accum.append(tmp, n);
-            }
-            if (closed) break;
-            payloadLen = 0;
-            for (int i = 0; i < 8; ++i)
-                payloadLen = (payloadLen << 8) | static_cast<uint8_t>(accum[2 + i]);
-            headerLen += 8;
-        }
-
-        uint8_t mask[4] = {0,0,0,0};
-        if (masked) {
-            while (accum.size() < headerLen + 4) {
-                char tmp[2048]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-                if (n <= 0) { closed = true; break; }
-                accum.append(tmp, n);
-            }
-            if (closed) break;
-            std::memcpy(mask, accum.data() + headerLen, 4);
-            headerLen += 4;
-        }
-
-        if (payloadLen > maxMessageSize_) {
-            if (errorHandler_) errorHandler_("WebSocket frame too large");
+        WsFrameResult r = readWsFrame(accum, fd, maxMessageSize_);
+        if (r.status == WsFrameStatus::Error) {
+            if (errorHandler_) errorHandler_(r.error);
             break;
         }
 
-        while (accum.size() < headerLen + payloadLen) {
-            char tmp[4096]; ssize_t n = recv(fd, tmp, sizeof(tmp), 0);
-            if (n <= 0) { closed = true; break; }
-            accum.append(tmp, n);
-        }
-        if (closed) break;
-
-        std::string payload = accum.substr(headerLen, payloadLen);
-        accum.erase(0, headerLen + payloadLen);
-        if (masked) maskPayload(reinterpret_cast<uint8_t*>(&payload[0]), payload.size(), mask);
-
-        if (opcode == OPCODE_CLOSE) {
+        if (r.opcode == OPCODE_CLOSE) {
             break;
-        } else if (opcode == OPCODE_PING) {
-            // Reply with pong (server-to-client not masked; client-to-server masked).
-            std::string pong;
-            pong.push_back(static_cast<char>(0x80 | OPCODE_PONG));
-            pong.push_back(static_cast<char>(payload.size() & 0x7F));
-            pong.append(payload);
-            sendAll(fd, pong);
-        } else if (opcode == OPCODE_TEXT || opcode == OPCODE_BINARY || opcode == OPCODE_CONTINUE) {
-            processMessage(clientId, payload);
-            if (!fin) {
-                // Fragmented messages are not reassembled here; each fragment is
-                // delivered. The backend sends complete frames for wallet events.
+        } else if (r.opcode == OPCODE_PING) {
+            sendAll(fd, buildPongFrame(r.payload));
+        } else if (r.opcode == OPCODE_TEXT || r.opcode == OPCODE_BINARY || r.opcode == OPCODE_CONTINUE) {
+            // Reassemble fragmented messages before dispatch. Delivering each
+            // fragment on its own handed the handler half a JSON document, and
+            // an interleaved control frame used to clobber the pending buffer.
+            if (r.opcode == OPCODE_CONTINUE) {
+                if (!fragmented) {
+                    if (errorHandler_) errorHandler_("protocol error: continuation without a start frame");
+                    break;
+                }
+            } else {
+                if (fragmented) {
+                    if (errorHandler_) errorHandler_("protocol error: new data frame during a fragmented message");
+                    break;
+                }
+                fragmented = !r.fin;
             }
+            fragmentBuffer += r.payload;
+            if (fragmentBuffer.size() > maxMessageSize_) {
+                if (errorHandler_) errorHandler_("WebSocket message too large");
+                break;
+            }
+            if (r.fin) {
+                processMessage(clientId, fragmentBuffer);
+                fragmentBuffer.clear();
+                fragmented = false;
+            }
+        } else {
+            if (errorHandler_) errorHandler_("protocol error: reserved opcode");
+            break;
         }
     }
 

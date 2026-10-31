@@ -21,6 +21,7 @@ set(SERVICE_SOURCES
     src/services/auth_service.cpp
     src/services/master_wallet_service.cpp
     src/services/web_socket_service.cpp
+    src/services/ws_frame_reader.cpp
     src/services/account_abstraction_service.cpp
     src/services/paymaster_service.cpp
     src/services/privacy_service.cpp
@@ -49,3 +50,13 @@ add_executable(master_wallet_desktop
 target_link_libraries(master_wallet_desktop
     PRIVATE masterwallet_core
 )
+
+# The frame reader has no OpenSSL or libcurl dependency, so its tests build and
+# run on their own.
+enable_testing()
+add_executable(ws_frame_reader_test
+    tests/ws_frame_reader_test.cpp
+    src/services/ws_frame_reader.cpp
+)
+target_include_directories(ws_frame_reader_test PRIVATE ${CMAKE_SOURCE_DIR}/src/services)
+add_test(NAME ws_frame_reader COMMAND ws_frame_reader_test)
