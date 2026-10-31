@@ -53,9 +53,32 @@ func auditTradingControl(c *gin.Context, action, kind, entity, detail string) {
 		uuid.New(), fmt.Sprint(actor), fmt.Sprint(role), action, kind, entity, detail)
 }
 
+// saTradingTables is the closed set of tables the generic trading-management
+// helpers may touch. Table and column names cannot be bound as query
+// parameters, so they are interpolated into the SQL text; restricting them to
+// this allow-list is what keeps that interpolation from becoming an injection
+// point. Every call site passes a literal from this set, and the check keeps it
+// that way if the helpers are ever reused.
+var saTradingTables = map[string]bool{
+	"trading_contracts":    true,
+	"liquidity_pools":      true,
+	"trading_pairs":        true,
+	"margin_markets":       true,
+	"options_contracts":    true,
+	"copy_trading_configs": true,
+}
+
+func saValidTradingTable(table string) bool {
+	return saTradingTables[table]
+}
+
 // ---- generic list helper ----
 
 func saListTrading(c *gin.Context, table, outKey, columns string) {
+	if !saValidTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	rows, err := dbQuery(c, fmt.Sprintf(`SELECT %s FROM %s ORDER BY created_at DESC LIMIT 500`, columns, table))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
@@ -68,6 +91,10 @@ func saListTrading(c *gin.Context, table, outKey, columns string) {
 // ---- generic status transition ----
 
 func saSetTradingStatus(c *gin.Context, table, kind, redisKeyExpr string) {
+	if !saValidTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	var req struct {
 		Status string `json:"status"`
 	}
@@ -89,6 +116,10 @@ func saSetTradingStatus(c *gin.Context, table, kind, redisKeyExpr string) {
 }
 
 func saDeleteTradingEntity(c *gin.Context, table, kind, redisKeyExpr string) {
+	if !saValidTradingTable(table) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported trading entity"})
+		return
+	}
 	var entity string
 	err := dbQueryRow(c,
 		fmt.Sprintf(`DELETE FROM %s WHERE id=$1 RETURNING %s`, table, redisKeyExpr), c.Param("id")).Scan(&entity)
@@ -317,6 +348,9 @@ func handleResumeTradingVertical(c *gin.Context) {
 
 func handleTradingOverview(c *gin.Context) {
 	count := func(table string) int64 {
+		if !saValidTradingTable(table) {
+			return 0
+		}
 		var n int64
 		if err := dbQueryRow(c, fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE status='active'`, table)).Scan(&n); err != nil {
 			return 0
