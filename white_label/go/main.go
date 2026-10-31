@@ -3063,10 +3063,16 @@ func createToken(c *gin.Context) {
 		return
 	}
 
+	address, err := normalizeEVMAddress(req.Address)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	token := &TokenConfig{
 		ID:        generateID(),
 		ClientID:  req.ClientID,
-		Address:   req.Address,
+		Address:   address,
 		Name:      req.Name,
 		Symbol:    req.Symbol,
 		Decimals:  req.Decimals,
@@ -3077,7 +3083,7 @@ func createToken(c *gin.Context) {
 		Features:  []string{},
 	}
 
-	_, err := pg.Exec(c.Request.Context(), `INSERT INTO wl_token_configs
+	_, err = pg.Exec(c.Request.Context(), `INSERT INTO wl_token_configs
 		(`+tokenCols+`)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		token.ID, token.ClientID, token.Address, token.Name, token.Symbol, token.Decimals,
@@ -3219,9 +3225,18 @@ func deleteToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
+// createNewToken registers a token whose contract has already been deployed.
+//
+// It used to invent an address and store it, which produced console rows that no
+// node had ever seen. The operator supplies the deployed address and the handler
+// confirms the contract exists on chain before writing the row; an address with
+// no code, or a chain with no configured node, is rejected. Deploying the
+// contract from here would mean this control plane holding a funded signing key,
+// which is out of scope for it.
 func createNewToken(c *gin.Context) {
 	var req struct {
 		ClientID  string `json:"clientId" binding:"required"`
+		Address   string `json:"address" binding:"required"`
 		Name      string `json:"name" binding:"required"`
 		Symbol    string `json:"symbol" binding:"required"`
 		Decimals  uint8  `json:"decimals"`
@@ -3240,9 +3255,17 @@ func createNewToken(c *gin.Context) {
 		return
 	}
 
-	// In production, this would deploy a real smart contract
-	// For now, generate a deterministic-looking address
-	address := "0x" + generateHex(40)
+	address, err := normalizeEVMAddress(req.Address)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := verifyContractDeployed(c.Request.Context(), req.ChainID, address); err != nil {
+		logger.Warn().Err(err).Uint64("chain_id", req.ChainID).Str("address", address).Msg("Rejected token registration")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "contract verification failed: " + err.Error()})
+		return
+	}
 
 	token := &TokenConfig{
 		ID:        generateID(),
@@ -3258,7 +3281,7 @@ func createNewToken(c *gin.Context) {
 		Features:  []string{"transfer", "approve", "transferFrom"},
 	}
 
-	_, err := pg.Exec(c.Request.Context(), `INSERT INTO wl_token_configs
+	_, err = pg.Exec(c.Request.Context(), `INSERT INTO wl_token_configs
 		(`+tokenCols+`)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		token.ID, token.ClientID, token.Address, token.Name, token.Symbol, token.Decimals,
