@@ -563,6 +563,12 @@ func (ls *LendingService) Supply(c *gin.Context) {
 		chainID = 1
 	}
 
+	userAddress, ok := ls.resolveAddress(c, req.UserAddress)
+	if !ok {
+		return
+	}
+	req.UserAddress = userAddress
+
 	asset := req.AssetAddress
 	if strings.EqualFold(asset, "0x0000000000000000000000000000000000000000") {
 		asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
@@ -633,6 +639,12 @@ func (ls *LendingService) Borrow(c *gin.Context) {
 		chainID = 1
 	}
 
+	userAddress, ok := ls.resolveAddress(c, req.UserAddress)
+	if !ok {
+		return
+	}
+	req.UserAddress = userAddress
+
 	asset := req.AssetAddress
 	if strings.EqualFold(asset, "0x0000000000000000000000000000000000000000") {
 		asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
@@ -689,12 +701,12 @@ func (ls *LendingService) Borrow(c *gin.Context) {
 }
 
 func (ls *LendingService) GetUserPosition(c *gin.Context) {
-	userAddress := c.Query("user_address")
-	if userAddress == "" {
-		userAddress = c.Param("user_address")
+	requested := c.Query("user_address")
+	if requested == "" {
+		requested = c.Param("user_address")
 	}
-	if userAddress == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "user_address required"})
+	userAddress, ok := ls.resolveAddress(c, requested)
+	if !ok {
 		return
 	}
 
@@ -771,6 +783,12 @@ func (ls *LendingService) Withdraw(c *gin.Context) {
 		chainID = 1
 	}
 
+	userAddress, ok := ls.resolveAddress(c, req.UserAddress)
+	if !ok {
+		return
+	}
+	req.UserAddress = userAddress
+
 	asset := req.AssetAddress
 	if strings.EqualFold(asset, "0x0000000000000000000000000000000000000000") {
 		asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
@@ -839,6 +857,12 @@ func (ls *LendingService) Repay(c *gin.Context) {
 		chainID = 1
 	}
 
+	userAddress, ok := ls.resolveAddress(c, req.UserAddress)
+	if !ok {
+		return
+	}
+	req.UserAddress = userAddress
+
 	asset := req.AssetAddress
 	if strings.EqualFold(asset, "0x0000000000000000000000000000000000000000") {
 		asset = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
@@ -897,12 +921,12 @@ func (ls *LendingService) Repay(c *gin.Context) {
 // PostgreSQL (survives restarts). This is the wallet-side ledger; the on-chain
 // source of truth remains Aave V3 (see GetUserPosition for live account data).
 func (ls *LendingService) GetUserPositions(c *gin.Context) {
-	userID := c.Query("user_id")
-	if userID == "" {
-		userID = c.Query("user_address")
+	requested := c.Query("user_id")
+	if requested == "" {
+		requested = c.Query("user_address")
 	}
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "user_id required"})
+	userID, ok := ls.resolveAddress(c, requested)
+	if !ok {
 		return
 	}
 
@@ -1025,6 +1049,9 @@ func (ls *LendingService) queryPositions(ctx context.Context, userID string) ([]
 // ============================================================================
 
 func main() {
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("JWT_SECRET must be set: the lending service authenticates callers with it")
+	}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 	ls := NewLendingService()
@@ -1034,6 +1061,9 @@ func main() {
 	})
 
 	v1 := r.Group("/api/v1/lending")
+	// Lending moves funds for one account, so the caller is resolved from the
+	// bearer token and every position address is checked against their wallets.
+	v1.Use(requireCaller())
 	{
 		v1.GET("/markets", ls.GetMarkets)
 		v1.GET("/position", ls.GetUserPosition)

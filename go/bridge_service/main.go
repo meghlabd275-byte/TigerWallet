@@ -182,6 +182,7 @@ func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
 	if !bs.enforceFeature(c, FeatureBridge) {
 		return
 	}
+	caller := callerID(c)
 	var req struct {
 		UserID    string `json:"user_id" binding:"required"`
 		FromChain string `json:"from_chain" binding:"required"`
@@ -208,7 +209,7 @@ func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
 	_, err := bs.pg.Exec(context.Background(), `
 INSERT INTO bridge_transactions (id, user_id, from_chain, to_chain, token, amount, recipient, status, fee, estimated_time, timestamp)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-	`, txID, req.UserID, req.FromChain, req.ToChain, req.Token, req.Amount, req.Recipient, status, fee, estimatedTime)
+	`, txID, caller, req.FromChain, req.ToChain, req.Token, req.Amount, req.Recipient, status, fee, estimatedTime)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create bridge transaction: " + err.Error()})
 		return
@@ -238,6 +239,10 @@ FROM bridge_transactions WHERE id = $1
 	`, txID).Scan(&tx.ID, &tx.UserID, &tx.FromChain, &tx.ToChain, &tx.Token, &tx.Amount, &tx.Recipient, &tx.Status, &tx.FromTxHash, &tx.ToTxHash, &tx.Fee, &tx.EstimatedTime, &tx.Timestamp)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+		return
+	}
+	if tx.UserID != callerID(c) && !isAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "transaction does not belong to this user"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "transaction": tx})
@@ -273,14 +278,15 @@ func (bs *BridgeService) GetRoutes(c *gin.Context) {
 // GetHistory returns the bridge transactions for a user. The user_id is read
 // from the query string. Transactions are persisted in PostgreSQL.
 func (bs *BridgeService) GetHistory(c *gin.Context) {
-	userID := c.Query("user_id")
+	caller := callerID(c)
+	admin := isAdmin(c)
 	if bs.pg == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not configured"})
 		return
 	}
 	var rows pgx.Rows
 	var err error
-	if userID == "" {
+	if admin {
 		rows, err = bs.pg.Query(context.Background(), `
 SELECT id, user_id, from_chain, to_chain, token, amount, recipient, status, from_tx_hash, to_tx_hash, fee, estimated_time, timestamp
 FROM bridge_transactions ORDER BY timestamp DESC LIMIT 100
@@ -289,7 +295,7 @@ FROM bridge_transactions ORDER BY timestamp DESC LIMIT 100
 		rows, err = bs.pg.Query(context.Background(), `
 SELECT id, user_id, from_chain, to_chain, token, amount, recipient, status, from_tx_hash, to_tx_hash, fee, estimated_time, timestamp
 FROM bridge_transactions WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 100
-		`, userID)
+		`, caller)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query transactions: " + err.Error()})
@@ -309,6 +315,9 @@ FROM bridge_transactions WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 100
 }
 
 func main() {
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Fatal("JWT_SECRET must be set: the bridge service authenticates callers with it")
+	}
 	log.Println("TigerWallet Bridge Service")
 	log.Printf("Starting on port %d", cfg.Port)
 

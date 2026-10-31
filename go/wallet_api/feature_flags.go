@@ -70,7 +70,7 @@ var (
 
 // redisClientForFlags returns the wallet_api Redis client (store.Redis) used to
 // read flag state. Returns nil when the store / Redis is not initialized
-// (fail-closed downstream).
+// (default-on downstream).
 func redisClientForFlags() *redis.Client {
 	if store == nil || store.Redis == nil {
 		return nil

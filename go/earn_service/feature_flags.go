@@ -7,7 +7,10 @@
 //	Key:   tigerwallet:feature:<name>
 //	Value: "enabled" | "disabled" | "paused"
 //
-// Enforcement is fail-closed: missing/unknown/erroring state => disabled.
+// Enforcement is default-ENABLED (blacklist semantics): builtin features run
+// continuously with no bootstrap step; only an explicit operator
+// "disabled"/"paused" decision gates a feature. A Redis outage fails open so
+// an infra blip never halts trading by itself.
 // This file implements a minimal Redis RESP GET client with only the stdlib
 // so no new module dependency is required.
 package main
@@ -105,13 +108,13 @@ func redisGet(key string) (string, error) {
 func fetchFeatureState(featureName string) string {
 	val, err := redisGet(flagKey(featureName))
 	if err != nil {
-		return flagStateDisabled
+		return flagStateEnabled
 	}
 	switch val {
 	case flagStateEnabled, flagStateDisabled, flagStatePaused:
 		return val
 	default:
-		return flagStateDisabled
+		return flagStateEnabled
 	}
 }
 

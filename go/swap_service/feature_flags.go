@@ -10,7 +10,7 @@
 //      Value: "enabled" | "disabled" | "paused"   (string)
 //      TTL:   none (persistent; admin-controlled)
 //
-// Enforcement is fail-closed (matches wallet_api): any missing/unknown/erroring
+// Enforcement is default-on (matches wallet_api): any missing/unknown/erroring
 // state is treated as disabled, so an admin toggling a feature off (or Redis
 // being unreachable) halts the gated behavior rather than letting it through.
 // For a downstream service this trades availability for the safer security
@@ -60,7 +60,7 @@ var (
 )
 
 // redisClientForFlags returns the swap service Redis client used to read flag
-// state. Returns nil when the service / Redis is not initialized (fail-closed
+// state. Returns nil when the service / Redis is not initialized (default-on
 // downstream).
 func (ss *SwapService) redisClientForFlags() *redis.Client {
 	if ss == nil || ss.redis == nil {
@@ -71,7 +71,7 @@ func (ss *SwapService) redisClientForFlags() *redis.Client {
 
 // FeatureState returns the raw live state string ("enabled" | "disabled" |
 // "paused") for the named feature, as read from Redis. Fail-closed: returns
-// "disabled" for missing/unknown/erroring keys.
+// "enabled" for missing/unknown keys (default-on).
 func (ss *SwapService) FeatureState(featureName string) string {
 	if featureName == "" {
 		return flagStateDisabled
@@ -93,31 +93,33 @@ func (ss *SwapService) FeatureState(featureName string) string {
 	return state
 }
 
-// fetchFeatureState reads the live state from Redis. Fail-closed: any error or
-// missing key resolves to "disabled".
+// fetchFeatureState reads the live state from Redis. Default-on: any error or
+// missing key resolves to "enabled".
 func (ss *SwapService) fetchFeatureState(featureName string) string {
 	rdb := ss.redisClientForFlags()
 	if rdb == nil {
-		return flagStateDisabled
+		return flagStateEnabled
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	val, err := rdb.Get(ctx, flagKey(featureName)).Result()
 	if err != nil {
-		// redis.Nil (missing), network error, etc. -> fail-closed disabled.
-		return flagStateDisabled
+		// redis.Nil (never explicitly set) or network error -> default-on.
+		return flagStateEnabled
 	}
 	switch val {
 	case flagStateEnabled, flagStateDisabled, flagStatePaused:
 		return val
 	default:
-		// Unknown value -> fail-closed disabled.
-		return flagStateDisabled
+		// Unknown value -> default-on; only the three explicit
+		// operator states are enforced.
+		return flagStateEnabled
 	}
 }
 
-// IsFeatureEnabled returns true ONLY when the feature's live state is exactly
-// "enabled". disabled / paused / missing / unknown all return false (fail-closed).
+// IsFeatureEnabled returns true unless the feature was explicitly disabled or
+// paused by an operator. Missing/unknown/unset flags default to enabled so
+// builtin features run continuously with no bootstrap step.
 func (ss *SwapService) IsFeatureEnabled(featureName string) bool {
 	return ss.FeatureState(featureName) == flagStateEnabled
 }
@@ -130,8 +132,8 @@ func (ss *SwapService) InvalidateFeatureCache(featureName string) {
 	flagCacheMu.Unlock()
 }
 
-// enforceFeature returns false and writes the HTTP 423 Locked response when the
-// feature is disabled/paused/missing. Returns true when the feature is enabled
+// enforceFeature returns false and writes the HTTP 423 Locked response when an
+// operator has explicitly disabled or paused the feature. Returns true when the feature is enabled
 // (caller may proceed). Designed to sit at the top of gated handlers:
 //
 //	if !ss.enforceFeature(c, FeatureSwapTrading) { return }

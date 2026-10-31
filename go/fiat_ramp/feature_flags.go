@@ -9,9 +9,10 @@
 //	Value: "enabled" | "disabled" | "paused"
 //	TTL:   none (persistent; admin-controlled)
 //
-// Enforcement is fail-closed: any missing/unknown/erroring state is treated as
-// disabled, so an admin toggling a feature off (or Redis being unreachable)
-// halts the gated behavior rather than letting it through.
+// Enforcement is default-ENABLED (blacklist semantics): builtin features run
+// continuously with no bootstrap step; only an explicit operator
+// "disabled"/"paused" decision gates a feature. A Redis outage fails open so
+// an infra blip never halts trading by itself.
 package main
 
 import (
@@ -51,19 +52,19 @@ var (
 
 func (s *FiatRampService) fetchFeatureState(featureName string) string {
 	if s == nil || s.redis == nil {
-		return flagStateDisabled
+		return flagStateEnabled
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	val, err := s.redis.Get(ctx, flagKey(featureName)).Result()
 	if err != nil {
-		return flagStateDisabled
+		return flagStateEnabled
 	}
 	switch val {
 	case flagStateEnabled, flagStateDisabled, flagStatePaused:
 		return val
 	default:
-		return flagStateDisabled
+		return flagStateEnabled
 	}
 }
 
