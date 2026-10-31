@@ -115,12 +115,12 @@ func (svc *Service) Login(c *gin.Context) {
 // --- Master wallet handlers ---
 
 type createMasterWalletReq struct {
-	Name      string `json:"name" binding:"required"`
+	Name       string `json:"name" binding:"required"`
 	Blockchain string `json:"blockchain"`
-	ChainID   int64  `json:"chain_id"`
+	ChainID    int64  `json:"chain_id"`
 	WalletType string `json:"wallet_type"`
-	Password  string `json:"password" binding:"required,min=8"`
-	Mnemonic  string `json:"mnemonic"` // optional: import existing
+	Password   string `json:"password" binding:"required,min=8"`
+	Mnemonic   string `json:"mnemonic"` // optional: import existing
 }
 
 func (svc *Service) CreateMasterWallet(c *gin.Context) {
@@ -231,15 +231,15 @@ func (svc *Service) GetMasterWallets(c *gin.Context) {
 			continue
 		}
 		w = gin.H{
-			"id":           id.String(),
-			"name":         name,
-			"blockchain":   blockchain,
-			"address":      address,
-			"public_key":   pubKey,
-			"wallet_type":  walletType,
-			"chain_id":     chainID,
-			"is_active":    isActive,
-			"created_at":   createdAt,
+			"id":          id.String(),
+			"name":        name,
+			"blockchain":  blockchain,
+			"address":     address,
+			"public_key":  pubKey,
+			"wallet_type": walletType,
+			"chain_id":    chainID,
+			"is_active":   isActive,
+			"created_at":  createdAt,
 		}
 		wallets = append(wallets, w)
 	}
@@ -353,13 +353,13 @@ func (svc *Service) GetMasterWalletBalance(c *gin.Context) {
 	}
 
 	resp := gin.H{
-		"wallet_id":   id,
-		"address":     address,
-		"chain_id":    chainID,
-		"native":      gin.H{"symbol": chain.Symbol, "balance": weiToFloat(nativeBal, chain.Decimals), "balance_wei": nativeBal.String()},
-		"tokens":      tokenBals,
-		"usd_value":   usdValue,
-		"updated_at":  time.Now().UTC(),
+		"wallet_id":  id,
+		"address":    address,
+		"chain_id":   chainID,
+		"native":     gin.H{"symbol": chain.Symbol, "balance": weiToFloat(nativeBal, chain.Decimals), "balance_wei": nativeBal.String()},
+		"tokens":     tokenBals,
+		"usd_value":  usdValue,
+		"updated_at": time.Now().UTC(),
 	}
 	if b, err := jsonMarshal(resp); err == nil {
 		svc.store.cacheSet(ctx, cacheKey, string(b), 30*time.Second)
@@ -878,8 +878,8 @@ func (svc *Service) CreateTransaction(c *gin.Context) {
 	// user and recorded at creation. Without this marker the auto-sign daemon
 	// refuses to sign (fail-closed).
 	metadata, _ := jsonMarshal(gin.H{
-		"user_initiated":    true,
-		"created_by":        currentUserID(c),
+		"user_initiated":             true,
+		"created_by":                 currentUserID(c),
 		"destination_chosen_by_user": true,
 	})
 	_, err := svc.store.db.Exec(ctx,
@@ -895,49 +895,124 @@ func (svc *Service) CreateTransaction(c *gin.Context) {
 }
 
 // ApproveTransaction records a signer's approval (multisig flow).
+//
+// The :tid path parameter names the transaction being approved; :id only names
+// the master wallet it must belong to. Reading :id as the transaction id made
+// every call fail the transaction_signatures foreign key, so no approval was
+// ever recorded, and the approval counter was incremented for a master wallet
+// id, which is never a transaction id.
 func (svc *Service) ApproveTransaction(c *gin.Context) {
-	id, ok := svc.requireMasterWalletAccess(c)
+	masterID, ok := svc.requireMasterWalletAccess(c)
 	if !ok {
 		return
 	}
+	txID := c.Param("tid")
 	userID := currentUserID(c)
 	ctx := c.Request.Context()
-	// Record signature.
-	_, err := svc.store.db.Exec(ctx,
+
+	// The transaction must belong to this master wallet, otherwise a member of one
+	// tenant could approve a transaction id belonging to another.
+	var requiredApprovals int
+	err := svc.store.db.QueryRow(ctx,
+		`SELECT COALESCE(ar.required_approvals, 1)
+		 FROM transactions t
+		 LEFT JOIN approval_requests ar ON ar.transaction_id = t.id
+		 WHERE t.id = $1 AND t.master_wallet_id = $2`, txID, masterID).Scan(&requiredApprovals)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+		return
+	}
+	if requiredApprovals < 1 {
+		requiredApprovals = 1
+	}
+
+	// DO NOTHING rather than DO UPDATE is what makes a repeat approval from the
+	// same signer idempotent: the affected row count tells us whether this call was
+	// that signer's first.
+	tag, err := svc.store.db.Exec(ctx,
 		`INSERT INTO transaction_signatures (transaction_id, signer_id, signature_status, approved_at)
 		 VALUES ($1, $2, 'signed', NOW())
-		 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='signed', approved_at=NOW()`,
-		id, userID)
+		 ON CONFLICT (transaction_id, signer_id) DO NOTHING`,
+		txID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record approval"})
 		return
 	}
-	// Increment approval count.
-	_, _ = svc.store.db.Exec(ctx,
-		`UPDATE approval_requests SET current_approvals = current_approvals + 1 WHERE transaction_id = $1`, id)
-	svc.store.audit(ctx, "", "transaction.approve", "transaction", "user", userID, "transaction", id, "normal", gin.H{})
-	c.JSON(http.StatusOK, gin.H{"approved": true, "transaction_id": id})
+	if tag.RowsAffected() == 0 {
+		c.JSON(http.StatusOK, gin.H{"approved": true, "transaction_id": txID, "already_approved": true})
+		return
+	}
+
+	// Derive the count from the signature rows instead of incrementing a counter.
+	// A blind "+1" let a single signer approve repeatedly until the threshold was
+	// met.
+	var approvals int
+	if err := svc.store.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transaction_signatures
+		 WHERE transaction_id = $1 AND signature_status = 'signed'`, txID).Scan(&approvals); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count approvals"})
+		return
+	}
+	met := approvals >= requiredApprovals
+	if _, err := svc.store.db.Exec(ctx,
+		`UPDATE approval_requests
+		 SET current_approvals = $2, is_approved = $3, resolved_at = CASE WHEN $3 THEN NOW() ELSE resolved_at END
+		 WHERE transaction_id = $1`, txID, approvals, met); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record approval"})
+		return
+	}
+
+	svc.store.audit(ctx, masterID, "transaction.approve", "transaction", "user", userID, "transaction", txID, "normal", gin.H{"approvals": approvals, "required": requiredApprovals})
+	c.JSON(http.StatusOK, gin.H{
+		"approved":           met,
+		"transaction_id":     txID,
+		"current_approvals":  approvals,
+		"required_approvals": requiredApprovals,
+	})
 }
 
+// RejectTransaction records a signer's rejection and cancels that transaction.
+// Like ApproveTransaction it must read :tid, not :id, and the transaction must
+// belong to the master wallet named in the path.
 func (svc *Service) RejectTransaction(c *gin.Context) {
-	id, ok := svc.requireMasterWalletAccess(c)
+	masterID, ok := svc.requireMasterWalletAccess(c)
 	if !ok {
 		return
 	}
+	txID := c.Param("tid")
 	userID := currentUserID(c)
 	ctx := c.Request.Context()
-	_, err := svc.store.db.Exec(ctx,
+
+	var exists bool
+	if err := svc.store.db.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM transactions WHERE id = $1 AND master_wallet_id = $2)`,
+		txID, masterID).Scan(&exists); err != nil || !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+		return
+	}
+
+	if _, err := svc.store.db.Exec(ctx,
 		`INSERT INTO transaction_signatures (transaction_id, signer_id, signature_status, rejection_reason)
 		 VALUES ($1, $2, 'rejected', $3)
 		 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='rejected', rejection_reason=$3`,
-		id, userID, c.Query("reason"))
-	if err != nil {
+		txID, userID, c.Query("reason")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record rejection"})
 		return
 	}
-	_, _ = svc.store.db.Exec(ctx, `UPDATE transactions SET status='cancelled' WHERE id = $1`, id)
-	svc.store.audit(ctx, "", "transaction.reject", "transaction", "user", userID, "transaction", id, "normal", gin.H{})
-	c.JSON(http.StatusOK, gin.H{"rejected": true, "transaction_id": id})
+	// Scope the cancellation to the same master wallet so a rejection cannot cancel
+	// another tenant's transaction.
+	if _, err := svc.store.db.Exec(ctx,
+		`UPDATE transactions SET status='cancelled' WHERE id = $1 AND master_wallet_id = $2`, txID, masterID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to cancel transaction"})
+		return
+	}
+	if _, err := svc.store.db.Exec(ctx,
+		`UPDATE approval_requests SET is_rejected = true, resolved_at = NOW() WHERE transaction_id = $1`, txID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record rejection"})
+		return
+	}
+	svc.store.audit(ctx, masterID, "transaction.reject", "transaction", "user", userID, "transaction", txID, "normal", gin.H{})
+	c.JSON(http.StatusOK, gin.H{"rejected": true, "transaction_id": txID})
 }
 
 // --- helper: ERC-20 transfer calldata ---
@@ -979,11 +1054,11 @@ func (svc *Service) healthCheck(c *gin.Context) {
 		status = "degraded"
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"status":   status,
-		"service":  "tigerwallet-master-wallet",
-		"version":  "1.0.0",
-		"port":     svc.cfg.Port,
-		"time":     time.Now().UTC(),
+		"status":  status,
+		"service": "tigerwallet-master-wallet",
+		"version": "1.0.0",
+		"port":    svc.cfg.Port,
+		"time":    time.Now().UTC(),
 	})
 }
 

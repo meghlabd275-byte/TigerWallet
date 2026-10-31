@@ -814,9 +814,19 @@ func (a *AutoSigner) processTx(ctx context.Context, tx *pendingAutoTx, pol *auto
 			 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='signed', approved_at=NOW()`,
 			tx.ID, signerID)
 	}
+	// Set the counter from the signed rows rather than incrementing it. A manual
+	// approval may already exist for this transaction, and a blind increment would
+	// double-count it.
+	var autoApprovals int
+	_ = a.svc.store.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM transaction_signatures WHERE transaction_id = $1 AND signature_status = 'signed'`,
+		tx.ID).Scan(&autoApprovals)
+	if autoApprovals < 1 {
+		autoApprovals = 1
+	}
 	_, _ = a.svc.store.db.Exec(ctx,
-		`UPDATE approval_requests SET current_approvals = current_approvals + 1, is_approved = true, resolved_at = NOW()
-		 WHERE transaction_id = $1`, tx.ID)
+		`UPDATE approval_requests SET current_approvals = $2, is_approved = true, resolved_at = NOW()
+		 WHERE transaction_id = $1`, tx.ID, autoApprovals)
 
 	status := "approved"
 	txHash := ""
