@@ -13,9 +13,12 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -119,6 +122,7 @@ type WebhookService struct {
 	cancel     context.CancelFunc
 	stats      WebhookStats
 	statsMu    sync.RWMutex
+	urlPolicy  webhookURLPolicy
 }
 
 func NewWebhookService() (*WebhookService, error) {
@@ -130,6 +134,9 @@ func NewWebhookService() (*WebhookService, error) {
 		workers:  config.MaxWorkers,
 		ctx:      ctx,
 		cancel:   cancel,
+		urlPolicy: webhookURLPolicy{
+			allowPrivate: getEnvBool("WEBHOOK_ALLOW_PRIVATE_DESTINATIONS", false),
+		},
 		stats: WebhookStats{
 			ByEvent: make(map[string]int64),
 		},
@@ -200,12 +207,115 @@ func (s *WebhookService) Stop() {
 	fmt.Println("Webhook Service stopped")
 }
 
+// webhookURLPolicy decides whether a caller-supplied webhook destination may be
+// contacted.
+//
+// Webhook URLs are registered through the API and then dialled by the delivery
+// workers, which makes this an SSRF sink: without a check a caller can point a
+// webhook at a link-local metadata service, at an RFC 1918 address inside the
+// cluster, or at a loopback admin port and have the service issue the request
+// on their behalf.
+//
+// The check runs twice: once when the URL is stored, so bad input is rejected
+// with a clear error, and again inside the dialer, which is what actually
+// closes the DNS-rebinding hole - a hostname can resolve to a public address at
+// registration time and to 127.0.0.1 at delivery time.
+type webhookURLPolicy struct {
+	// allowPrivate permits private and loopback destinations. Only for local
+	// development against a webhook receiver on the same host.
+	allowPrivate bool
+}
+
+// blockedWebhookNets are address ranges that must never be dialled.
+var blockedWebhookNets = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, cidr := range []string{
+		"0.0.0.0/8",          // this network
+		"10.0.0.0/8",         // RFC 1918
+		"100.64.0.0/10",      // CGNAT
+		"127.0.0.0/8",        // loopback
+		"169.254.0.0/16",     // link-local, includes cloud metadata
+		"172.16.0.0/12",      // RFC 1918
+		"192.0.0.0/24",       // IETF protocol assignments
+		"192.168.0.0/16",     // RFC 1918
+		"198.18.0.0/15",      // benchmarking
+		"::1/128",            // loopback
+		"fc00::/7",           // unique local
+		"fe80::/10",          // link-local
+	} {
+		_, n, err := net.ParseCIDR(cidr)
+		if err != nil {
+			log.Fatalf("webhook service: bad built-in CIDR %q: %v", cidr, err)
+		}
+		out = append(out, n)
+	}
+	return out
+}()
+
+func (p webhookURLPolicy) checkURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid webhook URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("webhook URL scheme must be http or https, got %q", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("webhook URL has no host")
+	}
+	if p.allowPrivate {
+		return nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("webhook host %q does not resolve: %w", host, err)
+	}
+	for _, ip := range ips {
+		for _, n := range blockedWebhookNets {
+			if n.Contains(ip) {
+				return fmt.Errorf("webhook host %q resolves to the blocked address %s", host, ip)
+			}
+		}
+	}
+	return nil
+}
+
+// dialControl re-checks the concrete address the connection is about to be made
+// to. net.Dialer.Control runs after resolution, so this is the check that
+// holds even if the hostname is re-pointed between validation and delivery.
+func (p webhookURLPolicy) dialControl(network, address string, _ syscall.RawConn) error {
+	if p.allowPrivate {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("webhook dial: unresolvable address %q", address)
+	}
+	for _, n := range blockedWebhookNets {
+		if n.Contains(ip) {
+			return fmt.Errorf("webhook dial to %s is blocked", ip)
+		}
+	}
+	return nil
+}
+
 func (s *WebhookService) worker(id int) {
 	defer s.wg.Done()
 	fmt.Printf("Webhook worker %d started\n", id)
 
 	client := &http.Client{
 		Timeout: config.Timeout,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: 10 * time.Second,
+				Control: s.urlPolicy.dialControl,
+			}).DialContext,
+		},
 	}
 
 	for {
@@ -429,6 +539,11 @@ func (s *WebhookService) createWebhookHandler(c *gin.Context) {
 		return
 	}
 
+	if err := s.urlPolicy.checkURL(webhook.URL); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
 	if webhook.ID == "" {
 		webhook.ID = generateID()
 	}
@@ -605,6 +720,19 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Printf("webhook service: %s=%q is not a boolean, using %v", key, v, defaultValue)
+		return defaultValue
+	}
+	return parsed
 }
 
 // ============================================================================
