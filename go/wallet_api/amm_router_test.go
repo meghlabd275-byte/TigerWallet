@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 
@@ -160,5 +161,127 @@ func TestHumanToWeiRejectsZeroOrNegative(t *testing.T) {
 	neg, _ := new(big.Float).SetString("-1")
 	if _, err := humanToWei(neg, 6); err == nil {
 		t.Fatal("expected error for negative")
+	}
+}
+
+// The router map is hand-maintained, and the class of bug it suffered from was
+// a transcribed address (one word was rewritten, leaving no contract behind).
+// An EIP-55 checksum mismatch catches that offline, without an RPC call.
+func TestV2RoutersHaveValidChecksums(t *testing.T) {
+	if len(v2Routers) == 0 {
+		t.Fatal("no routers configured")
+	}
+	for chainID, addr := range v2Routers {
+		if !common.IsHexAddress(addr) {
+			t.Errorf("chain %d: %q is not a valid hex address", chainID, addr)
+			continue
+		}
+		if got := common.HexToAddress(addr); got == (common.Address{}) {
+			t.Errorf("chain %d: %q decodes to the zero address", chainID, addr)
+			continue
+		}
+		if canonical := common.HexToAddress(addr).Hex(); canonical != addr {
+			t.Errorf("chain %d: %q fails the EIP-55 checksum, canonical form is %s",
+				chainID, addr, canonical)
+		}
+	}
+}
+
+// Verifying that each router actually holds code needs a live node, so this is
+// opt-in: set MW_VERIFY_ROUTERS=1 to run it. It exists because "address is well
+// formed" is not the same as "address is a router" - five of the seven entries
+// were well formed and pointed at empty accounts.
+func TestV2RoutersHaveCodeOnChain(t *testing.T) {
+	if os.Getenv("MW_VERIFY_ROUTERS") == "" {
+		t.Skip("set MW_VERIFY_ROUTERS=1 to check router addresses against live chains")
+	}
+	for chainID, addr := range v2Routers {
+		chain := evmChainByChainID(chainID)
+		if chain == nil {
+			// Testnets are not part of the mainnet registry, so there is no
+			// endpoint to check against here.
+			t.Logf("chain %d is not a registered mainnet; skipping live check", chainID)
+			continue
+		}
+		if chain.RPCEndpoint == "" {
+			t.Errorf("chain %d has no RPC endpoint to verify against", chainID)
+			continue
+		}
+		code, err := ethGetCode(chain.RPCEndpoint, addr)
+		if err != nil {
+			t.Errorf("chain %d: eth_getCode %s: %v", chainID, addr, err)
+			continue
+		}
+		if len(code) < 4 {
+			t.Errorf("chain %d: %s holds no contract; every swap on this chain would fail",
+				chainID, addr)
+		}
+	}
+}
+
+// The gas and swap pages let a user pick these networks, and the router map has
+// an entry for each. If the chain registry loses one, every call on it fails
+// with "unsupported chain_id" while the UI keeps offering it.
+func TestSwapUINetworksAreRegistered(t *testing.T) {
+	required := map[int64]string{
+		1: "Ethereum", 10: "Optimism", 56: "BNB Chain", 137: "Polygon",
+		250: "Fantom", 8453: "Base", 42161: "Arbitrum One",
+	}
+	for chainID, name := range required {
+		chain := evmChainByChainID(chainID)
+		if chain == nil {
+			t.Errorf("%s (chain %d) is offered in the UI but is not registered", name, chainID)
+			continue
+		}
+		if chain.RPCEndpoint == "" {
+			t.Errorf("%s (chain %d) has no RPC endpoint", name, chainID)
+		}
+	}
+}
+
+// The merged registry must contain every entry in both static lists; a mismatch
+// means one was dropped when the map was built.
+func TestSupportedChainsCoversStaticRegistry(t *testing.T) {
+	initSupportedChains()
+	if got, want := len(SupportedChains), evmMainnetCount+nonEVMMainnetCount; got != want {
+		t.Errorf("SupportedChains has %d entries, want %d (evm %d + non-evm %d)",
+			got, want, evmMainnetCount, nonEVMMainnetCount)
+	}
+	for _, c := range evmMainnet {
+		if _, ok := SupportedChains[c.ID]; !ok {
+			t.Errorf("EVM chain %d (%s) is missing from SupportedChains", c.ID, c.Name)
+		}
+	}
+	for _, c := range nonEVMMainnet {
+		if _, ok := SupportedChains[c.ID]; !ok {
+			t.Errorf("non-EVM chain %d (%s) is missing from SupportedChains", c.ID, c.Name)
+		}
+	}
+}
+
+// Duplicate ids would silently overwrite each other during the merge.
+func TestStaticChainRegistryHasNoDuplicateIDs(t *testing.T) {
+	seen := map[int64]string{}
+	for _, c := range append(append([]ChainConfig{}, evmMainnet...), nonEVMMainnet...) {
+		if prev, dup := seen[c.ID]; dup {
+			t.Errorf("chain id %d is defined twice: %q and %q", c.ID, prev, c.Name)
+		}
+		seen[c.ID] = c.Name
+	}
+}
+
+// A chain with no RPC endpoint cannot serve a request, so every entry must have
+// one. Pi is the single deliberate exception: it has no public RPC, the operator
+// sets PI_RPC, and lookupEndpoint returns "" for it on purpose. Pinning the
+// exception here means a newly added chain that forgets its endpoint fails.
+func TestStaticChainRegistryEntriesHaveRPC(t *testing.T) {
+	operatorConfigured := map[int64]bool{9000004242: true} // Pi Network (PI_RPC)
+	for _, c := range append(append([]ChainConfig{}, evmMainnet...), nonEVMMainnet...) {
+		if c.RPCEndpoint != "" {
+			continue
+		}
+		if !operatorConfigured[c.ID] {
+			t.Errorf("chain %d (%s) has no RPC endpoint", c.ID, c.Name)
+		}
 	}
 }

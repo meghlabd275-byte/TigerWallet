@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gin-gonic/gin"
 )
 
@@ -144,13 +145,11 @@ func handleCheckURL(c *gin.Context) {
 func ethGetCode(endpoint, addr string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	client, err := rpcClient(endpoint)
-	if err != nil {
-		return "", err
-	}
-	defer client.Close()
 	var result hexutil.Bytes
-	if err := client.CallContext(ctx, &result, "eth_getCode", addr, "latest"); err != nil {
+	err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		return client.CallContext(ctx, &result, "eth_getCode", addr, "latest")
+	})
+	if err != nil {
 		return "", err
 	}
 	return string(result), nil

@@ -203,9 +203,13 @@ func handleSwapExecute(c *gin.Context) {
 			"tx": gin.H{
 				"from":     req.From,
 				"to":       req.DexRouter,
-				"data":      req.CallData,
+				"data":     req.CallData,
 				"chain_id": req.ChainID,
-				"value":    req.Amount,
+				// value is the NATIVE amount attached to the call, in wei. A token
+				// swap moves its input through the router's transferFrom, not
+				// msg.value, so it is zero. Echoing the human token amount would
+				// tell the client to send that many wei of the native coin.
+				"value": "0",
 			},
 			"note": "Broadcast the constructed transaction via POST /api/v1/send (real eth_sendRawTransaction). No transaction is fabricated here.",
 		})
@@ -271,8 +275,16 @@ func handleSwapExecute(c *gin.Context) {
 		return
 	}
 	out := amounts[len(amounts)-1]
-	amountOutMinWei := new(big.Int).Sub(out, new(big.Int).Div(new(big.Int).Mul(out, big.NewInt(5)), big.NewInt(1000))) // -0.5%
-	deadline := big.NewInt(timeNowUnix() + 1200)                                                                    // 20 min
+
+	// The caller's slippage and min_output are limits, not hints. A client that
+	// sends either expects amountOutMin to honour it; the fixed 0.5% that used to
+	// live here silently widened the tolerance the user chose.
+	amountOutMinWei, err := resolveMinOut(req.MinOutput, req.Slippage, decOut, out)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	deadline := big.NewInt(timeNowUnix() + 1200) // 20 min
 	calldata := swapExactTokensForTokensData(amountInWei, amountOutMinWei, path, recipient, deadline)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -289,6 +301,7 @@ func handleSwapExecute(c *gin.Context) {
 			"value":    "0",
 		},
 		"amount_in_wei":      amountInWei.String(),
+		"quoted_out_wei":     out.String(),
 		"amount_out_min_wei": amountOutMinWei.String(),
 		"deadline":           deadline.String(),
 		"expected_out_human": expectedHumanStr(out, decOut),
@@ -326,12 +339,12 @@ func handleStakingQuote(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"assets":    assets,
-		"apy":       0,
-		"min_stake": 0,
+		"success":     true,
+		"assets":      assets,
+		"apy":         0,
+		"min_stake":   0,
 		"lock_period": 0,
-		"note":      "APY is 0 until a live staking contract/oracle is configured. No yield is fabricated.",
+		"note":        "APY is 0 until a live staking contract/oracle is configured. No yield is fabricated.",
 	})
 }
 
@@ -377,7 +390,7 @@ func handleStakingAction(action string) gin.HandlerFunc {
 				"action":          action,
 				"action_required": "provide_staking_contract",
 				"submit_endpoint": "/api/v1/send",
-				"error":            "staking_contract and call_data are required to " + action + " on-chain; resolve the protocol's staking contract (e.g. via the staking service) and submit the constructed tx via POST /api/v1/send",
+				"error":           "staking_contract and call_data are required to " + action + " on-chain; resolve the protocol's staking contract (e.g. via the staking service) and submit the constructed tx via POST /api/v1/send",
 				"chain_id":        req.ChainID,
 				"amount":          req.Amount,
 				"validator":       req.Validator,
@@ -395,7 +408,11 @@ func handleStakingAction(action string) gin.HandlerFunc {
 				"to":       req.StakingContract,
 				"data":     req.CallData,
 				"chain_id": req.ChainID,
-				"value":    req.Amount,
+				// Same unit rule as the swap path: value is native wei, not a
+				// human amount. The client supplies the calldata, so it decides
+				// whether value is zero (ERC-20 staking) or the staked amount
+				// converted to wei (native staking).
+				"value": "0",
 			},
 			"note": "Broadcast the constructed " + action + " transaction via POST /api/v1/send (real eth_sendRawTransaction).",
 		})

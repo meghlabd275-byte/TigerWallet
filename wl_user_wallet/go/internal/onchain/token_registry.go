@@ -54,16 +54,21 @@ func TokensForChain(chainID int64) []TokenInfo {
 	return nil
 }
 
-// V2Routers maps chain IDs to public Uniswap-V2-compatible Router02 addresses.
+// v2Routers maps chain IDs to public V2-compatible Router02 addresses.
 // Override per chain via env CHAIN_<id>_ROUTER.
+//
+// Each address was confirmed with eth_getCode and a live
+// getAmountsOut(WETH -> USDC) call on its own chain. An address holding no code
+// makes getAmountsOut return 0x, so onChainQuote fails and the quote silently
+// degrades to the CoinGecko cross-rate (and on-chain execution refuses).
 var v2Routers = map[int64]string{
-	1:       "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf",
-	56:      "0x10ED43C718714eb63d5aA57B78B54704E256024E",
-	137:     "0xa5E0829CaCED8fFCEEdC5d972f14341d1C2C4F6F",
-	42161:   "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4",
-	10:      "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47992406",
-	8453:    "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4",
-	11155111: "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf",
+	1:        "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2 Router02 (Ethereum)
+	56:       "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap V2 (BSC)
+	137:      "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", // QuickSwap V2 (Polygon)
+	42161:    "0xc873fEcbd354f5A56E00E710B90EF4201db2448d", // Camelot V2 (Arbitrum)
+	10:       "0x2ABf469074dc0b54d793850807E6eb5Faf2625b1", // SushiSwap V2 (Optimism)
+	8453:     "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24", // Uniswap V2 Router02 (Base)
+	11155111: "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008", // Uniswap V2 Router02 (Sepolia)
 }
 
 // RouterForChain returns the V2 router address for a chain, applying the

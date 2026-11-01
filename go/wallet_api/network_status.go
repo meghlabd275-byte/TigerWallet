@@ -7,7 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ethereum/go-ethereum/ethclient"
+	"math/big"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gin-gonic/gin"
 )
 
@@ -55,8 +58,8 @@ func handleNetworkStatus(c *gin.Context) {
 		})
 		return
 	}
-	rpc := chain.RPCEndpoint
-	if rpc == "" {
+	endpoint := chain.RPCEndpoint
+	if endpoint == "" {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no RPC endpoint configured for chain"})
 		return
 	}
@@ -65,28 +68,51 @@ func handleNetworkStatus(c *gin.Context) {
 	defer cancel()
 
 	start := time.Now()
-	client, err := ethclient.DialContext(ctx, rpc)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "RPC dial failed", "detail": err.Error()})
-		return
-	}
-	defer client.Close()
-
-	blockNum, err := client.BlockNumber(ctx)
-	latency := time.Since(start).Milliseconds()
+	var blockNum uint64
+	err = rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		var bn hexutil.Uint64
+		if err := client.CallContext(ctx, &bn, "eth_blockNumber"); err != nil {
+			return err
+		}
+		blockNum = uint64(bn)
+		return nil
+	})
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "eth_blockNumber failed", "detail": err.Error()})
 		return
 	}
+	latency := time.Since(start).Milliseconds()
 
-	chainIDResult, err := client.ChainID(ctx)
-	if err != nil {
+	// eth_chainId and eth_syncing are best-effort: a node that does not expose
+	// them still reports a real block number, and inventing a value here would
+	// misreport the network.
+	var chainIDResult *big.Int
+	if err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		var id hexutil.Big
+		if err := client.CallContext(ctx, &id, "eth_chainId"); err != nil {
+			return err
+		}
+		chainIDResult = id.ToInt()
+		return nil
+	}); err != nil {
 		chainIDResult = nil
 	}
 	syncing := false
-	if progress, err := client.SyncProgress(ctx); err == nil && progress != nil {
-		// A non-nil SyncProgress means the node is syncing; nil = synced.
-		syncing = progress.CurrentBlock < progress.HighestBlock
+	if err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		var progress *struct {
+			CurrentBlock uint64 `json:"currentBlock"`
+			HighestBlock uint64 `json:"highestBlock"`
+		}
+		if err := client.CallContext(ctx, &progress, "eth_syncing"); err != nil {
+			return err
+		}
+		// A non-nil result means the node is syncing; false means synced.
+		if progress != nil {
+			syncing = progress.CurrentBlock < progress.HighestBlock
+		}
+		return nil
+	}); err != nil {
+		syncing = false
 	}
 
 	resp := networkStatusResponse{
@@ -94,7 +120,7 @@ func handleNetworkStatus(c *gin.Context) {
 		BlockNumber:    fmt.Sprintf("0x%x", blockNum),
 		BlockNumberInt: blockNum,
 		Syncing:        syncing,
-		RPCEndpoint:    rpc,
+		RPCEndpoint:    endpoint,
 		LatencyMS:      latency,
 		Timestamp:      time.Now().Unix(),
 	}

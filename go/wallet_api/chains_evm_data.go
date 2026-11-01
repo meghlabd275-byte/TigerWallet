@@ -8,7 +8,7 @@ package main
 
 var evmMainnet = []ChainConfig{
 	{
-		ID: 1, Name: "Ethereum Mainnet", Symbol: "ETH", RPCEndpoint: "https://api.mycryptoapi.com/eth", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://etherscan.io", ExplorerURL: "https://etherscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+		ID: 1, Name: "Ethereum Mainnet", Symbol: "ETH", RPCEndpoint: "https://api.mycryptoapi.com/eth", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://etherscan.io", ExplorerURL: "https://etherscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://ethereum-rpc.publicnode.com", "https://eth.drpc.org", "https://cloudflare-eth.com"},
 	},
 	{
 		ID: 8, Name: "Ubiq", Symbol: "UBQ", RPCEndpoint: "https://rpc.octano.dev", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://ubiqscan.io", ExplorerURL: "https://ubiqscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
@@ -17,7 +17,7 @@ var evmMainnet = []ChainConfig{
 		ID: 30, Name: "Rootstock Mainnet", Symbol: "RBTC", RPCEndpoint: "https://public-node.rsk.co", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.rsk.co", ExplorerURL: "https://explorer.rsk.co", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
 	},
 	{
-		ID: 56, Name: "BNB Smart Chain Mainnet", Symbol: "BNB", RPCEndpoint: "https://bsc-dataseed1.bnbchain.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://bscscan.com", ExplorerURL: "https://bscscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+		ID: 56, Name: "BNB Smart Chain Mainnet", Symbol: "BNB", RPCEndpoint: "https://bsc-dataseed1.bnbchain.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://bscscan.com", ExplorerURL: "https://bscscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://bsc-rpc.publicnode.com", "https://1rpc.io/bnb"},
 	},
 	{
 		ID: 60, Name: "GoChain", Symbol: "GO", RPCEndpoint: "https://rpc.gochain.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.gochain.io", ExplorerURL: "https://explorer.gochain.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
@@ -32,7 +32,7 @@ var evmMainnet = []ChainConfig{
 		ID: 99, Name: "POA Network Core", Symbol: "POA", RPCEndpoint: "https://core.poa.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://blockscout.com/poa/core", ExplorerURL: "https://blockscout.com/poa/core", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
 	},
 	{
-		ID: 100, Name: "Gnosis", Symbol: "XDAI", RPCEndpoint: "https://rpc.gnosischain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://gnosisscan.io", ExplorerURL: "https://gnosisscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+		ID: 100, Name: "Gnosis", Symbol: "XDAI", RPCEndpoint: "https://rpc.gnosischain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://gnosisscan.io", ExplorerURL: "https://gnosisscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://gnosis-rpc.publicnode.com", "https://gnosis.drpc.org"},
 	},
 	{
 		ID: 108, Name: "ThunderCore Mainnet", Symbol: "TT", RPCEndpoint: "https://mainnet-rpc.thundercore.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://viewblock.io/thundercore", ExplorerURL: "https://viewblock.io/thundercore", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
@@ -50,7 +50,7 @@ var evmMainnet = []ChainConfig{
 		ID: 128, Name: "Huobi ECO Chain Mainnet", Symbol: "HT", RPCEndpoint: "https://http-mainnet.hecochain.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://hecoinfo.com", ExplorerURL: "https://hecoinfo.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
 	},
 	{
-		ID: 137, Name: "Polygon Mainnet", Symbol: "POL", RPCEndpoint: "https://polygon.drpc.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://polygonscan.com", ExplorerURL: "https://polygonscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+		ID: 137, Name: "Polygon Mainnet", Symbol: "POL", RPCEndpoint: "https://polygon.drpc.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://polygonscan.com", ExplorerURL: "https://polygonscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org"},
 	},
 	{
 		ID: 138, Name: "Defi Oracle Meta Mainnet", Symbol: "ETH", RPCEndpoint: "https://rpc-http-pub.d-bis.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.d-bis.org", ExplorerURL: "https://explorer.d-bis.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
@@ -332,7 +332,7 @@ var evmMainnet = []ChainConfig{
 		ID: 36969, Name: "AMA Mainnet", Symbol: "AMA", RPCEndpoint: "https://mainnet-rpc.ama.one", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://ama-explorer.ddns.net", ExplorerURL: "https://ama-explorer.ddns.net", ChainType: "evm", Decimals: 9, CoinType: 60, IsTestnet: false,
 	},
 	{
-		ID: 43114, Name: "Avalanche C-Chain", Symbol: "AVAX", RPCEndpoint: "https://api.avax.network/ext/bc/C/rpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://snowscan.xyz", ExplorerURL: "https://snowscan.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+		ID: 43114, Name: "Avalanche C-Chain", Symbol: "AVAX", RPCEndpoint: "https://api.avax.network/ext/bc/C/rpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://snowscan.xyz", ExplorerURL: "https://snowscan.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://avalanche-c-chain-rpc.publicnode.com", "https://avalanche.drpc.org"},
 	},
 	{
 		ID: 43522, Name: "Insectarium", Symbol: "M", RPCEndpoint: "https://rpc.insectarium.memecore.net", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://insectarium.memecorescan.io", ExplorerURL: "https://insectarium.memecorescan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
@@ -367,6 +367,62 @@ var evmMainnet = []ChainConfig{
 	{
 		ID: 1666600001, Name: "Harmony Mainnet Shard 1", Symbol: "ONE", RPCEndpoint: "https://api.s1.t.hmny.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.harmony.one/blocks/shard/1", ExplorerURL: "https://explorer.harmony.one/blocks/shard/1", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
 	},
+	// Major EVM networks the wallet UI offers. The generator only emitted
+	// chains with a documented explorer, so these were missing from the
+	// registry even though the swap and gas pages listed them, making every
+	// call on them fail with "unsupported chain_id". Each RPC below was
+	// confirmed by eth_chainId returning the matching id.
+	{
+		ID: 10, Name: "Optimism", Symbol: "OP", RPCEndpoint: "https://mainnet.optimism.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://optimistic.etherscan.io", ExplorerURL: "https://optimistic.etherscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://optimism-rpc.publicnode.com", "https://optimism.drpc.org"},
+	},
+	{
+		ID: 25, Name: "Cronos Mainnet", Symbol: "CRO", RPCEndpoint: "https://evm.cronos.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.cronoscan.com", ExplorerURL: "https://cronoscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://cronos-evm-rpc.publicnode.com", "https://cronos.drpc.org"},
+	},
+	{
+		ID: 169, Name: "Manta Pacific", Symbol: "ETH", RPCEndpoint: "https://pacific-rpc.manta.network/http", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://pacific-explorer.manta.network", ExplorerURL: "https://pacific-explorer.manta.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 250, Name: "Fantom Opera", Symbol: "FTM", RPCEndpoint: "https://rpcapi.fantom.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.ftmscan.com", ExplorerURL: "https://ftmscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://fantom.drpc.org", "https://1rpc.io/ftm"},
+	},
+	{
+		ID: 252, Name: "Fraxtal", Symbol: "FRAX", RPCEndpoint: "https://rpc.frax.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.fraxscan.com", ExplorerURL: "https://fraxscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 324, Name: "zkSync Era", Symbol: "ETH", RPCEndpoint: "https://mainnet.era.zksync.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.zksync.io", ExplorerURL: "https://explorer.zksync.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://zksync.drpc.org", "https://1rpc.io/zksync2-era"},
+	},
+	{
+		ID: 1101, Name: "Polygon zkEVM", Symbol: "ETH", RPCEndpoint: "https://zkevm-rpc.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api-zkevm.polygonscan.com", ExplorerURL: "https://zkevm.polygonscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://polygon-zkevm.drpc.org", "https://1rpc.io/polygon/zkevm"},
+	},
+	{
+		ID: 2222, Name: "Kava EVM", Symbol: "KAVA", RPCEndpoint: "https://evm.kava.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.kavascan.com", ExplorerURL: "https://kavascan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 5000, Name: "Mantle", Symbol: "MNT", RPCEndpoint: "https://rpc.mantle.xyz", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.mantlescan.xyz", ExplorerURL: "https://mantlescan.xyz", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://mantle-rpc.publicnode.com", "https://mantle.drpc.org"},
+	},
+	{
+		ID: 34443, Name: "Mode", Symbol: "ETH", RPCEndpoint: "https://mainnet.mode.network", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.mode.network", ExplorerURL: "https://explorer.mode.network", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
+		ID: 42161, Name: "Arbitrum One", Symbol: "ETH", RPCEndpoint: "https://arb1.arbitrum.io/rpc", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.arbiscan.io", ExplorerURL: "https://arbiscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://arbitrum-one-rpc.publicnode.com", "https://arbitrum.drpc.org"},
+	},
+	{
+		ID: 42220, Name: "Celo Mainnet", Symbol: "CELO", RPCEndpoint: "https://forno.celo.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.celoscan.io", ExplorerURL: "https://celoscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://celo-rpc.publicnode.com", "https://celo.drpc.org"},
+	},
+	{
+		ID: 59144, Name: "Linea", Symbol: "ETH", RPCEndpoint: "https://rpc.linea.build", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.lineascan.build", ExplorerURL: "https://lineascan.build", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://linea-rpc.publicnode.com", "https://linea.drpc.org"},
+	},
+	{
+		ID: 81457, Name: "Blast", Symbol: "ETH", RPCEndpoint: "https://rpc.blast.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.blastscan.io", ExplorerURL: "https://blastscan.io", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://blast.drpc.org"},
+	},
+	{
+		ID: 8453, Name: "Base", Symbol: "ETH", RPCEndpoint: "https://mainnet.base.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.basescan.org", ExplorerURL: "https://basescan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://base-rpc.publicnode.com", "https://base.drpc.org"},
+	},
+	{
+		ID: 534352, Name: "Scroll", Symbol: "ETH", RPCEndpoint: "https://rpc.scroll.io", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.scrollscan.com", ExplorerURL: "https://scrollscan.com", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://scroll-rpc.publicnode.com", "https://scroll.drpc.org"},
+	},
+	{
+		ID: 7777777, Name: "Zora", Symbol: "ETH", RPCEndpoint: "https://rpc.zora.energy", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://explorer.zora.energy", ExplorerURL: "https://explorer.zora.energy", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
 }
 
-const evmMainnetCount = 120
+const evmMainnetCount = 137

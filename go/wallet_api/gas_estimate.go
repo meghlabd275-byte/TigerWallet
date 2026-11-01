@@ -11,10 +11,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gin-gonic/gin"
 )
 
@@ -87,23 +86,18 @@ func handleEstimateGas(c *gin.Context) {
 		}
 	}
 
-	client, err := ethclient.DialContext(c.Request.Context(), chain.RPCEndpoint)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "RPC dial failed", "detail": err.Error()})
-		return
-	}
-	defer client.Close()
-
-	msg := ethereum.CallMsg{
-		From:  common.HexToAddress(req.From),
-		Value: value,
-		Data:  data,
+	call := map[string]interface{}{
+		"from":  common.HexToAddress(req.From).Hex(),
+		"value": hexutil.EncodeBig(value),
+		"data":  hexutil.Encode(data),
 	}
 	if req.To != "" {
-		to := common.HexToAddress(req.To)
-		msg.To = &to
+		call["to"] = common.HexToAddress(req.To).Hex()
 	}
-	gas, err := client.EstimateGas(c.Request.Context(), msg)
+	var gas hexutil.Uint64
+	err = rpcCall(c.Request.Context(), chain.RPCEndpoint, func(client *rpc.Client) error {
+		return client.CallContext(c.Request.Context(), &gas, "eth_estimateGas", call, "latest")
+	})
 	if err != nil {
 		// Real node rejection (e.g. revert, insufficient funds) — surface it.
 		c.JSON(http.StatusBadGateway, gin.H{"error": "eth_estimateGas failed", "detail": err.Error()})

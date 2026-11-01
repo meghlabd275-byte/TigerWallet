@@ -16,6 +16,7 @@ import (
 
         "github.com/ethereum/go-ethereum/common"
         "github.com/ethereum/go-ethereum/common/hexutil"
+        "github.com/ethereum/go-ethereum/rpc"
         "github.com/ethereum/go-ethereum/crypto"
         "github.com/gin-gonic/gin"
 )
@@ -207,11 +208,6 @@ type simulateReq struct {
 
 // EstimateGas performs a real eth_estimateGas against the chain RPC.
 func estimateGas(ctx context.Context, endpoint string, from, to common.Address, value *big.Int, data []byte) (uint64, error) {
-        client, err := rpcClient(endpoint)
-        if err != nil {
-                return 0, err
-        }
-        defer client.Close()
         call := map[string]interface{}{
                 "from": from.Hex(),
                 "to":   to.Hex(),
@@ -223,7 +219,10 @@ func estimateGas(ctx context.Context, endpoint string, from, to common.Address, 
                 call["data"] = hexutil.Encode(data)
         }
         var result hexutil.Uint64
-        if err := client.CallContext(ctx, &result, "eth_estimateGas", call, "latest"); err != nil {
+        err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+                return client.CallContext(ctx, &result, "eth_estimateGas", call, "latest")
+        })
+        if err != nil {
                 return 0, err
         }
         return uint64(result), nil
@@ -232,11 +231,6 @@ func estimateGas(ctx context.Context, endpoint string, from, to common.Address, 
 // dryRunCall performs an eth_call with an explicit value/from to predict
 // success/failure and capture any revert reason.
 func dryRunCall(ctx context.Context, endpoint string, from, to common.Address, value *big.Int, data []byte) (string, error) {
-        client, err := rpcClient(endpoint)
-        if err != nil {
-                return "", err
-        }
-        defer client.Close()
         call := map[string]interface{}{
                 "from": from.Hex(),
                 "to":   to.Hex(),
@@ -248,7 +242,9 @@ func dryRunCall(ctx context.Context, endpoint string, from, to common.Address, v
                 call["data"] = hexutil.Encode(data)
         }
         var result hexutil.Bytes
-        err = client.CallContext(ctx, &result, "eth_call", call, "latest")
+        err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+                return client.CallContext(ctx, &result, "eth_call", call, "latest")
+        })
         return hexutil.Encode(result), err
 }
 

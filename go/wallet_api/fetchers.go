@@ -24,13 +24,13 @@ import (
 // ---- Types returned to the frontend ----
 
 type BalanceResult struct {
-	ChainID  int64   `json:"chain_id"`
-	Symbol   string  `json:"symbol"`
-	Address  string  `json:"address"`
-	Balance  string  `json:"balance"`     // raw wei
-	BalanceWei string `json:"balance_wei"` // raw wei (alias, for client compat: web/android read balance_wei)
-	BalanceF float64 `json:"balance_f"`   // human-readable
-	USDValue float64 `json:"usd_value"`   // fiat value
+	ChainID    int64   `json:"chain_id"`
+	Symbol     string  `json:"symbol"`
+	Address    string  `json:"address"`
+	Balance    string  `json:"balance"`     // raw wei
+	BalanceWei string  `json:"balance_wei"` // raw wei (alias, for client compat: web/android read balance_wei)
+	BalanceF   float64 `json:"balance_f"`   // human-readable
+	USDValue   float64 `json:"usd_value"`   // fiat value
 }
 
 type TokenBalance struct {
@@ -77,14 +77,11 @@ func rpcClient(endpoint string) (*rpc.Client, error) {
 
 // FetchNativeBalance calls eth_getBalance for an address on a chain.
 func FetchNativeBalance(ctx context.Context, endpoint string, addr common.Address) (*big.Int, error) {
-	client, err := rpcClient(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
 	var result hexutil.Big
-	if err := client.CallContext(ctx, &result, "eth_getBalance", addr.Hex(), "latest"); err != nil {
+	err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		return client.CallContext(ctx, &result, "eth_getBalance", addr.Hex(), "latest")
+	})
+	if err != nil {
 		return nil, fmt.Errorf("eth_getBalance: %w", err)
 	}
 	return result.ToInt(), nil
@@ -92,14 +89,11 @@ func FetchNativeBalance(ctx context.Context, endpoint string, addr common.Addres
 
 // FetchTransactionCount calls eth_getTransactionCount (nonce).
 func FetchTransactionCount(ctx context.Context, endpoint string, addr common.Address) (uint64, error) {
-	client, err := rpcClient(endpoint)
-	if err != nil {
-		return 0, err
-	}
-	defer client.Close()
-
 	var result hexutil.Uint64
-	if err := client.CallContext(ctx, &result, "eth_getTransactionCount", addr.Hex(), "pending"); err != nil {
+	err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		return client.CallContext(ctx, &result, "eth_getTransactionCount", addr.Hex(), "pending")
+	})
+	if err != nil {
 		return 0, fmt.Errorf("eth_getTransactionCount: %w", err)
 	}
 	return uint64(result), nil
@@ -107,23 +101,24 @@ func FetchTransactionCount(ctx context.Context, endpoint string, addr common.Add
 
 // FetchGasPrice calls eth_gasPrice and eth_maxPriorityFeePerGas.
 func FetchGasPrice(ctx context.Context, endpoint string) (gasPrice, maxFee, maxPrioFee *big.Int, err error) {
-	client, err := rpcClient(endpoint)
+	var gp, tip hexutil.Big
+	err = rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		if err := client.CallContext(ctx, &gp, "eth_gasPrice", "latest"); err != nil {
+			return err
+		}
+		// EIP-1559 tip is best-effort: chains without 1559 reject the method,
+		// and that must not fail the whole call.
+		_ = client.CallContext(ctx, &tip, "eth_maxPriorityFeePerGas")
+		return nil
+	})
 	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer client.Close()
-
-	var gp hexutil.Big
-	if err := client.CallContext(ctx, &gp, "eth_gasPrice", "latest"); err != nil {
 		return nil, nil, nil, fmt.Errorf("eth_gasPrice: %w", err)
 	}
 	gasPrice = gp.ToInt()
 
-	// EIP-1559 fees (best-effort; some chains don't support)
-	var tip hexutil.Big
-	if err := client.CallContext(ctx, &tip, "eth_maxPriorityFeePerGas"); err == nil {
+	if tip.ToInt().Sign() > 0 {
 		maxPrioFee = tip.ToInt()
-		// maxFee = 2*tip + baseFee — approximate as gasPrice for safety
+		// maxFee = 2*tip, floored at gasPrice so the cap always covers inclusion.
 		maxFee = new(big.Int).Mul(maxPrioFee, big.NewInt(2))
 		if maxFee.Cmp(gasPrice) < 0 {
 			maxFee.Set(gasPrice)
@@ -134,14 +129,11 @@ func FetchGasPrice(ctx context.Context, endpoint string) (gasPrice, maxFee, maxP
 
 // FetchChainID calls eth_chainId.
 func FetchChainID(ctx context.Context, endpoint string) (*big.Int, error) {
-	client, err := rpcClient(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
 	var result hexutil.Big
-	if err := client.CallContext(ctx, &result, "eth_chainId"); err != nil {
+	err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		return client.CallContext(ctx, &result, "eth_chainId")
+	})
+	if err != nil {
 		return nil, err
 	}
 	return result.ToInt(), nil
@@ -163,18 +155,15 @@ func erc20DecimalsData() []byte { return []byte{0x31, 0x3c, 0xe5, 0x67} }
 
 // ethCall performs an eth_call.
 func ethCall(ctx context.Context, endpoint string, to common.Address, data []byte) ([]byte, error) {
-	client, err := rpcClient(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer client.Close()
-
 	msg := map[string]interface{}{
 		"to":   to.Hex(),
 		"data": "0x" + common.Bytes2Hex(data),
 	}
 	var result hexutil.Bytes
-	if err := client.CallContext(ctx, &result, "eth_call", msg, "latest"); err != nil {
+	err := rpcCall(ctx, endpoint, func(client *rpc.Client) error {
+		return client.CallContext(ctx, &result, "eth_call", msg, "latest")
+	})
+	if err != nil {
 		return nil, err
 	}
 	return result, nil

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/big"
 	"time"
+
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // GasTier is a fee level derived from what recent blocks actually paid, rather
@@ -31,22 +33,18 @@ type GasTier struct {
 // RPCs) return an error so the caller can fall back to eth_gasPrice instead of
 // presenting a fabricated tier.
 func FeeHistoryTiers(ctx context.Context, endpoint string) (low, market, fast GasTier, err error) {
-	client, err := rpcClient(endpoint)
-	if err != nil {
-		return GasTier{}, GasTier{}, GasTier{}, err
-	}
-	defer client.Close()
-
 	// A short timeout: the caller has a live user waiting.
 	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	var history feeHistory
-	err = client.CallContext(callCtx, &history, "eth_feeHistory",
-		feeHistoryBlocks,
-		"latest",
-		feeHistoryPercentiles,
-	)
+	err = rpcCall(callCtx, endpoint, func(client *rpc.Client) error {
+		return client.CallContext(callCtx, &history, "eth_feeHistory",
+			feeHistoryBlocks,
+			"latest",
+			feeHistoryPercentiles,
+		)
+	})
 	if err != nil {
 		return GasTier{}, GasTier{}, GasTier{}, fmt.Errorf("eth_feeHistory: %w", err)
 	}

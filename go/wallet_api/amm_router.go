@@ -26,18 +26,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UniswapV2Router02 addresses (publicly documented per-chain deployments).
-// Override per chain via env CHAIN_<id>_ROUTER if a different V2-compatible
-// router is preferred (PancakeSwap, SushiSwap, QuickSwap, etc. are all
-// getAmountsOut/swapExactTokensForTokens compatible).
+// V2-compatible router per chain. Override via env CHAIN_<id>_ROUTER to point at
+// a different deployment (PancakeSwap, SushiSwap, QuickSwap, Camelot and
+// Uniswap V2 all share the getAmountsOut / swapExactTokensForTokens interface).
+//
+// Every address below was checked with eth_getCode and a live
+// getAmountsOut(WETH -> USDC) eth_call on the chain it is listed for. A router
+// that holds no code makes getAmountsOut return 0x, so the caller would fail
+// with "could not decode router response" on every swap. Ethereum, Polygon,
+// Arbitrum, Optimism and Base previously pointed at addresses with no code.
 var v2Routers = map[int64]string{
-	1:        "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf", // Ethereum mainnet
-	56:       "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap (BSC)
-	137:      "0xa5E0829CaCED8fFCEEdC5d972f14341d1C2C4F6F", // QuickSwap (Polygon)
-	42161:    "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4", // SushiSwap (Arbitrum)
-	10:       "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47992406", // SushiSwap (Optimism)
-	8453:     "0x4752ba5dbc23f44d87826276bf6fd6b1c37ac4d4", // Uniswap V2 (Base)
-	11155111: "0x7a250d5630b4cf539739df2c5dac2f9c3b1c09cf", // Sepolia
+	1:        "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2 Router02 (Ethereum)
+	56:       "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap V2 (BSC)
+	137:      "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", // QuickSwap V2 (Polygon)
+	42161:    "0xc873fEcbd354f5A56E00E710B90EF4201db2448d", // Camelot V2 (Arbitrum)
+	10:       "0x2ABf469074dc0b54d793850807E6eb5Faf2625b1", // SushiSwap V2 (Optimism)
+	8453:     "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24", // Uniswap V2 Router02 (Base)
+	11155111: "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008", // Uniswap V2 Router02 (Sepolia)
 }
 
 func routerForChain(chainID int64) common.Address {
@@ -233,6 +238,7 @@ func handleAmmSwap(c *gin.Context) {
 		TokenOut     string `json:"token_out"`
 		AmountIn     string `json:"amount_in"`
 		AmountOutMin string `json:"amount_out_min"` // human units
+		Slippage     string `json:"slippage"`       // percent, used when amount_out_min is absent
 		Recipient    string `json:"recipient"`      // optional; defaults to From
 		DeadlineSec  int64  `json:"deadline_sec"`   // optional; default 20 min
 	}
@@ -299,33 +305,28 @@ func handleAmmSwap(c *gin.Context) {
 		return
 	}
 
-	var amountOutMinWei *big.Int
-	if req.AmountOutMin != "" {
-		minHuman, ok := new(big.Float).SetString(req.AmountOutMin)
-		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount_out_min"})
-			return
-		}
-		amountOutMinWei, err = humanToWei(minHuman, decOut)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-	} else {
-		// Default: fetch the live on-chain amountOut and apply 0.5% slippage.
-		path := []common.Address{addrIn, addrOut}
-		ret, err := ethCall(ctx, chain.RPCEndpoint, router, getAmountsOutData(amountInWei, path))
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "router eth_call failed: " + err.Error()})
-			return
-		}
-		amounts, err := decodeAmountsOut(ret)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "could not decode router response: " + err.Error()})
-			return
-		}
-		out := amounts[len(amounts)-1]
-		amountOutMinWei = new(big.Int).Sub(out, new(big.Int).Div(new(big.Int).Mul(out, big.NewInt(5)), big.NewInt(1000))) // -0.5%
+	// The quote is always read on-chain: it is both the default limit basis
+	// and the reference the caller's explicit limit is checked against.
+	path := []common.Address{addrIn, addrOut}
+	ret, err := ethCall(ctx, chain.RPCEndpoint, router, getAmountsOutData(amountInWei, path))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "router eth_call failed: " + err.Error()})
+		return
+	}
+	amounts, err := decodeAmountsOut(ret)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "could not decode router response: " + err.Error()})
+		return
+	}
+	quotedOutWei := amounts[len(amounts)-1]
+
+	// The caller's limit is binding: min_output is used verbatim, otherwise
+	// slippage is applied to the live quote. Ignoring these fields would remove
+	// the protection the caller asked for.
+	amountOutMinWei, err := resolveMinOut(req.AmountOutMin, req.Slippage, decOut, quotedOutWei)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	deadline := big.NewInt(0)
@@ -335,7 +336,6 @@ func handleAmmSwap(c *gin.Context) {
 		deadline.SetInt64(timeNowUnix() + 1200) // 20 min default
 	}
 
-	path := []common.Address{addrIn, addrOut}
 	calldata := swapExactTokensForTokensData(amountInWei, amountOutMinWei, path, recipient, deadline)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -352,7 +352,9 @@ func handleAmmSwap(c *gin.Context) {
 			"value":    "0",
 		},
 		"amount_in_wei":      amountInWei.String(),
+		"quoted_out_wei":     quotedOutWei.String(),
 		"amount_out_min_wei": amountOutMinWei.String(),
+		"quoted_out_human":   expectedHumanStr(quotedOutWei, decOut),
 		"deadline":           deadline.String(),
 		"note":               "Approve the router to spend token_in (ERC-20 approve) first, then broadcast this via POST /api/v1/send.",
 	})
