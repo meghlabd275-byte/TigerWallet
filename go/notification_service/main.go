@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"time"
 
+	"os"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -17,7 +20,17 @@ type Config struct {
 	Port int
 }
 
-var cfg = Config{Port: 8011}
+func loadNotificationConfig() Config {
+	port := 8011
+	if v := os.Getenv("PORT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			port = n
+		}
+	}
+	return Config{Port: port}
+}
+
+var cfg = loadNotificationConfig()
 
 type Notification struct {
 	ID        string                 `json:"id"`

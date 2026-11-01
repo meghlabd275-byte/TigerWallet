@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,15 @@ import (
 // authenticated through the same realm as regular users. Override via
 // JWT_SECRET env (must match wallet_api).
 var jwtSecret = getEnv("JWT_SECRET", "")
+
+func getEnvInt(key string, dflt int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return dflt
+}
 
 func getEnv(key, dflt string) string {
 	if v := os.Getenv(key); v != "" {
@@ -76,11 +86,17 @@ type Config struct {
 	EthRPCURL         string `json:"eth_rpc_url"`
 }
 
-var cfg = Config{
-	Port:              8097,
-	RedisAddr:         "localhost:6379",
-	PaymentServiceURL: "http://localhost:8096",
+func loadListingConfig() Config {
+	return Config{
+		Port:              getEnvInt("PORT", 8097),
+		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
+		PaymentServiceURL: getEnv("PAYMENT_SERVICE_URL", "http://localhost:8096"),
+		EthRPCURL:         getEnv("ETH_RPC_URL", ""),
+		AdminWallet:       getEnv("ADMIN_WALLET", ""),
+	}
 }
+
+var cfg = loadListingConfig()
 
 // ============================================================================
 // Supported Chains & Tokens
@@ -221,10 +237,23 @@ func NewListingService() *ListingService {
 }
 
 func (s *ListingService) initAdminUsers() {
-	// Default SuperAdmin
-	s.adminUsers["superadmin@tigerwallet.com"] = &AdminUser{
+	// The superadmin identity is deployment configuration, not a constant.
+	//
+	// Admin rights here are decided purely by the JWT subject, and the JWT is
+	// issued by wallet_api. A hardcoded address would therefore hand superadmin
+	// to anyone who manages to register that email on wallet_api. Requiring an
+	// operator to name the address keeps the grant out of reach of self-service
+	// registration, and with nothing configured no admin exists at all, so every
+	// admin route fails closed rather than falling open.
+	email := getEnv("LISTING_SUPERADMIN_EMAIL", "")
+	if email == "" {
+		log.Printf("WARN: LISTING_SUPERADMIN_EMAIL is unset; every admin route will reject callers")
+		return
+	}
+
+	s.adminUsers[email] = &AdminUser{
 		ID:         uuid.New().String(),
-		Email:      "superadmin@tigerwallet.com",
+		Email:      email,
 		Role:       "superadmin",
 		CanApprove: true,
 		CanEdit:    true,

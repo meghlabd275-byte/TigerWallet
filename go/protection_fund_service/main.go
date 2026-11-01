@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -39,20 +41,22 @@ import (
 // ============================================================================
 
 type Config struct {
-	Port                int    `json:"port"`
-	DBConnection        string `json:"db_connection"`
-	RedisAddr           string `json:"redis_addr"`
-	InitialFundSize     string `json:"initial_fund_size"`
-	MinClaimAmount      string `json:"min_claim_amount"`
-	MaxClaimAmount      string `json:"max_claim_amount"`
-	CoveragePercentage  int    `json:"coverage_percentage"`  // 100 = 100%
-	GovernanceThreshold int    `json:"governance_threshold"` // signatures required
-	MonitoringInterval  int    `json:"monitoring_interval"`  // seconds
-	FundContractAddress string `json:"fund_contract_address"` // deployed fund contract
-	FundTokenAddress    string `json:"fund_token_address"`    // payout token (0x0 = native)
-	GovernanceMultisig  string `json:"governance_multisig"`   // real multisig address
-	GovernanceSigners   []string `json:"governance_signers"`  // authorized signer addresses
-	WalletAPIURL        string `json:"wallet_api_url"`        // for real payout tx broadcast
+	Port                int      `json:"port"`
+	DBConnection        string   `json:"db_connection"`
+	RedisAddr           string   `json:"redis_addr"`
+	InitialFundSize     string   `json:"initial_fund_size"`
+	MinClaimAmount      string   `json:"min_claim_amount"`
+	MaxClaimAmount      string   `json:"max_claim_amount"`
+	CoveragePercentage  int      `json:"coverage_percentage"`   // 100 = 100%
+	GovernanceThreshold int      `json:"governance_threshold"`  // signatures required
+	MonitoringInterval  int      `json:"monitoring_interval"`   // seconds
+	FundContractAddress string   `json:"fund_contract_address"` // deployed fund contract
+	FundTokenAddress    string   `json:"fund_token_address"`    // payout token (0x0 = native)
+	GovernanceMultisig  string   `json:"governance_multisig"`   // real multisig address
+	GovernanceSigners   []string `json:"governance_signers"`    // authorized signer addresses
+	WalletAPIURL        string   `json:"wallet_api_url"`        // for real payout tx broadcast
+	JWTSecret           string   `json:"-"`                     // shared with wallet_api; validates bearer tokens
+	AdminToken          string   `json:"-"`                     // service-to-service token for reviewer endpoints
 }
 
 var cfg = Config{
@@ -69,6 +73,8 @@ var cfg = Config{
 	FundTokenAddress:    getEnv("FUND_TOKEN_ADDRESS", ""),
 	GovernanceMultisig:  getEnv("GOVERNANCE_MULTISIG", ""),
 	GovernanceSigners:   parseSigners(getEnv("GOVERNANCE_SIGNERS", "")),
+	JWTSecret:           getEnv("JWT_SECRET", ""),
+	AdminToken:          getEnv("PROTECTION_FUND_ADMIN_TOKEN", ""),
 	WalletAPIURL:        getEnv("WALLET_API_URL", "http://localhost:8443"),
 }
 
@@ -628,15 +634,25 @@ func (s *ProtectionFundService) SubmitClaim(c *gin.Context) {
 
 // GetClaims returns claims
 func (s *ProtectionFundService) GetClaims(c *gin.Context) {
-	userID := c.Query("user_id")
+	caller := callerID(c)
 	status := c.Query("status")
+
+	// A user may only list their own claims. Without this a single authenticated
+	// account could enumerate every claim in the fund, including incident
+	// descriptions and evidence. Staff keep the ability to filter by user.
+	requested := c.Query("user_id")
+	if !isStaff(c) {
+		requested = caller
+	} else if requested == "" {
+		requested = ""
+	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	claims := make([]*Claim, 0)
 	for _, cl := range s.claims {
-		if userID != "" && cl.UserID != userID {
+		if requested != "" && cl.UserID != requested {
 			continue
 		}
 		if status != "" && cl.Status != status {
@@ -657,6 +673,12 @@ func (s *ProtectionFundService) GetClaim(c *gin.Context) {
 
 	claim, ok := s.claims[claimID]
 	if !ok {
+		c.JSON(404, gin.H{"success": false, "error": "Claim not found"})
+		return
+	}
+
+	// Do not confirm the existence of another user's claim.
+	if !isStaff(c) && claim.UserID != callerID(c) {
 		c.JSON(404, gin.H{"success": false, "error": "Claim not found"})
 		return
 	}
@@ -821,13 +843,13 @@ func (s *ProtectionFundService) ProcessClaimPayment(c *gin.Context) {
 		"status":  "payment_pending",
 		"message": "Claim approved; payout must be broadcast via wallet_api",
 		"action_required": gin.H{
-			"endpoint":  strings.TrimRight(cfg.WalletAPIURL, "/") + "/api/v1/send",
-			"method":    "POST",
-			"user_id":   claim.UserID,
-			"amount":    claim.CoveredAmount,
-			"token":     s.fundToken(claim.FundID),
-			"claim_id":  claim.ID,
-			"callback":  "/api/v1/claims/" + claim.ID + "/tx-hash",
+			"endpoint": strings.TrimRight(cfg.WalletAPIURL, "/") + "/api/v1/send",
+			"method":   "POST",
+			"user_id":  claim.UserID,
+			"amount":   claim.CoveredAmount,
+			"token":    s.fundToken(claim.FundID),
+			"claim_id": claim.ID,
+			"callback": "/api/v1/claims/" + claim.ID + "/tx-hash",
 		},
 		"data": claim,
 	})
@@ -886,6 +908,11 @@ func (s *ProtectionFundService) GetStats(c *gin.Context) {
 // GetUserCoverage returns user coverage info
 func (s *ProtectionFundService) GetUserCoverage(c *gin.Context) {
 	userID := c.Param("user_id")
+
+	if !isStaff(c) && userID != callerID(c) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "not authorized for this user"})
+		return
+	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -968,6 +995,118 @@ func (s *ProtectionFundService) EnrollUser(c *gin.Context) {
 // Main
 // ============================================================================
 
+// callerID returns the authenticated subject placed in the context by
+// authMiddleware.
+func callerID(c *gin.Context) string {
+	v, _ := c.Get("user_id")
+	id, _ := v.(string)
+	return id
+}
+
+// isStaff reports whether the caller holds an operator role. It is used to
+// widen read scope only; it never authorises a state change on its own.
+func isStaff(c *gin.Context) bool {
+	v, _ := c.Get("role")
+	r, _ := v.(string)
+	return r == "admin" || r == "superadmin"
+}
+
+// authMiddleware validates the bearer token issued by wallet_api and places
+// the caller's identity in the request context. Tokens are verified with the
+// shared secret; a missing secret means the service cannot authenticate anyone,
+// so it refuses every request rather than letting them through unverified.
+func (s *ProtectionFundService) authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cfg.JWTSecret == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"success": false,
+				"error":   "JWT_SECRET not configured; refusing unauthenticated request",
+			})
+			return
+		}
+
+		header := c.GetHeader("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": "missing bearer token"})
+			return
+		}
+
+		userID, role, err := parseFundJWT(cfg.JWTSecret, strings.TrimPrefix(header, "Bearer "))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"success": false, "error": "invalid or expired token"})
+			return
+		}
+
+		c.Set("user_id", userID)
+		c.Set("role", role)
+		c.Next()
+	}
+}
+
+// requireReviewer admits only staff. It accepts either an admin JWT (the role
+// claim issued by wallet_api) or the service token, so an internal payout job
+// can drive the reviewer chain without holding a user's credentials.
+func (s *ProtectionFundService) requireReviewer() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if r, _ := role.(string); r == "admin" || r == "superadmin" {
+			c.Next()
+			return
+		}
+
+		if cfg.AdminToken == "" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"error":   "reviewer access requires an admin role or PROTECTION_FUND_ADMIN_TOKEN",
+			})
+			return
+		}
+
+		presented := strings.TrimPrefix(c.GetHeader("X-Service-Token"), "Bearer ")
+		if presented == "" {
+			presented = c.GetHeader("X-Service-Token")
+		}
+		// Constant-time compare so the token cannot be recovered byte by byte.
+		if subtle.ConstantTimeCompare([]byte(presented), []byte(cfg.AdminToken)) != 1 {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "error": "reviewer access required"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// parseFundJWT verifies the signature and algorithm, then returns the subject
+// and role. Only HMAC algorithms are accepted, which blocks both "alg: none"
+// and RS256-to-HS256 key confusion.
+func parseFundJWT(secret, tokenStr string) (string, string, error) {
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(secret), nil
+	}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+	if err != nil || !token.Valid {
+		return "", "", fmt.Errorf("invalid token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", "", fmt.Errorf("invalid claims")
+	}
+
+	sub, _ := claims["sub"].(string)
+	if sub == "" {
+		return "", "", fmt.Errorf("missing subject")
+	}
+
+	role, _ := claims["role"].(string)
+	if role == "" {
+		role = "user"
+	}
+	return sub, role, nil
+}
+
 func main() {
 	// Initialize service
 	service := NewProtectionFundService()
@@ -997,22 +1136,29 @@ func main() {
 	r.GET("/api/v1/policies", service.GetPolicies)
 	r.GET("/api/v1/stats", service.GetStats)
 
-	// Protected routes
+	// Protected routes. Everything here is authenticated: claims move real
+	// money out of the fund, so an anonymous caller must never reach them.
 	protected := r.Group("/api/v1")
-	protected.Use(func(c *gin.Context) {
-		// Auth middleware
-		c.Next()
-	})
+	protected.Use(service.authMiddleware())
 	{
 		protected.POST("/claims", service.SubmitClaim)
 		protected.GET("/claims", service.GetClaims)
 		protected.GET("/claims/:id", service.GetClaim)
-		protected.PATCH("/claims/:id/review", service.ReviewClaim)
-		protected.POST("/claims/:id/approve", service.ApproveClaim)
-		protected.POST("/claims/:id/pay", service.ProcessClaimPayment)
-		protected.POST("/claims/:id/tx-hash", service.SetClaimTxHash)
 		protected.GET("/users/:user_id/coverage", service.GetUserCoverage)
 		protected.POST("/users/enroll", service.EnrollUser)
+
+		// Reviewer chain: reviewing, approving, paying and settling a claim.
+		// These release real funds and must be staff-only. ApproveClaim also
+		// demands a governance signature, so an operator credential alone
+		// cannot move money.
+		reviewer := protected.Group("")
+		reviewer.Use(service.requireReviewer())
+		{
+			reviewer.PATCH("/claims/:id/review", service.ReviewClaim)
+			reviewer.POST("/claims/:id/approve", service.ApproveClaim)
+			reviewer.POST("/claims/:id/pay", service.ProcessClaimPayment)
+			reviewer.POST("/claims/:id/tx-hash", service.SetClaimTxHash)
+		}
 	}
 
 	// Start server
