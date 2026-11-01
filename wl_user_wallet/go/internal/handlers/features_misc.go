@@ -5,18 +5,26 @@
 package handlers
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/tigerwallet/wl-user-wallet/internal/chains"
 	"github.com/tigerwallet/wl-user-wallet/internal/middleware"
+	"github.com/tigerwallet/wl-user-wallet/internal/onchain"
 )
 
 // ==================== Wallets CRUD / extras ====================
@@ -247,8 +255,100 @@ func pad32(b []byte) string {
 
 func (s *Svc) NetworkStatus(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "online"}) }
 func (s *Svc) ChartHistory(c *gin.Context)  { c.JSON(http.StatusOK, gin.H{"candles": []any{}}) }
+
+// estimateGasRequest mirrors the simulate request: the caller describes the
+// call it intends to make, and the estimate comes from the chain.
+type estimateGasRequest struct {
+	ChainID int64  `json:"chain_id" binding:"required"`
+	From    string `json:"from"`
+	To      string `json:"to" binding:"required"`
+	Value   string `json:"value"`
+	Data    string `json:"data"`
+}
+
+// POST /gas/estimate - real eth_estimateGas plus live fee data for the call the
+// caller describes. Previously this returned the constants 0 and 21000 for
+// every request, which is worse than useless: a wallet that trusts a fabricated
+// 21000 limit sends an out-of-gas transaction and still pays for it. The
+// estimate is now derived from the chain, and the handler fails closed when no
+// RPC is configured or the node rejects the call.
 func (s *Svc) EstimateGas(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"gas_estimate": gin.H{"gas_price": "0", "gas_limit": "21000"}})
+	var req estimateGasRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chain_id and to are required"})
+		return
+	}
+	if cfg := chains.ChainByID(req.ChainID); cfg == nil || !cfg.IsEVM() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or non-EVM chain_id"})
+		return
+	}
+	rpc := rpcForChain(req.ChainID)
+	if rpc == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no RPC configured for chain"})
+		return
+	}
+
+	to := common.HexToAddress(req.To)
+	call := ethereum.CallMsg{To: &to}
+	if strings.TrimSpace(req.From) != "" {
+		call.From = common.HexToAddress(req.From)
+	}
+	if strings.TrimSpace(req.Value) != "" {
+		f, ok := new(big.Float).SetString(req.Value)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid value"})
+			return
+		}
+		call.Value, _ = new(big.Float).Mul(f, big.NewFloat(1e18)).Int(nil)
+	}
+	if strings.TrimSpace(req.Data) != "" {
+		data, err := hexutil.Decode(req.Data)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid calldata hex"})
+			return
+		}
+		call.Data = data
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	client, err := ethclient.DialContext(ctx, rpc)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "RPC unavailable"})
+		return
+	}
+	defer client.Close()
+
+	gasLimit, err := client.EstimateGas(ctx, call)
+	if err != nil {
+		// A revert or an unsupported call is a real answer, not a default.
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "estimate failed: " + err.Error()})
+		return
+	}
+
+	resp := gin.H{
+		"chain_id": req.ChainID,
+		"gas_estimate": gin.H{
+			"gas_limit": gasLimit,
+		},
+	}
+	gasPrice, maxFee, prioFee, gpErr := onchain.FetchGasPrice(ctx, rpc)
+	if gpErr != nil {
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+	fee := gin.H{"gas_price": gasPrice.String()}
+	if prioFee != nil {
+		fee["max_priority_fee"] = prioFee.String()
+	}
+	if maxFee != nil {
+		fee["max_fee_per_gas"] = maxFee.String()
+	}
+	resp["gas_estimate"].(gin.H)["fee"] = fee
+	resp["gas_estimate"].(gin.H)["estimated_cost_wei"] =
+		new(big.Int).Mul(new(big.Int).SetUint64(gasLimit), maxFee).String()
+	c.JSON(http.StatusOK, resp)
 }
 
 // ==================== Security / ENS / dApps ====================

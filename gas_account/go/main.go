@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -281,9 +282,70 @@ func (m *GasManager) StartBackgroundTasks(ctx context.Context) {
 	}
 }
 
+// updateGasPrices refreshes every configured chain from its own node. The
+// quoted fee is what the user is charged, so a price that never moves is a
+// financial bug, not a cosmetic one: the seeded values are only a starting
+// point and are replaced as soon as a node answers.
+//
+// Chains without an RPC endpoint, or whose node is unreachable, keep their
+// previous value and stay marked non-live; getGasQuote refuses to quote them
+// rather than charge a made-up fee.
 func (m *GasManager) updateGasPrices(ctx context.Context) {
-	// Update gas prices from oracles
-	logger.Info().Msg("Updating gas prices")
+	for chainID, chain := range m.chains {
+		rpcURL := m.config.RPCURLs[chainID]
+		if rpcURL == "" || !chain.Supported {
+			continue
+		}
+		gasPriceWei, err := fetchChainGasPrice(ctx, rpcURL)
+		if err != nil {
+			logger.Warn().Err(err).Uint64("chainId", chainID).
+				Msg("gas price refresh failed; keeping previous value")
+			m.mu.Lock()
+			chain.GasOracle = ""
+			m.mu.Unlock()
+			continue
+		}
+
+		gwei := new(big.Float).Quo(
+			new(big.Float).SetInt(gasPriceWei),
+			big.NewFloat(1e9),
+		)
+		value, _ := gwei.Float64()
+
+		m.mu.Lock()
+		chain.AvgGasPrice = value
+		// Track the observed range so a UI can show slow/fast bands without
+		// inventing multipliers.
+		if value < chain.MinGasPrice || chain.MinGasPrice == 0 {
+			chain.MinGasPrice = value
+		}
+		if value > chain.MaxGasPrice {
+			chain.MaxGasPrice = value
+		}
+		chain.GasOracle = "rpc"
+		m.mu.Unlock()
+	}
+}
+
+// fetchChainGasPrice reads eth_gasPrice from a single node.
+func fetchChainGasPrice(ctx context.Context, rpcURL string) (*big.Int, error) {
+	callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	client, err := ethclient.DialContext(callCtx, rpcURL)
+	if err != nil {
+		return nil, fmt.Errorf("dial %s: %w", rpcURL, err)
+	}
+	defer client.Close()
+
+	price, err := client.SuggestGasPrice(callCtx)
+	if err != nil {
+		return nil, fmt.Errorf("eth_gasPrice: %w", err)
+	}
+	if price == nil || price.Sign() <= 0 {
+		return nil, fmt.Errorf("node returned a non-positive gas price")
+	}
+	return price, nil
 }
 
 // Get supported chains
@@ -821,14 +883,43 @@ func getGasQuote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Chain not supported"})
 		return
 	}
+	gasManager.mu.RLock()
+	live := chain.GasOracle == "rpc"
+	avgGasPriceGwei := chain.AvgGasPrice
+	nativeToken := chain.NativeToken
+	gasManager.mu.RUnlock()
 
-	// Get gas estimate (simplified)
-	gasEstimate := 21000.0 // Standard ETH transfer
-	if chainID != 1 {
-		gasEstimate = 65000.0 // For EVM chains
+	// A quote backed by a seeded price would over- or under-charge the user.
+	if !live {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "live gas price unavailable for this chain; refusing to quote",
+		})
+		return
 	}
 
-	gasPriceUSD := chain.AvgGasPrice * getTokenPrice(chain.NativeToken)
+	// 21000 covers a plain value transfer; token transfers and contract calls
+	// cost more. The caller may supply its own estimate from eth_estimateGas.
+	gasEstimate := 21000.0
+	if raw := c.Query("gasEstimate"); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid gasEstimate"})
+			return
+		}
+		gasEstimate = parsed
+	} else if chainID != 1 {
+		gasEstimate = 65000.0
+	}
+
+	nativePrice, err := livePriceUSD(nativeToken)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "native token price unavailable; refusing to quote",
+		})
+		return
+	}
+
+	gasPriceUSD := avgGasPriceGwei * nativePrice
 	totalFeeUSD := gasEstimate * gasPriceUSD / 1000000000 // Convert from Gwei
 
 	quote := GasQuote{

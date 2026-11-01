@@ -3,20 +3,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../components/ThemeProvider';
 
-interface GasPrice {
-  slow: string;
-  standard: string;
-  fast: string;
-  slowWait: string;
-  standardWait: string;
-  fastWait: string;
+// A fee level derived by the backend from eth_feeHistory percentiles: what
+// transactions in the last 20 blocks actually paid to be included. There is no
+// client-side multiplier here, because inventing one would mean quoting the
+// user a price the chain never offered.
+interface GasTier {
+  priority_fee_wei?: string;
+  max_fee_wei?: string;
+  base_fee_wei?: string;
 }
 
 interface ChainGas {
   chainId: number;
   chainName: string;
   symbol: string;
-  gasPrice: GasPrice;
+  gasPriceWei: string;
+  tiers: {
+    slow: GasTier;
+    standard: GasTier;
+    fast: GasTier;
+  } | null;
 }
 
 const API_BASE_URL = typeof window !== 'undefined' ? '' : (process.env.BACKEND_URL || 'http://localhost:8443');
@@ -31,6 +37,46 @@ const GAS_CHAINS: { id: number; name: string; symbol: string }[] = [
   { id: 43114, name: 'Avalanche', symbol: 'AVAX' },
   { id: 250, name: 'Fantom', symbol: 'FTM' },
 ];
+
+// Renders one fee level. The wait estimate is derived from the percentile the
+// tip came from: a 90th-percentile tip lands in the next block, a 10th-percentile
+// tip may wait several.
+function FeeRow({
+  label,
+  tier,
+  isDark,
+  highlight = false,
+}: {
+  label: string;
+  tier: GasTier;
+  isDark: boolean;
+  highlight?: boolean;
+}) {
+  const gwei = (wei?: string) => {
+    if (!wei) return '-';
+    try {
+      const value = BigInt(wei);
+      const whole = value / 1000000000n;
+      const frac = (value % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '');
+      return frac ? `${whole}.${frac}` : whole.toString();
+    } catch {
+      return '-';
+    }
+  };
+  return (
+    <div
+      className={`p-4 rounded-lg flex justify-between items-center ${highlight ? (isDark ? 'bg-orange-900/30 border-2 border-orange-500' : 'bg-orange-100 border-2 border-orange-500') : isDark ? 'bg-gray-700' : 'bg-gray-100'}`}
+    >
+      <div>
+        <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{label}</div>
+        <div className={`text-xl font-bold ${highlight ? 'text-orange-600' : ''}`}>{gwei(tier.max_fee_wei)} Gwei max fee</div>
+      </div>
+      <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+        tip {gwei(tier.priority_fee_wei)} Gwei
+      </div>
+    </div>
+  );
+}
 
 export default function GasEstimation() {
   const [chainsGas, setChainsGas] = useState<ChainGas[]>([]);
@@ -53,22 +99,21 @@ export default function GasEstimation() {
           });
           if (!res.ok) throw new Error(`gas fetch failed for ${ch.name}`);
           const data = await res.json();
-          const gwei = parseFloat(data.gas_price_gwei || '0');
-          const slowGwei = (gwei * 0.85).toFixed(2);
-          const stdGwei = gwei.toFixed(2);
-          const fastGwei = (gwei * 1.2).toFixed(2);
+          // gas_price is the raw wei value from eth_gasPrice; tiers come from
+          // eth_feeHistory and are absent on chains that do not support it.
+          if (!data.gas_price) throw new Error(`no gas price returned for ${ch.name}`);
           return {
             chainId: ch.id,
             chainName: ch.name,
             symbol: ch.symbol,
-            gasPrice: {
-              slow: slowGwei,
-              standard: stdGwei,
-              fast: fastGwei,
-              slowWait: '~5 min',
-              standardWait: '~3 min',
-              fastWait: '~30 sec',
-            },
+            gasPriceWei: String(data.gas_price),
+            tiers: data.tiers
+              ? {
+                  slow: data.tiers.slow || {},
+                  standard: data.tiers.standard || {},
+                  fast: data.tiers.fast || {},
+                }
+              : null,
           } as ChainGas;
         })
       );
@@ -92,10 +137,38 @@ export default function GasEstimation() {
     loadGas();
   }, [loadGas]);
 
-  const calculateCost = (gasPrice: string, limit: string): string => {
-    const price = parseFloat(gasPrice);
-    const limitNum = parseFloat(limit);
-    return (price * limitNum / 1000000000).toFixed(6);
+  // Fee in wei per gas -> native cost. BigInt keeps wei exact; floating point
+  // loses precision well before 18 decimals.
+  const costFromWei = (feeWei: string | undefined, limit: string): string | null => {
+    if (!feeWei) return null;
+    let limitBig: bigint;
+    try {
+      limitBig = BigInt(limit);
+    } catch {
+      return null;
+    }
+    let feeBig: bigint;
+    try {
+      feeBig = BigInt(feeWei);
+    } catch {
+      return null;
+    }
+    const total = feeBig * limitBig;
+    const whole = total / 1000000000000000000n;
+    const frac = (total % 1000000000000000000n).toString().padStart(18, '0').replace(/0+$/, '');
+    return frac ? `${whole}.${frac}` : whole.toString();
+  };
+
+  const weiToGwei = (wei: string | undefined): string | null => {
+    if (!wei) return null;
+    try {
+      const value = BigInt(wei);
+      const whole = value / 1000000000n;
+      const frac = (value % 1000000000n).toString().padStart(9, '0').replace(/0+$/, '');
+      return frac ? `${whole}.${frac}` : whole.toString();
+    } catch {
+      return null;
+    }
   };
 
   const getGasLimit = (type: string): string => {
@@ -121,9 +194,18 @@ export default function GasEstimation() {
             <div className="mb-4"><label className={`block text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-2`}>Gas Limit</label><input type="text" value={gasLimit} onChange={(e) => setGasLimit(e.target.value)} className={`w-full ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg px-4 py-3`} /></div>
             {selectedChainGas && (
               <div className="space-y-3">
-                <div className={`p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg flex justify-between items-center`}><div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Slow</div><div className="text-xl font-bold">{selectedChainGas.gasPrice.slow} Gwei</div></div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{selectedChainGas.gasPrice.slowWait}</div></div>
-                <div className={`p-4 ${isDark ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-lg flex justify-between items-center border-2 border-orange-500`}><div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Standard (Recommended)</div><div className="text-xl font-bold text-orange-600">{selectedChainGas.gasPrice.standard} Gwei</div></div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{selectedChainGas.gasPrice.standardWait}</div></div>
-                <div className={`p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg flex justify-between items-center`}><div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Fast</div><div className="text-xl font-bold">{selectedChainGas.gasPrice.fast} Gwei</div></div><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{selectedChainGas.gasPrice.fastWait}</div></div>
+                {selectedChainGas.tiers ? (
+                  <>
+                    <FeeRow label="Slow (10th percentile tip)" tier={selectedChainGas.tiers.slow} isDark={isDark} />
+                    <FeeRow label="Standard (median tip)" tier={selectedChainGas.tiers.standard} isDark={isDark} highlight />
+                    <FeeRow label="Fast (90th percentile tip)" tier={selectedChainGas.tiers.fast} isDark={isDark} />
+                  </>
+                ) : (
+                  <div className={`p-4 rounded-lg ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                    <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Base fee (this chain does not expose fee history)</div>
+                    <div className="text-xl font-bold">{weiToGwei(selectedChainGas.gasPriceWei)} Gwei</div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -131,9 +213,24 @@ export default function GasEstimation() {
             <h2 className="text-xl font-semibold mb-4">Estimated Cost</h2>
             {selectedChainGas && (
               <div className="space-y-4">
-                <div className={`p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-1`}>Slow</div><div className="text-2xl font-bold">{calculateCost(selectedChainGas.gasPrice.slow, currentGasLimit)} {selectedChainGas.symbol}</div></div>
-                <div className={`p-4 ${isDark ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-lg border-2 border-orange-500`}><div className="text-sm text-orange-600 mb-1">Standard (Recommended)</div><div className="text-2xl font-bold text-orange-600">{calculateCost(selectedChainGas.gasPrice.standard, currentGasLimit)} {selectedChainGas.symbol}</div></div>
-                <div className={`p-4 ${isDark ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg`}><div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'} mb-1`}>Fast</div><div className="text-2xl font-bold">{calculateCost(selectedChainGas.gasPrice.fast, currentGasLimit)} {selectedChainGas.symbol}</div></div>
+                {(['slow', 'standard', 'fast'] as const).map((level) => {
+                  const tier = selectedChainGas.tiers?.[level];
+                  const fee = tier?.max_fee_wei || (level === 'standard' ? selectedChainGas.gasPriceWei : undefined);
+                  const cost = costFromWei(fee, currentGasLimit);
+                  return (
+                    <div
+                      key={level}
+                      className={`p-4 rounded-lg ${level === 'standard' ? (isDark ? 'bg-orange-900/30 border-2 border-orange-500' : 'bg-orange-100 border-2 border-orange-500') : (isDark ? 'bg-gray-700' : 'bg-gray-100')}`}
+                    >
+                      <div className={`text-sm mb-1 ${level === 'standard' ? 'text-orange-600' : isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {level === 'standard' ? 'Standard (Recommended)' : level.charAt(0).toUpperCase() + level.slice(1)}
+                      </div>
+                      <div className={`text-2xl font-bold ${level === 'standard' ? 'text-orange-600' : ''}`}>
+                        {cost === null ? 'unavailable' : `${cost} ${selectedChainGas.symbol}`}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -142,7 +239,7 @@ export default function GasEstimation() {
           <h2 className="text-xl font-semibold mb-4">All Networks Gas Prices</h2>
           <div className={`${isDark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg overflow-hidden`}>
             <table className="w-full"><thead className={isDark ? 'bg-gray-700' : 'bg-gray-100'}><tr><th className="px-4 py-3 text-left">Network</th><th className="px-4 py-3 text-left">Symbol</th><th className="px-4 py-3 text-left">Slow</th><th className="px-4 py-3 text-left">Standard</th><th className="px-4 py-3 text-left">Fast</th></tr></thead>
-            <tbody>{chainsGas.map((chain) => <tr key={chain.chainId} className={`border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}><td className="px-4 py-3">{chain.chainName}</td><td className="px-4 py-3">{chain.symbol}</td><td className="px-4 py-3">{chain.gasPrice.slow} Gwei</td><td className="px-4 py-3 font-medium">{chain.gasPrice.standard} Gwei</td><td className="px-4 py-3">{chain.gasPrice.fast} Gwei</td></tr>)}</tbody>
+            <tbody>{chainsGas.map((chain) => <tr key={chain.chainId} className={`border-t ${isDark ? 'border-gray-700' : 'border-gray-200'}`}><td className="px-4 py-3">{chain.chainName}</td><td className="px-4 py-3">{chain.symbol}</td><td className="px-4 py-3">{chain.tiers ? `${weiToGwei(chain.tiers.slow.max_fee_wei) ?? '-'} Gwei` : '-'}</td><td className="px-4 py-3 font-medium">{chain.tiers ? `${weiToGwei(chain.tiers.standard.max_fee_wei) ?? '-'} Gwei` : `${weiToGwei(chain.gasPriceWei) ?? '-'} Gwei`}</td><td className="px-4 py-3">{chain.tiers ? `${weiToGwei(chain.tiers.fast.max_fee_wei) ?? '-'} Gwei` : '-'}</td></tr>)}</tbody>
             </table>
           </div>
         </div>

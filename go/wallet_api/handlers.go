@@ -836,13 +836,26 @@ func handleGasPrice(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"chain_id":         chainID,
 		"gas_price":        gasPrice.String(),
 		"max_fee_per_gas":  maxFee.String(),
 		"max_priority_fee": maxPrioFee.String(),
 		"gas_price_gwei":   weiToGweiFloat(gasPrice),
-	})
+	}
+
+	// Per-level fees come from eth_feeHistory percentiles: what transactions in
+	// recent blocks actually paid to be included. When the chain does not
+	// support fee history the key is omitted, so a client shows one price rather
+	// than a tier table it made up from a single sample.
+	if low, market, fast, tierErr := FeeHistoryTiers(ctx, chain.RPCEndpoint); tierErr == nil {
+		resp["tiers"] = gin.H{
+			"slow":     gasTiersPayload(low),
+			"standard": gasTiersPayload(market),
+			"fast":     gasTiersPayload(fast),
+		}
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func handlePrice(c *gin.Context) {
