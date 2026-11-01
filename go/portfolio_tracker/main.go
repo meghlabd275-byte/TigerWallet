@@ -188,14 +188,16 @@ func (s *PortfolioService) Run() error {
 	mux.HandleFunc("/api/history", s.handleGetHistory)
 	mux.HandleFunc("/health", s.handleHealth)
 
+	addr := ":" + getEnv("PORTFOLIO_PORT", "8084")
+
 	s.server = &http.Server{
-		Addr:         ":8081",
+		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Println("Portfolio service starting on :8081")
+	log.Println("Portfolio service starting on " + addr)
 	return s.server.ListenAndServe()
 }
 
@@ -708,4 +710,12 @@ func main() {
 
 func (s *PortfolioService) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
+}
+
+// getEnv reads an environment variable, falling back to a default.
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

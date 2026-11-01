@@ -14,11 +14,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -54,7 +56,7 @@ type Config struct {
 }
 
 var cfg = Config{
-	Port:                getEnvInt("PORT", 8081),
+	Port:                getEnvInt("PORT", 8086),
 	DBConnection:        getEnv("DB_CONNECTION", "postgres://tigerwallet:password@localhost:5432/protection_fund"),
 	RedisAddr:           getEnv("REDIS_ADDR", "localhost:6379"),
 	InitialFundSize:     getEnv("INITIAL_FUND_SIZE", "1000000000000000000000000"),
@@ -977,6 +979,18 @@ func main() {
 	// Setup router
 	r := gin.Default()
 
+	// Liveness and readiness probes for the orchestrator.
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "protection-fund"})
+	})
+	r.GET("/readyz", func(c *gin.Context) {
+		if err := service.Ping(c.Request.Context()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready", "service": "protection-fund"})
+	})
+
 	// Public routes
 	r.GET("/api/v1/funds", service.GetFunds)
 	r.GET("/api/v1/funds/:id", service.GetFund)
@@ -1131,4 +1145,15 @@ func getEnvInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// Ping reports whether the service's backing store is reachable.
+//
+// The readiness probe calls this so an orchestrator only routes traffic to a
+// replica that can actually serve it.
+func (s *ProtectionFundService) Ping(ctx context.Context) error {
+	if s.db == nil {
+		return nil
+	}
+	return s.db.PingContext(ctx)
 }

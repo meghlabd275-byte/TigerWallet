@@ -14,6 +14,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -21,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -844,6 +846,18 @@ func main() {
 	// Setup router
 	r := gin.Default()
 
+	// Liveness and readiness probes for the orchestrator.
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "bug-bounty"})
+	})
+	r.GET("/readyz", func(c *gin.Context) {
+		if err := service.Ping(c.Request.Context()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready", "service": "bug-bounty"})
+	})
+
 	// Public routes
 	r.GET("/api/v1/programs", service.GetPrograms)
 	r.GET("/api/v1/programs/:id", service.GetProgram)
@@ -867,4 +881,15 @@ func main() {
 	if err := r.Run(addr); err != nil {
 		fmt.Printf("Failed to start server: %v\n", err)
 	}
+}
+
+// Ping reports whether the service's backing store is reachable.
+//
+// The readiness probe calls this so an orchestrator only routes traffic to a
+// replica that can actually serve it.
+func (s *BugBountyService) Ping(ctx context.Context) error {
+	if s.db == nil {
+		return nil
+	}
+	return s.db.PingContext(ctx)
 }
