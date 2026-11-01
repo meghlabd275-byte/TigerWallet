@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq" // registers the "postgres" driver used by database/sql
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )

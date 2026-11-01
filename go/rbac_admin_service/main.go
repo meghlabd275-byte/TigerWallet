@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq" // registers the "postgres" driver used by database/sql
 )
 
 // Database connection - PRODUCTION PostgreSQL

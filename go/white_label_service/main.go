@@ -28,6 +28,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq" // registers the "postgres" driver used by database/sql
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -1,7 +1,7 @@
 FROM golang:1.23-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
+# This module depends only on the standard library, so there is no go.sum
+COPY go.mod ./
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /bridge-service .
 FROM alpine:3.19

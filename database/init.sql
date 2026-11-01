@@ -116,3 +116,15 @@ CREATE DATABASE wl_card;
 -- Schema is managed by the service's own migrations on boot.
 CREATE DATABASE walletconnect;
 \connect walletconnect;
+
+-- Auxiliary service databases. Each service owns its schema and runs its own
+-- idempotent migrations on boot; these databases only need to exist so the
+-- service can connect without an operator creating them by hand.
+CREATE DATABASE tigerwallet_bugbounty;
+CREATE DATABASE tigerwallet_protection_fund;
+CREATE DATABASE tigerwallet_analytics;
+CREATE DATABASE tigerwallet_launchpad;
+CREATE DATABASE tigerwallet_insurance;
+CREATE DATABASE tigerwallet_perpetual;
+CREATE DATABASE tigerwallet_leaderboard;
+CREATE DATABASE tigerwallet_fiat;

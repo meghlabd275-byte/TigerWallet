@@ -9,11 +9,8 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -34,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"github.com/shopspring/decimal"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -59,21 +55,31 @@ type Config struct {
 	RedisPort string
 
 	// Blockchain
-	EthereumRPC   string
-	PolygonRPC    string
-	ArbitrumRPC   string
-	OptimismRPC   string
-	BSCRPC        string
+	EthereumRPC  string
+	PolygonRPC   string
+	ArbitrumRPC  string
+	OptimismRPC  string
+	BSCRPC       string
 	AvalancheRPC string
 
 	// Relayer
 	RelayerPrivateKey string
 	RelayerAddress    string
 
+	// Forwarder is the deployed GaslessMetaTx contract that verifies the user
+	// EIP-712 signature on-chain. The relayer must call this contract rather
+	// than transferring tokens directly, otherwise the user signature is never
+	// checked and funds could be moved without consent.
+	ForwarderAddress string
+
+	// Name/version must match the EIP-712 domain used by the forwarder.
+	ForwarderName    string
+	ForwarderVersion string
+
 	// Gas Settings
-	GasPriceBufferPercent int    // Extra gas price to ensure inclusion
-	MaxGasPriceGwei        int64  // Maximum gas price in gwei
-	MinGasPriceGwei        int64  // Minimum gas price in gwei
+	GasPriceBufferPercent int   // Extra gas price to ensure inclusion
+	MaxGasPriceGwei       int64 // Maximum gas price in gwei
+	MinGasPriceGwei       int64 // Minimum gas price in gwei
 
 	// Token Support
 	SupportedTokens map[string]TokenConfig
@@ -84,10 +90,10 @@ type Config struct {
 }
 
 type TokenConfig struct {
-	Address        common.Address
-	Symbol         string
-	Decimals       uint8
-	GasUsed        uint64  // Gas cost for transfer
+	Address          common.Address
+	Symbol           string
+	Decimals         uint8
+	GasUsed          uint64 // Gas cost for transfer
 	MinConfirmations uint64
 }
 
@@ -95,60 +101,63 @@ func LoadConfig() *Config {
 	supportedTokens := map[string]TokenConfig{
 		// Ethereum
 		"0xa0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": { // USDC
-			Address:     common.HexToAddress("0xa0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-			Symbol:      "USDC",
-			Decimals:    6,
-			GasUsed:    65000,
+			Address:  common.HexToAddress("0xa0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+			Symbol:   "USDC",
+			Decimals: 6,
+			GasUsed:  65000,
 		},
 		"0x6B175474E89094C44Da98b954EadeAC462271d19": { // DAI
-			Address:     common.HexToAddress("0x6B175474E89094C44Da98b954EadeAC462271d19"),
-			Symbol:      "DAI",
-			Decimals:    18,
-			GasUsed:    65000,
+			Address:  common.HexToAddress("0x6B175474E89094C44Da98b954EadeAC462271d19"),
+			Symbol:   "DAI",
+			Decimals: 18,
+			GasUsed:  65000,
 		},
 		"0xdAC17F958D2ee523a2206206994597C13D831ec7": { // USDT
-			Address:     common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"),
-			Symbol:      "USDT",
-			Decimals:    6,
-			GasUsed:    55000,
+			Address:  common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+			Symbol:   "USDT",
+			Decimals: 6,
+			GasUsed:  55000,
 		},
 		// Polygon
 		"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174": { // USDC Polygon
-			Address:     common.HexToAddress("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
-			Symbol:      "USDC",
-			Decimals:    6,
-			GasUsed:    65000,
+			Address:  common.HexToAddress("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
+			Symbol:   "USDC",
+			Decimals: 6,
+			GasUsed:  65000,
 		},
 		// BSC
 		"0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd540d": { // USDC BSC
-			Address:     common.HexToAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd540d"),
-			Symbol:      "USDC",
-			Decimals:    18,
-			GasUsed:    65000,
+			Address:  common.HexToAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd540d"),
+			Symbol:   "USDC",
+			Decimals: 18,
+			GasUsed:  65000,
 		},
 	}
 
 	return &Config{
-		ServerPort:           getEnv("GASLESS_PORT", "9201"),
-		DBHost:               getEnv("DB_HOST", "localhost"),
-		DBPort:               getEnv("DB_PORT", "5432"),
-		DBUser:               getEnv("DB_USER", "tigerwallet"),
-		DBPassword:           mustEnv("DB_PASSWORD"),
-		DBName:               getEnv("DB_NAME", "tigerwallet"),
-		RedisHost:            getEnv("REDIS_HOST", "localhost"),
-		RedisPort:            getEnv("REDIS_PORT", "6379"),
-		EthereumRPC:         getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
-		PolygonRPC:           getEnv("POLYGON_RPC", "https://polygon-rpc.com"),
-		ArbitrumRPC:          getEnv("ARBITRUM_RPC", "https://arb1.arbitrum.io/rpc"),
-		OptimismRPC:          getEnv("OPTIMISM_RPC", "https://mainnet.optimism.io"),
-		BSCRPC:               getEnv("BSC_RPC", "https://bsc-dataseed.binance.org"),
-		AvalancheRPC:         getEnv("AVALANCHE_RPC", "https://api.avax.network/ext/bc/C/rpc"),
-		RelayerPrivateKey:    getEnv("RELAYER_PRIVATE_KEY", ""),
+		ServerPort:            getEnv("GASLESS_PORT", "9201"),
+		DBHost:                getEnv("DB_HOST", "localhost"),
+		DBPort:                getEnv("DB_PORT", "5432"),
+		DBUser:                getEnv("DB_USER", "tigerwallet"),
+		DBPassword:            mustEnv("DB_PASSWORD"),
+		DBName:                getEnv("DB_NAME", "tigerwallet"),
+		RedisHost:             getEnv("REDIS_HOST", "localhost"),
+		RedisPort:             getEnv("REDIS_PORT", "6379"),
+		EthereumRPC:           getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
+		PolygonRPC:            getEnv("POLYGON_RPC", "https://polygon-rpc.com"),
+		ArbitrumRPC:           getEnv("ARBITRUM_RPC", "https://arb1.arbitrum.io/rpc"),
+		OptimismRPC:           getEnv("OPTIMISM_RPC", "https://mainnet.optimism.io"),
+		BSCRPC:                getEnv("BSC_RPC", "https://bsc-dataseed.binance.org"),
+		AvalancheRPC:          getEnv("AVALANCHE_RPC", "https://api.avax.network/ext/bc/C/rpc"),
+		RelayerPrivateKey:     getEnv("RELAYER_PRIVATE_KEY", ""),
+		ForwarderAddress:      getEnv("FORWARDER_ADDRESS", ""),
+		ForwarderName:         getEnv("FORWARDER_NAME", "TigerWallet Gasless"),
+		ForwarderVersion:      getEnv("FORWARDER_VERSION", "1.0.0"),
 		GasPriceBufferPercent: 20,
 		MaxGasPriceGwei:       500,
 		MinGasPriceGwei:       1,
 		SupportedTokens:       supportedTokens,
-		MaxRequestsPerMinute:   100,
+		MaxRequestsPerMinute:  100,
 		MaxTokensPerDay:       1000000,
 	}
 }
@@ -176,51 +185,52 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type MetaTransaction struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// User info
-	UserAddress     common.Address `gorm:"index" json:"user_address"`
-	TokenAddress   common.Address `json:"token_address"`
-	ChainID        uint64         `json:"chain_id"`
+	UserAddress  common.Address `gorm:"index" json:"user_address"`
+	TokenAddress common.Address `json:"token_address"`
+	ChainID      uint64         `json:"chain_id"`
 
 	// Transaction details
-	TokenAmount     string         `json:"token_amount"`
-	FeeToken       common.Address `json:"fee_token"`
-	FeeAmount      string         `json:"fee_amount"`
-	GasPrice       string         `json:"gas_price"`
-	GasLimit       uint64         `json:"gas_limit"`
-	Nonce          uint64         `gorm:"uniqueIndex" json:"nonce"`
+	TokenAmount string         `json:"token_amount"`
+	ToAddress   string         `json:"to_address"`
+	FeeToken    common.Address `json:"fee_token"`
+	FeeAmount   string         `json:"fee_amount"`
+	GasPrice    string         `json:"gas_price"`
+	GasLimit    uint64         `json:"gas_limit"`
+	Nonce       uint64         `gorm:"uniqueIndex" json:"nonce"`
 
 	// User's authorization
-	UserSignature  string         `json:"user_signature"`
+	UserSignature string `json:"user_signature"`
 
 	// Relayer processing
-	RelayerSignature string       `json:"relayer_signature"`
-	RelayerAddress  common.Address `json:"relayer_address"`
+	RelayerSignature string         `json:"relayer_signature"`
+	RelayerAddress   common.Address `json:"relayer_address"`
 
 	// Status
-	Status         string         `json:"status"` // pending, submitted, confirmed, failed
-	TxHash         string         `json:"tx_hash"`
-	BlockNumber    uint64         `json:"block_number"`
-	GasUsed        uint64         `json:"gas_used"`
-	ErrorMessage   string         `json:"error_message"`
+	Status       string `json:"status"` // pending, submitted, confirmed, failed
+	TxHash       string `json:"tx_hash"`
+	BlockNumber  uint64 `json:"block_number"`
+	GasUsed      uint64 `json:"gas_used"`
+	ErrorMessage string `json:"error_message"`
 }
 
 type UserNonce struct {
-	ID            uint           `gorm:"primarykey"`
-	UserAddress  common.Address `gorm:"uniqueIndex"`
-	ChainID      uint64         `gorm:"index"`
-	Nonce        uint64         `gorm:"index"`
-	LastUpdated   time.Time      `json:"last_updated"`
+	ID          uint           `gorm:"primarykey"`
+	UserAddress common.Address `gorm:"uniqueIndex"`
+	ChainID     uint64         `gorm:"index"`
+	Nonce       uint64         `gorm:"index"`
+	LastUpdated time.Time      `json:"last_updated"`
 }
 
 type DailyQuota struct {
-	ID            uint      `gorm:"primarykey"`
-	UserAddress   common.Address `gorm:"index"`
-	Date         string    `gorm:"index"` // YYYY-MM-DD
-	TokenAmount   int64     `json:"token_amount"`
+	ID          uint           `gorm:"primarykey"`
+	UserAddress common.Address `gorm:"index"`
+	Date        string         `gorm:"index"` // YYYY-MM-DD
+	TokenAmount int64          `json:"token_amount"`
 }
 
 // ============================================================================
@@ -248,31 +258,31 @@ type GaslessService struct {
 }
 
 type Stats struct {
-	TotalTransactions   int64   `json:"total_transactions"`
-	PendingTransactions int64   `json:"pending_transactions"`
-	ConfirmedTransactions int64 `json:"confirmed_transactions"`
-	FailedTransactions int64   `json:"failed_transactions"`
-	TotalFeesCollected string  `json:"total_fees_collected"`
+	TotalTransactions     int64  `json:"total_transactions"`
+	PendingTransactions   int64  `json:"pending_transactions"`
+	ConfirmedTransactions int64  `json:"confirmed_transactions"`
+	FailedTransactions    int64  `json:"failed_transactions"`
+	TotalFeesCollected    string `json:"total_fees_collected"`
 }
 
 type ChainState struct {
-	chainID       uint64
-	client        *ethclient.Client
-	gasPrice      *big.Int
-	lastUpdated   time.Time
-	suggestedFee  *FeeSuggestion
+	chainID      uint64
+	client       *ethclient.Client
+	gasPrice     *big.Int
+	lastUpdated  time.Time
+	suggestedFee *FeeSuggestion
 }
 
 type FeeSuggestion struct {
-	BaseFee           *big.Int
-	MaxPriorityFee   *big.Int
-	MaxFee            *big.Int
-	BufferPercent    int
+	BaseFee        *big.Int
+	MaxPriorityFee *big.Int
+	MaxFee         *big.Int
+	BufferPercent  int
 }
 
 type NonceManager struct {
-	mu       sync.Mutex
-	nonces   map[string]uint64 // "chainID:userAddress" -> nonce
+	mu     sync.Mutex
+	nonces map[string]uint64 // "chainID:userAddress" -> nonce
 }
 
 type RateLimiter struct {
@@ -312,11 +322,11 @@ func NewGaslessService(config *Config) (*GaslessService, error) {
 	// Initialize Ethereum clients
 	ethClients := make(map[uint64]*ethclient.Client)
 	rpcURLs := map[uint64]string{
-		1:    config.EthereumRPC,
-		56:   config.BSCRPC,
-		137:  config.PolygonRPC,
+		1:     config.EthereumRPC,
+		56:    config.BSCRPC,
+		137:   config.PolygonRPC,
 		42161: config.ArbitrumRPC,
-		10:   config.OptimismRPC,
+		10:    config.OptimismRPC,
 	}
 
 	for chainID, rpcURL := range rpcURLs {
@@ -356,22 +366,29 @@ func NewGaslessService(config *Config) (*GaslessService, error) {
 		return nil, fmt.Errorf("failed to parse token ABI: %v", err)
 	}
 
+	forwarderABIJSON := `[{"inputs":[{"name":"from","type":"address"},{"name":"to","type":"address"},{"name":"value","type":"uint256"},{"name":"data","type":"bytes"},{"name":"gasLimit","type":"uint256"},{"name":"relayer","type":"address"},{"name":"signature","type":"bytes"}],"name":"executeMetaTransaction","outputs":[{"name":"","type":"bytes"}],"stateMutability":"payable","type":"function"}]`
+	forwarderABI, err := abi.JSON(strings.NewReader(forwarderABIJSON))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse forwarder ABI: %v", err)
+	}
+
 	service := &GaslessService{
-		config:        config,
-		db:            db,
-		redis:         redisClient,
-		ethClients:    ethClients,
-		relayerKey:    relayerKey,
-		relayerAddr:   relayerAddr,
-		nonceManager:  &NonceManager{nonces: make(map[string]uint64)},
-		rateLimiter:   &RateLimiter{
+		config:       config,
+		db:           db,
+		redis:        redisClient,
+		ethClients:   ethClients,
+		relayerKey:   relayerKey,
+		relayerAddr:  relayerAddr,
+		nonceManager: &NonceManager{nonces: make(map[string]uint64)},
+		rateLimiter: &RateLimiter{
 			requests:     make(map[string][]time.Time),
 			maxPerMinute: config.MaxRequestsPerMinute,
 			maxPerDay:    config.MaxTokensPerDay,
 		},
-		chainStates:   make(map[uint64]*ChainState),
-		tokenABI:      tokenABI,
-		stats:         Stats{},
+		chainStates:  make(map[uint64]*ChainState),
+		tokenABI:     tokenABI,
+		forwarderABI: forwarderABI,
+		stats:        Stats{},
 	}
 
 	// Start background tasks
@@ -387,36 +404,36 @@ func NewGaslessService(config *Config) (*GaslessService, error) {
 // ============================================================================
 
 type SendMetaTxRequest struct {
-	From        string `json:"from" binding:"required"`
-	To          string `json:"to" binding:"required"`
-	Token       string `json:"token" binding:"required"`
-	Amount      string `json:"amount" binding:"required"`
-	FeeToken    string `json:"feeToken" binding:"required"`
-	FeeAmount   string `json:"feeAmount"`
-	ChainID     uint64 `json:"chainId" binding:"required"`
-	GasPrice    string `json:"gasPrice"`
-	GasLimit    uint64 `json:"gasLimit"`
-	Nonce       uint64 `json:"nonce"`
-	Signature   string `json:"signature" binding:"required"`
+	From      string `json:"from" binding:"required"`
+	To        string `json:"to" binding:"required"`
+	Token     string `json:"token" binding:"required"`
+	Amount    string `json:"amount" binding:"required"`
+	FeeToken  string `json:"feeToken" binding:"required"`
+	FeeAmount string `json:"feeAmount"`
+	ChainID   uint64 `json:"chainId" binding:"required"`
+	GasPrice  string `json:"gasPrice"`
+	GasLimit  uint64 `json:"gasLimit"`
+	Nonce     uint64 `json:"nonce"`
+	Signature string `json:"signature" binding:"required"`
 }
 
 type SendMetaTxResponse struct {
-	TxHash    string `json:"txHash"`
-	Nonce     uint64 `json:"nonce"`
-	Status    string `json:"status"`
+	TxHash string `json:"txHash"`
+	Nonce  uint64 `json:"nonce"`
+	Status string `json:"status"`
 }
 
 type GetFeeRequest struct {
-	Token     string `json:"token" binding:"required"`
-	ChainID   uint64 `json:"chainId" binding:"required"`
-	GasLimit  uint64 `json:"gasLimit"`
+	Token    string `json:"token" binding:"required"`
+	ChainID  uint64 `json:"chainId" binding:"required"`
+	GasLimit uint64 `json:"gasLimit"`
 }
 
 type GetFeeResponse struct {
-	FeeToken      string `json:"feeToken"`
-	FeeAmount     string `json:"feeAmount"`
-	GasPrice      string `json:"gasPrice"`
-	EstimatedGas  uint64 `json:"estimatedGas"`
+	FeeToken     string `json:"feeToken"`
+	FeeAmount    string `json:"feeAmount"`
+	GasPrice     string `json:"gasPrice"`
+	EstimatedGas uint64 `json:"estimatedGas"`
 }
 
 type GetNonceResponse struct {
@@ -454,14 +471,14 @@ func (s *GaslessService) sendMetaTransaction(c *gin.Context) {
 
 	// Validate user address
 	userAddr := common.HexToAddress(req.From)
-	if userAddr == common.ZeroAddress {
+	if userAddr == (common.Address{}) {
 		c.JSON(400, gin.H{"error": "invalid from address"})
 		return
 	}
 
 	// Validate token
 	tokenAddr := common.HexToAddress(req.Token)
-	if tokenAddr == common.ZeroAddress {
+	if tokenAddr == (common.Address{}) {
 		c.JSON(400, gin.H{"error": "invalid token address"})
 		return
 	}
@@ -486,11 +503,17 @@ func (s *GaslessService) sendMetaTransaction(c *gin.Context) {
 		return
 	}
 
+	// The gas limit is part of the signed payload, so it must be final before
+	// the signature is checked.
+	if req.GasLimit == 0 {
+		req.GasLimit = s.getEstimatedGasLimit(tokenAddr)
+	}
+
 	// Calculate fee
 	feeAmount := s.calculateFee(req.ChainID, tokenAddr, req.GasLimit)
 
-	// Verify signature
-	if !s.verifyUserSignature(userAddr, tokenAddr, req.To, amount, feeAmount, req.ChainID, nonce, req.Signature) {
+	// Verify the EIP-712 signature over the exact payload that will be relayed.
+	if !s.verifyUserSignature(userAddr, tokenAddr, req.To, amount, req.GasLimit, req.ChainID, nonce, req.Signature) {
 		c.JSON(400, gin.H{"error": "invalid signature"})
 		return
 	}
@@ -502,14 +525,11 @@ func (s *GaslessService) sendMetaTransaction(c *gin.Context) {
 		return
 	}
 
-	if req.GasLimit == 0 {
-		req.GasLimit = s.getEstimatedGasLimit(tokenAddr)
-	}
-
 	// Create meta transaction record
 	tx := &MetaTransaction{
-		UserAddress:    userAddr,
+		UserAddress:   userAddr,
 		TokenAddress:  tokenAddr,
+		ToAddress:     req.To,
 		ChainID:       req.ChainID,
 		TokenAmount:   req.Amount,
 		FeeToken:      tokenAddr,
@@ -550,8 +570,50 @@ func (s *GaslessService) executeMetaTransaction(tx *MetaTransaction) {
 		return
 	}
 
-	// Build transaction data
-	callData, err := s.tokenABI.Pack("transfer", common.HexToAddress(tx.UserAddress.Hex()), new(big.Int).SetString(tx.TokenAmount, 10))
+	forwarder := common.HexToAddress(s.config.ForwarderAddress)
+	if forwarder == (common.Address{}) {
+		tx.Status = "failed"
+		tx.ErrorMessage = "FORWARDER_ADDRESS not configured; refusing to relay unverified meta-transaction"
+		s.db.Save(tx)
+		return
+	}
+
+	// The user's signed intent is an ERC-20 transfer of the token to the
+	// recipient, executed by the forwarder after it verifies the signature.
+	tokenAmount, ok := new(big.Int).SetString(tx.TokenAmount, 10)
+	if !ok {
+		tx.Status = "failed"
+		tx.ErrorMessage = "invalid token amount"
+		s.db.Save(tx)
+		return
+	}
+	recipient := common.HexToAddress(tx.ToAddress)
+	innerCallData, err := s.tokenABI.Pack("transfer", recipient, tokenAmount)
+	if err != nil {
+		tx.Status = "failed"
+		tx.ErrorMessage = err.Error()
+		s.db.Save(tx)
+		return
+	}
+
+	signature, err := hex.DecodeString(strings.TrimPrefix(tx.UserSignature, "0x"))
+	if err != nil {
+		tx.Status = "failed"
+		tx.ErrorMessage = "invalid user signature encoding"
+		s.db.Save(tx)
+		return
+	}
+
+	callData, err := s.forwarderABI.Pack(
+		"executeMetaTransaction",
+		common.HexToAddress(tx.UserAddress.Hex()),
+		tx.TokenAddress,
+		big.NewInt(0), // value: meta-transactions here never move native currency
+		innerCallData,
+		new(big.Int).SetUint64(tx.GasLimit),
+		s.relayerAddr,
+		signature,
+	)
 	if err != nil {
 		tx.Status = "failed"
 		tx.ErrorMessage = err.Error()
@@ -571,9 +633,9 @@ func (s *GaslessService) executeMetaTransaction(tx *MetaTransaction) {
 	// Create transaction
 	chainID := big.NewInt(int64(tx.ChainID))
 	txData := types.DynamicFeeTx{
-		To:        &tx.TokenAddress,
+		To:        &forwarder,
 		Nonce:     relayerNonce,
-		GasLimit:  tx.GasLimit,
+		Gas:       tx.GasLimit,
 		GasFeeCap: new(big.Int).Mul(gasPriceToBigInt(tx.GasPrice), big.NewInt(2)),
 		GasTipCap: big.NewInt(1e9), // 1 gwei tip
 		Value:     big.NewInt(0),
@@ -612,7 +674,7 @@ func (s *GaslessService) executeMetaTransaction(tx *MetaTransaction) {
 
 func (s *GaslessService) waitForConfirmation(tx *MetaTransaction) {
 	s.mu.RLock()
-	chainState, ok := s.chainStates[tx.ChainID]
+	_, ok := s.chainStates[tx.ChainID]
 	s.mu.RUnlock()
 
 	if !ok {
@@ -628,7 +690,7 @@ func (s *GaslessService) waitForConfirmation(tx *MetaTransaction) {
 		return
 	}
 
-	tx.BlockNumber = receipt.BlockNumber
+	tx.BlockNumber = receipt.BlockNumber.Uint64()
 	tx.GasUsed = receipt.GasUsed
 
 	if receipt.Status == 1 {
@@ -784,23 +846,108 @@ func (s *GaslessService) getEstimatedGasLimit(tokenAddr common.Address) uint64 {
 	return tokenConfig.GasUsed
 }
 
+// metaTxTypehash is keccak256 of the EIP-712 MetaTransaction struct used by
+// the deployed forwarder contract. It must stay byte-identical to the string
+// in GaslessMetaTx.sol or every signature will be rejected.
+var metaTxTypehash = crypto.Keccak256Hash([]byte(
+	"MetaTransaction(address from,address to,uint256 value,bytes data,uint256 gasLimit,address relayer,uint256 nonce)"))
+
+var eip712DomainTypehash = crypto.Keccak256Hash([]byte(
+	"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"))
+
+// domainSeparator mirrors the contract's DOMAIN_SEPARATOR so the digest the
+// relayer recovers from is exactly the one the user signed.
+func (s *GaslessService) domainSeparator(chainID uint64) common.Hash {
+	return crypto.Keccak256Hash(
+		eip712DomainTypehash.Bytes(),
+		crypto.Keccak256Hash([]byte(s.config.ForwarderName)).Bytes(),
+		crypto.Keccak256Hash([]byte(s.config.ForwarderVersion)).Bytes(),
+		common.LeftPadBytes(new(big.Int).SetUint64(chainID).Bytes(), 32),
+		common.LeftPadBytes(common.HexToAddress(s.config.ForwarderAddress).Bytes(), 32),
+	)
+}
+
+// metaTxDigest builds the EIP-712 digest the user signs. It is shared by the
+// verifier and by tests so both always agree on the exact signed payload.
+func (s *GaslessService) metaTxDigest(
+	userAddr common.Address,
+	tokenAddr common.Address,
+	recipient common.Address,
+	amount *big.Int,
+	gasLimit uint64,
+	chainID uint64,
+	nonce uint64,
+) common.Hash {
+	callData, err := s.tokenABI.Pack("transfer", recipient, amount)
+	if err != nil {
+		// The ABI is fixed at build time, so an encoding failure here is a
+		// programming error; return an unusable digest rather than a guess.
+		return common.Hash{}
+	}
+
+	structHash := crypto.Keccak256Hash(
+		metaTxTypehash.Bytes(),
+		common.LeftPadBytes(userAddr.Bytes(), 32),
+		common.LeftPadBytes(recipient.Bytes(), 32),
+		common.LeftPadBytes(big.NewInt(0).Bytes(), 32), // value
+		crypto.Keccak256Hash(callData).Bytes(),
+		common.LeftPadBytes(new(big.Int).SetUint64(gasLimit).Bytes(), 32),
+		common.LeftPadBytes(s.relayerAddr.Bytes(), 32),
+		common.LeftPadBytes(new(big.Int).SetUint64(nonce).Bytes(), 32),
+	)
+
+	return crypto.Keccak256Hash(
+		[]byte{0x19, 0x01},
+		s.domainSeparator(chainID).Bytes(),
+		structHash.Bytes(),
+	)
+}
+
+// verifyUserSignature recovers the EIP-712 signer of a meta-transaction and
+// requires it to match the claimed user. Returning true for any input would
+// let an attacker relay a transfer for an address they do not control, so this
+// fails closed whenever the forwarder is unconfigured or recovery mismatches.
 func (s *GaslessService) verifyUserSignature(
 	userAddr common.Address,
 	tokenAddr common.Address,
 	to string,
 	amount *big.Int,
-	fee *big.Int,
+	gasLimit uint64,
 	chainID uint64,
 	nonce uint64,
 	signature string,
 ) bool {
-	// Build message hash
-	message := fmt.Sprintf("%s:%s:%s:%s:%d:%d", userAddr.Hex(), tokenAddr.Hex(), to, amount.String(), chainID, nonce)
-	messageHash := sha256.Sum256([]byte(message))
+	forwarder := common.HexToAddress(s.config.ForwarderAddress)
+	if forwarder == (common.Address{}) {
+		log.Println("gasless: FORWARDER_ADDRESS not configured; rejecting meta-transaction")
+		return false
+	}
+	if to == "" {
+		return false
+	}
 
-	// For demo purposes, accept any signature
-	// In production, use proper EIP-712 signing
-	return true
+	// The forwarder executes a call to `to` with the encoded calldata. The
+	// relayer builds an ERC-20 transfer of `amount` to the recipient, which is
+	// what the user signs over.
+	recipient := common.HexToAddress(to)
+	digest := s.metaTxDigest(userAddr, tokenAddr, recipient, amount, gasLimit, chainID, nonce)
+	if digest == (common.Hash{}) {
+		return false
+	}
+
+	sig, err := hex.DecodeString(strings.TrimPrefix(signature, "0x"))
+	if err != nil || len(sig) != 65 {
+		return false
+	}
+	if sig[64] >= 27 {
+		sig[64] -= 27
+	}
+
+	pubKey, err := crypto.SigToPub(digest.Bytes(), sig)
+	if err != nil {
+		return false
+	}
+	return crypto.PubkeyToAddress(*pubKey) == userAddr
 }
 
 func gasPriceToBigInt(gasPrice string) *big.Int {
@@ -834,7 +981,7 @@ func (s *GaslessService) updateGasPrices() {
 			} else {
 				s.chainStates[chainID] = &ChainState{
 					chainID:     chainID,
-					client:       client,
+					client:      client,
 					gasPrice:    gasPrice,
 					lastUpdated: time.Now(),
 				}
@@ -900,6 +1047,7 @@ func (s *RateLimiter) allow(user string) bool {
 	var validTimes []time.Time
 	minuteCount := 0
 	dayCount := 0
+	oneDayAgo := time.Now().Add(-24 * time.Hour)
 
 	for _, t := range times {
 		if t.After(oneMinuteAgo) {
@@ -978,7 +1126,7 @@ func (s *GaslessService) getFee(c *gin.Context) {
 	gasPrice, _ := s.getGasPrice(req.ChainID)
 
 	c.JSON(200, GetFeeResponse{
-		FeeToken:      req.Token,
+		FeeToken:     req.Token,
 		FeeAmount:    feeAmount.String(),
 		GasPrice:     gasPrice.String(),
 		EstimatedGas: gasLimit,
@@ -1001,7 +1149,7 @@ func (s *GaslessService) healthCheck(c *gin.Context) {
 	checks := make(map[string]string)
 
 	for chainID, client := range s.ethClients {
-		if err := client.SendTransaction(context.Background(), common.HexToAddress("0x")); err == nil {
+		if _, err := client.ChainID(context.Background()); err == nil {
 			checks[fmt.Sprintf("chain_%d", chainID)] = "ok"
 		} else {
 			checks[fmt.Sprintf("chain_%d", chainID)] = "error"

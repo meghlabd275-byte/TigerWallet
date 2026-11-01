@@ -33,6 +33,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq" // registers the postgres driver used by database/sql
 	"github.com/redis/go-redis/v9"
 )
 
@@ -228,7 +229,12 @@ func (s *ProtectionFundService) Initialize() error {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
-	// Initialize default fund
+	// Restore whatever is already persisted before seeding anything.
+	if err := s.loadState(); err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// Seed a default fund only when real on-chain addresses are configured.
 	if err := s.initDefaultFund(); err != nil {
 		return fmt.Errorf("failed to initialize default fund: %w", err)
 	}
@@ -343,6 +349,15 @@ func (s *ProtectionFundService) initDefaultFund() error {
 		log.Println("[protection_fund] no FUND_CONTRACT_ADDRESS/GOVERNANCE_MULTISIG configured; skipping default fund")
 		return nil
 	}
+	// A restart must not create a second fund for the same contract; loadState
+	// has already restored the existing one.
+	for _, existing := range s.funds {
+		if strings.EqualFold(existing.ContractAddress, cfg.FundContractAddress) {
+			log.Println("[protection_fund] default fund already registered; skipping seed")
+			return nil
+		}
+	}
+
 	tokenAddr := cfg.FundTokenAddress
 	if tokenAddr == "" {
 		tokenAddr = "0x0000000000000000000000000000000000000000" // native ETH
@@ -379,19 +394,245 @@ func (s *ProtectionFundService) initDefaultFund() error {
 	return err
 }
 
+// loadState rebuilds the in-memory working set from PostgreSQL. Handlers read
+// the maps rather than the database, so without this a restart would silently
+// hide funds, claims and policies that are already persisted.
+// jsonOrEmptyArray returns valid JSON for a jsonb column. An absent or blank
+// value becomes an empty array, because PostgreSQL rejects an empty string as
+// jsonb input. Non-blank values are validated so a malformed payload is
+// rejected by the caller instead of surfacing as a database error.
+func jsonOrEmptyArray(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "[]", nil
+	}
+	if !json.Valid([]byte(trimmed)) {
+		return "", fmt.Errorf("value is not valid JSON")
+	}
+	return trimmed, nil
+}
+
+// nullableUUID converts an empty identifier to a SQL NULL, because the
+// reviewer_id column is a UUID and PostgreSQL rejects an empty string.
+func nullableUUID(v string) interface{} {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return v
+}
+
+// persistClaim writes the current claim state back to PostgreSQL. Handlers
+// mutate the in-memory struct, so without this every review, approval and
+// payout update would be lost on the next restart.
+func (s *ProtectionFundService) persistClaim(claim *Claim) error {
+	evidence, err := jsonOrEmptyArray(claim.Evidence)
+	if err != nil {
+		return err
+	}
+	approvers, err := jsonOrEmptyArray(claim.ApproverIDs)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`
+		UPDATE claims SET status = $1, reviewer_id = $2, approver_ids = $3,
+			rejection_reason = $4, tx_hash = $5, processed_at = $6,
+			covered_amount = $7, evidence = $8, updated_at = $9
+		WHERE id = $10`,
+		claim.Status, nullableUUID(claim.ReviewerID), approvers, claim.RejectionReason,
+		claim.TxHash, claim.ProcessedAt, claim.CoveredAmount, evidence, time.Now(), claim.ID)
+	return err
+}
+
+// persistFund writes fund balances back to PostgreSQL so reservations and
+// payouts survive a restart.
+func (s *ProtectionFundService) persistFund(fund *ProtectionFund) error {
+	_, err := s.db.Exec(`
+		UPDATE protection_funds SET total_balance = $1, available_balance = $2,
+			reserved_balance = $3, total_paid_out = $4, status = $5, updated_at = NOW()
+		WHERE id = $6`,
+		fund.TotalBalance, fund.AvailableBalance, fund.ReservedBalance,
+		fund.TotalPaidOut, fund.Status, fund.ID)
+	return err
+}
+
+// persistUserCoverage writes an enrollment so it is not lost on restart.
+func (s *ProtectionFundService) persistUserCoverage(uc *UserCoverage) error {
+	_, err := s.db.Exec(`
+		INSERT INTO user_coverage (id, user_id, fund_id, policy_id, coverage_limit,
+			used_coverage, remaining_cover, active, enrollment_date, expiry_date)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET used_coverage = EXCLUDED.used_coverage,
+			remaining_cover = EXCLUDED.remaining_cover, active = EXCLUDED.active`,
+		uc.ID, uc.UserID, uc.FundID, uc.PolicyID, uc.CoverageLimit, uc.UsedCoverage,
+		uc.RemainingCover, uc.Active, uc.EnrollmentDate, uc.ExpiryDate)
+	return err
+}
+
+func (s *ProtectionFundService) loadState() error {
+	fundRows, err := s.db.Query(`
+		SELECT id, name, COALESCE(contract_address,''), COALESCE(total_balance,'0'),
+		       COALESCE(available_balance,'0'), COALESCE(reserved_balance,'0'),
+		       COALESCE(total_paid_out,'0'), COALESCE(coverage_percent,0),
+		       COALESCE(token_address,''), COALESCE(governance_multisig,''),
+		       COALESCE(status,'active'), created_at, updated_at
+		FROM protection_funds`)
+	if err != nil {
+		return err
+	}
+	for fundRows.Next() {
+		f := &ProtectionFund{}
+		if err := fundRows.Scan(&f.ID, &f.Name, &f.ContractAddress, &f.TotalBalance,
+			&f.AvailableBalance, &f.ReservedBalance, &f.TotalPaidOut, &f.CoveragePercent,
+			&f.TokenAddress, &f.GovernanceMultisig, &f.Status, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			fundRows.Close()
+			return err
+		}
+		s.funds[f.ID] = f
+	}
+	fundRows.Close()
+	if err := fundRows.Err(); err != nil {
+		return err
+	}
+
+	policyRows, err := s.db.Query(`
+		SELECT id, COALESCE(fund_id::text,''), COALESCE(name,''), COALESCE(description,''),
+		       COALESCE(incident_types::text,'[]'), COALESCE(coverage_percent,0),
+		       COALESCE(min_claim,'0'), COALESCE(max_claim,'0'), COALESCE(waiting_period,0),
+		       COALESCE(max_claims_per_user,0), COALESCE(active,false), created_at
+		FROM coverage_policies`)
+	if err != nil {
+		return err
+	}
+	for policyRows.Next() {
+		pol := &CoveragePolicy{}
+		if err := policyRows.Scan(&pol.ID, &pol.FundID, &pol.Name, &pol.Description,
+			&pol.IncidentTypes, &pol.CoveragePercent, &pol.MinClaim, &pol.MaxClaim,
+			&pol.WaitingPeriod, &pol.MaxClaimsPerUser, &pol.Active, &pol.CreatedAt); err != nil {
+			policyRows.Close()
+			return err
+		}
+		s.policies[pol.ID] = pol
+	}
+	policyRows.Close()
+	if err := policyRows.Err(); err != nil {
+		return err
+	}
+
+	claimRows, err := s.db.Query(`
+		SELECT id, COALESCE(fund_id::text,''), COALESCE(user_id::text,''),
+		       COALESCE(claim_amount,'0'), COALESCE(claim_currency,''),
+		       COALESCE(covered_amount,'0'), COALESCE(incident_type,''), incident_date,
+		       COALESCE(description,''), COALESCE(evidence::text,'[]'), COALESCE(status,'pending'),
+		       COALESCE(reviewer_id::text,''), COALESCE(approver_ids::text,'[]'),
+		       COALESCE(rejection_reason,''), COALESCE(tx_hash,''), processed_at,
+		       created_at, updated_at
+		FROM claims`)
+	if err != nil {
+		return err
+	}
+	for claimRows.Next() {
+		var incidentDate, processedAt sql.NullTime
+		cl := &Claim{}
+		if err := claimRows.Scan(&cl.ID, &cl.FundID, &cl.UserID, &cl.ClaimAmount,
+			&cl.ClaimCurrency, &cl.CoveredAmount, &cl.IncidentType, &incidentDate,
+			&cl.Description, &cl.Evidence, &cl.Status, &cl.ReviewerID, &cl.ApproverIDs,
+			&cl.RejectionReason, &cl.TxHash, &processedAt, &cl.CreatedAt, &cl.UpdatedAt); err != nil {
+			claimRows.Close()
+			return err
+		}
+		if incidentDate.Valid {
+			cl.IncidentDate = incidentDate.Time
+		}
+		if processedAt.Valid {
+			t := processedAt.Time
+			cl.ProcessedAt = &t
+		}
+		s.claims[cl.ID] = cl
+	}
+	claimRows.Close()
+	if err := claimRows.Err(); err != nil {
+		return err
+	}
+
+	coverageRows, err := s.db.Query(`
+		SELECT id, COALESCE(user_id::text,''), COALESCE(fund_id::text,''),
+		       COALESCE(policy_id::text,''), COALESCE(coverage_limit,'0'),
+		       COALESCE(used_coverage,'0'), COALESCE(remaining_cover,'0'),
+		       COALESCE(active,false), enrollment_date, expiry_date
+		FROM user_coverage`)
+	if err != nil {
+		return err
+	}
+	for coverageRows.Next() {
+		var expiry sql.NullTime
+		uc := &UserCoverage{}
+		if err := coverageRows.Scan(&uc.ID, &uc.UserID, &uc.FundID, &uc.PolicyID,
+			&uc.CoverageLimit, &uc.UsedCoverage, &uc.RemainingCover, &uc.Active,
+			&uc.EnrollmentDate, &expiry); err != nil {
+			coverageRows.Close()
+			return err
+		}
+		if expiry.Valid {
+			t := expiry.Time
+			uc.ExpiryDate = &t
+		}
+		s.users[uc.ID] = uc
+	}
+	coverageRows.Close()
+	if err := coverageRows.Err(); err != nil {
+		return err
+	}
+
+	proposalRows, err := s.db.Query(`
+		SELECT id, COALESCE(fund_id::text,''), COALESCE(proposer_id::text,''),
+		       COALESCE(title,''), COALESCE(description,''), COALESCE(proposal_type,''),
+		       COALESCE(status,'pending'), COALESCE(votes_for,0), COALESCE(votes_against,0),
+		       COALESCE(signatures::text,'[]'), execute_after, executed_at,
+		       created_at, expires_at
+		FROM governance_proposals`)
+	if err != nil {
+		return err
+	}
+	for proposalRows.Next() {
+		var executeAfter, executedAt sql.NullTime
+		gp := &GovernanceProposal{}
+		if err := proposalRows.Scan(&gp.ID, &gp.FundID, &gp.ProposerID, &gp.Title,
+			&gp.Description, &gp.ProposalType, &gp.Status, &gp.VotesFor, &gp.VotesAgainst,
+			&gp.Signatures, &executeAfter, &executedAt, &gp.CreatedAt, &gp.ExpiresAt); err != nil {
+			proposalRows.Close()
+			return err
+		}
+		if executeAfter.Valid {
+			t := executeAfter.Time
+			gp.ExecuteAfter = &t
+		}
+		if executedAt.Valid {
+			t := executedAt.Time
+			gp.ExecutedAt = &t
+		}
+		s.proposals[gp.ID] = gp
+	}
+	proposalRows.Close()
+	return proposalRows.Err()
+}
+
 func (s *ProtectionFundService) initDefaultPolicies() error {
-	// Get default fund
-	var fundID string
-	for id := range s.funds {
-		fundID = id
-		break
+	// A fund is created only when real on-chain addresses are configured, so a
+	// deployment without them legitimately has no funds yet. Seeding is skipped
+	// rather than failing startup; policies appear once a fund exists.
+	if len(s.funds) == 0 {
+		log.Println("[protection_fund] no fund registered yet; skipping default policies")
+		return nil
 	}
 
-	if fundID == "" {
-		return fmt.Errorf("no fund found")
+	// Policies are inserted with fresh ids, so seeding has to be once per fund.
+	// Without this check every restart would duplicate the whole set.
+	seeded := make(map[string]bool, len(s.policies))
+	for _, pol := range s.policies {
+		seeded[pol.FundID] = true
 	}
 
-	policies := []struct {
+	type policyTemplate struct {
 		Name            string
 		Description     string
 		IncidentTypes   []string
@@ -400,7 +641,9 @@ func (s *ProtectionFundService) initDefaultPolicies() error {
 		MaxClaim        string
 		WaitingPeriod   int
 		MaxClaims       int
-	}{
+	}
+
+	policies := []policyTemplate{
 		{
 			Name:            "Standard Coverage",
 			Description:     "Basic protection for all TigerWallet users",
@@ -433,37 +676,41 @@ func (s *ProtectionFundService) initDefaultPolicies() error {
 		},
 	}
 
-	for _, p := range policies {
-		policy := &CoveragePolicy{
-			ID:               uuid.New().String(),
-			FundID:           fundID,
-			Name:             p.Name,
-			Description:      p.Description,
-			IncidentTypes:    mustJSON(p.IncidentTypes),
-			CoveragePercent:  p.CoveragePercent,
-			MinClaim:         p.MinClaim,
-			MaxClaim:         p.MaxClaim,
-			WaitingPeriod:    p.WaitingPeriod,
-			MaxClaimsPerUser: p.MaxClaims,
-			Active:           true,
-			CreatedAt:        time.Now(),
+	for fundID := range s.funds {
+		if seeded[fundID] {
+			continue
 		}
+		for _, p := range policies {
+			policy := &CoveragePolicy{
+				ID:               uuid.New().String(),
+				FundID:           fundID,
+				Name:             p.Name,
+				Description:      p.Description,
+				IncidentTypes:    mustJSON(p.IncidentTypes),
+				CoveragePercent:  p.CoveragePercent,
+				MinClaim:         p.MinClaim,
+				MaxClaim:         p.MaxClaim,
+				WaitingPeriod:    p.WaitingPeriod,
+				MaxClaimsPerUser: p.MaxClaims,
+				Active:           true,
+				CreatedAt:        time.Now(),
+			}
 
-		s.policies[policy.ID] = policy
+			s.policies[policy.ID] = policy
 
-		// Insert into database
-		_, err := s.db.Exec(`
-			INSERT INTO coverage_policies (id, fund_id, name, description, incident_types, 
-				coverage_percent, min_claim, max_claim, waiting_period, max_claims_per_user, 
-				active, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-			ON CONFLICT (id) DO NOTHING
-		`, policy.ID, policy.FundID, policy.Name, policy.Description, policy.IncidentTypes,
-			policy.CoveragePercent, policy.MinClaim, policy.MaxClaim, policy.WaitingPeriod,
-			policy.MaxClaimsPerUser, policy.Active, policy.CreatedAt)
+			_, err := s.db.Exec(`
+				INSERT INTO coverage_policies (id, fund_id, name, description, incident_types,
+					coverage_percent, min_claim, max_claim, waiting_period, max_claims_per_user,
+					active, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+				ON CONFLICT (id) DO NOTHING
+			`, policy.ID, policy.FundID, policy.Name, policy.Description, policy.IncidentTypes,
+				policy.CoveragePercent, policy.MinClaim, policy.MaxClaim, policy.WaitingPeriod,
+				policy.MaxClaimsPerUser, policy.Active, policy.CreatedAt)
 
-		if err != nil {
-			return err
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -566,9 +813,16 @@ func (s *ProtectionFundService) SubmitClaim(c *gin.Context) {
 		return
 	}
 
-	// Check policy limits
+	// Check policy limits. The policies map is keyed by policy id, so the fund's
+	// active policy has to be located by fund id rather than looked up directly.
 	s.mu.RLock()
-	policy := s.policies[req.FundID]
+	var policy *CoveragePolicy
+	for _, candidate := range s.policies {
+		if candidate.FundID == req.FundID && candidate.Active {
+			policy = candidate
+			break
+		}
+	}
 	s.mu.RUnlock()
 
 	if policy == nil {
@@ -613,15 +867,49 @@ func (s *ProtectionFundService) SubmitClaim(c *gin.Context) {
 	}
 
 	s.mu.Lock()
-	s.claims[claim.ID] = claim
-
-	// Reserve funds
 	fund := s.funds[req.FundID]
 	if fund != nil {
 		reserved, _ := new(big.Int).SetString(fund.ReservedBalance, 10)
 		reserved.Add(reserved, coveredAmount)
 		fund.ReservedBalance = reserved.String()
 	}
+	s.mu.Unlock()
+
+	// Persist before acknowledging. The claims map is only a cache, so a claim
+	// that is not written here would be lost on the next restart.
+	evidence, err := jsonOrEmptyArray(claim.Evidence)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "evidence must be valid JSON"})
+		return
+	}
+	approvers, err := jsonOrEmptyArray(claim.ApproverIDs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "approver_ids must be valid JSON"})
+		return
+	}
+	if _, err := s.db.Exec(`
+		INSERT INTO claims (id, fund_id, user_id, claim_amount, claim_currency,
+			covered_amount, incident_type, incident_date, description, evidence,
+			status, approver_ids, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+	`, claim.ID, claim.FundID, claim.UserID, claim.ClaimAmount, claim.ClaimCurrency,
+		claim.CoveredAmount, claim.IncidentType, claim.IncidentDate, claim.Description,
+		evidence, claim.Status, approvers, claim.CreatedAt, claim.UpdatedAt); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist claim"})
+		return
+	}
+
+	if fund != nil {
+		if _, err := s.db.Exec(
+			`UPDATE protection_funds SET reserved_balance = $1, updated_at = NOW() WHERE id = $2`,
+			fund.ReservedBalance, fund.ID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist fund reservation"})
+			return
+		}
+	}
+
+	s.mu.Lock()
+	s.claims[claim.ID] = claim
 	s.mu.Unlock()
 
 	c.JSON(201, gin.H{
@@ -727,6 +1015,17 @@ func (s *ProtectionFundService) ReviewClaim(c *gin.Context) {
 		}
 	}
 
+	if err := s.persistClaim(claim); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist claim review"})
+		return
+	}
+	if fund := s.funds[claim.FundID]; fund != nil {
+		if err := s.persistFund(fund); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist fund balances"})
+			return
+		}
+	}
+
 	c.JSON(200, gin.H{"success": true, "data": claim})
 }
 
@@ -802,6 +1101,11 @@ func (s *ProtectionFundService) ApproveClaim(c *gin.Context) {
 		claim.Status = "approved"
 	}
 
+	if err := s.persistClaim(claim); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist approval"})
+		return
+	}
+
 	c.JSON(200, gin.H{
 		"success":   true,
 		"data":      claim,
@@ -837,6 +1141,11 @@ func (s *ProtectionFundService) ProcessClaimPayment(c *gin.Context) {
 	claim.Status = "payment_pending"
 	now := time.Now()
 	claim.ProcessedAt = &now
+
+	if err := s.persistClaim(claim); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist payment state"})
+		return
+	}
 
 	c.JSON(202, gin.H{
 		"success": false,
@@ -982,6 +1291,11 @@ func (s *ProtectionFundService) EnrollUser(c *gin.Context) {
 	s.mu.Lock()
 	s.users[enrollment.ID] = enrollment
 	s.mu.Unlock()
+
+	if err := s.persistUserCoverage(enrollment); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist enrollment"})
+		return
+	}
 
 	c.JSON(201, gin.H{
 		"success":      true,
@@ -1218,6 +1532,17 @@ func (s *ProtectionFundService) SetClaimTxHash(c *gin.Context) {
 		available, _ := new(big.Int).SetString(fund.AvailableBalance, 10)
 		available.Sub(available, covered)
 		fund.AvailableBalance = available.String()
+	}
+
+	if err := s.persistClaim(claim); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist claim payout"})
+		return
+	}
+	if fund := s.funds[claim.FundID]; fund != nil {
+		if err := s.persistFund(fund); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to persist fund balances"})
+			return
+		}
 	}
 
 	c.JSON(200, gin.H{"success": true, "data": claim})

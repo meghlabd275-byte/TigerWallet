@@ -423,7 +423,7 @@ services:
       dockerfile: go/Dockerfile
     container_name: tigerwallet-permission-service
     ports:
-      - "8091:8091"
+      - "8476:8091"
     environment:
       PERMISSION_PORT: "8091"
       DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-tigerwallet_admin}?sslmode=disable"
@@ -936,6 +936,324 @@ services:
     depends_on:
       - master-wallet-backend
     restart: unless-stopped
+
+
+  # ---------------------------------------------------------------------------
+  # Auxiliary services. These back route groups the Next.js proxy already
+  # forwards to; without a container here the front end gets connection-refused
+  # on those features even though the backend is complete.
+  # ---------------------------------------------------------------------------
+  nft-service:
+    build:
+      context: ./go/nft_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-nft-service
+    ports:
+      - "8004:8004"
+    environment:
+      - NFT_PORT=8004
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      - ETH_RPC_URL=${ETH_RPC_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  fiat-service:
+    build:
+      context: ./go/fiat
+      dockerfile: Dockerfile
+    container_name: tigerwallet-fiat-service
+    ports:
+      - "8008:8008"
+    environment:
+      - PORT=8008
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_fiat?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: ./go/analytics_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-analytics-service
+    ports:
+      - "8010:8010"
+    environment:
+      - ANALYTICS_PORT=8010
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_analytics?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./go/notification_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-notification-service
+    ports:
+      - "8011:8011"
+    environment:
+      - PORT=8011
+    restart: unless-stopped
+
+  launchpad-service:
+    build:
+      context: ./go/launchpad_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-launchpad-service
+    ports:
+      - "8012:8012"
+    environment:
+      - PORT=8012
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_launchpad?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      - ADMIN_USER_ID=${ADMIN_USER_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ens-service:
+    build:
+      context: ./go/ens_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-ens-service
+    ports:
+      - "8453:8453"
+    environment:
+      - PORT=8453
+      - REDIS_URL=redis://redis:6379
+      - ETH_RPC_URL=${ETH_RPC_URL:-}
+    restart: unless-stopped
+
+  leaderboard-service:
+    build:
+      context: ./go/leaderboard_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-leaderboard-service
+    ports:
+      - "8477:8458"
+    environment:
+      - PORT=8458
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_leaderboard?sslmode=disable
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  insurance-service:
+    build:
+      context: ./go/insurance_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-insurance-service
+    ports:
+      - "8478:8459"
+    environment:
+      - PORT=8459
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_insurance?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      - ADMIN_USER_ID=${ADMIN_USER_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  perpetual-service:
+    build:
+      context: ./go/perpetual_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-perpetual-service
+    ports:
+      - "8479:8464"
+    environment:
+      - PORT=8464
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_perpetual?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  listing-service:
+    build:
+      context: ./go/listing_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-listing-service
+    ports:
+      - "8097:8097"
+    environment:
+      - PORT=8097
+      - REDIS_ADDR=redis:6379
+      - PAYMENT_SERVICE_URL=http://payment-service:8096
+      - ETH_RPC_URL=${ETH_RPC_URL:-}
+      - LISTING_SUPERADMIN_EMAIL=${LISTING_SUPERADMIN_EMAIL:-}
+    restart: unless-stopped
+
+  portfolio-tracker:
+    build:
+      context: ./go/portfolio_tracker
+      dockerfile: Dockerfile
+    container_name: tigerwallet-portfolio-tracker
+    ports:
+      - "8084:8084"
+    environment:
+      - PORTFOLIO_PORT=8084
+      - WALLET_API_URL=http://wallet-api:8443
+      - COINGECKO_BASE=${COINGECKO_BASE:-https://api.coingecko.com/api/v3}
+    restart: unless-stopped
+
+  bug-bounty-service:
+    build:
+      context: ./go/bug_bounty_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bug-bounty-service
+    ports:
+      - "8080:8080"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-tigerwallet}
+      - POSTGRES_DB=tigerwallet_bugbounty
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  protection-fund-service:
+    build:
+      context: ./go/protection_fund_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-protection-fund-service
+    ports:
+      - "8086:8086"
+    environment:
+      - PORT=8086
+      - DB_CONNECTION=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_protection_fund?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      - PROTECTION_FUND_ADMIN_TOKEN=${PROTECTION_FUND_ADMIN_TOKEN:?PROTECTION_FUND_ADMIN_TOKEN must be set to a strong value}
+      - WALLET_API_URL=http://wallet-api:8443
+      - FUND_CONTRACT_ADDRESS=${FUND_CONTRACT_ADDRESS:-}
+      - FUND_TOKEN_ADDRESS=${FUND_TOKEN_ADDRESS:-}
+      - GOVERNANCE_MULTISIG=${GOVERNANCE_MULTISIG:-}
+      - GOVERNANCE_SIGNERS=${GOVERNANCE_SIGNERS:-}
+      - GOVERNANCE_THRESHOLD=${GOVERNANCE_THRESHOLD:-3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  aa-bundler:
+    build:
+      context: ./account_abstraction/go_api
+      dockerfile: Dockerfile
+    container_name: tigerwallet-aa-bundler
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - RPC_URL=${AA_RPC_URL:-}
+      - ENTRY_POINT=${AA_ENTRY_POINT:-}
+      - ACCOUNT_FACTORY=${AA_ACCOUNT_FACTORY:-}
+      - PAYMASTER_ADDRESS=${AA_PAYMASTER_ADDRESS:-}
+      - PAYMASTER_SIGNER_KEY=${AA_PAYMASTER_SIGNER_KEY:-}
+      - BENEFICIARY=${AA_BENEFICIARY:-}
+    restart: unless-stopped
+
+  mpc-service:
+    build:
+      context: ./go/mpc
+      dockerfile: Dockerfile
+    container_name: tigerwallet-mpc-service
+    ports:
+      - "9099:9099"
+    environment:
+      - MPC_PORT=9099
+    restart: unless-stopped
+
+  # Bridge aggregator. The front end's /bridge/* proxy targets this port; the
+  # sibling bridge-api on :8007 is the older lock/mint service and stays as is.
+  bridge-aggregator:
+    build:
+      context: ./go/bridge
+      dockerfile: Dockerfile
+    container_name: tigerwallet-bridge-aggregator
+    ports:
+      - "8480:8470"
+    environment:
+      - PORT=8470
+    restart: unless-stopped
+
+  # TOTP and WebAuthn. The /2fa/* proxy targets this port; the service also
+  # sends one-time codes by SMTP and SMS when those are configured.
+  two-factor-auth:
+    build:
+      context: ./go
+      dockerfile: two_factor_auth/Dockerfile
+    container_name: tigerwallet-two-factor-auth
+    ports:
+      - "8481:8446"
+    environment:
+      - PORT=8446
+      - ISSUER_NAME=${TWO_FACTOR_ISSUER_NAME:-TigerWallet}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      - SMTP_SERVER=${SMTP_SERVER:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@tigerwallet.com}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+    restart: unless-stopped
+
+
+  # DEX quoting and execution. Quotes come from live CoinGecko cross-rates;
+  # execution submits a real on-chain swap through wallet-api.
+  swap-service:
+    build:
+      context: ./go/swap_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-swap-service
+    ports:
+      - "8482:8005"
+    environment:
+      - PORT=8005
+      - REDIS_ADDR=redis:6379
+      - COINGECKO_BASE_URL=${COINGECKO_BASE_URL:-https://api.coingecko.com/api/v3}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 
 volumes:
   postgres_data:
