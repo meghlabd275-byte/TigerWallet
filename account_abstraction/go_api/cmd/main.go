@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -59,6 +60,19 @@ type Config struct {
 	PaymasterPostOpGas       uint64
 	// SponsorshipWindow bounds how long a signed approval stays valid.
 	SponsorshipWindow time.Duration
+
+	// MaxSponsorGas caps the gas the sponsor will pay for a single operation.
+	// Zero means the cap is disabled, which operators should only do with a
+	// funded, allowlisted deployment.
+	MaxSponsorGas uint64
+
+	// SponsorshipPerSenderDaily caps how many operations one sender may have
+	// sponsored per rolling 24 hours. Zero disables the quota.
+	SponsorshipPerSenderDaily int
+
+	// SponsorshipAllowlist, when non-empty, restricts sponsorship to these
+	// senders. An empty list means every sender is eligible.
+	SponsorshipAllowlist map[common.Address]bool
 }
 
 // ConfigFromEnv reads the configuration from the environment.
@@ -109,18 +123,53 @@ func ConfigFromEnv() (*Config, error) {
 		paymaster = common.HexToAddress(value)
 	}
 
+	// Sponsorship limits. A zero cap or quota disables that particular
+	// limit; the allowlist is opt-in.
+	maxSponsorGas := uint64(0)
+	if value := os.Getenv("MAX_SPONSOR_GAS"); value != "" {
+		parsed, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("MAX_SPONSOR_GAS %q is not a number", value)
+		}
+		maxSponsorGas = parsed
+	}
+
+	dailyQuota := 0
+	if value := os.Getenv("SPONSORSHIP_PER_SENDER_DAILY"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return nil, fmt.Errorf("SPONSORSHIP_PER_SENDER_DAILY %q is not a non-negative number", value)
+		}
+		dailyQuota = parsed
+	}
+
+	allowlist := make(map[common.Address]bool)
+	for _, entry := range strings.Split(os.Getenv("SPONSORSHIP_ALLOWLIST"), ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if !common.IsHexAddress(entry) {
+			return nil, fmt.Errorf("SPONSORSHIP_ALLOWLIST entry %q is not a valid address", entry)
+		}
+		allowlist[common.HexToAddress(entry)] = true
+	}
+
 	return &Config{
-		Port:                     getEnv("PORT", "8080"),
-		RPCURL:                   rpcURL,
-		EntryPoint:               entryPoint,
-		Beneficiary:              beneficiary,
-		MaxMempoolSize:           1024,
-		AccountFactory:           accountFactory,
-		FactoryMode:              factoryMode,
-		PaymasterAddress:         paymaster,
-		PaymasterVerificationGas: defaultPaymasterVerificationGas,
-		PaymasterPostOpGas:       defaultPaymasterPostOpGas,
-		SponsorshipWindow:        defaultSponsorshipWindow,
+		Port:                      getEnv("PORT", "8080"),
+		RPCURL:                    rpcURL,
+		EntryPoint:                entryPoint,
+		Beneficiary:               beneficiary,
+		MaxMempoolSize:            1024,
+		AccountFactory:            accountFactory,
+		FactoryMode:               factoryMode,
+		PaymasterAddress:          paymaster,
+		PaymasterVerificationGas:  defaultPaymasterVerificationGas,
+		PaymasterPostOpGas:        defaultPaymasterPostOpGas,
+		SponsorshipWindow:         defaultSponsorshipWindow,
+		MaxSponsorGas:             maxSponsorGas,
+		SponsorshipPerSenderDaily: dailyQuota,
+		SponsorshipAllowlist:      allowlist,
 	}, nil
 }
 
@@ -245,6 +294,12 @@ type BundlerAPI struct {
 	// paymasterSigner authorises gas sponsorship. It is nil when no sponsor key
 	// is configured, which disables sponsorship rather than faking an approval.
 	paymasterSigner *ecdsa.PrivateKey
+
+	// sponsorshipCounts tracks sponsored operations per sender within the
+	// rolling window, so one caller cannot consume the whole paymaster deposit.
+	sponsorshipMu      sync.Mutex
+	sponsorshipCounts  map[common.Address]int
+	sponsorshipWindows map[common.Address]time.Time
 }
 
 // NewBundlerAPI connects to the node and confirms it is usable.
@@ -264,9 +319,11 @@ func NewBundlerAPI(config *Config) (*BundlerAPI, error) {
 	}
 
 	api := &BundlerAPI{
-		client:  client,
-		config:  config,
-		mempool: NewMempoolService(config.MaxMempoolSize),
+		client:             client,
+		config:             config,
+		mempool:            NewMempoolService(config.MaxMempoolSize),
+		sponsorshipCounts:  make(map[common.Address]int),
+		sponsorshipWindows: make(map[common.Address]time.Time),
 	}
 
 	// Sponsorship is optional. A missing key leaves the paymaster endpoints
@@ -278,6 +335,93 @@ func NewBundlerAPI(config *Config) (*BundlerAPI, error) {
 	}
 
 	return api, nil
+}
+
+// sponsorshipError describes why a sponsorship request was refused.
+type sponsorshipError struct {
+	Status int
+	Reason string
+}
+
+func (e *sponsorshipError) Error() string { return e.Reason }
+
+// checkSponsorshipPolicy applies the sponsor's spending limits before any
+// signature is produced. Without these checks the endpoint would sign an
+// unbounded gas approval for any caller, letting anyone drain the paymaster
+// deposit.
+func (api *BundlerAPI) checkSponsorshipPolicy(op *UserOperation, abiOp *abi.UserOperation) *sponsorshipError {
+	// A sponsorship approval is bound to a concrete sender; the zero address
+	// cannot be sponsored because the paymaster could not attribute the spend.
+	if op.Sender == (common.Address{}) {
+		return &sponsorshipError{http.StatusBadRequest, "sender must be set"}
+	}
+
+	if len(api.config.SponsorshipAllowlist) > 0 && !api.config.SponsorshipAllowlist[op.Sender] {
+		return &sponsorshipError{http.StatusForbidden, "sender is not on the sponsorship allowlist"}
+	}
+
+	// Gas fields must be present and parseable, otherwise the sponsor cannot
+	// know what it is agreeing to pay.
+	callGas, ok := new(big.Int).SetString(op.CallGasLimit, 10)
+	if !ok {
+		return &sponsorshipError{http.StatusBadRequest, "callGasLimit is not a number"}
+	}
+	verificationGas, ok := new(big.Int).SetString(op.VerificationGasLimit, 10)
+	if !ok {
+		return &sponsorshipError{http.StatusBadRequest, "verificationGasLimit is not a number"}
+	}
+	preVerificationGas, ok := new(big.Int).SetString(op.PreVerificationGas, 10)
+	if !ok {
+		return &sponsorshipError{http.StatusBadRequest, "preVerificationGas is not a number"}
+	}
+
+	totalGas := new(big.Int).Add(callGas, verificationGas)
+	totalGas.Add(totalGas, preVerificationGas)
+
+	if api.config.MaxSponsorGas > 0 && totalGas.Cmp(new(big.Int).SetUint64(api.config.MaxSponsorGas)) > 0 {
+		return &sponsorshipError{
+			http.StatusBadRequest,
+			fmt.Sprintf("requested gas %s exceeds the sponsorship cap of %d", totalGas, api.config.MaxSponsorGas),
+		}
+	}
+
+	if abiOp.MaxFeePerGas == nil || abiOp.MaxFeePerGas.Sign() <= 0 {
+		return &sponsorshipError{http.StatusBadRequest, "maxFeePerGas must be greater than zero"}
+	}
+
+	if api.config.SponsorshipPerSenderDaily > 0 {
+		api.sponsorshipMu.Lock()
+		defer api.sponsorshipMu.Unlock()
+		api.pruneSponsorshipCounters()
+		if api.sponsorshipCounts[op.Sender] >= api.config.SponsorshipPerSenderDaily {
+			return &sponsorshipError{http.StatusTooManyRequests, "daily sponsorship quota exhausted for this sender"}
+		}
+	}
+
+	return nil
+}
+
+// recordSponsorship counts a successful approval against the sender's quota.
+func (api *BundlerAPI) recordSponsorship(sender common.Address) {
+	if api.config.SponsorshipPerSenderDaily <= 0 {
+		return
+	}
+	api.sponsorshipMu.Lock()
+	defer api.sponsorshipMu.Unlock()
+	api.pruneSponsorshipCounters()
+	api.sponsorshipCounts[sender]++
+}
+
+// pruneSponsorshipCounters drops entries older than the rolling window.
+// The caller must hold sponsorshipMu.
+func (api *BundlerAPI) pruneSponsorshipCounters() {
+	cutoff := time.Now().Add(-24 * time.Hour)
+	for sender, window := range api.sponsorshipWindows {
+		if window.Before(cutoff) {
+			delete(api.sponsorshipWindows, sender)
+			delete(api.sponsorshipCounts, sender)
+		}
+	}
 }
 
 // userOpHash computes the hash the EntryPoint will verify against, using the
