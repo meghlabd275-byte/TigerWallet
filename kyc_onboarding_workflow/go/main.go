@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
@@ -51,6 +53,10 @@ type Config struct {
 	MaxRetries         int
 	ProcessingInterval time.Duration
 	WebhookURL         string
+
+	// JWTSecret authenticates callers. The service refuses every request when
+	// it is unset so a misconfigured deployment cannot be driven anonymously.
+	JWTSecret string
 }
 
 // KYC Application
@@ -626,7 +632,15 @@ func SubmitKYCApplication(c *gin.Context) {
 	}
 
 	application.ID = generateUUID()
+	// The applicant is the authenticated caller. A submitted body must never be
+	// able to claim another user's identity or pre-set its own verdict.
+	application.UserID = callerID(c)
 	application.Status = "pending"
+	application.ReviewedBy = ""
+	application.RiskScore = 0
+	application.RiskLevel = ""
+	application.AutoApproved = false
+	application.ManualReview = true
 	application.CreatedAt = time.Now()
 	application.UpdatedAt = time.Now()
 
@@ -674,6 +688,12 @@ func GetKYCApplication(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Applicants may only read their own application; reviewers may read any.
+	if !callerIsReviewer(c) && application.UserID != callerID(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this application"})
 		return
 	}
 
@@ -987,8 +1007,80 @@ func createSchema() error {
 	return err
 }
 
+// callerID returns the authenticated subject.
+func callerID(c *gin.Context) string {
+	return c.GetString("userID")
+}
+
+// callerIsReviewer reports whether the caller may adjudicate applications.
+func callerIsReviewer(c *gin.Context) bool {
+	switch c.GetString("role") {
+	case "admin", "super_admin", "compliance", "reviewer":
+		return true
+	}
+	return false
+}
+
+// authMiddleware verifies the bearer token. An unset secret is a
+// misconfiguration, so requests are refused rather than served unauthenticated.
+func authMiddleware(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if secret == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error": "JWT_SECRET not configured; refusing unauthenticated request",
+			})
+			return
+		}
+
+		header := c.GetHeader("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			return
+		}
+
+		token, err := jwt.Parse(strings.TrimPrefix(header, "Bearer "), func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(secret), nil
+		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+			return
+		}
+		sub, _ := claims["sub"].(string)
+		if sub == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing subject"})
+			return
+		}
+
+		c.Set("userID", sub)
+		if role, ok := claims["role"].(string); ok {
+			c.Set("role", role)
+		}
+		c.Next()
+	}
+}
+
+// requireReviewer gates adjudication endpoints to compliance staff.
+func requireReviewer() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !callerIsReviewer(c) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "reviewer role required"})
+			return
+		}
+		c.Next()
+	}
+}
+
 // Router setup
-func setupRouter() *gin.Engine {
+func setupRouter(config Config) *gin.Engine {
 	r := gin.Default()
 
 	r.Use(func(c *gin.Context) {
@@ -1007,8 +1099,9 @@ func setupRouter() *gin.Engine {
 	})
 
 	v1 := r.Group("/api/v1")
+	v1.Use(authMiddleware(config.JWTSecret))
 	{
-		// KYC endpoints
+		// Applicants submit and read back their own application.
 		v1.POST("/kyc/applications", SubmitKYCApplication)
 		v1.GET("/kyc/applications/:id", GetKYCApplication)
 
@@ -1017,14 +1110,13 @@ func setupRouter() *gin.Engine {
 
 		// Workflow endpoints
 		v1.GET("/workflow/status", GetWorkflowStatus)
-		v1.POST("/workflow/override", ManualReviewOverride)
 
-		// Rules endpoints
-		v1.POST("/approval/rules", CreateApprovalRule)
-		v1.GET("/approval/rules", GetApprovalRules)
-
-		// Queue endpoints
-		v1.GET("/queue/status", GetQueueStatus)
+		// Adjudication is restricted to reviewers; anyone could otherwise
+		// approve their own KYC or white-label application.
+		v1.POST("/workflow/override", requireReviewer(), ManualReviewOverride)
+		v1.POST("/approval/rules", requireReviewer(), CreateApprovalRule)
+		v1.GET("/approval/rules", requireReviewer(), GetApprovalRules)
+		v1.GET("/queue/status", requireReviewer(), GetQueueStatus)
 	}
 
 	return r
@@ -1067,7 +1159,7 @@ func main() {
 	defer workflowEngine.Stop()
 
 	// Setup router
-	router := setupRouter()
+	router := setupRouter(config)
 
 	// Start server
 	srv := &http.Server{
