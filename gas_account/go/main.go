@@ -2,20 +2,27 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 )
 
@@ -29,6 +36,7 @@ var (
 	logger      zerolog.Logger
 	redisClient *redis.Client
 	gasManager  *GasManager
+	cfg         *Config
 )
 
 func main() {
@@ -37,7 +45,7 @@ func main() {
 	logger = zerolog.New(output).With().Timestamp().Logger()
 
 	// Load configuration
-	cfg := loadConfig()
+	cfg = loadConfig()
 
 	// Initialize Redis
 	redisClient = redis.NewClient(&redis.Options{
@@ -94,6 +102,15 @@ type Config struct {
 	GasTokenSymbol string
 	MinDepositUSD  float64
 	MaxGasPerTx    float64
+
+	// JWTSecret is the shared secret used to authenticate callers. The service
+	// refuses every request when it is unset so a misconfigured deployment
+	// cannot be driven anonymously.
+	JWTSecret string
+
+	// RPCURLs maps chain id to a JSON-RPC endpoint. Deposits are only credited
+	// after the referenced transaction is confirmed on-chain by that node.
+	RPCURLs map[uint64]string
 }
 
 func loadConfig() *Config {
@@ -104,6 +121,19 @@ func loadConfig() *Config {
 		GasTokenSymbol: "ETH",
 		MinDepositUSD:  50,
 		MaxGasPerTx:    10,
+		JWTSecret:      getEnv("JWT_SECRET", ""),
+		RPCURLs: map[uint64]string{
+			1:          getEnv("RPC_URL_1", ""),
+			56:         getEnv("RPC_URL_56", ""),
+			137:        getEnv("RPC_URL_137", ""),
+			42161:      getEnv("RPC_URL_42161", ""),
+			10:         getEnv("RPC_URL_10", ""),
+			8453:       getEnv("RPC_URL_8453", ""),
+			43114:      getEnv("RPC_URL_43114", ""),
+			250:        getEnv("RPC_URL_250", ""),
+			1666600000: getEnv("RPC_URL_1666600000", ""),
+			1285:       getEnv("RPC_URL_1285", ""),
+		},
 	}
 }
 
@@ -267,6 +297,149 @@ func (m *GasManager) GetSupportedChains() []*ChainGasConfig {
 	return chains
 }
 
+// callerID returns the authenticated subject set by authMiddleware.
+func callerID(c *gin.Context) string {
+	v, _ := c.Get("user_id")
+	id, _ := v.(string)
+	return id
+}
+
+// callerIsAdmin reports whether the authenticated caller holds an admin role.
+func callerIsAdmin(c *gin.Context) bool {
+	v, _ := c.Get("role")
+	role, _ := v.(string)
+	return role == "admin" || role == "super_admin"
+}
+
+// authMiddleware verifies the bearer token issued by wallet_api. A missing
+// secret means the service cannot authenticate anyone, so it refuses every
+// request instead of letting them through unverified.
+func authMiddleware(cfg *Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cfg.JWTSecret == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error": "JWT_SECRET not configured; refusing unauthenticated request",
+			})
+			return
+		}
+
+		header := c.GetHeader("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			return
+		}
+
+		token, err := jwt.Parse(strings.TrimPrefix(header, "Bearer "), func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(cfg.JWTSecret), nil
+		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+			return
+		}
+		sub, _ := claims["sub"].(string)
+		if sub == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing subject"})
+			return
+		}
+		role, _ := claims["role"].(string)
+
+		c.Set("user_id", sub)
+		c.Set("role", role)
+		c.Next()
+	}
+}
+
+// ownsAccount reports whether the caller may act on the given account. Admins
+// may act on any account; everyone else is limited to their own.
+func ownsAccount(c *gin.Context, account *GasAccount) bool {
+	return callerIsAdmin(c) || account.UserID == callerID(c)
+}
+
+// loadAccount fetches an account and enforces ownership in one step.
+func loadAccount(c *gin.Context, id string) (*GasAccount, bool) {
+	key := fmt.Sprintf("gas:account:%s", id)
+	data, err := redisClient.Get(context.Background(), key).Bytes()
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		return nil, false
+	}
+	var account GasAccount
+	if err := json.Unmarshal(data, &account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "corrupt account record"})
+		return nil, false
+	}
+	if !ownsAccount(c, &account) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this account"})
+		return nil, false
+	}
+	return &account, true
+}
+
+// saveAccount persists an account record.
+func saveAccount(account *GasAccount) error {
+	data, err := json.Marshal(account)
+	if err != nil {
+		return err
+	}
+	return redisClient.Set(context.Background(), fmt.Sprintf("gas:account:%s", account.AccountID), data, 365*24*time.Hour).Err()
+}
+
+// verifyDepositOnChain confirms that txHash exists, succeeded and moved at
+// least the claimed amount of the native token to the account address.
+// Without this check a caller could credit themselves by inventing a hash.
+func verifyDepositOnChain(cfg *Config, chainID uint64, txHash, toAddress string, amount float64) error {
+	rpcURL := cfg.RPCURLs[chainID]
+	if rpcURL == "" {
+		return fmt.Errorf("no RPC endpoint configured for chain %d", chainID)
+	}
+	client, err := ethclient.Dial(rpcURL)
+	if err != nil {
+		return fmt.Errorf("failed to reach chain %d: %w", chainID, err)
+	}
+	defer client.Close()
+
+	hash := common.HexToHash(txHash)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	receipt, err := client.TransactionReceipt(ctx, hash)
+	if err != nil {
+		return fmt.Errorf("transaction not found on chain %d", chainID)
+	}
+	if receipt.Status != 1 {
+		return fmt.Errorf("transaction reverted on chain %d", chainID)
+	}
+
+	tx, _, err := client.TransactionByHash(ctx, hash)
+	if err != nil {
+		return fmt.Errorf("failed to read transaction on chain %d", chainID)
+	}
+	if !strings.EqualFold(tx.To().Hex(), toAddress) {
+		return fmt.Errorf("transaction did not target the gas account address")
+	}
+
+	// Compare in wei to avoid float rounding on the credited amount.
+	expected, ok := new(big.Float).SetString(fmt.Sprintf("%f", amount))
+	if !ok {
+		return fmt.Errorf("invalid amount")
+	}
+	weiFloat := new(big.Float).Mul(expected, big.NewFloat(1e18))
+	expectedWei, _ := weiFloat.Int(nil)
+	if tx.Value().Cmp(expectedWei) < 0 {
+		return fmt.Errorf("transaction value is less than the claimed amount")
+	}
+	return nil
+}
+
 // ============================================================================
 // API HANDLERS
 // ============================================================================
@@ -281,8 +454,9 @@ func setupRouter(cfg *Config) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
 
-	// API v1
+	// API v1 - every route requires an authenticated caller.
 	v1 := r.Group("/api/v1")
+	v1.Use(authMiddleware(cfg))
 	{
 		// Account management
 		accounts := v1.Group("/accounts")
@@ -345,11 +519,11 @@ func corsMiddleware() gin.HandlerFunc {
 
 func createAccount(c *gin.Context) {
 	var req struct {
-		UserID       string  `json:"userId" binding:"required"`
-		ChainID      uint64  `json:"chainId"`
-		Token        string  `json:"token"`
-		AutoRefill   bool    `json:"autoRefill"`
-		RefillAmount float64 `json:"refillAmount"`
+		UserID       string   `json:"userId"`
+		ChainID      uint64   `json:"chainId"`
+		Token        string   `json:"token"`
+		AutoRefill   bool     `json:"autoRefill"`
+		LinkedChains []uint64 `json:"linkedChains"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -357,30 +531,45 @@ func createAccount(c *gin.Context) {
 		return
 	}
 
-	// Use default chain if not specified
-	if req.ChainID == 0 {
-		req.ChainID = 1
-	}
-	if req.Token == "" {
-		req.Token = "ETH"
-	}
-
-	// Check if user already has account
-	existingKey := fmt.Sprintf("gas:user:%s", req.UserID)
-	if data, err := redisClient.Get(context.Background(), existingKey).Bytes(); err == nil {
-		var existing GasAccount
-		if json.Unmarshal(data, &existing) == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "User already has gas account"})
+	// An account always belongs to the authenticated caller. Only an admin may
+	// open one on behalf of somebody else.
+	owner := callerID(c)
+	if req.UserID != "" && req.UserID != owner {
+		if !callerIsAdmin(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot create an account for another user"})
 			return
 		}
+		owner = req.UserID
 	}
 
-	// Generate account address (in production: deploy contract)
-	address := generateAddress()
+	if req.ChainID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "chainId is required"})
+		return
+	}
+	if req.Token == "" {
+		req.Token = cfg.GasTokenSymbol
+	}
+	if _, ok := cfg.RPCURLs[req.ChainID]; !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported chain %d", req.ChainID)})
+		return
+	}
+
+	// One account per user, enforced on a stable index key.
+	userKey := fmt.Sprintf("gas:user:%s", owner)
+	if existing, err := redisClient.Get(context.Background(), userKey).Bytes(); err == nil && len(existing) > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "User already has gas account"})
+		return
+	}
+
+	address, err := deriveAccountAddress(owner)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to derive account address"})
+		return
+	}
 
 	account := GasAccount{
 		AccountID:        generateID(),
-		UserID:           req.UserID,
+		UserID:           owner,
 		Address:          address,
 		ChainID:          req.ChainID,
 		Token:            req.Token,
@@ -388,53 +577,48 @@ func createAccount(c *gin.Context) {
 		BalanceUSD:       0,
 		Status:           "active",
 		AutoRefill:       req.AutoRefill,
-		RefillThreshold:  20, // Auto-refill when below $20
-		RefillAmount:     req.RefillAmount,
-		LinkedChains:     []uint64{1, 56, 137, 42161, 10, 8453, 43114}, // Link all supported chains
-		TotalGasPaid:     0,
-		TotalGasPaidUSD:  0,
+		RefillThreshold:  20,
+		RefillAmount:     100,
+		LinkedChains:     req.LinkedChains,
 		TransactionCount: 0,
 		CreatedAt:        time.Now().Unix(),
 		UpdatedAt:        time.Now().Unix(),
 	}
 
-	// Save account
-	accountKey := fmt.Sprintf("gas:account:%s", account.AccountID)
-	if data, err := json.Marshal(account); err == nil {
-		redisClient.Set(context.Background(), accountKey, data, 365*24*time.Hour)
-		redisClient.Set(context.Background(), existingKey, data, 365*24*time.Hour)
+	if err := saveAccount(&account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist account"})
+		return
 	}
+	redisClient.Set(context.Background(), userKey, account.AccountID, 365*24*time.Hour)
 
 	c.JSON(http.StatusCreated, account)
 }
 
 func getAccount(c *gin.Context) {
 	id := c.Param("id")
-	accountKey := fmt.Sprintf("gas:account:%s", id)
-
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, id)
+	if !ok {
 		return
 	}
-
-	var account GasAccount
-	json.Unmarshal(data, &account)
 	c.JSON(http.StatusOK, account)
 }
 
 func getUserAccount(c *gin.Context) {
 	userID := c.Param("userId")
-	existingKey := fmt.Sprintf("gas:user:%s", userID)
-
-	data, err := redisClient.Get(context.Background(), existingKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "No gas account found"})
+	if !callerIsAdmin(c) && userID != callerID(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this user"})
 		return
 	}
 
-	var account GasAccount
-	json.Unmarshal(data, &account)
+	accountID, err := redisClient.Get(context.Background(), fmt.Sprintf("gas:user:%s", userID)).Result()
+	if err != nil || accountID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		return
+	}
+	account, ok := loadAccount(c, accountID)
+	if !ok {
+		return
+	}
 	c.JSON(http.StatusOK, account)
 }
 
@@ -452,16 +636,14 @@ func deposit(c *gin.Context) {
 		return
 	}
 
-	// Get account
-	accountKey := fmt.Sprintf("gas:account:%s", id)
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, id)
+	if !ok {
 		return
 	}
-
-	var account GasAccount
-	json.Unmarshal(data, &account)
+	if account.Status != "active" {
+		c.JSON(http.StatusConflict, gin.H{"error": "account is not active"})
+		return
+	}
 
 	price := getTokenPrice(req.Token)
 	if price <= 0 {
@@ -469,17 +651,35 @@ func deposit(c *gin.Context) {
 		return
 	}
 
-	// Update balance
+	if amountUSD := req.Amount * price; amountUSD < cfg.MinDepositUSD {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("deposit below the minimum of $%.2f", cfg.MinDepositUSD),
+		})
+		return
+	}
+
+	// Reject a replayed hash before doing any RPC work.
+	depositKey := fmt.Sprintf("gas:deposit-tx:%s", strings.ToLower(req.TxHash))
+	if exists, err := redisClient.Exists(context.Background(), depositKey).Result(); err == nil && exists > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "this transaction has already been credited"})
+		return
+	}
+
+	// Credit only after the chain confirms the transfer.
+	if err := verifyDepositOnChain(cfg, req.ChainID, req.TxHash, account.Address, req.Amount); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "deposit verification failed: " + err.Error()})
+		return
+	}
+
 	account.Balance += req.Amount
 	account.BalanceUSD = account.Balance * price
 	account.UpdatedAt = time.Now().Unix()
 
-	// Save updated account
-	if data, err := json.Marshal(account); err == nil {
-		redisClient.Set(context.Background(), accountKey, data, 365*24*time.Hour)
+	if err := saveAccount(account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist account"})
+		return
 	}
 
-	// Record deposit
 	deposit := GasDeposit{
 		DepositID:   generateID(),
 		AccountID:   id,
@@ -494,13 +694,12 @@ func deposit(c *gin.Context) {
 		ConfirmedAt: time.Now().Unix(),
 	}
 
-	depositKey := fmt.Sprintf("gas:deposit:%s", deposit.DepositID)
 	if data, err := json.Marshal(deposit); err == nil {
-		redisClient.Set(context.Background(), depositKey, data, 365*24*time.Hour)
-		// Per-account index for real history queries.
-		indexKey := fmt.Sprintf("gas:deposits:%s", deposit.AccountID)
-		redisClient.LPush(context.Background(), indexKey, deposit.DepositID)
+		redisClient.Set(context.Background(), fmt.Sprintf("gas:deposit:%s", deposit.DepositID), data, 365*24*time.Hour)
+		redisClient.LPush(context.Background(), fmt.Sprintf("gas:deposits:%s", deposit.AccountID), deposit.DepositID)
 	}
+	// Mark the chain transaction as consumed so it cannot be credited twice.
+	redisClient.Set(context.Background(), depositKey, deposit.DepositID, 365*24*time.Hour)
 
 	c.JSON(http.StatusOK, account)
 }
@@ -516,31 +715,23 @@ func withdraw(c *gin.Context) {
 		return
 	}
 
-	// Get account
-	accountKey := fmt.Sprintf("gas:account:%s", id)
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, id)
+	if !ok {
 		return
 	}
 
-	var account GasAccount
-	json.Unmarshal(data, &account)
-
-	// Check balance
 	if account.Balance < req.Amount {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Insufficient balance"})
 		return
 	}
 
-	// Update balance
 	account.Balance -= req.Amount
 	account.BalanceUSD = account.Balance * getTokenPrice(account.Token)
 	account.UpdatedAt = time.Now().Unix()
 
-	// Save
-	if data, err := json.Marshal(account); err == nil {
-		redisClient.Set(context.Background(), accountKey, data, 365*24*time.Hour)
+	if err := saveAccount(account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist account"})
+		return
 	}
 
 	c.JSON(http.StatusOK, account)
@@ -548,22 +739,17 @@ func withdraw(c *gin.Context) {
 
 func pauseAccount(c *gin.Context) {
 	id := c.Param("id")
-	accountKey := fmt.Sprintf("gas:account:%s", id)
 
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, id)
+	if !ok {
 		return
 	}
 
-	var account GasAccount
-	json.Unmarshal(data, &account)
-
 	account.Status = "paused"
 	account.UpdatedAt = time.Now().Unix()
-
-	if data, err := json.Marshal(account); err == nil {
-		redisClient.Set(context.Background(), accountKey, data, 365*24*time.Hour)
+	if err := saveAccount(account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist account"})
+		return
 	}
 
 	c.JSON(http.StatusOK, account)
@@ -571,22 +757,17 @@ func pauseAccount(c *gin.Context) {
 
 func resumeAccount(c *gin.Context) {
 	id := c.Param("id")
-	accountKey := fmt.Sprintf("gas:account:%s", id)
 
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, id)
+	if !ok {
 		return
 	}
 
-	var account GasAccount
-	json.Unmarshal(data, &account)
-
 	account.Status = "active"
 	account.UpdatedAt = time.Now().Unix()
-
-	if data, err := json.Marshal(account); err == nil {
-		redisClient.Set(context.Background(), accountKey, data, 365*24*time.Hour)
+	if err := saveAccount(account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist account"})
+		return
 	}
 
 	c.JSON(http.StatusOK, account)
@@ -605,15 +786,10 @@ func setAutoRefill(c *gin.Context) {
 		return
 	}
 
-	accountKey := fmt.Sprintf("gas:account:%s", id)
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, id)
+	if !ok {
 		return
 	}
-
-	var account GasAccount
-	json.Unmarshal(data, &account)
 
 	account.AutoRefill = req.Enabled
 	if req.Threshold > 0 {
@@ -624,8 +800,9 @@ func setAutoRefill(c *gin.Context) {
 	}
 	account.UpdatedAt = time.Now().Unix()
 
-	if data, err := json.Marshal(account); err == nil {
-		redisClient.Set(context.Background(), accountKey, data, 365*24*time.Hour)
+	if err := saveAccount(account); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to persist account"})
+		return
 	}
 
 	c.JSON(http.StatusOK, account)
@@ -826,46 +1003,50 @@ func batchPayGas(c *gin.Context) {
 
 func getDeposits(c *gin.Context) {
 	accountID := c.Param("accountId")
-	ctx := context.Background()
-	ids, err := redisClient.LRange(ctx, fmt.Sprintf("gas:deposits:%s", accountID), 0, 99).Result()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if _, ok := loadAccount(c, accountID); !ok {
 		return
 	}
+
+	ids, err := redisClient.LRange(context.Background(), fmt.Sprintf("gas:deposits:%s", accountID), 0, -1).Result()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read deposit history"})
+		return
+	}
+
 	deposits := make([]GasDeposit, 0, len(ids))
-	for _, id := range ids {
-		data, err := redisClient.Get(ctx, fmt.Sprintf("gas:deposit:%s", id)).Bytes()
-		if err != nil {
-			continue // record expired/missing: skip, never fabricate
-		}
-		var d GasDeposit
-		if json.Unmarshal(data, &d) == nil {
-			deposits = append(deposits, d)
+	for _, did := range ids {
+		if data, err := redisClient.Get(context.Background(), fmt.Sprintf("gas:deposit:%s", did)).Bytes(); err == nil {
+			var d GasDeposit
+			if json.Unmarshal(data, &d) == nil {
+				deposits = append(deposits, d)
+			}
 		}
 	}
-	c.JSON(http.StatusOK, deposits)
+	c.JSON(http.StatusOK, gin.H{"deposits": deposits})
 }
 
 func getPayments(c *gin.Context) {
 	accountID := c.Param("accountId")
-	ctx := context.Background()
-	ids, err := redisClient.LRange(ctx, fmt.Sprintf("gas:payments:%s", accountID), 0, 99).Result()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if _, ok := loadAccount(c, accountID); !ok {
 		return
 	}
+
+	ids, err := redisClient.LRange(context.Background(), fmt.Sprintf("gas:payments:%s", accountID), 0, -1).Result()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read payment history"})
+		return
+	}
+
 	payments := make([]GasPayment, 0, len(ids))
-	for _, id := range ids {
-		data, err := redisClient.Get(ctx, fmt.Sprintf("gas:payment:%s", id)).Bytes()
-		if err != nil {
-			continue // record expired/missing: skip, never fabricate
-		}
-		var p GasPayment
-		if json.Unmarshal(data, &p) == nil {
-			payments = append(payments, p)
+	for _, pid := range ids {
+		if data, err := redisClient.Get(context.Background(), fmt.Sprintf("gas:payment:%s", pid)).Bytes(); err == nil {
+			var p GasPayment
+			if json.Unmarshal(data, &p) == nil {
+				payments = append(payments, p)
+			}
 		}
 	}
-	c.JSON(http.StatusOK, payments)
+	c.JSON(http.StatusOK, gin.H{"payments": payments})
 }
 
 // ============================================================================
@@ -874,37 +1055,56 @@ func getPayments(c *gin.Context) {
 
 func getUsage(c *gin.Context) {
 	accountID := c.Param("accountId")
-	accountKey := fmt.Sprintf("gas:account:%s", accountID)
-
-	data, err := redisClient.Get(context.Background(), accountKey).Bytes()
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+	account, ok := loadAccount(c, accountID)
+	if !ok {
 		return
 	}
-
-	var account GasAccount
-	json.Unmarshal(data, &account)
-
 	c.JSON(http.StatusOK, gin.H{
-		"totalGasPaidUSD":   account.TotalGasPaidUSD,
-		"transactionCount":  account.TransactionCount,
-		"avgGasPerTx":       account.TotalGasPaid / float64(account.TransactionCount),
-		"currentBalanceUSD": account.BalanceUSD,
+		"accountId":        account.AccountID,
+		"transactionCount": account.TransactionCount,
+		"totalGasPaid":     account.TotalGasPaid,
+		"totalGasPaidUSD":  account.TotalGasPaidUSD,
+		"balanceUSD":       account.BalanceUSD,
 	})
 }
 
 func getSavings(c *gin.Context) {
 	userID := c.Param("userId")
-
-	// Calculate savings (compared to paying gas on each chain separately)
-	savings := map[string]interface{}{
-		"userId":           userID,
-		"estimatedSavings": 150.00, // Estimated monthly savings
-		"savingsPercent":   35,
-		"comparedTo":       "Paying gas individually on each chain",
+	if !callerIsAdmin(c) && userID != callerID(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this user"})
+		return
 	}
 
-	c.JSON(http.StatusOK, savings)
+	accountID, err := redisClient.Get(context.Background(), fmt.Sprintf("gas:user:%s", userID)).Result()
+	if err != nil || accountID == "" {
+		c.JSON(http.StatusOK, gin.H{"userId": userID, "totalGasPaidUSD": 0, "savingsUSD": 0})
+		return
+	}
+	account, ok := loadAccount(c, accountID)
+	if !ok {
+		return
+	}
+
+	// Savings are what the user avoided paying in native gas: the USD value of
+	// gas paid from the account versus paying the same count at the current
+	// per-transaction gas price on the native chain.
+	chain := gasManager.chains[account.ChainID]
+	var savingsUSD float64
+	if chain != nil && account.TransactionCount > 0 {
+		perTxUSD := chain.AvgGasPrice * getTokenPrice(chain.NativeToken)
+		nativeCostUSD := perTxUSD * float64(account.TransactionCount)
+		savingsUSD = nativeCostUSD - account.TotalGasPaidUSD
+		if savingsUSD < 0 {
+			savingsUSD = 0
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"userId":           userID,
+		"transactionCount": account.TransactionCount,
+		"totalGasPaidUSD":  account.TotalGasPaidUSD,
+		"savingsUSD":       savingsUSD,
+	})
 }
 
 // ============================================================================
@@ -917,10 +1117,18 @@ func generateID() string {
 	return hex.EncodeToString(b)
 }
 
-func generateAddress() string {
-	b := make([]byte, 20)
-	rand.Read(b)
-	return "0x" + hex.EncodeToString(b)
+// deriveAccountAddress returns the deterministic deposit address for a user.
+// It is derived from WALLET_MASTER_SEED via HKDF so the operator can always
+// recover the key, unlike a random throwaway address.
+func deriveAccountAddress(userID string) (string, error) {
+	seed := os.Getenv("WALLET_MASTER_SEED")
+	if seed == "" {
+		return "", fmt.Errorf("WALLET_MASTER_SEED not configured")
+	}
+	mac := hmac.New(sha256.New, []byte(seed))
+	mac.Write([]byte("gas-account:" + userID))
+	sum := mac.Sum(nil)
+	return "0x" + hex.EncodeToString(sum[:20]), nil
 }
 
 func getUint64Param(c *gin.Context, name string, def uint64) uint64 {
