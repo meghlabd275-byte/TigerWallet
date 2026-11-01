@@ -5,16 +5,21 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -30,40 +35,40 @@ type Config struct {
 
 // Enterprise Models
 type Organization struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	Domain         string    `json:"domain"`
-	Tier           string    `json:"tier"` // starter, business, enterprise
-	Status         string    `json:"status"` // active, suspended, trial
-	Settings       string    `json:"settings"` // JSON settings
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	TrialEndsAt    *time.Time `json:"trial_ends_at"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	Domain      string     `json:"domain"`
+	Tier        string     `json:"tier"`     // starter, business, enterprise
+	Status      string     `json:"status"`   // active, suspended, trial
+	Settings    string     `json:"settings"` // JSON settings
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	TrialEndsAt *time.Time `json:"trial_ends_at"`
 }
 
 type TeamMember struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	UserID         uuid.UUID `json:"user_id"`
-	Role           string    `json:"role"` // owner, admin, member, viewer
-	Status         string    `json:"status"` // active, pending, inactive
-	InvitedBy      uuid.UUID `json:"invited_by"`
+	ID             uuid.UUID  `json:"id"`
+	OrganizationID uuid.UUID  `json:"organization_id"`
+	UserID         uuid.UUID  `json:"user_id"`
+	Role           string     `json:"role"`   // owner, admin, member, viewer
+	Status         string     `json:"status"` // active, pending, inactive
+	InvitedBy      uuid.UUID  `json:"invited_by"`
 	JoinedAt       *time.Time `json:"joined_at"`
-	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type ApiKey struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	Name           string    `json:"name"`
-	KeyHash        string    `json:"-"`
-	KeyPrefix      string    `json:"key_prefix"`
-	Permissions    string    `json:"permissions"` // JSON array
-	RateLimit      int       `json:"rate_limit"` // requests per minute
-	IsActive       bool      `json:"is_active"`
+	ID             uuid.UUID  `json:"id"`
+	OrganizationID uuid.UUID  `json:"organization_id"`
+	Name           string     `json:"name"`
+	KeyHash        string     `json:"-"`
+	KeyPrefix      string     `json:"key_prefix"`
+	Permissions    string     `json:"permissions"` // JSON array
+	RateLimit      int        `json:"rate_limit"`  // requests per minute
+	IsActive       bool       `json:"is_active"`
 	LastUsedAt     *time.Time `json:"last_used_at"`
 	ExpiresAt      *time.Time `json:"expires_at"`
-	CreatedAt      time.Time `json:"created_at"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type WebhookConfig struct {
@@ -91,15 +96,15 @@ type AuditTrail struct {
 }
 
 type ComplianceReport struct {
-	ID             uuid.UUID `json:"id"`
-	OrganizationID uuid.UUID `json:"organization_id"`
-	ReportType     string    `json:"report_type"` // kyc, aml, audit
-	StartDate      time.Time `json:"start_date"`
-	EndDate        time.Time `json:"end_date"`
-	Status         string    `json:"status"` // pending, processing, completed, failed
-	ResultURL      string    `json:"result_url"`
-	RequestedBy    uuid.UUID `json:"requested_by"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             uuid.UUID  `json:"id"`
+	OrganizationID uuid.UUID  `json:"organization_id"`
+	ReportType     string     `json:"report_type"` // kyc, aml, audit
+	StartDate      time.Time  `json:"start_date"`
+	EndDate        time.Time  `json:"end_date"`
+	Status         string     `json:"status"` // pending, processing, completed, failed
+	ResultURL      string     `json:"result_url"`
+	RequestedBy    uuid.UUID  `json:"requested_by"`
+	CreatedAt      time.Time  `json:"created_at"`
 	CompletedAt    *time.Time `json:"completed_at"`
 }
 
@@ -107,7 +112,7 @@ type SSOSetting struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
 	Provider       string    `json:"provider"` // okta, azure, google, saml
-	Config         string    `json:"config"` // JSON config
+	Config         string    `json:"config"`   // JSON config
 	IsEnabled      bool      `json:"is_enabled"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
@@ -115,10 +120,10 @@ type SSOSetting struct {
 
 // Global variables
 var (
-	db     *pgxpool.Pool
-	redisClient  *redis.Client
-	config Config
-	logger *log.Logger
+	db          *pgxpool.Pool
+	redisClient *redis.Client
+	config      Config
+	logger      *log.Logger
 )
 
 // Initialize database
@@ -256,18 +261,42 @@ func CreateOrganization(c *gin.Context) {
 	}
 
 	org.ID = uuid.New()
+	// Status and tier are server-controlled; a caller must not be able to
+	// self-provision an enterprise tier or an already-active paid plan.
+	org.Tier = "starter"
+	org.Status = "active"
 	org.CreatedAt = time.Now()
 	org.UpdatedAt = time.Now()
 
 	settingsJSON, _ := json.Marshal(org.Settings)
 
-	_, err := db.Exec(context.Background(), `
+	tx, err := db.Begin(context.Background())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
+		return
+	}
+	defer tx.Rollback(context.Background())
+
+	if _, err := tx.Exec(context.Background(), `
 		INSERT INTO organizations (id, name, domain, tier, status, settings, created_at, updated_at, trial_ends_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, org.ID, org.Name, org.Domain, org.Tier, org.Status, settingsJSON, org.CreatedAt, org.UpdatedAt, org.TrialEndsAt)
-
-	if err != nil {
+	`, org.ID, org.Name, org.Domain, org.Tier, org.Status, settingsJSON, org.CreatedAt, org.UpdatedAt, org.TrialEndsAt); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// The creator becomes the organization owner, which is what the
+	// authorization checks read.
+	if _, err := tx.Exec(context.Background(), `
+		INSERT INTO team_members (id, organization_id, user_id, role, status, joined_at, created_at)
+		VALUES ($1, $2, $3, 'owner', 'active', NOW(), NOW())
+	`, uuid.New(), org.ID, callerID(c)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to record ownership"})
+		return
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to commit"})
 		return
 	}
 
@@ -309,7 +338,21 @@ func AddTeamMember(c *gin.Context) {
 		return
 	}
 
+	orgID := c.Param("org_id")
+	if !memberOfOrganization(c, orgID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this organization"})
+		return
+	}
+
 	member.ID = uuid.New()
+	member.OrganizationID = uuid.MustParse(orgID)
+	// New members always start as pending members; a caller cannot inject an
+	// owner or pre-activated membership.
+	member.Role = "member"
+	member.Status = "pending"
+	if inviter, err := uuid.Parse(callerID(c)); err == nil {
+		member.InvitedBy = inviter
+	}
 	member.CreatedAt = time.Now()
 
 	_, err := db.Exec(context.Background(), `
@@ -362,14 +405,35 @@ func CreateApiKey(c *gin.Context) {
 		return
 	}
 
+	orgID := c.Param("org_id")
+	if !memberOfOrganization(c, orgID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this organization"})
+		return
+	}
+
+	// The secret is generated server-side. A caller-supplied hash would let
+	// them register a key whose plaintext they already know.
+	secret, err := generateApiKeySecret()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate key"})
+		return
+	}
+	keyHash := hashApiKey(secret)
+
+	if key.RateLimit <= 0 {
+		key.RateLimit = 600
+	}
+
 	key.ID = uuid.New()
-	key.KeyPrefix = "tw_" + uuid.New().String()[:8]
+	key.OrganizationID = uuid.MustParse(orgID)
+	key.KeyPrefix = secret[:11] // "tw_" plus 8 random characters
+	key.KeyHash = keyHash
 	key.IsActive = true
 	key.CreatedAt = time.Now()
 
 	permissionsJSON, _ := json.Marshal(key.Permissions)
 
-	_, err := db.Exec(context.Background(), `
+	_, err = db.Exec(context.Background(), `
 		INSERT INTO api_keys (id, organization_id, name, key_hash, key_prefix, permissions, rate_limit, is_active, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`, key.ID, key.OrganizationID, key.Name, key.KeyHash, key.KeyPrefix, permissionsJSON, key.RateLimit, key.IsActive, key.CreatedAt)
@@ -379,7 +443,29 @@ func CreateApiKey(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"api_key": key, "key": key.KeyPrefix + "_xxxxx"})
+	// The plaintext key is returned once and never stored; only the hash
+	// remains in the database.
+	c.JSON(http.StatusCreated, gin.H{
+		"api_key": key,
+		"secret":  secret,
+		"warning": "store this secret now; it cannot be retrieved again",
+	})
+}
+
+// generateApiKeySecret returns a high-entropy API key using a CSPRNG.
+func generateApiKeySecret() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return "tw_" + hex.EncodeToString(buf), nil
+}
+
+// hashApiKey hashes a key for storage so a database leak does not expose
+// usable credentials.
+func hashApiKey(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:])
 }
 
 // GetApiKeys - Get API keys
@@ -645,24 +731,112 @@ func GetSSOSettings(c *gin.Context) {
 }
 
 // Health check
+// callerID returns the authenticated subject.
+func callerID(c *gin.Context) string {
+	return c.GetString("userID")
+}
+
+// callerOrgIDs returns the organizations the caller belongs to. An admin may
+// act on any organization.
+func callerIsAdmin(c *gin.Context) bool {
+	switch c.GetString("role") {
+	case "admin", "super_admin":
+		return true
+	}
+	return false
+}
+
+// memberOfOrganization reports whether the caller may act on the organization.
+// Membership is read from the organization_members table rather than trusted
+// from the request, otherwise anyone could mint keys for any tenant.
+func memberOfOrganization(c *gin.Context, orgID string) bool {
+	if callerIsAdmin(c) {
+		return true
+	}
+	userID := callerID(c)
+	if userID == "" || orgID == "" {
+		return false
+	}
+
+	var exists bool
+	err := db.QueryRow(context.Background(), `
+		SELECT EXISTS (
+			SELECT 1 FROM team_members
+			WHERE organization_id = $1 AND user_id = $2 AND status <> 'removed'
+		)
+	`, orgID, userID).Scan(&exists)
+	if err != nil {
+		log.Printf("enterprise: membership lookup failed: %v", err)
+		return false
+	}
+	return exists
+}
+
+// authMiddleware verifies the bearer token. An unset secret is a
+// misconfiguration, so requests are refused rather than served unauthenticated.
+func authMiddleware(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if secret == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error": "JWT_SECRET not configured; refusing unauthenticated request",
+			})
+			return
+		}
+
+		header := c.GetHeader("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+			return
+		}
+
+		token, err := jwt.Parse(strings.TrimPrefix(header, "Bearer "), func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(secret), nil
+		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+			return
+		}
+		sub, _ := claims["sub"].(string)
+		if sub == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing subject"})
+			return
+		}
+
+		c.Set("userID", sub)
+		if role, ok := claims["role"].(string); ok {
+			c.Set("role", role)
+		}
+		c.Next()
+	}
+}
+
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "ok",
-		"database":   dbStatus,
-		"redis":      redisStatus,
-		"timestamp":  time.Now(),
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
+		"timestamp": time.Now(),
 	})
 }
 
@@ -717,33 +891,37 @@ func main() {
 	// Health check
 	router.GET("/health", HealthCheck)
 
+	// Every API route requires an authenticated caller.
+	api := router.Group("/api/v1")
+	api.Use(authMiddleware(config.JWTSecret))
+
 	// Organization routes
-	router.POST("/api/v1/organizations", CreateOrganization)
-	router.GET("/api/v1/organizations", GetOrganizations)
+	api.POST("/organizations", CreateOrganization)
+	api.GET("/organizations", GetOrganizations)
 
 	// Team member routes
-	router.POST("/api/v1/organizations/:org_id/team", AddTeamMember)
-	router.GET("/api/v1/organizations/:org_id/team", GetTeamMembers)
+	api.POST("/organizations/:org_id/team", AddTeamMember)
+	api.GET("/organizations/:org_id/team", GetTeamMembers)
 
 	// API key routes
-	router.POST("/api/v1/organizations/:org_id/keys", CreateApiKey)
-	router.GET("/api/v1/organizations/:org_id/keys", GetApiKeys)
+	api.POST("/organizations/:org_id/keys", CreateApiKey)
+	api.GET("/organizations/:org_id/keys", GetApiKeys)
 
 	// Webhook routes
-	router.POST("/api/v1/organizations/:org_id/webhooks", CreateWebhook)
-	router.GET("/api/v1/organizations/:org_id/webhooks", GetWebhooks)
+	api.POST("/organizations/:org_id/webhooks", CreateWebhook)
+	api.GET("/organizations/:org_id/webhooks", GetWebhooks)
 
 	// Audit trail routes
-	router.POST("/api/v1/audit", RecordAuditTrail)
-	router.GET("/api/v1/organizations/:org_id/audit", GetAuditTrail)
+	api.POST("/audit", RecordAuditTrail)
+	api.GET("/organizations/:org_id/audit", GetAuditTrail)
 
 	// Compliance report routes
-	router.POST("/api/v1/compliance/reports", CreateComplianceReport)
-	router.GET("/api/v1/organizations/:org_id/compliance/reports", GetComplianceReports)
+	api.POST("/compliance/reports", CreateComplianceReport)
+	api.GET("/organizations/:org_id/compliance/reports", GetComplianceReports)
 
 	// SSO routes
-	router.POST("/api/v1/organizations/:org_id/sso", ConfigureSSO)
-	router.GET("/api/v1/organizations/:org_id/sso", GetSSOSettings)
+	api.POST("/organizations/:org_id/sso", ConfigureSSO)
+	api.GET("/organizations/:org_id/sso", GetSSOSettings)
 
 	// Start server
 	logger.Printf("Starting server on port %s", config.Port)
