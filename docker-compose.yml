@@ -1197,6 +1197,13 @@ services:
       - "9099:9099"
     environment:
       - MPC_PORT=9099
+      # Every signing, export and recovery route requires a verified bearer
+      # token. Without a secret the service refuses to start rather than
+      # expose key custody anonymously.
+      - MPC_JWT_SECRET=${MPC_JWT_SECRET:?MPC_JWT_SECRET must be set}
+      # Comma-separated browser origins allowed to call the API. Empty means no
+      # cross-origin access at all.
+      - MPC_ALLOWED_ORIGINS=${MPC_ALLOWED_ORIGINS:-}
     restart: unless-stopped
 
   # Bridge aggregator. The front end's /bridge/* proxy targets this port; the

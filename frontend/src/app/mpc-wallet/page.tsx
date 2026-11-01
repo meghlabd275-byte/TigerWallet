@@ -41,6 +41,20 @@ const MPC_CONFIG = {
   sessionDuration: 3600, // 1 hour
 };
 
+// The MPC service authenticates every route. The bearer token is the caller's
+// session token; without it the backend refuses to sign or export shares.
+function mpcAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token =
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("tigerwallet_jwt")
+      : null;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 // Types
 // MPCKeyShare is a NON-SENSITIVE descriptor of a backend-held share. It never
 // contains secret key material (no encrypted copy of the full private key).
@@ -98,7 +112,7 @@ class MPCKeyGenerationService {
     try {
       resp = await fetch(`${this.serverURL}/api/v1/mpc/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: mpcAuthHeaders(),
         body: JSON.stringify({
           threshold: MPC_CONFIG.threshold,
           totalShards: MPC_CONFIG.totalShares,
@@ -201,7 +215,7 @@ class MPCKeyGenerationService {
     try {
       resp = await fetch(`${this.serverURL}/api/v1/mpc/sign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: mpcAuthHeaders(),
         body: JSON.stringify({
           keyId,
           shareIds: shares.map(s => s.id),
@@ -227,16 +241,24 @@ class MPCKeyGenerationService {
     return data.signature;
   }
 
-  // Recover wallet from a backup share descriptor via the REAL MPC backend.
-  // The backend reconstructs the key from the threshold of shares it holds.
-  async recoverWallet(backupShare: MPCKeyShare): Promise<{
+  // Recover a wallet from a threshold of encrypted share blobs via the REAL MPC
+  // backend. The backend decrypts the blobs, interpolates the secret, and
+  // verifies it against the shares' own metadata before registering an engine.
+  // Recovery is operator-only, because it produces a live signing key.
+  async recoverWallet(
+    passphrase: string,
+    shares: unknown[]
+  ): Promise<{
+    keyId: string;
     address: string;
     publicKey: string;
+    threshold: number;
+    totalShards: number;
   }> {
     const response = await fetch(`${this.serverURL}/api/v1/mpc/keygen/recover`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backupShareId: backupShare.id }),
+      headers: mpcAuthHeaders(),
+      body: JSON.stringify({ passphrase, shares }),
     });
 
     if (response.ok) {

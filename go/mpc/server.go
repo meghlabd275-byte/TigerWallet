@@ -29,10 +29,13 @@ import (
 )
 
 type mpcWallet struct {
-	KeyID       string    `json:"keyId"`
-	Address     Address   `json:"address"`
-	PublicKey   Bytes     `json:"publicKey"` // 65-byte uncompressed
-	Threshold   uint32    `json:"threshold"`
+	KeyID     string  `json:"keyId"`
+	Address   Address `json:"address"`
+	PublicKey Bytes   `json:"publicKey"` // 65-byte uncompressed
+	Threshold uint32  `json:"threshold"`
+	// Owner is the authenticated subject that created the wallet. Only the
+	// owner (or an operator) may read, sign with, or export it.
+	Owner       string    `json:"owner"`
 	TotalShards uint32    `json:"totalShards"`
 	CreatedAt   Timestamp `json:"createdAt"`
 }
@@ -89,7 +92,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func handleCreate(w http.ResponseWriter, r *http.Request) {
+func handleCreate(w http.ResponseWriter, r *http.Request, c caller) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -126,6 +129,7 @@ func handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	wallet := &mpcWallet{
 		KeyID:       keyID,
+		Owner:       c.Subject,
 		Address:     addr,
 		PublicKey:   pub,
 		Threshold:   req.Threshold,
@@ -142,7 +146,7 @@ func handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, wallet)
 }
 
-func handleGetWallet(w http.ResponseWriter, r *http.Request) {
+func handleGetWallet(w http.ResponseWriter, r *http.Request, c caller) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -159,10 +163,13 @@ func handleGetWallet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "wallet not found")
 		return
 	}
+	if !requireWalletAccess(w, wallet, c) {
+		return
+	}
 	writeJSON(w, http.StatusOK, wallet)
 }
 
-func handleSign(w http.ResponseWriter, r *http.Request) {
+func handleSign(w http.ResponseWriter, r *http.Request, c caller) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -189,6 +196,9 @@ func handleSign(w http.ResponseWriter, r *http.Request) {
 	store.mu.RUnlock()
 	if !ok || wallet == nil {
 		writeError(w, http.StatusNotFound, "wallet not found")
+		return
+	}
+	if !requireWalletAccess(w, wallet, c) {
 		return
 	}
 
@@ -258,12 +268,16 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	// Every signing, export and recovery route requires a verified caller.
+	secret := resolveSecretOrExit()
+	origins := allowedOrigins()
+
 	mux.HandleFunc("/api/v1/health", WithCORS(handleHealth))
-	mux.HandleFunc("/api/v1/mpc/create", WithCORS(handleCreate))
-	mux.HandleFunc("/api/v1/mpc/sign", WithCORS(handleSign))
-	mux.HandleFunc("/api/v1/mpc/wallet/", WithCORS(handleGetWallet))
-	mux.HandleFunc("/api/v1/mpc/keygen/export", WithCORS(handleExportShares))
-	mux.HandleFunc("/api/v1/mpc/keygen/recover", WithCORS(handleRecoverWallet))
+	mux.HandleFunc("/api/v1/mpc/create", secure(secret, origins, handleCreate))
+	mux.HandleFunc("/api/v1/mpc/sign", secure(secret, origins, handleSign))
+	mux.HandleFunc("/api/v1/mpc/wallet/", secure(secret, origins, handleGetWallet))
+	mux.HandleFunc("/api/v1/mpc/keygen/export", secure(secret, origins, handleExportShares))
+	mux.HandleFunc("/api/v1/mpc/keygen/recover", secure(secret, origins, handleRecoverWallet))
 
 	log.Printf("TigerWallet MPC service listening on :%s", port)
 	srv := &http.Server{

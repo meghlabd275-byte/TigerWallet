@@ -30,20 +30,23 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 	// MPCBackendURL is the canonical go/mpc TSS service (default :9099). The
 	// custody service delegates key creation + signing to it and never
 	// fabricates an address or signature. Empty => CreateAccount/Execute fail
 	// honestly with an "action_required" status.
-	MPCBackendURL  string `json:"mpc_backend_url"`
-	WalletAPIURL  string `json:"wallet_api_url"`
+	MPCBackendURL string `json:"mpc_backend_url"`
+	// MPCServiceToken is the bearer token presented to the MPC service, which
+	// requires an authenticated caller for every signing and export route.
+	MPCServiceToken string `json:"mpc_service_token"`
+	WalletAPIURL    string `json:"wallet_api_url"`
 }
 
 // ============================================================================
@@ -52,106 +55,106 @@ type Config struct {
 
 // Institution represents an institutional client
 type Institution struct {
-	ID                uint      `gorm:"primaryKey" json:"id"`
-	Name             string    `json:"name"`
-	LegalName        string    `json:"legal_name"`
-	Email            string    `json:"email"`
-	Phone            string    `json:"phone"`
-	Address          string    `json:"address"`
-	Country          string    `json:"country"`
-	KYCStatus        string    `json:"kyc_status"` // PENDING, VERIFIED, REJECTED
-	KYCLevel         int       `json:"kyc_level"`
-	Tier             string    `json:"tier"` // TIER_1, TIER_2, TIER_3
-	RiskLevel        string    `json:"risk_level"`
-	MaxWithdrawalDaily float64 `json:"max_withdrawal_daily"`
-	MaxWithdrawalMonthly float64 `json:"max_withdrawal_monthly"`
-	IsActive         bool      `json:"is_active"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                   uint      `gorm:"primaryKey" json:"id"`
+	Name                 string    `json:"name"`
+	LegalName            string    `json:"legal_name"`
+	Email                string    `json:"email"`
+	Phone                string    `json:"phone"`
+	Address              string    `json:"address"`
+	Country              string    `json:"country"`
+	KYCStatus            string    `json:"kyc_status"` // PENDING, VERIFIED, REJECTED
+	KYCLevel             int       `json:"kyc_level"`
+	Tier                 string    `json:"tier"` // TIER_1, TIER_2, TIER_3
+	RiskLevel            string    `json:"risk_level"`
+	MaxWithdrawalDaily   float64   `json:"max_withdrawal_daily"`
+	MaxWithdrawalMonthly float64   `json:"max_withdrawal_monthly"`
+	IsActive             bool      `json:"is_active"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // CustodyAccount represents a custody account
 type CustodyAccount struct {
-	ID                uint      `gorm:"primaryKey" json:"id"`
-	InstitutionID    uint      `gorm:"index" json:"institution_id"`
-	AccountName      string    `json:"account_name"`
-	AccountType      string    `json:"account_type"` // HOT, WARM, COLD
-	WalletAddress    string    `gorm:"uniqueIndex" json:"wallet_address"`
-	ChainID          int64     `json:"chain_id"`
-	TotalBalance     string    `json:"total_balance"`
-	AvailableBalance string    `json:"available_balance"`
-	ReservedBalance  string    `json:"reserved_balance"`
-	Status           string    `json:"status"` // ACTIVE, FROZEN, CLOSED
-	MPCCoreID        string    `json:"mpc_core_id"`
+	ID               uint   `gorm:"primaryKey" json:"id"`
+	InstitutionID    uint   `gorm:"index" json:"institution_id"`
+	AccountName      string `json:"account_name"`
+	AccountType      string `json:"account_type"` // HOT, WARM, COLD
+	WalletAddress    string `gorm:"uniqueIndex" json:"wallet_address"`
+	ChainID          int64  `json:"chain_id"`
+	TotalBalance     string `json:"total_balance"`
+	AvailableBalance string `json:"available_balance"`
+	ReservedBalance  string `json:"reserved_balance"`
+	Status           string `json:"status"` // ACTIVE, FROZEN, CLOSED
+	MPCCoreID        string `json:"mpc_core_id"`
 	// MPCKeyID is the real keyId returned by the canonical go/mpc TSS backend
 	// (POST /api/v1/mpc/create). It identifies the distributed key material
 	// used to sign transactions for this custody account. Empty until the MPC
 	// backend has created the key.
-	MPCKeyID         string    `json:"mpc_key_id"`
-	Threshold        int       `json:"threshold"` // required signatures
-	TotalSigners     int       `json:"total_signers"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	MPCKeyID     string    `json:"mpc_key_id"`
+	Threshold    int       `json:"threshold"` // required signatures
+	TotalSigners int       `json:"total_signers"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Signer represents a key signer for multi-sig
 type Signer struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	AccountID       uint      `gorm:"index" json:"account_id"`
-	SignerID        string    `gorm:"uniqueIndex" json:"signer_id"`
-	SignerType      string    `json:"signer_type"` // MPC, HSM, HARDWARE, API
-	PublicKey       string    `json:"public_key"`
-	Address         string    `json:"address"`
-	Status          string    `json:"status"` // ACTIVE, INACTIVE, REVOKED
-	Permissions     string    `json:"permissions"` // JSON array
-	LastUsedAt     *time.Time `json:"last_used_at"`
-	CreatedAt       time.Time `json:"created_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	AccountID   uint       `gorm:"index" json:"account_id"`
+	SignerID    string     `gorm:"uniqueIndex" json:"signer_id"`
+	SignerType  string     `json:"signer_type"` // MPC, HSM, HARDWARE, API
+	PublicKey   string     `json:"public_key"`
+	Address     string     `json:"address"`
+	Status      string     `json:"status"`      // ACTIVE, INACTIVE, REVOKED
+	Permissions string     `json:"permissions"` // JSON array
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // TransactionRequest represents a custody transaction request
 type TransactionRequest struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	RequestID       string    `gorm:"uniqueIndex" json:"request_id"`
-	InstitutionID   uint      `gorm:"index" json:"institution_id"`
-	AccountID       uint      `gorm:"index" json:"account_id"`
-	ToAddress       string    `json:"to_address"`
-	Token           string    `json:"token"`
-	Amount          string    `json:"amount"`
-	Fee             string    `json:"fee"`
-	TransactionType string    `json:"transaction_type"` // WITHDRAWAL, INTERNAL, TRANSFER
-	Status          string    `json:"status"` // PENDING, APPROVED, REJECTED, EXECUTED, FAILED
-	ApprovedBy      []string  `gorm:"-" json:"approved_by"`
+	ID              uint        `gorm:"primaryKey" json:"id"`
+	RequestID       string      `gorm:"uniqueIndex" json:"request_id"`
+	InstitutionID   uint        `gorm:"index" json:"institution_id"`
+	AccountID       uint        `gorm:"index" json:"account_id"`
+	ToAddress       string      `json:"to_address"`
+	Token           string      `json:"token"`
+	Amount          string      `json:"amount"`
+	Fee             string      `json:"fee"`
+	TransactionType string      `json:"transaction_type"` // WITHDRAWAL, INTERNAL, TRANSFER
+	Status          string      `json:"status"`           // PENDING, APPROVED, REJECTED, EXECUTED, FAILED
+	ApprovedBy      []string    `gorm:"-" json:"approved_by"`
 	ApprovedAt      []time.Time `gorm:"-" json:"approved_at"`
-	RejectedBy      string    `json:"rejected_by"`
-	RejectedAt      *time.Time `json:"rejected_at"`
-	ExecutedTxHash  string    `json:"executed_tx_hash"`
-	ExecutedAt      *time.Time `json:"executed_at"`
-	ChainID         int64     `json:"chain_id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	RejectedBy      string      `json:"rejected_by"`
+	RejectedAt      *time.Time  `json:"rejected_at"`
+	ExecutedTxHash  string      `json:"executed_tx_hash"`
+	ExecutedAt      *time.Time  `json:"executed_at"`
+	ChainID         int64       `json:"chain_id"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
 }
 
 // Approval represents transaction approval
 type Approval struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	RequestID      string    `gorm:"index" json:"request_id"`
-	SignerID       string    `json:"signer_id"`
-	Approved       bool      `json:"approved"`
-	Signature      string    `json:"signature"`
-	IPAddress      string    `json:"ip_address"`
-	ApprovalTime   time.Time `json:"approval_time"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	RequestID    string    `gorm:"index" json:"request_id"`
+	SignerID     string    `json:"signer_id"`
+	Approved     bool      `json:"approved"`
+	Signature    string    `json:"signature"`
+	IPAddress    string    `json:"ip_address"`
+	ApprovalTime time.Time `json:"approval_time"`
 }
 
 // ComplianceLog represents compliance audit log
 type ComplianceLog struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
 	InstitutionID uint      `json:"institution_id"`
-	AccountID    uint      `json:"account_id"`
-	Action       string    `json:"action"`
-	Details      string    `json:"details"`
-	PerformedBy  string    `json:"performed_by"`
-	IPAddress    string    `json:"ip_address"`
-	Timestamp    time.Time `json:"timestamp"`
+	AccountID     uint      `json:"account_id"`
+	Action        string    `json:"action"`
+	Details       string    `json:"details"`
+	PerformedBy   string    `json:"performed_by"`
+	IPAddress     string    `json:"ip_address"`
+	Timestamp     time.Time `json:"timestamp"`
 }
 
 // ============================================================================
@@ -159,10 +162,10 @@ type ComplianceLog struct {
 // ============================================================================
 
 type CustodyService struct {
-	db        *gorm.DB
-	redis     *redis.Client
-	config    Config
-	mu        sync.RWMutex
+	db         *gorm.DB
+	redis      *redis.Client
+	config     Config
+	mu         sync.RWMutex
 	httpClient *http.Client
 }
 
@@ -208,13 +211,13 @@ func NewCustodyService(config Config) (*CustodyService, error) {
 // ============================================================================
 
 type CreateInstitutionRequest struct {
-	Name             string  `json:"name" binding:"required"`
-	LegalName        string  `json:"legal_name"`
-	Email            string  `json:"email" binding:"required"`
-	Phone            string  `json:"phone"`
-	Address          string  `json:"address"`
-	Country          string  `json:"country" binding:"required"`
-	Tier             string  `json:"tier"`
+	Name      string `json:"name" binding:"required"`
+	LegalName string `json:"legal_name"`
+	Email     string `json:"email" binding:"required"`
+	Phone     string `json:"phone"`
+	Address   string `json:"address"`
+	Country   string `json:"country" binding:"required"`
+	Tier      string `json:"tier"`
 }
 
 func (s *CustodyService) CreateInstitution(ctx *gin.Context) {
@@ -233,19 +236,19 @@ func (s *CustodyService) CreateInstitution(ctx *gin.Context) {
 	maxDaily, maxMonthly := s.getWithdrawalLimits(tier)
 
 	institution := Institution{
-		Name:                  req.Name,
-		LegalName:             req.LegalName,
-		Email:                 req.Email,
-		Phone:                 req.Phone,
-		Address:               req.Address,
-		Country:               req.Country,
-		KYCStatus:             "PENDING",
-		KYCLevel:              0,
-		Tier:                  tier,
-		RiskLevel:             "MEDIUM",
-		MaxWithdrawalDaily:    maxDaily,
-		MaxWithdrawalMonthly:  maxMonthly,
-		IsActive:              true,
+		Name:                 req.Name,
+		LegalName:            req.LegalName,
+		Email:                req.Email,
+		Phone:                req.Phone,
+		Address:              req.Address,
+		Country:              req.Country,
+		KYCStatus:            "PENDING",
+		KYCLevel:             0,
+		Tier:                 tier,
+		RiskLevel:            "MEDIUM",
+		MaxWithdrawalDaily:   maxDaily,
+		MaxWithdrawalMonthly: maxMonthly,
+		IsActive:             true,
 	}
 
 	if err := s.db.Create(&institution).Error; err != nil {
@@ -257,9 +260,9 @@ func (s *CustodyService) CreateInstitution(ctx *gin.Context) {
 	s.logCompliance(institution.ID, 0, "CREATE_INSTITUTION", fmt.Sprintf("Created institution: %s", req.Name), "system", ctx.ClientIP())
 
 	ctx.JSON(200, gin.H{
-		"success":       true,
+		"success":        true,
 		"institution_id": institution.ID,
-		"status":       "PENDING_KYC",
+		"status":         "PENDING_KYC",
 	})
 }
 
@@ -282,10 +285,10 @@ func (s *CustodyService) getWithdrawalLimits(tier string) (daily, monthly float6
 
 type CreateAccountRequest struct {
 	InstitutionID uint   `json:"institution_id" binding:"required"`
-	AccountName  string `json:"account_name" binding:"required"`
-	AccountType  string `json:"account_type" binding:"required"` // HOT, WARM, COLD
-	ChainID      int64  `json:"chain_id" binding:"required"`
-	Threshold    int    `json:"threshold" binding:"required"`
+	AccountName   string `json:"account_name" binding:"required"`
+	AccountType   string `json:"account_type" binding:"required"` // HOT, WARM, COLD
+	ChainID       int64  `json:"chain_id" binding:"required"`
+	Threshold     int    `json:"threshold" binding:"required"`
 }
 
 func (s *CustodyService) CreateAccount(ctx *gin.Context) {
@@ -343,15 +346,15 @@ func (s *CustodyService) CreateAccount(ctx *gin.Context) {
 	}
 
 	// Log compliance event
-	s.logCompliance(req.InstitutionID, account.ID, "CREATE_ACCOUNT", 
+	s.logCompliance(req.InstitutionID, account.ID, "CREATE_ACCOUNT",
 		fmt.Sprintf("Created %s account: %s", req.AccountType, req.AccountName), "system", ctx.ClientIP())
 
 	ctx.JSON(200, gin.H{
-		"success":      true,
-		"account_id":  account.ID,
+		"success":        true,
+		"account_id":     account.ID,
 		"wallet_address": account.WalletAddress,
-		"mpc_core_id": account.MPCCoreID,
-		"threshold":    account.Threshold,
+		"mpc_core_id":    account.MPCCoreID,
+		"threshold":      account.Threshold,
 	})
 }
 
@@ -364,7 +367,7 @@ type AddSignerRequest struct {
 	SignerType  string `json:"signer_type" binding:"required"` // MPC, HSM, HARDWARE, API
 	PublicKey   string `json:"public_key" binding:"required"`
 	Address     string `json:"address"`
-	Permissions string  `json:"permissions"` // JSON array
+	Permissions string `json:"permissions"` // JSON array
 }
 
 func (s *CustodyService) AddSigner(ctx *gin.Context) {
@@ -384,11 +387,11 @@ func (s *CustodyService) AddSigner(ctx *gin.Context) {
 	signerID := "sig_" + uuid.NewString()
 	signer := Signer{
 		AccountID:   req.AccountID,
-		SignerID:   signerID,
-		SignerType: req.SignerType,
-		PublicKey:  req.PublicKey,
-		Address:    req.Address,
-		Status:     "ACTIVE",
+		SignerID:    signerID,
+		SignerType:  req.SignerType,
+		PublicKey:   req.PublicKey,
+		Address:     req.Address,
+		Status:      "ACTIVE",
 		Permissions: req.Permissions,
 	}
 
@@ -404,7 +407,7 @@ func (s *CustodyService) AddSigner(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"success":   true,
 		"signer_id": signer.SignerID,
-		"status":   "ACTIVE",
+		"status":    "ACTIVE",
 	})
 }
 
@@ -446,7 +449,7 @@ func (s *CustodyService) CreateTransactionRequest(ctx *gin.Context) {
 	if req.TransactionType == "WITHDRAWAL" {
 		var institution Institution
 		s.db.First(&institution, req.InstitutionID)
-		
+
 		// Calculate today's withdrawals
 		var todayTotal float64
 		s.db.Model(&TransactionRequest{}).
@@ -487,8 +490,8 @@ func (s *CustodyService) CreateTransactionRequest(ctx *gin.Context) {
 	}
 
 	// Log compliance event
-	s.logCompliance(req.InstitutionID, req.AccountID, "CREATE_TX_REQUEST", 
-		fmt.Sprintf("Created %s request: %s %s", req.TransactionType, req.Amount, req.Token), 
+	s.logCompliance(req.InstitutionID, req.AccountID, "CREATE_TX_REQUEST",
+		fmt.Sprintf("Created %s request: %s %s", req.TransactionType, req.Amount, req.Token),
 		"system", ctx.ClientIP())
 
 	ctx.JSON(200, gin.H{
@@ -567,7 +570,7 @@ func (s *CustodyService) ApproveTransaction(ctx *gin.Context) {
 		now := time.Now()
 		txRequest.RejectedAt = &now
 		s.db.Save(&txRequest)
-		
+
 		s.logCompliance(txRequest.InstitutionID, txRequest.AccountID, "TX_REJECTED",
 			fmt.Sprintf("Transaction %s rejected by %s", req.RequestID, req.SignerID), req.SignerID, ctx.ClientIP())
 
@@ -624,9 +627,9 @@ func (s *CustodyService) ApproveTransaction(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"success":       true,
-		"status":       txRequest.Status,
-		"approvals":    approvalCount,
-		"required":     account.Threshold,
+		"status":        txRequest.Status,
+		"approvals":     approvalCount,
+		"required":      account.Threshold,
 		"executed_hash": txRequest.ExecutedTxHash,
 	})
 }
@@ -777,6 +780,9 @@ func (s *CustodyService) postJSON(url, body string) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token := s.config.MPCServiceToken; token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -842,12 +848,12 @@ func (s *CustodyService) GetTransactionRequests(ctx *gin.Context) {
 func (s *CustodyService) logCompliance(institutionID, accountID uint, action, details, performedBy, ipAddress string) {
 	log := ComplianceLog{
 		InstitutionID: institutionID,
-		AccountID:    accountID,
-		Action:       action,
-		Details:      details,
-		PerformedBy:  performedBy,
-		IPAddress:    ipAddress,
-		Timestamp:    time.Now(),
+		AccountID:     accountID,
+		Action:        action,
+		Details:       details,
+		PerformedBy:   performedBy,
+		IPAddress:     ipAddress,
+		Timestamp:     time.Now(),
 	}
 	s.db.Create(&log)
 }
@@ -858,16 +864,17 @@ func (s *CustodyService) logCompliance(institutionID, accountID uint, action, de
 
 func main() {
 	config := Config{
-		ServerPort:    "8097",
-		DBHost:        getEnv("DB_HOST", "localhost"),
-		DBPort:        getEnv("DB_PORT", "5432"),
-		DBUser:        getEnv("DB_USER", "tigerwallet"),
-		DBPassword:    mustEnv("DB_PASSWORD"),
-		DBName:        getEnv("DB_NAME", "tigerwallet_custody"),
-		RedisHost:     getEnv("REDIS_HOST", "localhost"),
-		RedisPort:     getEnv("REDIS_PORT", "6379"),
-		MPCBackendURL:  getEnv("MPC_BACKEND_URL", "http://localhost:9099"),
-		WalletAPIURL:  getEnv("WALLET_API_URL", "http://localhost:8443"),
+		ServerPort:      "8097",
+		DBHost:          getEnv("DB_HOST", "localhost"),
+		DBPort:          getEnv("DB_PORT", "5432"),
+		DBUser:          getEnv("DB_USER", "tigerwallet"),
+		DBPassword:      mustEnv("DB_PASSWORD"),
+		DBName:          getEnv("DB_NAME", "tigerwallet_custody"),
+		RedisHost:       getEnv("REDIS_HOST", "localhost"),
+		RedisPort:       getEnv("REDIS_PORT", "6379"),
+		MPCBackendURL:   getEnv("MPC_BACKEND_URL", "http://localhost:9099"),
+		MPCServiceToken: getEnv("MPC_SERVICE_TOKEN", ""),
+		WalletAPIURL:    getEnv("WALLET_API_URL", "http://localhost:8443"),
 	}
 
 	service, err := NewCustodyService(config)
