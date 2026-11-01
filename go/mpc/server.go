@@ -262,6 +262,8 @@ func main() {
 	mux.HandleFunc("/api/v1/mpc/create", WithCORS(handleCreate))
 	mux.HandleFunc("/api/v1/mpc/sign", WithCORS(handleSign))
 	mux.HandleFunc("/api/v1/mpc/wallet/", WithCORS(handleGetWallet))
+	mux.HandleFunc("/api/v1/mpc/keygen/export", WithCORS(handleExportShares))
+	mux.HandleFunc("/api/v1/mpc/keygen/recover", WithCORS(handleRecoverWallet))
 
 	log.Printf("TigerWallet MPC service listening on :%s", port)
 	srv := &http.Server{

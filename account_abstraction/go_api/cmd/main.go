@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +42,23 @@ type Config struct {
 	Beneficiary common.Address
 	// MaxMempoolSize bounds the pending pool.
 	MaxMempoolSize int
+
+	// AccountFactory is the deployed ERC-4337 account factory. The canonical
+	// `SimpleAccountFactory` ships with the EntryPoint; TigerWallet ships its
+	// own. Counterfactual account addresses are read from it, never predicted
+	// locally.
+	AccountFactory common.Address
+	// FactoryMode selects which address view the factory exposes.
+	FactoryMode string
+
+	// PaymasterAddress is the verifying paymaster that sponsors gas.
+	PaymasterAddress common.Address
+	// PaymasterVerificationGas and PaymasterPostOpGas are advertised in the
+	// `paymasterAndData` blob the sponsor signs.
+	PaymasterVerificationGas uint64
+	PaymasterPostOpGas       uint64
+	// SponsorshipWindow bounds how long a signed approval stays valid.
+	SponsorshipWindow time.Duration
 }
 
 // ConfigFromEnv reads the configuration from the environment.
@@ -69,12 +87,40 @@ func ConfigFromEnv() (*Config, error) {
 		beneficiary = common.HexToAddress(value)
 	}
 
+	var accountFactory common.Address
+	if value := os.Getenv("ACCOUNT_FACTORY"); value != "" {
+		if !common.IsHexAddress(value) {
+			return nil, fmt.Errorf("ACCOUNT_FACTORY %q is not a valid address", value)
+		}
+		accountFactory = common.HexToAddress(value)
+	}
+
+	factoryMode := getEnv("FACTORY_MODE", factoryModeCanonical)
+	if factoryMode != factoryModeCanonical && factoryMode != factoryModeTigerWallet {
+		return nil, fmt.Errorf("FACTORY_MODE %q must be %q or %q",
+			factoryMode, factoryModeCanonical, factoryModeTigerWallet)
+	}
+
+	var paymaster common.Address
+	if value := os.Getenv("PAYMASTER_ADDRESS"); value != "" {
+		if !common.IsHexAddress(value) {
+			return nil, fmt.Errorf("PAYMASTER_ADDRESS %q is not a valid address", value)
+		}
+		paymaster = common.HexToAddress(value)
+	}
+
 	return &Config{
-		Port:           getEnv("PORT", "8080"),
-		RPCURL:         rpcURL,
-		EntryPoint:     entryPoint,
-		Beneficiary:    beneficiary,
-		MaxMempoolSize: 1024,
+		Port:                     getEnv("PORT", "8080"),
+		RPCURL:                   rpcURL,
+		EntryPoint:               entryPoint,
+		Beneficiary:              beneficiary,
+		MaxMempoolSize:           1024,
+		AccountFactory:           accountFactory,
+		FactoryMode:              factoryMode,
+		PaymasterAddress:         paymaster,
+		PaymasterVerificationGas: defaultPaymasterVerificationGas,
+		PaymasterPostOpGas:       defaultPaymasterPostOpGas,
+		SponsorshipWindow:        defaultSponsorshipWindow,
 	}, nil
 }
 
@@ -195,6 +241,10 @@ type BundlerAPI struct {
 	client  *ethclient.Client
 	config  *Config
 	mempool *MempoolService
+
+	// paymasterSigner authorises gas sponsorship. It is nil when no sponsor key
+	// is configured, which disables sponsorship rather than faking an approval.
+	paymasterSigner *ecdsa.PrivateKey
 }
 
 // NewBundlerAPI connects to the node and confirms it is usable.
@@ -213,11 +263,21 @@ func NewBundlerAPI(config *Config) (*BundlerAPI, error) {
 		return nil, fmt.Errorf("the RPC endpoint did not report a chain id: %w", err)
 	}
 
-	return &BundlerAPI{
+	api := &BundlerAPI{
 		client:  client,
 		config:  config,
 		mempool: NewMempoolService(config.MaxMempoolSize),
-	}, nil
+	}
+
+	// Sponsorship is optional. A missing key leaves the paymaster endpoints
+	// failing closed with an explicit configuration error.
+	if signer, err := loadPaymasterSigner(); err == nil {
+		api.paymasterSigner = signer
+	} else if config.PaymasterAddress != (common.Address{}) {
+		return nil, fmt.Errorf("PAYMASTER_ADDRESS is set but the sponsor key is unusable: %w", err)
+	}
+
+	return api, nil
 }
 
 // userOpHash computes the hash the EntryPoint will verify against, using the
@@ -629,6 +689,17 @@ func main() {
 	router.POST("/rpc", api.handleRPC)
 	router.POST("/", api.handleRPC)
 
+	// REST facade used by the wallet front end.
+	router.GET("/v1/chains/:chainId/entry-points", api.handleListEntryPoints)
+	router.POST("/v1/wallet", api.handleCreateSmartAccount)
+	router.GET("/v1/wallet/:owner", api.handleGetSmartAccount)
+	router.POST("/v1/paymaster/sponsorship", api.handlePaymasterSponsorship)
+	router.POST("/v1/rpc/eth_sendUserOperation", api.handleRESTSendUserOperation)
+	router.POST("/v1/rpc/eth_estimateGas", api.handleRESTEstimateGas)
+	router.POST("/v1/rpc/eth_getUserOperationByHash", api.handleRESTGetUserOperationByHash)
+	router.GET("/v1/rpc/eth_getUserOperationReceipt/:hash", api.handleRESTGetUserOperationReceipt)
+	router.POST("/v1/rpc/eth_getUserOperationReceipt/:hash", api.handleRESTGetUserOperationReceipt)
+
 	addr := fmt.Sprintf(":%s", config.Port)
 	srv := &http.Server{
 		Addr:              addr,
@@ -662,17 +733,26 @@ func main() {
 // handleRPC dispatches a JSON-RPC request to its handler.
 func (api *BundlerAPI) handleRPC(c *gin.Context) {
 	var request struct {
-		Method string `json:"method"`
+		Method string            `json:"method"`
+		Params []json.RawMessage `json:"params"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	switch request.Method {
+	api.serveMethod(c, request.Method, request.Params)
+}
+
+// serveMethod dispatches a single method invocation.
+//
+// Both the JSON-RPC entry point and the REST facade funnel through here, so an
+// operation has exactly one implementation regardless of how it was reached.
+func (api *BundlerAPI) serveMethod(c *gin.Context, method string, params []json.RawMessage) {
+	switch method {
 	case "eth_sendUserOperation":
 		api.handleSendUserOperation(c)
-	case "eth_estimateUserOperationGas":
+	case "eth_estimateUserOperationGas", "eth_estimateGas":
 		api.handleEstimateUserOperationGas(c)
 	case "eth_getUserOperationReceipt":
 		api.handleGetUserOperationReceipt(c)
@@ -684,7 +764,7 @@ func (api *BundlerAPI) handleRPC(c *gin.Context) {
 		api.handleChainID(c)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": fmt.Sprintf("the method %q is not supported", request.Method),
+			"error": fmt.Sprintf("the method %q is not supported", method),
 		})
 	}
 }

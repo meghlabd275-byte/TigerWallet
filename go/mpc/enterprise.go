@@ -851,7 +851,28 @@ func (e *TSSEngine) ShareFor(partyID uint32) (*big.Int, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	s, ok := e.shares[partyID]
-	return new(big.Int).Set(s), ok
+	if !ok || s == nil {
+		return nil, false
+	}
+	return new(big.Int).Set(s), true
+}
+
+// AdoptShares installs an already-reconstructed secret and its shares.
+//
+// This is the recovery path: the secret was rebuilt by Lagrange interpolation
+// from a threshold of exported shares, so it is not generated here. The shares
+// are adopted as-is so a later export reproduces the same material.
+func (e *TSSEngine) AdoptShares(secret *big.Int, publicKey []byte, shares map[uint32]*big.Int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.secret = new(big.Int).Set(secret)
+	e.publicKey = append([]byte(nil), publicKey...)
+
+	e.shares = make(map[uint32]*big.Int, len(shares))
+	for partyID, share := range shares {
+		e.shares[partyID] = new(big.Int).Set(share)
+	}
 }
 
 // SignWithShare produces a real ECDSA signature over messageHash using the
