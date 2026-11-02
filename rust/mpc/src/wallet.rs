@@ -3,7 +3,7 @@
 //! High-level wallet API for MPC operations
 //! Provides simple interface for key generation, signing, and management
 
-use crate::{CurveType, KeyGenResult, MpcConfig, MpcError, SignResult, ShareInfo};
+use crate::{CurveType, MpcConfig, MpcError, SignResult, ShareInfo};
 use crate::key_gen::generate_key_shares;
 use crate::signing::{sign, verify};
 use crate::key_sharing::{reshare, recover_key, backup_key, restore_from_backup};
@@ -129,19 +129,56 @@ impl MpcWallet {
         verify(signature, &public_key, message, self.config.curve)
     }
     
-    /// Add share (for distributed mode)
+    /// Add a share received from the dealer (distributed mode).
+    ///
+    /// The share is checked against its Feldman commitments, so a share that
+    /// does not lie on the committed polynomial is rejected before it can be
+    /// combined with others. The previous check hashed the share and compared
+    /// the result with a hash of the same share, which accepted any input.
     pub async fn add_share(&self, key_id: &str, share: ShareInfo) -> Result<(), MpcError> {
-        let mut local = self.local_shares.write().await;
-        let shares = local.get_mut(key_id)
-            .ok_or_else(|| MpcError::KeyGenFailed("Key not found".to_string()))?;
-        
-        // Verify share
-        use sha2::{Sha256, Digest};
-        let computed = Sha256::digest(&share.share_data);
-        if computed.to_vec() != share.verification_key {
-            return Err(MpcError::InvalidShare("Verification failed".to_string()));
+        if share.index == 0 {
+            return Err(MpcError::InvalidShare(
+                "share index 0 is the secret itself, not a share".to_string(),
+            ));
         }
-        
+        if !share.commitments.is_empty() {
+            let ok = match self.config.curve {
+                CurveType::Secp256k1 => {
+                    let v = crate::field::bytes_to_scalar(&share.share_data);
+                    crate::vss::verify_share_secp256k1(share.index, &v, &share.commitments)
+                }
+                CurveType::P256 => {
+                    let v = crate::field_p256::bytes_to_scalar(&share.share_data);
+                    crate::vss::verify_share_p256(share.index, &v, &share.commitments)
+                }
+                CurveType::Ed25519 => {
+                    let mut b = [0u8; 32];
+                    let n = share.share_data.len().min(32);
+                    b[..n].copy_from_slice(&share.share_data[..n]);
+                    let v = crate::field_ed25519::EdScalar::from_le_bytes(&b);
+                    crate::vss::verify_share_ed25519(share.index, &v, &share.commitments)
+                }
+            }
+            .map_err(|e| MpcError::InvalidShare(e.to_string()))?;
+            if !ok {
+                return Err(MpcError::InvalidShare(format!(
+                    "share {} failed Feldman VSS verification",
+                    share.index
+                )));
+            }
+        }
+
+        let mut local = self.local_shares.write().await;
+        let shares = local
+            .get_mut(key_id)
+            .ok_or_else(|| MpcError::KeyGenFailed("Key not found".to_string()))?;
+
+        if shares.iter().any(|s| s.index == share.index) {
+            return Err(MpcError::InvalidShare(format!(
+                "share index {} is already present",
+                share.index
+            )));
+        }
         shares.push(share);
         Ok(())
     }
@@ -190,16 +227,24 @@ impl MpcWallet {
         Ok(new_shares)
     }
     
-    /// Backup key
-    pub async fn backup_key(&self, key_id: &str, encryption_key: &[u8]) -> Result<Vec<u8>, MpcError> {
+    /// Encrypt the share set into a password-protected backup.
+    pub async fn backup_key(&self, key_id: &str, passphrase: &[u8]) -> Result<Vec<u8>, MpcError> {
         let shares = {
             let local = self.local_shares.read().await;
-            local.get(key_id)
+            local
+                .get(key_id)
                 .cloned()
                 .ok_or_else(|| MpcError::KeyGenFailed("Key not found".to_string()))?
         };
-        
-        backup_key(&shares, encryption_key)
+
+        backup_key(
+            &shares,
+            key_id,
+            self.config.threshold,
+            self.config.total_shares,
+            self.config.curve,
+            passphrase,
+        )
     }
     
     /// Restore from backup
@@ -221,16 +266,48 @@ impl MpcWallet {
         Ok(())
     }
     
-    /// Recover key from shares (for emergency recovery)
-    pub async fn recover_key(&self, key_id: &str, shares: Vec<ShareInfo>) -> Result<Vec<u8>, MpcError> {
-        // Verify shares belong to this key
-        let stored_shares = {
-            let local = self.local_shares.read().await;
-            local.get(key_id).cloned()
+    /// Recover the raw secret from a threshold subset (emergency recovery).
+    ///
+    /// The reconstructed secret is checked against the stored public key, so an
+    /// unrelated share set fails instead of returning a plausible-looking key.
+    pub async fn recover_key(
+        &self,
+        key_id: &str,
+        shares: Vec<ShareInfo>,
+    ) -> Result<Vec<u8>, MpcError> {
+        let public_key = self.get_public_key(key_id).await?;
+        let secret = recover_key(&shares, self.config.threshold, self.config.curve)?;
+
+        let matches = match self.config.curve {
+            CurveType::Secp256k1 => k256::ecdsa::SigningKey::from_slice(&secret)
+                .map(|sk| {
+                    sk.verifying_key().to_encoded_point(false).as_bytes().to_vec() == public_key
+                })
+                .unwrap_or(false),
+            CurveType::P256 => p256::ecdsa::SigningKey::from_slice(&secret)
+                .map(|sk| {
+                    sk.verifying_key().to_encoded_point(false).as_bytes().to_vec() == public_key
+                })
+                .unwrap_or(false),
+            CurveType::Ed25519 => {
+                let seed: [u8; 32] = secret[..].try_into().map_err(|_| {
+                    MpcError::KeySharingFailed("recovered seed has the wrong length".to_string())
+                })?;
+                ed25519_dalek::SigningKey::from_bytes(&seed)
+                    .verifying_key()
+                    .to_bytes()
+                    .to_vec()
+                    == public_key
+            }
         };
-        
-        // Use provided shares for recovery
-        recover_key(&shares, self.config.threshold, self.config.curve)
+
+        if !matches {
+            return Err(MpcError::KeySharingFailed(
+                "recovered key does not match the stored public key".to_string(),
+            ));
+        }
+
+        Ok(secret)
     }
     
     /// Get all key IDs

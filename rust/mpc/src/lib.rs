@@ -13,9 +13,12 @@
 #![allow(dead_code)]
 
 mod field;
+mod field_ed25519;
 mod field_p256;
+pub mod backup_crypto;
 pub mod key_gen;
 pub mod signing;
+pub mod vss;
 pub mod key_sharing;
 pub mod wallet;
 
@@ -82,12 +85,15 @@ impl CurveType {
 /// Share information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareInfo {
-    /// Share index (1-based)
+    /// Share index (1-based). This is the polynomial's x-coordinate, so it must
+    /// be non-zero and unique across the participant set.
     pub index: u32,
-    /// Share data (encrypted)
+    /// The share value, the polynomial evaluated at `index`.
     pub share_data: Vec<u8>,
-    /// Public verification key
-    pub verification_key: Vec<u8>,
+    /// Feldman VSS commitments: one compressed curve point per polynomial
+    /// coefficient, `C_j = a_j * G`. A participant verifies its share with
+    /// `share * G == sum_j (index^j * C_j)` before using it.
+    pub commitments: Vec<Vec<u8>>,
 }
 
 /// Key generation result
@@ -99,8 +105,15 @@ pub struct KeyGenResult {
     pub public_key: Vec<u8>,
     /// Array of shares (one per participant)
     pub shares: Vec<ShareInfo>,
-    /// Backup encrypted key (for recovery)
+    /// AES-256-GCM encrypted master seed, bound to `key_id`
     pub backup: Vec<u8>,
+    /// The master seed the shares were built from.
+    ///
+    /// Present so the dealer can confirm the shares reconstruct it and so the
+    /// seed can be handed to the recovery/backup flow. Callers must treat this
+    /// as the highest-value secret in the system: it reconstructs the key on its
+    /// own, bypassing the threshold.
+    pub master_seed: Vec<u8>,
 }
 
 /// Signing result
