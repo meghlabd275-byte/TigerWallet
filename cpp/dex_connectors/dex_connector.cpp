@@ -1,500 +1,359 @@
-/**
- * TigerWallet DEX Connectors Implementation
- * High-Performance C++ Implementation for Real DEX Integration
- */
+// Uniswap-V2-style DEX connector.
+//
+// This connector is deliberately thin: it encodes calldata, calls the node and
+// decodes what comes back. It keeps no price table and no pool cache, because a
+// stale cached reserve would be indistinguishable from a real one at the call
+// site. When the node cannot answer, the call reports failure.
 
 #include "dex_connector.hpp"
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-#include <random>
-#include <sstream>
 
-// ============================================================================
-// Uniswap V2 Connector
-// ============================================================================
+#include <array>
+#include <atomic>
+#include <cctype>
+#include <cstdlib>
+#include <mutex>
+#include <optional>
+#include <utility>
 
-class UniswapV2Connector : public DexConnector {
-private:
-    DexProtocol protocol_;
-    std::string name_;
-    uint64_t chain_id_;
-    std::string rpc_url_;
-    std::string private_key_;
-    std::atomic<bool> connected_;
-    mutable std::mutex mutex_;
-    
-    // Token cache
-    std::unordered_map<std::string, Token> tokens_;
-    std::unordered_map<std::string, std::vector<Pool>> pools_cache_;
-    
-    // Price cache for low latency
-    struct CachedPrice {
-        PriceInfo price;
-        Timestamp cached_at;
-    };
-    mutable std::unordered_map<std::string, CachedPrice> price_cache_;
+#include "rpc.hpp"
+#include "transaction.hpp"
+#include "wallet.hpp"
 
-public:
-    UniswapV2Connector(const std::string& rpc_url, const std::string& private_key = "")
-        : protocol_(DexProtocol::UNISWAP_V2),
-          name_("Uniswap V2"),
-          chain_id_(1),
-          rpc_url_(rpc_url),
-          private_key_(private_key),
-          connected_(false) {
-        initialize_tokens();
-        initialize_pools();
+namespace tigerwallet {
+namespace dex {
+namespace {
+
+std::string lower_hex(const std::string& in) {
+    std::string s = in;
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (!s.empty() && s.rfind("0x", 0) != 0) s = "0x" + s;
+    return s;
+}
+
+bool is_zero_address(const std::string& address) {
+    std::string hex;
+    for (char c : address) {
+        if (c == '0' || c == 'x' || c == 'X') continue;
+        hex.push_back(c);
     }
-    
+    return hex.empty();
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+// V2 connector
+// ---------------------------------------------------------------------------
+
+class V2Connector final : public DexConnector {
+public:
+    V2Connector(DexProtocol protocol, std::string rpc_url, uint64_t chain_id,
+                std::string router, std::string factory, std::string private_key)
+        : protocol_(protocol),
+          name_(to_string(protocol)),
+          rpc_url_(std::move(rpc_url)),
+          chain_id_(chain_id),
+          router_(lower_hex(router)),
+          factory_(lower_hex(factory)),
+          private_key_hex_(std::move(private_key)) {
+        if (!private_key_hex_.empty()) {
+            auto account = derive_account();
+            if (account) {
+                wallet_ = *account;
+                address_ = wallet_->address;
+            }
+        }
+    }
+
     bool connect() override {
         std::lock_guard<std::mutex> lock(mutex_);
-        
-        // In production, establish HTTP/WebSocket connection to RPC
-        // For demonstration, simulate connection
-        if (!rpc_url_.empty()) {
-            std::cout << "Connecting to Uniswap V2 at " << rpc_url_ << std::endl;
-            connected_ = true;
-            return true;
-        }
-        
-        // Fallback to public RPC
+        RpcClient client(rpc_url_);
+        const auto chain = client.ChainId();
+        if (!chain.ok) return false;
+        // The configured contracts are chain-specific; refuse to operate against
+        // a node that is not the chain the operator declared.
+        if (chain.value != chain_id_) return false;
         connected_ = true;
         return true;
     }
-    
+
     void disconnect() override {
         std::lock_guard<std::mutex> lock(mutex_);
         connected_ = false;
-        std::cout << "Disconnected from Uniswap V2" << std::endl;
     }
-    
-    bool is_connected() const override {
-        return connected_.load();
+
+    bool is_connected() const override { return connected_; }
+
+    bool get_token_info(const std::string& address, Token& out) override {
+        out = Token{};
+        out.address = lower_hex(address);
+
+        RpcClient client(rpc_url_);
+        std::string word;
+        if (!encode_uint256("0", word)) return false;
+
+        const std::string symbol_call =
+            "0x" + function_selector("symbol()") + word;
+        const auto symbol_raw = client.EthCall(out.address, symbol_call);
+        if (!symbol_raw.ok) return false;
+        out.symbol = decode_string(symbol_raw.value);
+        if (out.symbol.empty()) return false;
+
+        const std::string name_call = "0x" + function_selector("name()") + word;
+        const auto name_raw = client.EthCall(out.address, name_call);
+        if (name_raw.ok) out.name = decode_string(name_raw.value);
+
+        const std::string decimals_call = "0x" + function_selector("decimals()") + word;
+        const auto decimals_raw = client.EthCall(out.address, decimals_call);
+        if (!decimals_raw.ok) return false;
+        const std::string decimals = decode_uint256(decimals_raw.value);
+        if (decimals.empty()) return false;
+        const unsigned long parsed = std::stoul(decimals);
+        if (parsed > 255) return false;
+        out.decimals = static_cast<uint8_t>(parsed);
+        return true;
     }
-    
-    DexProtocol get_protocol() const override { return protocol_; }
-    std::string get_name() const override { return name_; }
-    uint64_t get_chain_id() const override { return chain_id_; }
-    
-    std::vector<Pool> get_pools(const std::string& token_a, 
-                                 const std::string& token_b) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        std::string key = token_a < token_b ? token_a + "-" + token_b : token_b + "-" + token_a;
-        auto it = pools_cache_.find(key);
-        if (it != pools_cache_.end()) {
-            return it->second;
-        }
-        
-        return {};
+
+    bool get_pool(const std::string& token_a, const std::string& token_b,
+                  Pool& out) override {
+        out = Pool{};
+
+        RpcClient client(rpc_url_);
+        std::string word;
+        if (!encode_uint256("0", word)) return false;
+
+        const std::string pair_call = "0x" + function_selector("getPair(address,address)") +
+                                      encode_address(token_a) + encode_address(token_b);
+        const auto pair_raw = client.EthCall(factory_, pair_call);
+        if (!pair_raw.ok) return false;
+
+        const std::string pair_word = decode_uint256(pair_raw.value);
+        if (pair_word.empty()) return false;
+        std::string pair_address = "0x" + pair_raw.value.substr(24, 40);
+        if (is_zero_address(pair_address)) return false;
+        out.address = pair_address;
+
+        const std::string reserves_call = "0x" + function_selector("getReserves()") + word;
+        const auto reserves_raw = client.EthCall(out.address, reserves_call);
+        if (!reserves_raw.ok) return false;
+
+        // getReserves returns (uint112, uint112, uint32) as three words.
+        std::string r0, r1;
+        if (!word_from(reserves_raw.value, 0, r0)) return false;
+        if (!word_from(reserves_raw.value, 1, r1)) return false;
+        out.reserve_a = r0;
+        out.reserve_b = r1;
+
+        Token a, b;
+        if (get_token_info(token_a, a)) out.token_a = a;
+        if (get_token_info(token_b, b)) out.token_b = b;
+        return true;
     }
-    
-    std::vector<Token> get_tokens() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        std::vector<Token> result;
-        for (auto& pair : tokens_) {
-            result.push_back(pair.second);
-        }
-        return result;
+
+    bool get_quote(const std::string& from_token, const std::string& to_token,
+                   const std::string& amount, Quote& out) override {
+        out = Quote{};
+        std::string word;
+        if (!encode_uint256(amount, word)) return false;
+
+        RpcClient client(rpc_url_);
+        const std::string path =
+            encode_address(from_token) + encode_address(to_token);
+        // getAmountsOut(uint256,address[]) -> offset(0x40), amount, offset(0x40),
+        // length(2), token0, token1
+        const std::string head = "0x" + function_selector("getAmountsOut(uint256,address[])") +
+                                 word +
+                                 std::string(64, '0').replace(62, 2, "40") +
+                                 std::string(64, '0').replace(63, 1, "2") +
+                                 path.substr(0, 64) + path.substr(64, 64);
+        const auto raw = client.EthCall(router_, head);
+        if (!raw.ok) return false;
+
+        std::vector<std::string> amounts;
+        if (!decode_amounts_array(raw.value, amounts) || amounts.size() < 2) return false;
+
+        out.from_token = lower_hex(from_token);
+        out.to_token = lower_hex(to_token);
+        out.from_amount = amounts.front();
+        out.to_amount = amounts.back();
+        out.path = {out.from_token, out.to_token};
+        out.price = decimal_mul_div(out.to_amount, "1000000000000000000", out.from_amount, out.price)
+                        ? out.price
+                        : "0";
+        return true;
     }
-    
-    Token get_token_info(const std::string& address) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto it = tokens_.find(address);
-        if (it != tokens_.end()) {
-            return it->second;
-        }
-        
-        return Token();
-    }
-    
-    Quote get_quote(const std::string& from_token, const std::string& to_token,
-                    const std::string& amount) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        // Get the pool for this trading pair
-        auto pools = get_pools(from_token, to_token);
-        if (pools.empty()) {
-            return Quote{};
-        }
-        
-        // Use the pool with best liquidity
-        Pool& pool = pools[0];
-        
-        // Parse amount
-        double amount_d = std::stod(amount);
-        
-        // Calculate output using constant product formula: dx * y / (x + dx)
-        double reserve_a = std::stod(pool.reserve_a);
-        double reserve_b = std::stod(pool.reserve_b);
-        
-        double output_amount = 0;
-        if (from_token == pool.token_a.address) {
-            output_amount = amount_d * reserve_b / (reserve_a + amount_d) * (1 - pool.fee_bps / 10000.0);
-        } else {
-            output_amount = amount_d * reserve_a / (reserve_b + amount_d) * (1 - pool.fee_bps / 10000.0);
-        }
-        
-        Quote quote;
-        quote.from_token = from_token;
-        quote.to_token = to_token;
-        quote.from_amount = amount;
-        quote.to_amount = std::to_string(output_amount);
-        quote.price = output_amount / amount_d;
-        quote.gas_estimate = 150000;  // Estimated gas for swap
-        quote.route = {name_};
-        
-        return quote;
-    }
-    
-    std::vector<Quote> get_quotes(const std::string& from_token,
-                                   const std::string& to_token,
-                                   const std::string& amount) override {
-        std::vector<Quote> quotes;
-        
-        // Get quote from this DEX
-        Quote quote = get_quote(from_token, to_token, amount);
-        if (quote.price > 0) {
-            quotes.push_back(quote);
-        }
-        
-        return quotes;
-    }
-    
-    PriceInfo get_price(const std::string& token_a, const std::string& token_b) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        // Check cache first
-        std::string cache_key = token_a < token_b ? token_a + "-" + token_b : token_b + "-" + token_a;
-        auto cache_it = price_cache_.find(cache_key);
-        if (cache_it != price_cache_.end()) {
-            auto age = std::chrono::system_clock::now().time_since_epoch().count() - cache_it->second.cached_at;
-            if (age < 500) {  // Less than 500ms old
-                return cache_it->second.price;
-            }
-        }
-        
-        // Get pool and calculate price
-        auto pools = get_pools(token_a, token_b);
-        if (pools.empty()) {
-            return PriceInfo{};
-        }
-        
-        Pool& pool = pools[0];
-        double reserve_a = std::stod(pool.reserve_a);
-        double reserve_b = std::stod(pool.reserve_b);
-        
-        PriceInfo price;
-        price.token_a = token_a;
-        price.token_b = token_b;
-        price.price = reserve_b / reserve_a;
-        price.bid = price.price * (1 - pool.fee_bps / 20000.0);
-        price.ask = price.price * (1 + pool.fee_bps / 20000.0);
-        price.spread_bps = pool.fee_bps / 2;
-        price.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-        
-        // Cache the price
-        price_cache_[cache_key] = {price, price.timestamp};
-        
-        return price;
-    }
-    
-    SwapResult execute_swap(const Order& order) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
+
+    SwapResult execute_swap(const std::string& from_token,
+                            const std::string& to_token,
+                            const std::string& amount,
+                            const std::string& min_out) override {
         SwapResult result;
-        result.order_id = order.order_id;
-        result.from_token = order.from_token.amount;
-        result.to_token = order.to_token.amount;
-        
-        if (!connected_) {
-            result.error_message = "Not connected to DEX";
+        result.from_token = lower_hex(from_token);
+        result.to_token = lower_hex(to_token);
+        result.from_amount = amount;
+
+        if (!wallet_) {
+            result.error_message = "no signing key configured";
             return result;
         }
-        
-        // In production, this would:
-        // 1. Build the transaction
-        // 2. Sign with private key
-        // 3. Broadcast to network
-        // 4. Wait for confirmation
-        
-        // For now, simulate successful swap
+
+        // The output is measured from the balance delta, so the balance before
+        // the swap is read first.
+        std::string balance_before;
+        if (!get_balance(to_token, address_, balance_before)) {
+            result.error_message = "cannot read recipient balance";
+            return result;
+        }
+
+        RpcClient client(rpc_url_);
+        std::string deadline;
+        {
+            const auto block = client.BlockNumber();
+            if (!block.ok) {
+                result.error_message = "cannot read block number";
+                return result;
+            }
+            // A short deadline keeps a stale quote from being mined much later.
+            deadline = std::to_string(block.value + 1200);
+        }
+
+        std::string amount_word, min_word, deadline_word;
+        if (!encode_uint256(amount, amount_word) ||
+            !encode_uint256(min_out, min_word) ||
+            !encode_uint256(deadline, deadline_word)) {
+            result.error_message = "invalid amount";
+            return result;
+        }
+
+        const std::string path = encode_address(from_token) + encode_address(to_token);
+        const std::string data = "0x" + function_selector(
+            "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)") +
+            amount_word + min_word +
+            std::string(64, '0').replace(62, 2, "a0") +   // offset to path
+            encode_address(address_) +                    // recipient
+            deadline_word +
+            std::string(64, '0').replace(63, 1, "2") +    // path length
+            path.substr(0, 64) + path.substr(64, 64);
+
+        // Approve the router for the input token, then swap.
+        const std::string approve_data = "0x" +
+            function_selector("approve(address,uint256)") + encode_address(router_) + amount_word;
+
+        Transaction approve_tx;
+        approve_tx.chain_id = chain_id_;
+        approve_tx.to = result.from_token;
+        approve_tx.data_hex = approve_data;
+        approve_tx.value_wei = "0";
+        approve_tx.type = TxType::EIP1559;
+
+        if (!PopulateTransactionFromNode(rpc_url_, address_, approve_tx)) {
+            result.error_message = "cannot populate approval transaction";
+            return result;
+        }
+        const auto approve_sent = Wallet::SignAndSend(*wallet_, password_, approve_tx, rpc_url_);
+        if (!approve_sent.ok) {
+            result.error_message = "approval failed: " + approve_sent.error;
+            return result;
+        }
+
+        Transaction swap_tx;
+        swap_tx.chain_id = chain_id_;
+        swap_tx.to = router_;
+        swap_tx.data_hex = data;
+        swap_tx.value_wei = "0";
+        swap_tx.type = TxType::EIP1559;
+
+        if (!PopulateTransactionFromNode(rpc_url_, address_, swap_tx)) {
+            result.error_message = "cannot populate swap transaction";
+            return result;
+        }
+        const auto sent = Wallet::SignAndSend(*wallet_, password_, swap_tx, rpc_url_);
+        if (!sent.ok) {
+            result.error_message = sent.error;
+            return result;
+        }
+
+        std::string balance_after;
+        if (!get_balance(to_token, address_, balance_after)) {
+            result.error_message = "cannot read recipient balance after swap";
+            return result;
+        }
+
+        std::string received;
+        if (!decimal_sub(balance_after, balance_before, received)) {
+            result.error_message = "balance delta is negative";
+            return result;
+        }
+
         result.success = true;
-        result.tx_hash = "0x" + generate_random_hash();
-        result.to_amount = order.to_token.amount;
-        
-        std::cout << "Executed swap on Uniswap V2: " << order.from_token.amount 
-                  << " -> " << result.to_amount << std::endl;
-        
+        result.tx_hash = sent.tx_hash;
+        result.to_amount = received;
         return result;
     }
-    
-    bool cancel_order(const std::string& order_id) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        // In production, send cancel transaction
-        std::cout << "Cancelled order: " << order_id << std::endl;
+
+    bool get_balance(const std::string& token, const std::string& owner,
+                     std::string& out) override {
+        RpcClient client(rpc_url_);
+        const std::string data = "0x" + function_selector("balanceOf(address)") +
+                                 encode_address(owner);
+        const auto raw = client.EthCall(lower_hex(token), data);
+        if (!raw.ok) return false;
+        const std::string value = decode_uint256(raw.value);
+        if (value.empty()) return false;
+        out = value;
         return true;
     }
-    
-    Order get_order_status(const std::string& order_id) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        Order order;
-        order.order_id = order_id;
-        order.status = OrderStatus::FILLED;
-        
-        return order;
-    }
-    
-    std::vector<LiquidityPosition> get_liquidity_positions(const std::string& owner) override {
-        return {};
-    }
-    
-    bool add_liquidity(const std::string& pool, const std::string& amount_a,
-                      const std::string& amount_b) override {
-        return true;
-    }
-    
-    bool remove_liquidity(const std::string& position, const std::string& percent) override {
-        return true;
-    }
+
+    DexProtocol protocol() const override { return protocol_; }
+    uint64_t chain_id() const override { return chain_id_; }
+    const std::string& name() const override { return name_; }
 
 private:
-    void initialize_tokens() {
-        // Mainnet tokens
-        tokens_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"] = 
-            Token("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "WETH", "Wrapped Ether", 18);
-        tokens_["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"] = 
-            Token("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "USDC", "USD Coin", 6);
-        tokens_["0xdAC17F958D2ee523a2206206994597C13D831ec7"] = 
-            Token("0xdAC17F958D2ee523a2206206994597C13D831ec7", "USDT", "Tether USD", 6);
-        tokens_["0x6B175474E89094C44Da98b954E1162928195441"] = 
-            Token("0x6B175474E89094C44Da98b954E1162928195441", "DAI", "Dai Stablecoin", 18);
-        tokens_["0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"] = 
-            Token("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", "UNI", "Uniswap", 18);
-        tokens_["0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9"] = 
-            Token("0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", "AAVE", "Aave", 18);
+    static bool word_from(const std::string& hex_data, size_t index, std::string& out) {
+        std::string hex = hex_data;
+        if (hex.rfind("0x", 0) == 0) hex = hex.substr(2);
+        if (hex.size() < (index + 1) * 64) return false;
+        const std::string word = hex.substr(index * 64, 64);
+        out = decode_uint256(word);
+        return !out.empty();
     }
-    
-    void initialize_pools() {
-        // WETH-USDC pool
-        Pool eth_usdc;
-        eth_usdc.address = "0x88e6A0c2dDD26EEb57f7344B303f1c5372A19dB1";
-        eth_usdc.token_a = tokens_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"];
-        eth_usdc.token_b = tokens_["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"];
-                eth_usdc.reserve_a = ""; // real reserves from pair contract getReserves()
-                eth_usdc.reserve_b = ""; // real reserves from pair contract getReserves()
-        eth_usdc.fee_bps = 30;
-        
-        pools_cache_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2-0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"] = {eth_usdc};
-        
-        // WETH-USDT pool
-        Pool eth_usdt;
-        eth_usdt.address = "0x4e68Ccc3acF2c8b9F6D1d5C5a6B1d5C6b1D5c6b";
-        eth_usdt.token_a = tokens_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"];
-        eth_usdt.token_b = tokens_["0xdAC17F958D2ee523a2206206994597C13D831ec7"];
-        eth_usdt.reserve_a = "8000";
-        eth_usdt.reserve_b = "28000000";
-        eth_usdt.fee_bps = 30;
-        
-        pools_cache_["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2-0xdAC17F958D2ee523a2206206994597C13D831ec7"] = {eth_usdt};
+
+    std::optional<WalletAccount> derive_account() {
+        std::string hex = private_key_hex_;
+        if (hex.rfind("0x", 0) == 0) hex = hex.substr(2);
+        if (hex.size() != 64) return std::nullopt;
+        std::array<uint8_t, 32> key{};
+        for (size_t i = 0; i < 32; ++i) {
+            key[i] = static_cast<uint8_t>(std::strtol(hex.substr(i * 2, 2).c_str(), nullptr, 16));
+        }
+        password_ = "dex-connector";  // ephemeral in-memory account
+        return Wallet::FromPrivateKey(key, password_, "dex-connector");
     }
-    
-    std::string generate_random_hash() {
-        // Fail-closed: never fabricate a transaction hash. Real tx hashes come
-        // from the on-chain broadcast receipt (wallet_api /send), not RNG.
-        return "";
-    }
-};
 
-// ============================================================================
-// SushiSwap Connector
-// ============================================================================
-
-class SushiswapConnector : public UniswapV2Connector {
-public:
-    SushiswapConnector(const std::string& rpc_url, const std::string& private_key = "")
-        : UniswapV2Connector(rpc_url, private_key) {
-        // Override defaults for SushiSwap
-    }
-    
-    DexProtocol get_protocol() const override { return DexProtocol::SUSHISWAP; }
-    std::string get_name() const override { return "SushiSwap"; }
-    uint64_t get_chain_id() const override { return 1; }
-};
-
-// ============================================================================
-// PancakeSwap Connector (BSC)
-// ============================================================================
-
-class PancakeswapConnector : public DexConnector {
-private:
     DexProtocol protocol_;
     std::string name_;
-    uint64_t chain_id_;
     std::string rpc_url_;
-    std::atomic<bool> connected_;
+    uint64_t chain_id_;
+    std::string router_;
+    std::string factory_;
+    std::string private_key_hex_;
+    std::string password_;
+    std::optional<WalletAccount> wallet_;
+    std::string address_;
+    std::atomic<bool> connected_{false};
     mutable std::mutex mutex_;
-    std::unordered_map<std::string, Token> tokens_;
-    std::unordered_map<std::string, std::vector<Pool>> pools_cache_;
-
-public:
-    PancakeswapConnector(const std::string& rpc_url, const std::string& private_key = "")
-        : protocol_(DexProtocol::PANCAKESWAP),
-          name_("PancakeSwap"),
-          chain_id_(56),
-          rpc_url_(rpc_url),
-          connected_(false) {
-        initialize_tokens();
-    }
-    
-    bool connect() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!rpc_url_.empty()) {
-            connected_ = true;
-        }
-        return connected_.load();
-    }
-    
-    void disconnect() override {
-        connected_ = false;
-    }
-    
-    bool is_connected() const override { return connected_.load(); }
-    
-    DexProtocol get_protocol() const override { return protocol_; }
-    std::string get_name() const override { return name_; }
-    uint64_t get_chain_id() const override { return chain_id_; }
-    
-    std::vector<Pool> get_pools(const std::string& token_a, 
-                                 const std::string& token_b) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::string key = token_a < token_b ? token_a + "-" + token_b : token_b + "-" + token_a;
-        auto it = pools_cache_.find(key);
-        if (it != pools_cache_.end()) return it->second;
-        return {};
-    }
-    
-    std::vector<Token> get_tokens() override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<Token> result;
-        for (auto& pair : tokens_) result.push_back(pair.second);
-        return result;
-    }
-    
-    Token get_token_info(const std::string& address) override {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = tokens_.find(address);
-        if (it != tokens_.end()) return it->second;
-        return Token();
-    }
-    
-    Quote get_quote(const std::string& from_token, const std::string& to_token,
-                    const std::string& amount) override {
-        Quote quote;
-        auto pools = get_pools(from_token, to_token);
-        if (pools.empty()) return quote;
-        
-        Pool& pool = pools[0];
-        double amount_d = std::stod(amount);
-        double reserve_a = std::stod(pool.reserve_a);
-        double reserve_b = std::stod(pool.reserve_b);
-        
-        double output = amount_d * reserve_b / (reserve_a + amount_d) * (1 - pool.fee_bps / 10000.0);
-        
-        quote.from_token = from_token;
-        quote.to_token = to_token;
-        quote.from_amount = amount;
-        quote.to_amount = std::to_string(output);
-        quote.price = output / amount_d;
-        quote.gas_estimate = 200000;
-        quote.route = {name_};
-        
-        return quote;
-    }
-    
-    std::vector<Quote> get_quotes(const std::string& from_token,
-                                   const std::string& to_token,
-                                   const std::string& amount) override {
-        Quote q = get_quote(from_token, to_token, amount);
-        if (q.price > 0) return {q};
-        return {};
-    }
-    
-    PriceInfo get_price(const std::string& token_a, const std::string& token_b) override {
-        auto pools = get_pools(token_a, token_b);
-        if (pools.empty()) return PriceInfo{};
-        
-        Pool& pool = pools[0];
-        double reserve_a = std::stod(pool.reserve_a);
-        double reserve_b = std::stod(pool.reserve_b);
-        
-        PriceInfo price;
-        price.token_a = token_a;
-        price.token_b = token_b;
-        price.price = reserve_b / reserve_a;
-        price.bid = price.price * (1 - pool.fee_bps / 20000.0);
-        price.ask = price.price * (1 + pool.fee_bps / 20000.0);
-        price.spread_bps = pool.fee_bps / 2;
-        price.timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-        
-        return price;
-    }
-    
-    SwapResult execute_swap(const Order& order) override {
-        SwapResult result;
-        // Fail-closed: real swap execution requires broadcast via wallet_api /send.
-        result.success = false;
-        result.order_id = order.order_id;
-        result.tx_hash = "";
-        return result;
-    }
-    
-    bool cancel_order(const std::string& order_id) override { return true; }
-    Order get_order_status(const std::string& order_id) override { return Order{}; }
-    std::vector<LiquidityPosition> get_liquidity_positions(const std::string& owner) override { return {}; }
-    bool add_liquidity(const std::string& pool, const std::string& amount_a, const std::string& amount_b) override { return true; }
-    bool remove_liquidity(const std::string& position, const std::string& percent) override { return true; }
-
-private:
-    void initialize_tokens() {
-        // BSC tokens
-        tokens_["0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bd095"] = 
-            Token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bd095", "WBNB", "Wrapped BNB", 18);
-        tokens_["0x55d398326f99059fF775485246999027B3197955"] = 
-            Token("0x55d398326f99059fF775485246999027B3197955", "USDT", "Tether USD", 18);
-        tokens_["0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"] = 
-            Token("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", "USDC", "USD Coin", 18);
-        tokens_["0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"] = 
-            Token("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", "BUSD", "Binance USD", 18);
-    }
-    
-    std::string generate_random_hash() {
-        // Fail-closed: never fabricate a transaction hash. Real tx hashes come
-        // from the on-chain broadcast receipt (wallet_api /send), not RNG.
-        return "";
-    }
 };
 
-// ============================================================================
-// Factory Implementation
-// ============================================================================
-
-std::unique_ptr<DexConnector> create_dex_connector(DexProtocol protocol,
-                                                     const std::string& rpc_url,
-                                                     const std::string& private_key) {
-    switch (protocol) {
-        case DexProtocol::UNISWAP_V2:
-            return std::make_unique<UniswapV2Connector>(rpc_url, private_key);
-        case DexProtocol::SUSHISWAP:
-            return std::make_unique<SushiswapConnector>(rpc_url, private_key);
-        case DexProtocol::PANCAKESWAP:
-            return std::make_unique<PancakeswapConnector>(rpc_url, private_key);
-        default:
-            return nullptr;
-    }
+std::unique_ptr<DexConnector> make_v2_connector(DexProtocol protocol,
+                                                std::string rpc_url,
+                                                uint64_t chain_id,
+                                                std::string router,
+                                                std::string factory,
+                                                std::string private_key) {
+    return std::make_unique<V2Connector>(protocol, std::move(rpc_url), chain_id,
+                                         std::move(router), std::move(factory),
+                                         std::move(private_key));
 }
+
+}  // namespace dex
+}  // namespace tigerwallet
