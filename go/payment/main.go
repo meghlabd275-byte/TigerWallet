@@ -569,7 +569,7 @@ func (s *PaymentService) CreateWithdrawal(c *gin.Context) {
 	s.payments[payment.ID] = payment
 	s.mu.Unlock()
 
-	// In production, this would broadcast the transaction
+	// Broadcast runs in the background; the response returns while it is in flight.
 	go s.processWithdrawal(payment)
 
 	c.JSON(http.StatusOK, gin.H{
