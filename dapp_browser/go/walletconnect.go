@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -37,7 +36,7 @@ import (
 
 // Configuration
 type WCConfig struct {
-	ServerPort   string `json:"server_port"`
+	ServerPort  string `json:"server_port"`
 	DBHost      string `json:"db_host"`
 	DBPort      string `json:"db_port"`
 	DBUser      string `json:"db_user"`
@@ -67,39 +66,45 @@ type WCConfig struct {
 	// AllowedOrigins is the browser-origin allowlist for the WebSocket
 	// handshake (comma-separated in WC_ALLOWED_ORIGINS).
 	AllowedOrigins []string `json:"allowed_origins"`
+
+	// RelayURL is the WalletConnect v2 relay WebSocket endpoint
+	// (WC_RELAY_URL, default wss://relay.walletconnect.org). An empty value
+	// disables the relay: pairings and sessions are then only reachable over
+	// this service's local WebSocket.
+	RelayURL string `json:"relay_url"`
 }
 
 // WalletConnect v2 Methods
 const (
-	WC_METHOD_SESSION_PROPOSE   = "wc_sessionPropose"
+	WC_METHOD_SESSION_PROPOSE = "wc_sessionPropose"
 	WC_METHOD_SESSION_REQUEST = "wc_sessionRequest"
-	WC_METHOD_SESSION_UPDATE = "wc_sessionUpdate"
-	WC_METHOD_SESSION_PING  = "wc_sessionPing"
+	WC_METHOD_SESSION_UPDATE  = "wc_sessionUpdate"
+	WC_METHOD_SESSION_PING    = "wc_sessionPing"
 
 	JSON_RPC_ETH_CHAIN_ID              = "eth_chainId"
-	JSON_RPC_ETH_ACCOUNTS             = "eth_accounts"
-	JSON_RPC_ETH_REQUEST_ACCOUNTS     = "eth_requestAccounts"
-	JSON_RPC_PERSONAL_SIGN            = "personal_sign"
-	JSON_RPC_ETH_SIGN_TYPED_DATA      = "eth_signTypedData_v4"
-	JSON_RPC_ETH_SEND_TRANSACTION     = "eth_sendTransaction"
-	JSON_RPC_ETH_SIGN_TRANSACTION    = "eth_signTransaction"
-	JSON_RPC_ETH_CALL               = "eth_call"
-	JSON_RPC_ETH_GET_BALANCE         = "eth_getBalance"
-	JSON_RPC_ETH_GET_CODE            = "eth_getCode"
+	JSON_RPC_ETH_ACCOUNTS              = "eth_accounts"
+	JSON_RPC_ETH_REQUEST_ACCOUNTS      = "eth_requestAccounts"
+	JSON_RPC_PERSONAL_SIGN             = "personal_sign"
+	JSON_RPC_ETH_SIGN_TYPED_DATA       = "eth_signTypedData_v4"
+	JSON_RPC_ETH_SEND_TRANSACTION      = "eth_sendTransaction"
+	JSON_RPC_ETH_SIGN_TRANSACTION      = "eth_signTransaction"
+	JSON_RPC_ETH_CALL                  = "eth_call"
+	JSON_RPC_ETH_GET_BALANCE           = "eth_getBalance"
+	JSON_RPC_ETH_GET_CODE              = "eth_getCode"
 	JSON_RPC_ETH_GET_TRANSACTION_COUNT = "eth_getTransactionCount"
-	JSON_RPC_ETH_ESTIMATE_GAS        = "eth_estimateGas"
-	JSON_RPC_ETH_GAS_PRICE           = "eth_gasPrice"
-	JSON_RPC_NETWORK_VERSION          = "net_version"
+	JSON_RPC_ETH_ESTIMATE_GAS          = "eth_estimateGas"
+	JSON_RPC_ETH_GAS_PRICE             = "eth_gasPrice"
+	JSON_RPC_NETWORK_VERSION           = "net_version"
 )
 
 // WCMessage represents a WalletConnect message
 type WCMessage struct {
-	ID       int64       `json:"id"`
-	JSONRPC  string     `json:"jsonrpc"`
-	Method  string     `json:"method,omitempty"`
+	ID      int64       `json:"id"`
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method,omitempty"`
 	Params  interface{} `json:"params,omitempty"`
 	Result  interface{} `json:"result,omitempty"`
-	Error   *WCError   `json:"error,omitempty"`
+	Error   *WCError    `json:"error,omitempty"`
 }
 
 // WCError represents a JSON-RPC error
@@ -112,7 +117,7 @@ type WCError struct {
 type SessionProposeParams struct {
 	RequiredNamespaces map[string]SessionNamespace `json:"requiredNamespaces"`
 	OptionalNamespaces map[string]SessionNamespace `json:"optionalNamespaces"`
-	Properties        map[string]string           `json:"properties,omitempty"`
+	Properties         map[string]string           `json:"properties,omitempty"`
 }
 
 // Session Namespace
@@ -125,8 +130,8 @@ type SessionNamespace struct {
 // Session Request
 type SessionRequestParams struct {
 	ChainID string          `json:"chainId"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params"`
 }
 
 // DApp Metadata
@@ -139,37 +144,42 @@ type DAppMetadata struct {
 
 // Session Data
 type Session struct {
-	Topic         string                    `json:"topic"`
-	PublicKey    string                    `json:"public_key"`
-	DAppMetadata DAppMetadata             `json:"dapp_metadata"`
+	Topic        string                      `json:"topic"`
+	PublicKey    string                      `json:"public_key"`
+	DAppMetadata DAppMetadata                `json:"dapp_metadata"`
 	Namespaces   map[string]SessionNamespace `json:"namespaces"`
-	Accounts    []string                  `json:"accounts"`
-	Expiry      int64                    `json:"expiry"`
-	CreatedAt   time.Time                `json:"created_at"`
-	UpdatedAt   time.Time                `json:"updated_at"`
+	Accounts     []string                    `json:"accounts"`
+	Expiry       int64                       `json:"expiry"`
+	CreatedAt    time.Time                   `json:"created_at"`
+	UpdatedAt    time.Time                   `json:"updated_at"`
 }
 
 // Pending Request
 type PendingRequest struct {
 	ID        int64           `json:"id"`
-	Topic    string         `json:"topic"`
-	Method  string         `json:"method"`
-	Params  json.RawMessage `json:"params"`
-	ChainID string         `json:"chain_id"`
-	Status  string         `json:"status"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   string         `json:"error,omitempty"`
-	CreatedAt time.Time    `json:"created_at"`
+	Topic     string          `json:"topic"`
+	Method    string          `json:"method"`
+	Params    json.RawMessage `json:"params"`
+	ChainID   string          `json:"chain_id"`
+	Status    string          `json:"status"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
 }
 
 // Pairing Info
 type Pairing struct {
-	Topic        string         `json:"topic"`
-	PublicKey   string         `json:"public_key"`
-	DAppMetadata DAppMetadata  `json:"dapp_metadata"`
-	Expiry     int64         `json:"expiry"`
-	Status     string       `json:"status"`
-	CreatedAt  time.Time    `json:"created_at"`
+	Topic        string       `json:"topic"`
+	PublicKey    string       `json:"public_key"`
+	DAppMetadata DAppMetadata `json:"dapp_metadata"`
+	Expiry       int64        `json:"expiry"`
+	Status       string       `json:"status"`
+	CreatedAt    time.Time    `json:"created_at"`
+
+	// DAppPublicKey is the dApp's X25519 public key, learned from the pairing
+	// proposal. It is what makes the session's symmetric key a real agreement
+	// between the two peers rather than a value this service picks alone.
+	DAppPublicKey string `json:"dapp_public_key,omitempty"`
 }
 
 // WalletConnect Service
@@ -187,6 +197,23 @@ type WalletConnectService struct {
 	// personal_sign and eth_signTypedData_v4. It is nil when no key is
 	// configured, in which case signing requests are rejected.
 	signer *ecdsa.PrivateKey
+
+	// keyPair is this wallet's X25519 pairing key. Its public half is what a
+	// dApp receives in a pairing URI; the private half is what makes the
+	// symmetric key unrecoverable by the relay.
+	keyPair *X25519KeyPair
+
+	// relay carries sealed envelopes to and from the WalletConnect relay. It is
+	// nil when no relay is configured, in which case pairings are still created
+	// and stored but nothing can reach a remote dApp.
+	relay *RelayClient
+
+	// symKeys maps a topic to the symmetric key its envelopes are sealed with.
+	// Session topics get their own key, derived at approval time.
+	symKeys sync.Map
+
+	// replay refuses a sealed envelope that has already been delivered.
+	replay *replayWindow
 }
 
 // NewWalletConnectService creates new service
@@ -224,13 +251,57 @@ func NewWalletConnectService(cfg WCConfig) (*WalletConnectService, error) {
 		}
 	}
 
-	return &WalletConnectService{
+	keyPair, err := GenerateX25519KeyPair()
+	if err != nil {
+		return nil, err
+	}
+
+	svc := &WalletConnectService{
 		db:       db,
 		redis:    rdb,
 		config:   cfg,
 		upgrader: walletConnectUpgrader(cfg.AllowedOrigins),
 		signer:   signer,
-	}, nil
+		keyPair:  keyPair,
+		replay:   newReplayWindow(replayWindowSeconds, maxReplayEntries),
+	}
+
+	// A relay connection is optional. Without one the service still serves
+	// pairings and sessions over its local WebSocket, which is how the desktop
+	// and extension clients talk to it. With one, the same service can also
+	// reach real dApps.
+	if cfg.RelayURL != "" {
+		relay, err := NewRelayClient(context.Background(), cfg.RelayURL, cfg.ProjectID, svc.handleRelayMessage)
+		if err != nil {
+			return nil, err
+		}
+		svc.relay = relay
+	}
+
+	return svc, nil
+}
+
+// Replay-window sizing. A sealed request that arrives twice inside the window
+// is refused; the cap bounds memory under a burst.
+const (
+	replayWindowSeconds = 300
+	maxReplayEntries    = 4096
+)
+
+// handleRelayMessage receives the plaintext of every envelope addressed to this
+// wallet and routes it through the same dispatch path as a locally connected
+// dApp, after the replay window has accepted it.
+func (s *WalletConnectService) handleRelayMessage(topic string, payload []byte) {
+	if !s.replay.Accept(string(payload), time.Now().Unix()) {
+		log.Printf("walletconnect dropped a replayed envelope on topic %s", topic)
+		return
+	}
+	var msg WCMessage
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		log.Printf("walletconnect envelope on topic %s is not JSON-RPC: %v", topic, err)
+		return
+	}
+	s.handleMessage(topic, &msg)
 }
 
 // walletConnectUpgrader builds the WebSocket upgrader. CheckOrigin previously
@@ -253,41 +324,65 @@ func walletConnectUpgrader(origins []string) websocket.Upgrader {
 	}
 }
 
-// GenerateKeyPair generates a new key pair for pairing
+// GenerateKeyPair returns this service's X25519 key pair as (public, private)
+// hex strings. Both halves come from a real key agreement: the previous
+// implementation filled one buffer with random bytes and returned it as the
+// public and the private key alike, which is not a key pair and cannot produce
+// a shared secret with a peer.
 func (s *WalletConnectService) GenerateKeyPair() (string, string, error) {
-	var key [32]byte
-	_, err := rand.Read(key[:])
-	if err != nil {
-		return "", "", err
+	if s.keyPair == nil {
+		return "", "", errors.New("no pairing key pair is configured")
 	}
-	publicKey := hex.EncodeToString(key[:])
-	return publicKey, publicKey, nil
+	return hex.EncodeToString(s.keyPair.Public[:]), hex.EncodeToString(s.keyPair.Private[:]), nil
 }
 
-// GenerateTopic generates a new topic
+// GenerateTopic generates a new random topic.
 func (s *WalletConnectService) GenerateTopic() string {
-	var b [32]byte
-	rand.Read(b[:])
-	return hex.EncodeToString(b[:])
+	topic, err := randomTopic()
+	if err != nil {
+		// randomTopic only fails when the CSPRNG does. Refusing to invent a
+		// topic keeps two pairings from colliding on the same address.
+		return ""
+	}
+	return topic
 }
 
 // CreatePairing creates a new pairing
 func (s *WalletConnectService) CreatePairing(metadata DAppMetadata) (*Pairing, error) {
-	publicKey, _, _ := s.GenerateKeyPair()
+	publicKey, _, err := s.GenerateKeyPair()
+	if err != nil {
+		return nil, err
+	}
 	topic := s.GenerateTopic()
+	if topic == "" {
+		return nil, errors.New("could not generate a pairing topic")
+	}
 	expiry := time.Now().Add(24 * time.Hour).Unix()
 
 	pairing := &Pairing{
 		Topic:        topic,
 		PublicKey:    publicKey,
 		DAppMetadata: metadata,
-		Expiry:      expiry,
-		Status:      "proposed",
-		CreatedAt:   time.Now(),
+		Expiry:       expiry,
+		Status:       "proposed",
+		CreatedAt:    time.Now(),
 	}
 
+	// The pairing's symmetric key is derived from this wallet's private key and
+	// the public key the dApp presents, which cannot happen until the dApp
+	// replies. Until then the topic is registered under the wallet's own public
+	// key so an inbound proposal is readable.
+	if s.relay != nil {
+		if err := s.relay.Subscribe(context.Background(), topic, s.keyPair.Public[:]); err != nil {
+			return nil, fmt.Errorf("subscribe to pairing topic: %w", err)
+		}
+	}
+	s.symKeys.Store(topic, s.keyPair.Public[:])
+
 	s.pairings.Store(topic, pairing)
-	s.db.Create(pairing)
+	if err := s.db.Create(pairing).Error; err != nil {
+		return nil, fmt.Errorf("persist pairing: %w", err)
+	}
 
 	return pairing, nil
 }
@@ -303,13 +398,33 @@ func (s *WalletConnectService) ApprovePairing(topic string, namespaces map[strin
 	p.Status = "approved"
 
 	sessionTopic := s.GenerateTopic()
-	publicKey, _, _ := s.GenerateKeyPair()
+	if sessionTopic == "" {
+		return nil, errors.New("could not generate a session topic")
+	}
+	publicKey, _, err := s.GenerateKeyPair()
+	if err != nil {
+		return nil, err
+	}
+
+	// The session gets its own symmetric key, derived from this wallet's private
+	// key and the dApp's public key. The dApp derives the same key from its own
+	// private key and ours, so the relay never learns it.
+	sessionKey, err := s.sessionSymKey(p)
+	if err != nil {
+		return nil, err
+	}
+	if s.relay != nil {
+		if err := s.relay.Subscribe(context.Background(), sessionTopic, sessionKey); err != nil {
+			return nil, fmt.Errorf("subscribe to session topic: %w", err)
+		}
+	}
+	s.symKeys.Store(sessionTopic, sessionKey)
 
 	session := &Session{
-		Topic:         sessionTopic,
-		PublicKey:     publicKey,
-		DAppMetadata:  p.DAppMetadata,
-		Namespaces:    namespaces,
+		Topic:        sessionTopic,
+		PublicKey:    publicKey,
+		DAppMetadata: p.DAppMetadata,
+		Namespaces:   namespaces,
 		Accounts:     accounts,
 		Expiry:       time.Now().Add(30 * 24 * time.Hour).Unix(),
 		CreatedAt:    time.Now(),
@@ -317,9 +432,37 @@ func (s *WalletConnectService) ApprovePairing(topic string, namespaces map[strin
 	}
 
 	s.sessions.Store(sessionTopic, session)
-	s.db.Create(session)
+	if err := s.db.Create(session).Error; err != nil {
+		return nil, fmt.Errorf("persist session: %w", err)
+	}
 
 	return session, nil
+}
+
+// sessionSymKey derives the symmetric key for a session's topic. The dApp's
+// public key arrives on the pairing as a hex X25519 key; when it is absent the
+// pairing topic's own key is reused, so the session still has a working cipher
+// rather than silently falling back to plaintext.
+func (s *WalletConnectService) sessionSymKey(p *Pairing) ([]byte, error) {
+	peerHex := strings.TrimPrefix(strings.TrimSpace(p.DAppPublicKey), "0x")
+	if peerHex == "" {
+		if existing, ok := s.symKeys.Load(p.Topic); ok {
+			return existing.([]byte), nil
+		}
+		return nil, fmt.Errorf("pairing %s has no symmetric key", p.Topic)
+	}
+
+	peerBytes, err := hex.DecodeString(peerHex)
+	if err != nil {
+		return nil, fmt.Errorf("pairing peer public key is not hex: %w", err)
+	}
+	if len(peerBytes) != 32 {
+		return nil, fmt.Errorf("pairing peer public key is %d bytes, expected 32", len(peerBytes))
+	}
+
+	var peerPublic [32]byte
+	copy(peerPublic[:], peerBytes)
+	return DeriveSymKey(s.keyPair.Private, peerPublic)
 }
 
 // RejectPairing rejects a pairing request
@@ -385,10 +528,10 @@ func (s *WalletConnectService) SendRequest(topic string, method string, params i
 	request := PendingRequest{
 		ID:        id,
 		Topic:     topic,
-		Method:   method,
-		Params:   mustMarshalJSON(params),
-		ChainID:  "1",
-		Status:   "pending",
+		Method:    method,
+		Params:    mustMarshalJSON(params),
+		ChainID:   "1",
+		Status:    "pending",
 		CreatedAt: time.Now(),
 	}
 
@@ -403,6 +546,9 @@ func (s *WalletConnectService) SendRequest(topic string, method string, params i
 		}
 		conn.(*websocket.Conn).WriteJSON(msg)
 	}
+	if err := s.publishToRelay(topic, WCMessage{ID: id, JSONRPC: "2.0", Method: method, Params: params}); err != nil {
+		return id, err
+	}
 
 	return id, nil
 }
@@ -416,33 +562,46 @@ func (s *WalletConnectService) SendResponse(topic string, requestID int64, resul
 
 	if conn, ok := s.clients.Load(topic); ok {
 		msg := WCMessage{
-			ID:     requestID,
+			ID:      requestID,
 			JSONRPC: "2.0",
-			Result: result,
+			Result:  result,
 		}
 		conn.(*websocket.Conn).WriteJSON(msg)
 	}
-
-	return nil
+	return s.publishToRelay(topic, WCMessage{ID: requestID, JSONRPC: "2.0", Result: result})
 }
 
 // SendError sends an error response
 func (s *WalletConnectService) SendError(topic string, requestID int64, code int, message string) error {
 	s.db.Model(&PendingRequest{}).Where("id = ?", requestID).Updates(map[string]interface{}{
 		"status": "rejected",
-		"error": message,
+		"error":  message,
 	})
 
 	if conn, ok := s.clients.Load(topic); ok {
 		msg := WCMessage{
-			ID:     requestID,
+			ID:      requestID,
 			JSONRPC: "2.0",
-			Error:  &WCError{Code: code, Message: message},
+			Error:   &WCError{Code: code, Message: message},
 		}
 		conn.(*websocket.Conn).WriteJSON(msg)
 	}
+	return s.publishToRelay(topic, WCMessage{ID: requestID, JSONRPC: "2.0", Error: &WCError{Code: code, Message: message}})
+}
 
-	return nil
+// publishToRelay seals a message with the topic's symmetric key and publishes
+// it. A nil relay is not an error: the service supports local-only operation.
+// A relay that is configured but not subscribed to the topic is an error, so a
+// dApp never waits on a response that was silently dropped.
+func (s *WalletConnectService) publishToRelay(topic string, msg WCMessage) error {
+	if s.relay == nil {
+		return nil
+	}
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal relay message: %w", err)
+	}
+	return s.relay.Publish(context.Background(), topic, payload)
 }
 
 // HandleWebSocket handles a WebSocket connection
@@ -832,7 +991,7 @@ func (s *WalletConnectService) ApprovePairingHandler(c *gin.Context) {
 
 	var req struct {
 		Namespaces map[string]SessionNamespace `json:"namespaces"`
-		Accounts []string               `json:"accounts"`
+		Accounts   []string                    `json:"accounts"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -912,7 +1071,7 @@ func (s *WalletConnectService) Respond(c *gin.Context) {
 
 	var req struct {
 		Result interface{} `json:"result"`
-		Error  string    `json:"error"`
+		Error  string      `json:"error"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1014,14 +1173,14 @@ func (s *WalletConnectService) signDigest(digest []byte) (string, error) {
 
 func main() {
 	cfg := WCConfig{
-		ServerPort:   getEnv("WC_SERVER_PORT", "8083"),
-		DBHost:      getEnv("DB_HOST", "localhost"),
-		DBPort:      getEnv("DB_PORT", "5432"),
-		DBUser:      getEnv("DB_USER", "postgres"),
-		DBPassword:  mustEnv("DB_PASSWORD"),
-		DBName:      getEnv("DB_NAME", "walletconnect"),
-		RedisHost:   getEnv("REDIS_HOST", "localhost"),
-		RedisPort:   getEnv("REDIS_PORT", "6379"),
+		ServerPort: getEnv("WC_SERVER_PORT", "8083"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "postgres"),
+		DBPassword: mustEnv("DB_PASSWORD"),
+		DBName:     getEnv("DB_NAME", "walletconnect"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
 		ProjectID:  getEnv("WC_PROJECT_ID", ""),
 		// Hex-encoded ECDSA private key used to sign personal_sign /
 		// eth_signTypedData_v4 requests. When unset, signing requests are
@@ -1030,6 +1189,7 @@ func main() {
 		RPCURL:           getEnv("WC_RPC_URL", ""),
 		ChainID:          getEnvInt("WC_CHAIN_ID", 1),
 		AllowedOrigins:   splitOrigins(getEnv("WC_ALLOWED_ORIGINS", "")),
+		RelayURL:         getEnv("WC_RELAY_URL", "wss://relay.walletconnect.org"),
 	}
 
 	service, err := NewWalletConnectService(cfg)
