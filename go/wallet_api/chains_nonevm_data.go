@@ -207,6 +207,84 @@ var nonEVMMainnet = []ChainConfig{
 	{
 		ID: 9000004242, Name: "Pi Network", Symbol: "PI", RPCEndpoint: "", DerivationPath: "m/44'/4242'/0'/0/0", ExplorerAPI: "https://blockexplorer.minepi.com", ExplorerURL: "https://blockexplorer.minepi.com", ChainType: "pi", Decimals: 8, CoinType: 4242, IsTestnet: false,
 	},
+	// Added with the registry expansion. Coin types are the SLIP-44 values each
+	// chain registers; the chain types below route to a real SDK family in
+	// non_evm_registry.go and never fall through to a fabricated result.
+	{
+		ID: 9000006000, Name: "THORChain", Symbol: "RUNE", RPCEndpoint: "https://gateway.liquify.com/chain/thorchain_api", DerivationPath: "m/44'/931'/0'/0/0", ExplorerAPI: "https://gateway.liquify.com/chain/thorchain_api", ExplorerURL: "https://runescan.io", ChainType: "cosmos", Decimals: 8, CoinType: 931, IsTestnet: false,
+	},
+	{
+		ID: 9000006900, Name: "Fetch.ai", Symbol: "FET", RPCEndpoint: "https://rest-fetchhub.fetch.ai", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://rest-fetchhub.fetch.ai", ExplorerURL: "https://explore.fetch.ai", ChainType: "cosmos", Decimals: 18, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000007200, Name: "Band Protocol", Symbol: "BAND", RPCEndpoint: "https://laozi1.bandchain.org/api", DerivationPath: "m/44'/494'/0'/0/0", ExplorerAPI: "https://laozi1.bandchain.org/api", ExplorerURL: "https://cosmoscan.io", ChainType: "cosmos", Decimals: 6, CoinType: 494, IsTestnet: false,
+	},
+	{
+		ID: 9000007500, Name: "Chihuahua", Symbol: "HUAHUA", RPCEndpoint: "https://api.chihuahua.wtf", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://api.chihuahua.wtf", ExplorerURL: "https://ping.pub/chihuahua", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000007600, Name: "Agoric", Symbol: "BLD", RPCEndpoint: "https://main.api.agoric.net", DerivationPath: "m/44'/564'/0'/0/0", ExplorerAPI: "https://main.api.agoric.net", ExplorerURL: "https://agoric.explorers.guru", ChainType: "cosmos", Decimals: 6, CoinType: 564, IsTestnet: false,
+	},
+	{
+		ID: 9000007700, Name: "Regen Network", Symbol: "REGEN", RPCEndpoint: "", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "", ExplorerURL: "https://ping.pub/regen", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000007800, Name: "Sommelier", Symbol: "SOMM", RPCEndpoint: "", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "", ExplorerURL: "https://ping.pub/sommelier", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000007900, Name: "Mantra", Symbol: "OM", RPCEndpoint: "https://api.mantrachain.io", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://api.mantrachain.io", ExplorerURL: "https://explorer.mantrachain.io", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
+	},
+	{
+		ID: 9000008000, Name: "Banano", Symbol: "BAN", RPCEndpoint: "https://kaliumapi.appditto.com/api", DerivationPath: "m/44'/198'/0'/0/0", ExplorerAPI: "https://creeper.banano.cc", ExplorerURL: "https://creeper.banano.cc", ChainType: "banano", Decimals: 30, CoinType: 198, IsTestnet: false,
+	},
+	{
+		ID: 9000008100, Name: "Steem", Symbol: "STEEM", RPCEndpoint: "https://api.steemit.com", DerivationPath: "m/44'/135'/0'/0'/0'", ExplorerAPI: "https://api.steemit.com", ExplorerURL: "https://steemscan.com", ChainType: "steem", Decimals: 3, CoinType: 135, IsTestnet: false,
+	},
+	{
+		ID: 9000008200, Name: "Hive", Symbol: "HIVE", RPCEndpoint: "https://api.hive.blog", DerivationPath: "m/44'/1017'/0'/0'/0'", ExplorerAPI: "https://api.hive.blog", ExplorerURL: "https://hiveblocks.com", ChainType: "hive", Decimals: 3, CoinType: 1017, IsTestnet: false,
+	},
+	{
+		ID: 9000008300, Name: "BitShares", Symbol: "BTS", RPCEndpoint: "", DerivationPath: "m/44'/108'/0'/0'/0'", ExplorerAPI: "", ExplorerURL: "https://bitsharescan.com", ChainType: "bitshares", Decimals: 5, CoinType: 108, IsTestnet: false,
+	},
+	{
+		ID: 9000008400, Name: "NEM", Symbol: "XEM", RPCEndpoint: "", DerivationPath: "m/44'/43'/0'/0'/0'", ExplorerAPI: "", ExplorerURL: "https://explorer.nemtool.com", ChainType: "nem", Decimals: 6, CoinType: 43, IsTestnet: false,
+	},
+	{
+		ID: 9000008500, Name: "Symbol", Symbol: "XYM", RPCEndpoint: "https://symbol-main-1.nemtus.com:3001", DerivationPath: "m/44'/4343'/0'/0'/0'", ExplorerAPI: "https://symbol-main-1.nemtus.com:3001", ExplorerURL: "https://symbol.fyi", ChainType: "symbol", Decimals: 6, CoinType: 4343, IsTestnet: false,
+	},
+	{
+		ID: 9000008600, Name: "Siacoin", Symbol: "SC", RPCEndpoint: "https://siasky.net/api/v1/consensus/tip", DerivationPath: "m/44'/1017'/0'/0'/0'", ExplorerAPI: "https://siasky.net/api/v1/consensus/tip", ExplorerURL: "https://siascan.com", ChainType: "siacoin", Decimals: 24, CoinType: 1017, IsTestnet: false,
+	},
+	{
+		ID: 9000008700, Name: "Peercoin", Symbol: "PPC", RPCEndpoint: "https://explorer.peercoin.net/api", DerivationPath: "m/44'/6'/0'/0/0", ExplorerAPI: "https://explorer.peercoin.net", ExplorerURL: "https://explorer.peercoin.net", ChainType: "peercoin", Decimals: 6, CoinType: 6, IsTestnet: false,
+	},
+	{
+		ID: 9000008800, Name: "Feathercoin", Symbol: "FTC", RPCEndpoint: "https://explorer.feathercoin.com/api", DerivationPath: "m/44'/8'/0'/0/0", ExplorerAPI: "https://explorer.feathercoin.com/api", ExplorerURL: "https://explorer.feathercoin.com", ChainType: "feathercoin", Decimals: 8, CoinType: 8, IsTestnet: false,
+	},
+	{
+		ID: 9000008900, Name: "Gridcoin", Symbol: "GRC", RPCEndpoint: "https://gridcoin.network", DerivationPath: "m/44'/84'/0'/0/0", ExplorerAPI: "https://gridcoin.network", ExplorerURL: "https://gridcoinstats.eu", ChainType: "gridcoin", Decimals: 8, CoinType: 84, IsTestnet: false,
+	},
+	{
+		ID: 9000009000, Name: "Horizen", Symbol: "ZEN", RPCEndpoint: "https://explorer.horizen.io/api", DerivationPath: "m/44'/121'/0'/0/0", ExplorerAPI: "https://explorer.horizen.io/api", ExplorerURL: "https://explorer.horizen.io", ChainType: "horizen", Decimals: 8, CoinType: 121, IsTestnet: false,
+	},
+	{
+		ID: 9000009100, Name: "Syscoin", Symbol: "SYS", RPCEndpoint: "https://explorer.syscoin.org/api", DerivationPath: "m/44'/57'/0'/0/0", ExplorerAPI: "https://explorer.syscoin.org/api", ExplorerURL: "https://explorer.syscoin.org", ChainType: "syscoin", Decimals: 8, CoinType: 57, IsTestnet: false,
+	},
+	{
+		ID: 9000009200, Name: "LBRY Credits", Symbol: "LBC", RPCEndpoint: "", DerivationPath: "m/44'/140'/0'/0/0", ExplorerAPI: "", ExplorerURL: "https://explorer.lbry.com", ChainType: "lbry", Decimals: 8, CoinType: 140, IsTestnet: false,
+	},
+	{
+		ID: 9000009300, Name: "Bitcoin Gold", Symbol: "BTG", RPCEndpoint: "", DerivationPath: "m/44'/156'/0'/0/0", ExplorerAPI: "", ExplorerURL: "https://btgexplorer.com", ChainType: "bitcoingold", Decimals: 8, CoinType: 156, IsTestnet: false,
+	},
+	{
+		ID: 9000009400, Name: "Stratis", Symbol: "STRAX", RPCEndpoint: "https://explorer.stratisevm.com/api", DerivationPath: "m/44'/105'/0'/0/0", ExplorerAPI: "https://explorer.stratisevm.com/api", ExplorerURL: "https://explorer.stratisevm.com", ChainType: "stratis", Decimals: 8, CoinType: 105, IsTestnet: false,
+	},
+	{
+		ID: 9000009500, Name: "Omni Layer", Symbol: "OMNI", RPCEndpoint: "https://api.omniexplorer.info", DerivationPath: "m/44'/0'/0'/0/0", ExplorerAPI: "https://api.omniexplorer.info", ExplorerURL: "https://omniexplorer.info", ChainType: "omni", Decimals: 8, CoinType: 0, IsTestnet: false,
+	},
+	{
+		ID: 9000009600, Name: "Counterparty", Symbol: "XCP", RPCEndpoint: "https://api.counterparty.io:4000", DerivationPath: "m/44'/0'/0'/0/0", ExplorerAPI: "https://api.counterparty.io:4000", ExplorerURL: "https://xcp.io", ChainType: "counterparty", Decimals: 8, CoinType: 0, IsTestnet: false,
+	},
 }
 
-const nonEVMMainnetCount = 66
+const nonEVMMainnetCount = 91

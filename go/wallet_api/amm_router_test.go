@@ -275,7 +275,20 @@ func TestStaticChainRegistryHasNoDuplicateIDs(t *testing.T) {
 // sets PI_RPC, and lookupEndpoint returns "" for it on purpose. Pinning the
 // exception here means a newly added chain that forgets its endpoint fails.
 func TestStaticChainRegistryEntriesHaveRPC(t *testing.T) {
-	operatorConfigured := map[int64]bool{9000004242: true} // Pi Network (PI_RPC)
+	// Chains whose public endpoint is operator-supplied through an environment
+	// variable, so an empty registry value is expected. Pi Network publishes no
+	// node at all; Regen, Sommelier, BitShares, NEM, LBRY and Bitcoin Gold have
+	// no public REST endpoint that answered a probe, so the client fails closed
+	// rather than being pointed at a dead host.
+	operatorConfigured := map[int64]bool{
+		9000004242: true, // Pi Network    (PI_RPC)
+		9000007700: true, // Regen Network (REGEN_API)
+		9000007800: true, // Sommelier     (SOMMELIER_API)
+		9000008300: true, // BitShares     (BITSHARES_API)
+		9000008400: true, // NEM           (NEM_API)
+		9000009200: true, // LBRY Credits  (LBRY_API)
+		9000009300: true, // Bitcoin Gold  (BTG_API)
+	}
 	for _, c := range append(append([]ChainConfig{}, evmMainnet...), nonEVMMainnet...) {
 		if c.RPCEndpoint != "" {
 			continue

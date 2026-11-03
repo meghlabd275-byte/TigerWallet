@@ -56,6 +56,24 @@ func nanoBase32Dec(s string) ([]byte, error) {
 
 // NanoAddress derives nano_<b32(pub)> + <b32(reversed blake2b-256(pub)[27:])>.
 func NanoAddress(seed []byte, path string) (string, error) {
+	return NanoAddressFor(seed, path, "nano")
+}
+
+// nanoPrefixes holds the address prefix of every chain that runs the Nano
+// ledger. Banano is the same codebase and checksum with a different prefix.
+var nanoPrefixes = map[string]string{
+	"nano":   "nano_",
+	"banano": "ban_",
+}
+
+// NanoAddressFor derives a Nano-ledger address with the prefix of the named
+// chain. The prefix is part of the checksummed address, so a Banano key
+// published as a nano_ address is rejected by every node.
+func NanoAddressFor(seed []byte, path, chainType string) (string, error) {
+	prefix, ok := nanoPrefixes[chainType]
+	if !ok {
+		return "", fmt.Errorf("unsupported nano-family chain %q", chainType)
+	}
 	pub, err := edPubKey(seed, path)
 	if err != nil {
 		return "", err
@@ -70,20 +88,30 @@ func NanoAddress(seed []byte, path string) (string, error) {
 	for i := 0; i < 5; i++ {
 		rev[i] = d[31-i]
 	}
-	return "nano_" + nanoBase32Enc(pub) + nanoBase32Enc(rev), nil
+	return prefix + nanoBase32Enc(pub) + nanoBase32Enc(rev), nil
 }
 
-// nanoPub decodes a nano address to its raw 32-byte public key.
+// nanoPub decodes a nano-ledger address to its raw 32-byte public key. The
+// prefix is stripped before decoding: nano_ and xrb_ are 5 characters while
+// ban_ is 4, so a fixed offset would cut the first base32 character off a
+// Banano key and silently derive the wrong account.
 func nanoPub(addr string) ([]byte, error) {
-	if !(strings.HasPrefix(addr, "nano_") || strings.HasPrefix(addr, "xrb_")) || len(addr) < 60 {
-		return nil, errors.New("invalid nano address")
+	sep := strings.IndexByte(addr, '_')
+	if sep < 3 || len(addr) < sep+1+52 {
+		return nil, errors.New("invalid nano-family address")
 	}
-	body := addr[5:]
+	if _, ok := nanoPrefixes[addr[:sep]]; !ok && addr[:sep] != "xrb" {
+		return nil, fmt.Errorf("unsupported nano-family prefix %q", addr[:sep])
+	}
+	body := addr[sep+1:]
 	data, err := nanoBase32Dec(body[:52])
-	if len(data) < 32 {
+	if err != nil {
 		return nil, err
 	}
-	return data[:32], err
+	if len(data) < 32 {
+		return nil, errors.New("invalid nano address: short key")
+	}
+	return data[:32], nil
 }
 
 // nanoRPC posts {"action": <action>, ...fields} to the nano node.

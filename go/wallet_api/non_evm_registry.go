@@ -56,6 +56,9 @@ const (
 	familyHedera         nonEvmFamily = "hedera"
 	familyFlow           nonEvmFamily = "flow"
 	familySubstrate      nonEvmFamily = "substrate" // polkadot/kusama
+	familyGraphene       nonEvmFamily = "graphene"  // steem/hive/bitshares
+	familyNEM            nonEvmFamily = "nem"       // nem/symbol
+	familySiacoin        nonEvmFamily = "siacoin"
 )
 
 // utxoParams parameterizes one UTXO-family chain.
@@ -86,6 +89,21 @@ var utxoTable = map[string]utxoParams{
 	"monacoin":    {[]byte{0x32}, false},
 	"blackcoin":   {[]byte{0x19}, false},
 	"komodo":      {[]byte{0x3c}, false},
+	// Added with the registry expansion. Every version byte below is taken from
+	// the chain's own chainparams, not from a third-party list:
+	//   peercoin/peercoin, feathercoin/feathercoin,
+	//   gridcoin-community/Gridcoin-Research, ZencashOfficial/zen,
+	//   syscoin/syscoin, lbryio/lbrycrd, BTCGPU/BTCGPU.
+	"peercoin":     {[]byte{0x37}, false},
+	"feathercoin":  {[]byte{0x0e}, false},
+	"gridcoin":     {[]byte{0x3e}, false},
+	"horizen":      {[]byte{0x20, 0x89}, false},
+	"syscoin":      {[]byte{0x3f}, false},
+	"lbry":         {[]byte{0x55}, false},
+	"bitcoingold":  {[]byte{0x26}, false},
+	"stratis":      {[]byte{0x3f}, false},
+	"omni":         {[]byte{0x00}, false},
+	"counterparty": {[]byte{0x00}, false},
 }
 
 // cosmosIDPrefix resolves the bech32 HRP for the 23 Cosmos-family chains by
@@ -115,6 +133,16 @@ var cosmosIDPrefix = map[int64]string{
 	9000086660: "noble",
 	9000040572: "axelar",
 	9000007153: "umee",
+	// Added with the registry expansion; every HRP is taken from the chain's own
+	// entry in cosmos/chain-registry.
+	9000006000: "thor",
+	9000006900: "fetch",
+	9000007200: "band",
+	9000007500: "chihuahua",
+	9000007600: "agoric",
+	9000007700: "regen",
+	9000007800: "somm",
+	9000007900: "mantra",
 }
 
 // cosmosPrefixByID returns the bech32 HRP for a cosmos chain id; falls back to
@@ -171,7 +199,7 @@ func nonEvmResolve(chainType string, chainID int64) (nonEvmFamily, string, error
 		return familyStellar, ct, nil
 	case "algorand":
 		return familyAlgorand, ct, nil
-	case "nano":
+	case "nano", "banano":
 		return familyNano, ct, nil
 	case "elrond", "multiversx":
 		return familyMultiversX, "multiversx", nil
@@ -207,6 +235,12 @@ func nonEvmResolve(chainType string, chainID int64) (nonEvmFamily, string, error
 		return familyFlow, ct, nil
 	case "polkadot", "kusama", "substrate":
 		return familySubstrate, ct, nil
+	case "steem", "hive", "bitshares":
+		return familyGraphene, ct, nil
+	case "nem", "symbol":
+		return familyNEM, ct, nil
+	case "siacoin":
+		return familySiacoin, ct, nil
 	}
 	return familyUnknown, ct, fmt.Errorf("unsupported non-EVM chain %q — route fails closed rather than fabricating a result", ct)
 }

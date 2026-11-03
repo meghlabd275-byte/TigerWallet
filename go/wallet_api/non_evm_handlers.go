@@ -126,7 +126,13 @@ func nonEvmAddressFor(family nonEvmFamily, ct string, chainID int64, seed []byte
 	case familyAlgorand:
 		return AlgoAddress(seed, path)
 	case familyNano:
-		return NanoAddress(seed, path)
+		return NanoAddressFor(seed, path, ct)
+	case familyGraphene:
+		return grapheneAddress(seed, path, ct)
+	case familyNEM:
+		return nemAddress(seed, path, ct)
+	case familySiacoin:
+		return siacoinAddress(seed, path)
 	case familyMultiversX:
 		return MultiversXAddress(seed, path)
 	case familyTezos:
@@ -205,6 +211,8 @@ func handleNonEvmSign(c *gin.Context) {
 		sig, pub, err = FilSign(seed, wallet.DerivationPath, []byte(req.Message))
 	case familySubstrate:
 		sig, pub, err = substrateSign(seed, wallet.DerivationPath, []byte(req.Message), req.Prefix)
+	case familyGraphene, familyNEM, familySiacoin:
+		sig, pub, err = edSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
 	case familyAleo, familyHedera, familyFlow:
 		err = nonEvmNotFeasible(family)
 	default:

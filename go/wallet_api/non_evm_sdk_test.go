@@ -8,6 +8,7 @@ package main
 //   * canonical known-answer vectors (BIP-84, SS58, strkey)
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -15,8 +16,9 @@ import (
 // TestNonEvmResolveAllSeededChains runs the family resolver over every chain
 // in the seeded non-EVM registry and requires a successful resolution.
 func TestNonEvmResolveAllSeededChains(t *testing.T) {
-	if len(nonEVMMainnet) != 66 {
-		t.Fatalf("registry must hold exactly 66 non-EVM chains, got %d", len(nonEVMMainnet))
+	if len(nonEVMMainnet) != nonEVMMainnetCount {
+		t.Fatalf("registry holds %d non-EVM chains but the count constant says %d",
+			len(nonEVMMainnet), nonEVMMainnetCount)
 	}
 	for _, chain := range nonEVMMainnet {
 		fam, ct, err := nonEvmResolve(chain.ChainType, chain.ID)
@@ -119,12 +121,25 @@ func TestAllAddressFormats(t *testing.T) {
 		{"multiversx", func() (string, error) { return MultiversXAddress(seed, "m/44'/508'/0'/0'") }, "erd1"},
 		{"stellar", func() (string, error) { return StrKeyAddress(seed, "m/44'/148'/0'") }, "G"},
 		{"pi", func() (string, error) { return StrKeyAddress(seed, "m/44'/314159'/0'") }, "G"},
-				{"kaspa", func() (string, error) { return KaspaAddress(seed, "m/44'/111111'/0'/0/0") }, "kaspa:"},
+		{"kaspa", func() (string, error) { return KaspaAddress(seed, "m/44'/111111'/0'/0/0") }, "kaspa:"},
 		{"nervos", func() (string, error) { return NervosAddress(seed, "m/44'/309'/0'/0/0") }, "ckb1"},
 		{"filecoin", func() (string, error) { return FilAddress(seed, "m/44'/461'/0'/0/0") }, "f1"},
 		{"cardano", func() (string, error) { return CardanoAddress(seed, "m/1852'/1815'/0'/0/0") }, "addr1"},
 		{"polkadot", func() (string, error) { return SubstrateAddress(seed, 0) }, "1"},
 		{"kusama", func() (string, error) { return SubstrateAddress(seed, 2) }, ""},
+		{"peercoin", func() (string, error) { return UTXOAddressFromSeed(seed, "m/44'/6'/0'/0/0", "peercoin") }, ""},
+		{"feathercoin", func() (string, error) { return UTXOAddressFromSeed(seed, "m/44'/8'/0'/0/0", "feathercoin") }, ""},
+		{"gridcoin", func() (string, error) { return UTXOAddressFromSeed(seed, "m/44'/84'/0'/0/0", "gridcoin") }, ""},
+		{"syscoin", func() (string, error) { return UTXOAddressFromSeed(seed, "m/44'/57'/0'/0/0", "syscoin") }, ""},
+		{"lbry", func() (string, error) { return UTXOAddressFromSeed(seed, "m/44'/140'/0'/0/0", "lbry") }, ""},
+		{"bitcoingold", func() (string, error) { return UTXOAddressFromSeed(seed, "m/44'/156'/0'/0/0", "bitcoingold") }, ""},
+		{"banano", func() (string, error) { return NanoAddressFor(seed, "m/44'/198'/0'", "banano") }, "ban_"},
+		{"steem", func() (string, error) { return grapheneAddress(seed, "m/44'/135'/0'/0'/0'", "steem") }, "STM"},
+		{"hive", func() (string, error) { return grapheneAddress(seed, "m/44'/1017'/0'/0'/0'", "hive") }, "STM"},
+		{"bitshares", func() (string, error) { return grapheneAddress(seed, "m/44'/108'/0'/0'/0'", "bitshares") }, "BTS"},
+		{"nem", func() (string, error) { return nemAddress(seed, "m/44'/43'/0'/0'/0'", "nem") }, ""},
+		{"symbol", func() (string, error) { return nemAddress(seed, "m/44'/4343'/0'/0'/0'", "symbol") }, ""},
+		{"siacoin", func() (string, error) { return siacoinAddress(seed, "m/44'/1017'/0'/0'/0'") }, "sia:"},
 	}
 	for _, c := range checks {
 		addr, err := c.derive()
@@ -136,6 +151,63 @@ func TestAllAddressFormats(t *testing.T) {
 		}
 		if c.prefix != "" && !strings.HasPrefix(addr, c.prefix) {
 			t.Fatalf("%s address %q missing canonical prefix %q", c.name, addr, c.prefix)
+		}
+	}
+}
+
+// TestUTXOVersionBytes pins every UTXO chain's P2PKH version byte to the value
+// in that chain's own chainparams. The leading character of a P2PKH address
+// depends on the hash as well as the version, so decoding the address and
+// checking its prefix is the only reliable assertion.
+func TestUTXOVersionBytes(t *testing.T) {
+	seed := seedFromMnemonic(t, abandonMnemonic)
+	cases := map[string][]byte{
+		"bitcoin":      {0x00},
+		"litecoin":     {0x30},
+		"dogecoin":     {0x1e},
+		"dash":         {0x4c},
+		"raven":        {0x3c},
+		"groestlcoin":  {0x24},
+		"digibyte":     {0x1e},
+		"qtum":         {0x3a},
+		"verge":        {0x1e},
+		"namecoin":     {0x34},
+		"monacoin":     {0x32},
+		"blackcoin":    {0x19},
+		"komodo":       {0x3c},
+		"peercoin":     {0x37},
+		"feathercoin":  {0x0e},
+		"gridcoin":     {0x3e},
+		"horizen":      {0x20, 0x89},
+		"syscoin":      {0x3f},
+		"lbry":         {0x55},
+		"bitcoingold":  {0x26},
+		"stratis":      {0x3f},
+		"omni":         {0x00},
+		"counterparty": {0x00},
+	}
+	for chain, want := range cases {
+		addr, err := UTXOAddressFromSeed(seed, "m/44'/0'/0'/0/0", chain)
+		if err != nil {
+			t.Fatalf("%s address: %v", chain, err)
+		}
+		raw, err := base58Decode(addr)
+		if err != nil {
+			t.Fatalf("%s base58 decode: %v", chain, err)
+		}
+		if len(raw) != len(want)+20+4 {
+			t.Fatalf("%s decoded to %d bytes, want %d", chain, len(raw), len(want)+24)
+		}
+		for i, b := range want {
+			if raw[i] != b {
+				t.Fatalf("%s version byte %d = 0x%02x, want 0x%02x", chain, i, raw[i], b)
+			}
+		}
+		// The trailing 4 bytes must be a valid double-SHA256 checksum.
+		body := raw[:len(raw)-4]
+		sum := doubleSHA256(body)
+		if !bytes.Equal(sum[:4], raw[len(raw)-4:]) {
+			t.Fatalf("%s address checksum does not verify", chain)
 		}
 	}
 }
