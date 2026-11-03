@@ -1,0 +1,94 @@
+Ethereum Mainnet
+Base
+BNB Smart Chain
+Arbitrum One
+Polygon PoS
+Avalanche C-Chain
+OP Mainnet
+Monad
+Sonic
+Mantle
+Scroll
+Linea
+zkSync Era
+Cronos
+Celo
+Moonbeam
+Gnosis Chain
+ApeChain
+Ink
+HyperEVM
+World Chain
+Berachain
+Taiko
+Viction
+Robinhood Chain
+Sei EVM
+Flare Mainnet
+X Layer
+Arc
+Plasma Mainnet
+Bitlayer
+Citrea
+Chiliz Chain
+Gravity Network
+IOTA EVM
+Katana Network
+Metis
+Arbitrum Nova
+Polygon zkEVM
+Kaia
+Harmony Shard 0
+Aurora
+Huobi ECO Chain
+Plume Network
+Oasis Sapphire
+Astar EVM
+Rootstock
+Telos EVM
+Songbird Canary Network
+XDC Network
+Evmos EVM
+Neon EVM
+Milkomeda C1
+Moonriver
+Shiden Network
+Acala EVM+
+Karura EVM+
+Theta Mainnet
+Fuse Mainnet
+Meter Mainnet
+Syscoin NEVM
+Wanchain
+Canto
+Echelon
+Dogechain
+Kava EVM
+GateChain
+Velas EVM
+Godwoken
+BOBA Network
+Milkomeda A1
+Sx Network
+Ubiq
+Expanse
+Elastos Smart Chain
+ShibaChain
+ThunderCore
+Metadium
+Rei Network
+Loopring
+Manta Pacific
+ZkFair
+Astar zkEVM
+Mode Network
+Blast
+ZetaChain
+Core Blockchain
+ShimmerEVM
+Lightlink
+Tenet
+PulseChain
+Step Network
+Oasys Mainnet
+Ronin Network
