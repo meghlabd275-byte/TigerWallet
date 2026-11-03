@@ -95,31 +95,42 @@ impl MasterFetcher for AuditLogFetcher {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
         let user_id = params.get("user_id");
         let action = params.get("action");
-        let limit = params.get("limit").and_then(|l| l.parse().ok()).unwrap_or(100);
-        
+        // Every caller-supplied value is bound as a parameter, including the
+        // limit. Nothing from the request reaches the statement as syntax. A
+        // limit that is absent, unparseable or out of range falls back to 100
+        // rather than being interpolated into the SQL text.
+        let limit: i64 = params
+            .get("limit")
+            .and_then(|l| l.parse::<i64>().ok())
+            .filter(|l| *l > 0 && *l <= 1000)
+            .unwrap_or(100);
+
         let mut query = String::from(
-            "SELECT id, master_wallet_id, user_id, action, entity_type, entity_id, details, ip_address, created_at 
-             FROM audit_logs 
-             WHERE master_wallet_id = $1"
+            "SELECT id, master_wallet_id, user_id, action, entity_type, entity_id, details, ip_address, created_at
+             FROM audit_logs
+             WHERE master_wallet_id = $1",
         );
-        
-        let mut query_params: Vec<Box<dyn tokio_postgres::types::ToSql>> = vec![Box::new(master_wallet_id.clone())];
-        
+
+        let mut query_params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            vec![&master_wallet_id];
+
         if let Some(uid) = user_id {
-            query.push_str(" AND user_id = $2");
-            query_params.push(Box::new(uid.clone()));
+            query_params.push(uid);
+            query.push_str(&format!(" AND user_id = ${}", query_params.len()));
         }
-        
+
         if let Some(act) = action {
-            let param_num = query_params.len() + 1;
-            query.push_str(&format!(" AND action = ${}", param_num));
-            query_params.push(Box::new(act.clone()));
+            query_params.push(act);
+            query.push_str(&format!(" AND action = ${}", query_params.len()));
         }
-        
-        query.push_str(&format!(" ORDER BY created_at DESC LIMIT {}", limit));
-        
-        // Note: In production, use proper parameterized queries
-        let rows = self.db_pool.query(&query, &[])?;
+
+        query_params.push(&limit);
+        query.push_str(&format!(
+            " ORDER BY created_at DESC LIMIT ${}",
+            query_params.len()
+        ));
+
+        let rows = self.db_pool.query(&query, &query_params)?;
         
         let logs: Vec<serde_json::Value> = rows.iter().map(|row| {
             json!({
