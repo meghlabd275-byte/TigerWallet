@@ -5,7 +5,7 @@ pragma solidity ^0.8.20;
  * @title TigerWalletRouter
  * @notice Smart Routing for TigerWallet - Automatic Route Switching
  * @dev Connects TigerWallet to TigerSwap and external DEXs/CEXs
- * 
+ *
  * Features:
  * - Connect to TigerSwap for swapping
  * - Connect to 20+ DEXs via API keys
@@ -15,6 +15,7 @@ pragma solidity ^0.8.20;
  * - Gas optimization
  */
 import "../libraries/SafeMath.sol";
+import "../interfaces/IWalletInterfaces.sol";
 
 contract TigerWalletRouter {
     using SafeMath for uint256;
@@ -33,21 +34,21 @@ contract TigerWalletRouter {
     address public admin;
     address public tigerSwap;
     address public masterWallet;
-    
+
     // External DEX connections
     mapping(address => bool) public approvedDEXs;
     address[] public dexList;
-    
-    // External CEX connections  
+
+    // External CEX connections
     mapping(address => bool) public approvedCEXs;
     address[] public cexList;
-    
+
     // Route configuration
     mapping(address => RouteConfig) public routeConfigs;
-    
+
     // Swap tracking
     mapping(address => SwapStats) public swapStats;
-    
+
     // Gas optimization
     uint256 public maxGasPrice = 100 gwei;
     bool public gasOptimization = true;
@@ -99,40 +100,29 @@ contract TigerWalletRouter {
         admin = _admin;
         tigerSwap = _tigerSwap;
         masterWallet = _masterWallet;
-        
+
         // Add default approved DEXs
         _addDefaultDEXs();
-        
-        // Add default approved CEXs
-        _addDefaultCEXs();
+
     }
 
     // ============================================================================
     // Default Connections
     // ============================================================================
 
+    /**
+     * @notice Register the TigerSwap router that was supplied at deployment.
+     * @dev Only TigerSwap is registered automatically. External DEX routers are
+     *      chain-specific: the Uniswap router address is meaningless on BSC and
+     *      the PancakeSwap address is meaningless on Ethereum. Hardcoding them
+     *      here approved routers that do not exist on most chains, so an
+     *      operator registers each external DEX per deployment with addDEX().
+     */
     function _addDefaultDEXs() internal {
-        // TigerSwap (internal)
-        approvedDEXs[tigerSwap] = true;
-        dexList.push(tigerSwap);
-        
-        // External DEXs (addresses would be router contracts)
-        address uniswap = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-        address sushiswap = 0xd9e1cE17f2641f24aE83630f3362Aa3D8C9E0fD2;
-        address pancakeswap = 0x10ED43C718714eb63d5aA57B78B54704E3920248;
-        
-        approvedDEXs[uniswap] = true;
-        approvedDEXs[sushiswap] = true;
-        approvedDEXs[pancakeswap] = true;
-        
-        dexList.push(uniswap);
-        dexList.push(sushiswap);
-        dexList.push(pancakeswap);
-    }
-
-    function _addDefaultCEXs() internal {
-        // CEX connections would be via API
-        // In production, these would be API endpoints
+        if (tigerSwap != address(0)) {
+            approvedDEXs[tigerSwap] = true;
+            dexList.push(tigerSwap);
+        }
     }
 
     // ============================================================================
@@ -147,20 +137,19 @@ contract TigerWalletRouter {
         address tokenIn,
         address tokenOut,
         uint256 amountIn
-    ) external view returns (SwapRoute[] memory routes) {
+    ) public view returns (SwapRoute[] memory routes) {
         SwapRoute[] memory allRoutes = new SwapRoute[](dexList.length);
         uint256 bestPrice = 0;
         uint256 bestIndex = 0;
-        
+
         // Check each DEX for best price
         for (uint256 i = 0; i < dexList.length; i++) {
             address router = dexList[i];
-            
-            // Get quote (simplified - would call router in production)
+
             uint256 amountOut = _getQuote(router, tokenIn, tokenOut, amountIn);
             uint256 gasEstimate = _estimateGas(router, tokenIn, tokenOut, amountIn);
             uint256 fee = _calculateFee(amountOut);
-            
+
             allRoutes[i] = SwapRoute({
                 router: router,
                 tokenIn: tokenIn,
@@ -170,17 +159,17 @@ contract TigerWalletRouter {
                 gasEstimate: gasEstimate,
                 totalFee: fee
             });
-            
+
             if (amountOut > bestPrice) {
                 bestPrice = amountOut;
                 bestIndex = i;
             }
         }
-        
+
         // Return best route
         routes = new SwapRoute[](1);
         routes[0] = allRoutes[bestIndex];
-        
+
         return routes;
     }
 
@@ -195,16 +184,16 @@ contract TigerWalletRouter {
         uint256 numSplits
     ) external view returns (SwapRoute[] memory routes) {
         require(numSplits <= MAX_ROUTES, "Too many splits");
-        
+
         routes = new SwapRoute[](numSplits);
         uint256 amountPerSplit = amountIn / numSplits;
-        
+
         // Find best routes for each split
         for (uint256 i = 0; i < numSplits; i++) {
             SwapRoute[] memory bestRoutes = findBestRoute(tokenIn, tokenOut, amountPerSplit);
             routes[i] = bestRoutes[0];
         }
-        
+
         return routes;
     }
 
@@ -222,6 +211,24 @@ contract TigerWalletRouter {
         uint256 minAmountOut,
         address preferredRouter
     ) external returns (uint256 amountOut) {
+        return _executeSwap(msg.sender, tokenIn, tokenOut, amountIn, minAmountOut, preferredRouter);
+    }
+
+    /**
+     * @notice Core swap routine.
+     * @dev Takes the beneficiary explicitly. The fallback path used to call
+     *      `this.executeSwap(...)`, which made `msg.sender` the router contract
+     *      itself, so the input tokens were pulled from the wrong account and
+     *      the swap could never succeed.
+     */
+    function _executeSwap(
+        address beneficiary,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minAmountOut,
+        address preferredRouter
+    ) internal returns (uint256 amountOut) {
         // Find best route if no preference
         if (preferredRouter == address(0)) {
             SwapRoute[] memory routes = findBestRoute(tokenIn, tokenOut, amountIn);
@@ -231,19 +238,46 @@ contract TigerWalletRouter {
         } else {
             amountOut = _getQuote(preferredRouter, tokenIn, tokenOut, amountIn);
         }
-        
-        // Verify slippage
+
         require(amountOut >= minAmountOut, "Insufficient output");
-        
-        // Execute swap (simplified)
-        // In production, would interact with router contracts
-        
-        // Record stats
-        SwapStats storage stats = swapStats[msg.sender];
+        require(approvedDEXs[preferredRouter], "Router not approved");
+
+        // The caller must have approved this contract for tokenIn; pull the
+        // input in, then let the router execute the swap. Previously this
+        // function only updated local statistics and never moved any tokens.
+        require(
+            IERC20(tokenIn).transferFrom(beneficiary, address(this), amountIn),
+            "TransferFrom failed"
+        );
+        if (IERC20(tokenIn).allowance(address(this), preferredRouter) < amountIn) {
+            require(IERC20(tokenIn).approve(preferredRouter, type(uint256).max), "Approval failed");
+        }
+
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+
+        uint256 balanceBefore = IERC20(tokenOut).balanceOf(address(this));
+
+        IUniswapV2Router(preferredRouter).swapExactTokensForTokens(
+            amountIn,
+            minAmountOut,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+
+        // Measure the real received amount rather than trusting the quote.
+        amountOut = IERC20(tokenOut).balanceOf(address(this)).sub(balanceBefore);
+        require(amountOut >= minAmountOut, "Insufficient output");
+
+        require(IERC20(tokenOut).transfer(beneficiary, amountOut), "Payout failed");
+
+        SwapStats storage stats = swapStats[beneficiary];
         stats.totalSwaps++;
         stats.totalVolume += amountIn;
-        
-        emit SwapExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, preferredRouter);
+
+        emit SwapExecuted(beneficiary, tokenIn, tokenOut, amountIn, amountOut, preferredRouter);
     }
 
     /**
@@ -257,9 +291,19 @@ contract TigerWalletRouter {
         uint256 minAmountOut,
         address[] memory routers
     ) external returns (uint256 amountOut) {
+        // The caller approves this contract once, up front, for the full input.
+        require(
+            IERC20(tokenIn).allowance(msg.sender, address(this)) >= amountIn,
+            "Approve router first"
+        );
+
         for (uint256 i = 0; i < routers.length; i++) {
             if (!approvedDEXs[routers[i]]) continue;
-            
+
+            // Quote before attempting, so a router that cannot serve the pair is
+            // skipped without a failed state transition.
+            if (_getQuote(routers[i], tokenIn, tokenOut, amountIn) < minAmountOut) continue;
+
             try this.executeSwap(tokenIn, tokenOut, amountIn, minAmountOut, routers[i]) returns (uint256 result) {
                 if (result >= minAmountOut) {
                     amountOut = result;
@@ -270,7 +314,7 @@ contract TigerWalletRouter {
                 continue;
             }
         }
-        
+
         revert("All routes failed");
     }
 
@@ -279,23 +323,22 @@ contract TigerWalletRouter {
     // ============================================================================
 
     /**
-     * @notice Execute swap via CEX API
+     * @notice Place a swap with a centralized exchange.
+     * @dev Deliberately reverts. A CEX order is filled off-chain by the
+     *      exchange matching engine, so no on-chain call can settle it. The
+     *      previous implementation returned a quote and emitted SwapExecuted
+     *      while moving no tokens, which reported a fill that never happened.
+     *      CEX routing is handled by the off-chain routing service, which
+     *      authenticates to the exchange and records the real fill.
      */
     function executeCEXSwap(
-        address cex,
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn,
-        uint256 minAmountOut
-    ) external returns (uint256 amountOut) {
-        require(approvedCEXs[cex], "CEX not approved");
-        
-        // In production, would call CEX API
-        amountOut = _getQuote(cex, tokenIn, tokenOut, amountIn);
-        
-        require(amountOut >= minAmountOut, "Insufficient output");
-        
-        emit SwapExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut, cex);
+        address,
+        address,
+        address,
+        uint256,
+        uint256
+    ) external pure returns (uint256) {
+        revert("CEX swaps settle off-chain");
     }
 
     /**
@@ -364,34 +407,46 @@ contract TigerWalletRouter {
     // ============================================================================
 
     /**
-     * @notice Optimize gas for swap
+     * @notice Report the gas price cap and the block gas ceiling.
+     * @dev `gasPrice` is the effective price clamped to `maxGasPrice`, and
+     *      `optimalGas` is the block gas limit, which is the upper bound any
+     *      single transaction can consume. Per-swap gas is measured with
+     *      eth_estimateGas before submission; this function does not invent a
+     *      figure for it.
      */
     function optimizeGas() external view returns (uint256 gasPrice, uint256 optimalGas) {
         if (!gasOptimization) {
             return (tx.gasprice, block.gaslimit);
         }
-        
-        // Calculate optimal gas price based on network conditions
-        uint256 baseGas = block.gasprice;
-        
-        if (baseGas > maxGasPrice) {
-            gasPrice = maxGasPrice;
-        } else {
-            gasPrice = baseGas;
-        }
-        
-        // Estimate optimal gas
-        optimalGas = block.gaslimit / 2;
+
+        uint256 baseGas = tx.gasprice;
+        gasPrice = baseGas > maxGasPrice ? maxGasPrice : baseGas;
+        optimalGas = block.gaslimit;
     }
 
     // ============================================================================
     // Helper Functions
     // ============================================================================
 
-    function _getQuote(address router, address tokenIn, address tokenOut, uint256 amountIn) 
+    /**
+     * @notice Read the expected output for a two-hop-free swap from the router.
+     * @dev Returns 0 when the router cannot quote the pair; callers must treat
+     *      that as "no route" rather than assuming a 1:1 rate.
+     */
+    function _getQuote(address router, address tokenIn, address tokenOut, uint256 amountIn)
         internal view returns (uint256) {
-        // Simplified - would call router's getAmountsOut
-        return amountIn; // Placeholder
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+
+        try IUniswapV2Router(router).getAmountsOut(amountIn, path) returns (uint256[] memory amounts) {
+            if (amounts.length == 2) {
+                return amounts[1];
+            }
+        } catch {
+            return 0;
+        }
+        return 0;
     }
 
     function _estimateGas(address router, address tokenIn, address tokenOut, uint256 amountIn)

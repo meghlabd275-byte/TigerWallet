@@ -4,9 +4,11 @@
 package main
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -29,11 +31,11 @@ import (
 
 type Config struct {
 	ServerPort string `json:"server_port"`
-	DBHost    string `json:"db_host"`
-	DBPort    string `json:"db_port"`
-	DBUser    string `json:"db_user"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
 	DBPassword string `json:"db_password"`
-	DBName    string `json:"db_name"`
+	DBName     string `json:"db_name"`
 	RedisHost  string `json:"redis_host"`
 	RedisPort  string `json:"redis_port"`
 }
@@ -41,13 +43,13 @@ type Config struct {
 func LoadConfig() *Config {
 	return &Config{
 		ServerPort: getEnv("DEFI_PORT", "9097"),
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "tigerwallet"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "tigerwallet"),
 		DBPassword: mustEnv("DB_PASSWORD"),
-		DBName:    getEnv("DB_NAME", "tigerwallet_defi"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
+		DBName:     getEnv("DB_NAME", "tigerwallet_defi"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
 	}
 }
 
@@ -75,120 +77,120 @@ func getEnv(key, defaultValue string) string {
 
 // StakingPool represents a staking pool
 type StakingPool struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	PoolID         string    `gorm:"uniqueIndex" json:"pool_id"`
-	Name           string    `json:"name"`
-	Description    string    `json:"description"`
-	TokenAddress   string    `json:"token_address"`
-	ChainID        int64     `json:"chain_id"`
-	RewardToken    string    `json:"reward_token"`
-	APY            float64   `json:"apy"`
-	MinStake       string    `json:"min_stake"`
-	MaxStake       string    `json:"max_stake"`
-	LockPeriod     int       `json:"lock_period"` // seconds
-	TotalStaked    string    `json:"total_staked"`
-	TotalRewards   string    `json:"total_rewards"`
-	Status         string    `json:"status"` // active, paused, ended
-	StartTime      int64     `json:"start_time"`
-	EndTime        int64     `json:"end_time"`
-	WhiteLabelID   *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	PoolID       string    `gorm:"uniqueIndex" json:"pool_id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	TokenAddress string    `json:"token_address"`
+	ChainID      int64     `json:"chain_id"`
+	RewardToken  string    `json:"reward_token"`
+	APY          float64   `json:"apy"`
+	MinStake     string    `json:"min_stake"`
+	MaxStake     string    `json:"max_stake"`
+	LockPeriod   int       `json:"lock_period"` // seconds
+	TotalStaked  string    `json:"total_staked"`
+	TotalRewards string    `json:"total_rewards"`
+	Status       string    `json:"status"` // active, paused, ended
+	StartTime    int64     `json:"start_time"`
+	EndTime      int64     `json:"end_time"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // StakingPosition represents a user's staking position
 type StakingPosition struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	PositionID    string    `gorm:"uniqueIndex" json:"position_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	PoolID        string    `gorm:"index" json:"pool_id"`
-	Amount        string    `json:"amount"`
-	RewardsEarned string    `json:"rewards_earned"`
-	RewardsClaimed string  `json:"rewards_claimed"`
-	StartTime     int64     `json:"start_time"`
-	UnlockTime    int64     `json:"unlock_time"`
-	Status        string    `json:"status"` // staked, claimed, withdrawn
-	ChainID       int64     `json:"chain_id"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID             uint      `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	PositionID     string    `gorm:"uniqueIndex" json:"position_id"`
+	UserID         string    `gorm:"index" json:"user_id"`
+	PoolID         string    `gorm:"index" json:"pool_id"`
+	Amount         string    `json:"amount"`
+	RewardsEarned  string    `json:"rewards_earned"`
+	RewardsClaimed string    `json:"rewards_claimed"`
+	StartTime      int64     `json:"start_time"`
+	UnlockTime     int64     `json:"unlock_time"`
+	Status         string    `json:"status"` // staked, claimed, withdrawn
+	ChainID        int64     `json:"chain_id"`
+	WhiteLabelID   *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // LaunchpadProject represents an IDO/IEO project
 type LaunchpadProject struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	ProjectID      string    `gorm:"uniqueIndex" json:"project_id"`
-	Name           string    `json:"name"`
-	Symbol         string    `json:"symbol"`
-	Description    string    `json:"description"`
-	Logo           string    `json:"logo"`
-	Website        string    `json:"website"`
-	Whitepaper     string    `json:"whitepaper"`
-	TokenAddress   string    `json:"token_address"`
-	ChainID        int64     `json:"chain_id"`
-	TotalSupply    string    `json:"total_supply"`
-	IDOAllocation  string    `json:"ido_allocation"`
-	IDOPrice       string    `json:"ido_price"`
-	HardCap        string    `json:"hard_cap"`
-	SoftCap        string    `json:"soft_cap"`
-	MinBuy         string    `json:"min_buy"`
-	MaxBuy         string    `json:"max_buy"`
-	StartTime      int64     `json:"start_time"`
-	EndTime        int64     `json:"end_time"`
-	Progress       float64   `json:"progress"`
-	Participants   int       `json:"participants"`
-	RaisedAmount   string    `json:"raised_amount"`
-	Status         string    `json:"status"` // upcoming, active, completed, cancelled
-	WhiteLabelID   *uint     `gorm:"index" json:"white_label_id"`
+	ID            uint      `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time `json:"created_at"`
+	ProjectID     string    `gorm:"uniqueIndex" json:"project_id"`
+	Name          string    `json:"name"`
+	Symbol        string    `json:"symbol"`
+	Description   string    `json:"description"`
+	Logo          string    `json:"logo"`
+	Website       string    `json:"website"`
+	Whitepaper    string    `json:"whitepaper"`
+	TokenAddress  string    `json:"token_address"`
+	ChainID       int64     `json:"chain_id"`
+	TotalSupply   string    `json:"total_supply"`
+	IDOAllocation string    `json:"ido_allocation"`
+	IDOPrice      string    `json:"ido_price"`
+	HardCap       string    `json:"hard_cap"`
+	SoftCap       string    `json:"soft_cap"`
+	MinBuy        string    `json:"min_buy"`
+	MaxBuy        string    `json:"max_buy"`
+	StartTime     int64     `json:"start_time"`
+	EndTime       int64     `json:"end_time"`
+	Progress      float64   `json:"progress"`
+	Participants  int       `json:"participants"`
+	RaisedAmount  string    `json:"raised_amount"`
+	Status        string    `json:"status"` // upcoming, active, completed, cancelled
+	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // LaunchpadAllocation represents user allocation
 type LaunchpadAllocation struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	AllocationID  string    `gorm:"uniqueIndex" json:"allocation_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	ProjectID     string    `gorm:"index" json:"project_id"`
-	PayToken      string    `json:"pay_token"`
-	PayAmount     string    `json:"pay_amount"`
-	TokenAmount   string    `json:"token_amount"`
-	Status        string    `json:"status"` // pending, confirmed, cancelled
-	TxHash        string    `json:"tx_hash"`
-	ChainID       int64     `json:"chain_id"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint   `gorm:"primarykey" json:"id"`
+	AllocationID string `gorm:"uniqueIndex" json:"allocation_id"`
+	UserID       string `gorm:"index" json:"user_id"`
+	ProjectID    string `gorm:"index" json:"project_id"`
+	PayToken     string `json:"pay_token"`
+	PayAmount    string `json:"pay_amount"`
+	TokenAmount  string `json:"token_amount"`
+	Status       string `json:"status"` // pending, confirmed, cancelled
+	TxHash       string `json:"tx_hash"`
+	ChainID      int64  `json:"chain_id"`
+	WhiteLabelID *uint  `gorm:"index" json:"white_label_id"`
 }
 
 // EarnProduct represents savings/earn products
 type EarnProduct struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	ProductID     string    `gorm:"uniqueIndex" json:"product_id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	TokenAddress  string    `json:"token_address"`
-	ChainID       int64     `json:"chain_id"`
-	APY           float64   `json:"apy"`
-	ProductType   string    `json:"product_type"` // flexible, fixed
-	TermDays      int       `json:"term_days"`
-	MinDeposit    string    `json:"min_deposit"`
-	MaxDeposit    string    `json:"max_deposit"`
-	TotalDeposited string   `json:"total_deposited"`
-	Status        string    `json:"status"` // active, paused, ended
-	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
+	ID             uint      `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	ProductID      string    `gorm:"uniqueIndex" json:"product_id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	TokenAddress   string    `json:"token_address"`
+	ChainID        int64     `json:"chain_id"`
+	APY            float64   `json:"apy"`
+	ProductType    string    `json:"product_type"` // flexible, fixed
+	TermDays       int       `json:"term_days"`
+	MinDeposit     string    `json:"min_deposit"`
+	MaxDeposit     string    `json:"max_deposit"`
+	TotalDeposited string    `json:"total_deposited"`
+	Status         string    `json:"status"` // active, paused, ended
+	WhiteLabelID   *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // EarnDeposit represents user deposits
 type EarnDeposit struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	DepositID     string    `gorm:"uniqueIndex" json:"deposit_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	ProductID    string    `gorm:"index" json:"product_id"`
-	Amount        string    `json:"amount"`
-	InterestEarned string   `json:"interest_earned"`
-	Status        string    `json:"status"` // active, withdrawn
-	ChainID       int64     `json:"chain_id"`
-	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
+	ID             uint      `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	DepositID      string    `gorm:"uniqueIndex" json:"deposit_id"`
+	UserID         string    `gorm:"index" json:"user_id"`
+	ProductID      string    `gorm:"index" json:"product_id"`
+	Amount         string    `json:"amount"`
+	InterestEarned string    `json:"interest_earned"`
+	Status         string    `json:"status"` // active, withdrawn
+	ChainID        int64     `json:"chain_id"`
+	WhiteLabelID   *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // Coupon represents promotional coupons
@@ -196,13 +198,13 @@ type Coupon struct {
 	ID            uint      `gorm:"primarykey" json:"id"`
 	CreatedAt     time.Time `json:"created_at"`
 	CouponCode    string    `gorm:"uniqueIndex" json:"coupon_code"`
-	CouponType    string    `json:"coupon_type"` // discount, cashback, bonus
+	CouponType    string    `json:"coupon_type"`   // discount, cashback, bonus
 	DiscountType  string    `json:"discount_type"` // percentage, fixed
 	DiscountValue string    `json:"discount_value"`
 	MinAmount     string    `json:"min_amount"`
 	MaxAmount     string    `json:"max_amount"`
 	ValidFrom     int64     `json:"valid_from"`
-	ValidUntil   int64     `json:"valid_until"`
+	ValidUntil    int64     `json:"valid_until"`
 	UsageLimit    int       `json:"usage_limit"`
 	UsageCount    int       `json:"usage_count"`
 	Status        string    `json:"status"` // active, expired, cancelled
@@ -227,13 +229,13 @@ type RedPacket struct {
 
 // RedPacketClaim represents claims
 type RedPacketClaim struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	ClaimID       string    `gorm:"uniqueIndex" json:"claim_id"`
-	PacketID      string    `gorm:"index" json:"packet_id"`
-	ClaimerID     string    `gorm:"index" json:"claimer_id"`
-	Amount        string    `json:"amount"`
-	ClaimTime    int64     `json:"claim_time"`
-	ChainID       int64     `json:"chain_id"`
+	ID        uint   `gorm:"primarykey" json:"id"`
+	ClaimID   string `gorm:"uniqueIndex" json:"claim_id"`
+	PacketID  string `gorm:"index" json:"packet_id"`
+	ClaimerID string `gorm:"index" json:"claimer_id"`
+	Amount    string `json:"amount"`
+	ClaimTime int64  `json:"claim_time"`
+	ChainID   int64  `json:"chain_id"`
 }
 
 // ============================================================================
@@ -272,41 +274,270 @@ func NewDeFiService(config *Config) (*DeFiService, error) {
 		Addr: fmt.Sprintf("%s:%s", config.RedisHost, config.RedisPort),
 	})
 
-	// Initialize default staking pools
-	service := &DeFiService{db: db, redis: rdb, config: config}
-	service.initDefaultPools()
-
-	return service, nil
+	return &DeFiService{db: db, redis: rdb, config: config}, nil
 }
 
-func (s *DeFiService) initDefaultPools() {
-	var count int64
-	s.db.Model(&StakingPool{}).Count(&count)
-	if count > 0 {
+// Admin CRUD for staking pools and earn products.
+//
+// The service previously called initDefaultPools() at startup, which inserted
+// three staking pools and three earn products carrying invented APYs (4.5%,
+// 8.2%, 6.8%) into every deployment. Nothing backed those figures on-chain.
+// Pools and products are now created, edited and removed by an operator through
+// the admin routes below, so every published APY is a deliberate decision.
+
+// adminAuth fails closed: it rejects the request unless DEFI_ADMIN_API_KEY is
+// configured and the caller presents it in X-API-Key. Leaving the key unset
+// disables the admin surface entirely rather than exposing it.
+func adminAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		expected := os.Getenv("DEFI_ADMIN_API_KEY")
+		if expected == "" {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+				"error": "admin API disabled: DEFI_ADMIN_API_KEY is not set",
+			})
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(c.GetHeader("X-API-Key")), []byte(expected)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Next()
+	}
+}
+
+// CreateStakingPool registers a staking pool. The APY is supplied by the
+// operator; it is never defaulted to a plausible-looking value.
+func (s *DeFiService) CreateStakingPool(c *gin.Context) {
+	var req StakingPool
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name == "" || req.TokenAddress == "" || req.ChainID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name, token_address and chain_id are required"})
+		return
+	}
+	if req.APY <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "apy must be greater than zero"})
+		return
+	}
+	if req.Status == "" {
+		req.Status = "active"
+	}
+	req.PoolID = uuid.New().String()
+	if err := s.db.Create(&req).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, req)
+}
+
+// UpdateStakingPool edits a pool, including pausing it when the reward source
+// becomes unreliable.
+func (s *DeFiService) UpdateStakingPool(c *gin.Context) {
+	poolID := c.Param("pool_id")
+	var req struct {
+		Name        *string  `json:"name"`
+		Description *string  `json:"description"`
+		APY         *float64 `json:"apy"`
+		MinStake    *string  `json:"min_stake"`
+		MaxStake    *string  `json:"max_stake"`
+		LockPeriod  *int     `json:"lock_period"`
+		Status      *string  `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Create default staking pools
-	pools := []StakingPool{
-		{PoolID: uuid.New().String(), Name: "ETH Staking", Description: "Stake ETH and earn rewards", TokenAddress: "0x0000000000000000000000000000000000000000", ChainID: 1, RewardToken: "0x0000000000000000000000000000000000000000", APY: 4.5, MinStake: "0.01", MaxStake: "10000", LockPeriod: 2592000, Status: "active", StartTime: time.Now().Unix()},
-		{PoolID: uuid.New().String(), Name: "USDT Staking", Description: "Stake USDT and earn stable yields", TokenAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7", ChainID: 1, RewardToken: "0xdAC17F958D2ee523a2206206994597C13D831ec7", APY: 8.2, MinStake: "100", MaxStake: "1000000", LockPeriod: 0, Status: "active", StartTime: time.Now().Unix()},
-		{PoolID: uuid.New().String(), Name: "BNB Staking", Description: "Stake BNB and earn rewards", TokenAddress: "0x0000000000000000000000000000000000000000", ChainID: 56, RewardToken: "0x0000000000000000000000000000000000000000", APY: 6.8, MinStake: "0.1", MaxStake: "10000", LockPeriod: 1296000, Status: "active", StartTime: time.Now().Unix()},
+	updates := map[string]interface{}{}
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.APY != nil {
+		if *req.APY <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "apy must be greater than zero"})
+			return
+		}
+		updates["apy"] = *req.APY
+	}
+	if req.MinStake != nil {
+		updates["min_stake"] = *req.MinStake
+	}
+	if req.MaxStake != nil {
+		updates["max_stake"] = *req.MaxStake
+	}
+	if req.LockPeriod != nil {
+		updates["lock_period"] = *req.LockPeriod
+	}
+	if req.Status != nil {
+		updates["status"] = *req.Status
+	}
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+		return
 	}
 
-	for _, pool := range pools {
-		s.db.Create(&pool)
+	result := s.db.Model(&StakingPool{}).Where("pool_id = ?", poolID).Updates(updates)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pool not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"pool_id": poolID, "updated": true})
+}
+
+// DeleteStakingPool removes a pool only when no position is open against it.
+// A pool with live positions is left in place so user funds are never orphaned.
+func (s *DeFiService) DeleteStakingPool(c *gin.Context) {
+	poolID := c.Param("pool_id")
+
+	var open int64
+	s.db.Model(&StakingPosition{}).Where("pool_id = ? AND status = ?", poolID, "active").Count(&open)
+	if open > 0 {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":     "pool has active positions; pause it instead",
+			"positions": open,
+		})
+		return
 	}
 
-	// Create default earn products
-	products := []EarnProduct{
-		{ProductID: uuid.New().String(), Name: "Flexible USDT Savings", Description: "Earn interest on your USDT with flexible withdrawal", TokenAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7", ChainID: 1, APY: 6.5, ProductType: "flexible", MinDeposit: "10", MaxDeposit: "1000000", Status: "active"},
-		{ProductID: uuid.New().String(), Name: "Fixed 30-Day USDC", Description: "Lock your USDC for 30 days for higher yields", TokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ChainID: 1, APY: 8.0, ProductType: "fixed", TermDays: 30, MinDeposit: "100", MaxDeposit: "100000", Status: "active"},
-		{ProductID: uuid.New().String(), Name: "Flexible ETH Savings", Description: "Earn interest on your ETH", TokenAddress: "0x0000000000000000000000000000000000000000", ChainID: 1, APY: 4.0, ProductType: "flexible", MinDeposit: "0.01", MaxDeposit: "1000", Status: "active"},
+	result := s.db.Where("pool_id = ?", poolID).Delete(&StakingPool{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "pool not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"pool_id": poolID, "deleted": true})
+}
+
+// CreateEarnProduct registers an earn product with an operator-supplied APY.
+func (s *DeFiService) CreateEarnProduct(c *gin.Context) {
+	var req EarnProduct
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Name == "" || req.TokenAddress == "" || req.ChainID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name, token_address and chain_id are required"})
+		return
+	}
+	if req.APY <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "apy must be greater than zero"})
+		return
+	}
+	if req.ProductType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "product_type is required"})
+		return
+	}
+	if req.ProductType == "fixed" && req.TermDays <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "term_days is required for fixed products"})
+		return
+	}
+	if req.Status == "" {
+		req.Status = "active"
+	}
+	req.ProductID = uuid.New().String()
+	if err := s.db.Create(&req).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, req)
+}
+
+// UpdateEarnProduct edits an earn product.
+func (s *DeFiService) UpdateEarnProduct(c *gin.Context) {
+	productID := c.Param("product_id")
+	var req struct {
+		Name        *string  `json:"name"`
+		Description *string  `json:"description"`
+		APY         *float64 `json:"apy"`
+		MinDeposit  *string  `json:"min_deposit"`
+		MaxDeposit  *string  `json:"max_deposit"`
+		TermDays    *int     `json:"term_days"`
+		Status      *string  `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
-	for _, product := range products {
-		s.db.Create(&product)
+	updates := map[string]interface{}{}
+	if req.Name != nil {
+		updates["name"] = *req.Name
 	}
+	if req.Description != nil {
+		updates["description"] = *req.Description
+	}
+	if req.APY != nil {
+		if *req.APY <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "apy must be greater than zero"})
+			return
+		}
+		updates["apy"] = *req.APY
+	}
+	if req.MinDeposit != nil {
+		updates["min_deposit"] = *req.MinDeposit
+	}
+	if req.MaxDeposit != nil {
+		updates["max_deposit"] = *req.MaxDeposit
+	}
+	if req.TermDays != nil {
+		updates["term_days"] = *req.TermDays
+	}
+	if req.Status != nil {
+		updates["status"] = *req.Status
+	}
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+		return
+	}
+
+	result := s.db.Model(&EarnProduct{}).Where("product_id = ?", productID).Updates(updates)
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"product_id": productID, "updated": true})
+}
+
+// DeleteEarnProduct removes a product only when it has no open deposits.
+func (s *DeFiService) DeleteEarnProduct(c *gin.Context) {
+	productID := c.Param("product_id")
+
+	var open int64
+	s.db.Model(&EarnDeposit{}).Where("product_id = ? AND status = ?", productID, "active").Count(&open)
+	if open > 0 {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":    "product has active deposits; pause it instead",
+			"deposits": open,
+		})
+		return
+	}
+
+	result := s.db.Where("product_id = ?", productID).Delete(&EarnProduct{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"product_id": productID, "deleted": true})
 }
 
 // ============================================================================
@@ -314,10 +545,10 @@ func (s *DeFiService) initDefaultPools() {
 // ============================================================================
 
 type CreateStakeRequest struct {
-	UserID    string `json:"user_id" binding:"required"`
-	PoolID    string `json:"pool_id" binding:"required"`
-	Amount    string `json:"amount" binding:"required"`
-	ChainID   int64  `json:"chain_id"`
+	UserID  string `json:"user_id" binding:"required"`
+	PoolID  string `json:"pool_id" binding:"required"`
+	Amount  string `json:"amount" binding:"required"`
+	ChainID int64  `json:"chain_id"`
 }
 
 func (s *DeFiService) CreateStake(ctx *gin.Context) {
@@ -354,7 +585,7 @@ func (s *DeFiService) CreateStake(ctx *gin.Context) {
 	unlockTime := now + int64(pool.LockPeriod)
 
 	position := &StakingPosition{
-		PositionID:    uuid.New().String(),
+		PositionID:     uuid.New().String(),
 		UserID:         req.UserID,
 		PoolID:         req.PoolID,
 		Amount:         req.Amount,
@@ -546,10 +777,10 @@ func (s *DeFiService) ListEarnProducts(ctx *gin.Context) {
 }
 
 type DepositRequest struct {
-	UserID   string `json:"user_id" binding:"required"`
+	UserID    string `json:"user_id" binding:"required"`
 	ProductID string `json:"product_id" binding:"required"`
-	Amount   string `json:"amount" binding:"required"`
-	ChainID  int64  `json:"chain_id"`
+	Amount    string `json:"amount" binding:"required"`
+	ChainID   int64  `json:"chain_id"`
 }
 
 func (s *DeFiService) CreateEarnDeposit(ctx *gin.Context) {
@@ -584,12 +815,12 @@ func (s *DeFiService) CreateEarnDeposit(ctx *gin.Context) {
 	// Create deposit
 	deposit := &EarnDeposit{
 		DepositID:      uuid.New().String(),
-		UserID:          req.UserID,
-		ProductID:       req.ProductID,
-		Amount:          req.Amount,
-		InterestEarned:  "0",
-		Status:          "active",
-		ChainID:         req.ChainID,
+		UserID:         req.UserID,
+		ProductID:      req.ProductID,
+		Amount:         req.Amount,
+		InterestEarned: "0",
+		Status:         "active",
+		ChainID:        req.ChainID,
 	}
 
 	if err := s.db.Create(deposit).Error; err != nil {
@@ -705,8 +936,8 @@ func (s *DeFiService) ValidateCoupon(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"valid":      true,
-		"discount":   fmt.Sprintf("%.2f", discount),
+		"valid":       true,
+		"discount":    fmt.Sprintf("%.2f", discount),
 		"coupon_type": coupon.CouponType,
 	})
 }
@@ -719,10 +950,10 @@ type CreateRedPacketRequest struct {
 	SenderID     string `json:"sender_id" binding:"required"`
 	TokenAddress string `json:"token_address"`
 	ChainID      int64  `json:"chain_id"`
-	TotalAmount string `json:"total_amount" binding:"required"`
-	TotalCount  int    `json:"total_count" binding:"required"`
-	Message     string `json:"message"`
-	ExpiresAt   int64  `json:"expires_at"`
+	TotalAmount  string `json:"total_amount" binding:"required"`
+	TotalCount   int    `json:"total_count" binding:"required"`
+	Message      string `json:"message"`
+	ExpiresAt    int64  `json:"expires_at"`
 }
 
 func (s *DeFiService) CreateRedPacket(ctx *gin.Context) {
@@ -973,8 +1204,8 @@ func (s *DeFiService) GetDashboardStats(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"staking": gin.H{
-			"total_staked":   totalStaked,
-			"positions":      stakingCount,
+			"total_staked": totalStaked,
+			"positions":    stakingCount,
 		},
 		"earn": gin.H{
 			"total_deposited": totalDeposited,
@@ -1019,6 +1250,18 @@ func main() {
 	{
 		// Staking
 		api.GET("/staking/pools", service.ListStakingPools)
+
+		// Admin surface for operator-managed pools and products. Requires
+		// DEFI_ADMIN_API_KEY and fails closed when it is unset.
+		admin := api.Group("/admin", adminAuth())
+		{
+			admin.POST("/staking/pools", service.CreateStakingPool)
+			admin.PUT("/staking/pools/:pool_id", service.UpdateStakingPool)
+			admin.DELETE("/staking/pools/:pool_id", service.DeleteStakingPool)
+			admin.POST("/earn/products", service.CreateEarnProduct)
+			admin.PUT("/earn/products/:product_id", service.UpdateEarnProduct)
+			admin.DELETE("/earn/products/:product_id", service.DeleteEarnProduct)
+		}
 		api.POST("/staking/stake", service.CreateStake)
 		api.POST("/staking/claim/:id", service.ClaimStakeRewards)
 		api.GET("/staking/positions", service.GetStakingPositions)

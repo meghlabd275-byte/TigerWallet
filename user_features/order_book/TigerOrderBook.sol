@@ -18,6 +18,7 @@ pragma solidity ^0.8.20;
  * - Order matching engine
  */
 import "../libraries/SafeMath.sol";
+import "../../wallet_ecosystem/interfaces/IWalletInterfaces.sol";
 
 contract TigerOrderBook {
     using SafeMath for uint256;
@@ -814,9 +815,28 @@ contract TigerOrderBook {
     /**
      * @notice Get current price from oracle
      */
+    /**
+     * @notice Read the oracle price for `pairId`.
+     * @dev Reverts when no oracle is configured. Returning a constant 1e18
+     *      meant every order filled at a price that does not exist, so market
+     *      orders and liquidations were settled against a fictitious rate.
+     */
     function _getCurrentPrice(address pairId) internal view returns (uint256) {
-        // Simplified - would integrate with price oracle
-        return 1e18; // Placeholder
+        require(priceOracle != address(0), "Price oracle not configured");
+        require(pairId != address(0), "Invalid pair");
+
+        (, int256 answer, , uint256 updatedAt, ) = ITigerPriceOracle(priceOracle).latestRoundData();
+        require(answer > 0, "Invalid oracle price");
+        require(updatedAt > 0 && block.timestamp - updatedAt <= 3600, "Stale oracle price");
+
+        uint8 feedDecimals = ITigerPriceOracle(priceOracle).decimals();
+        uint256 scaled = uint256(answer);
+        if (feedDecimals < 18) {
+            scaled = scaled * (10 ** (18 - feedDecimals));
+        } else if (feedDecimals > 18) {
+            scaled = scaled / (10 ** (feedDecimals - 18));
+        }
+        return scaled;
     }
 
     // ============================================================================

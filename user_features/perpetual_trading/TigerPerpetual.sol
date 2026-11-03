@@ -16,6 +16,7 @@ pragma solidity ^0.8.20;
  * - Stable asset pool
  */
 import "../libraries/SafeMath.sol";
+import "../../wallet_ecosystem/interfaces/IWalletInterfaces.sol";
 
 contract TigerPerpetual {
     using SafeMath for uint256;
@@ -26,7 +27,11 @@ contract TigerPerpetual {
 
     uint256 public constant MAX_LEVERAGE = 50e18;
     uint256 public constant MIN_COLLATERAL = 100e18;
-    uint256 public constant LIQUIDATION_THRESHOLD = 80e18; // 80% of position value
+    // Expressed as a percentage (80 == 80%). Mixing this with BASIS_POINTS
+    // (1e18) in one expression overflowed the constant evaluator and made every
+    // position look liquidatable.
+    uint256 public constant LIQUIDATION_THRESHOLD = 80; // 80%
+    uint256 public constant PERCENT = 100;
     uint256 public constant FUNDING_INTERVAL = 8 hours;
     uint256 public constant BASIS_POINTS = 1e18;
     uint256 public constant PRICE_PRECISION = 1e18;
@@ -92,6 +97,7 @@ contract TigerPerpetual {
         uint256 collateral;
         uint256 averagePrice;
         uint256 lastFundingPayment;
+        uint256 fundingAccrued;
         uint256 profit;
         uint256 loss;
         uint256 openTime;
@@ -153,6 +159,7 @@ contract TigerPerpetual {
     event OrderCancelled(bytes32 indexed orderId);
 
     event FundingUpdated(address indexed asset, int256 rate);
+    event FundingPaid(bytes32 indexed positionId, int256 amount);
     event PoolFunded(address indexed asset, uint256 amount);
 
     // ============================================================================
@@ -178,7 +185,7 @@ contract TigerPerpetual {
         uint256 collateral,
         uint256 leverage,
         uint256 sizeDelta
-    ) external returns (bytes32 positionId) {
+    ) public returns (bytes32 positionId) {
         require(!paused, "Paused");
         require(collateral >= MIN_COLLATERAL, "Insufficient collateral");
         require(leverage >= BASIS_POINTS && leverage <= MAX_LEVERAGE, "Invalid leverage");
@@ -321,12 +328,15 @@ contract TigerPerpetual {
         uint256 positionValue = position.size.mul(currentPrice) / PRICE_PRECISION;
         uint256 collateralValue = position.collateral;
 
-        bool isLiquidatable = (position.side == PositionSide.Long && 
-                     currentPrice < position.averagePrice.mul(LIQUIDATION_THRESHOLD) / BASIS_POINTS) ||
-                     (position.side == PositionSide.Short && 
-                     currentPrice > position.averagePrice.mul(BASIS_POINTS + BASIS_POINTS - LIQUIDATION_THRESHOLD) / BASIS_POINTS);
+        // A long is underwater once the price falls below 80% of entry; a short
+        // once it rises above 120% of entry. The maintenance check compares
+        // collateral against position value on the same percentage scale.
+        bool isLiquidatable = (position.side == PositionSide.Long &&
+                     currentPrice < position.averagePrice.mul(LIQUIDATION_THRESHOLD) / PERCENT) ||
+                     (position.side == PositionSide.Short &&
+                     currentPrice > position.averagePrice.mul(PERCENT + PERCENT - LIQUIDATION_THRESHOLD) / PERCENT);
 
-        require(isLiquidatable || collateralValue.mul(100) / positionValue < LIQUIDATION_THRESHOLD, "Not liquidatable");
+        require(isLiquidatable || collateralValue.mul(PERCENT) / positionValue < LIQUIDATION_THRESHOLD, "Not liquidatable");
 
         // Calculate reward (5% of position value)
         reward = positionValue / 20;
@@ -449,11 +459,15 @@ contract TigerPerpetual {
         uint256 shortDiff = poolTotalShort[asset] > poolTotalLong[asset] ?
             poolTotalShort[asset] - poolTotalLong[asset] : 0;
 
-        // Funding rate = 0.01% per hour * imbalance ratio
-        if (longDiff > shortDiff) {
+        // Funding rate = 0.01% per interval scaled by the imbalance ratio.
+        // longDiff and shortDiff are mutually exclusive, so only one branch can
+        // divide by a zero total.
+        if (longDiff > 0 && poolTotalLong[asset] > 0) {
             fundingRates[asset] = int256(longDiff.mul(1e14) / poolTotalLong[asset]);
-        } else if (shortDiff > longDiff) {
+        } else if (shortDiff > 0 && poolTotalShort[asset] > 0) {
             fundingRates[asset] = -int256(shortDiff.mul(1e14) / poolTotalShort[asset]);
+        } else {
+            fundingRates[asset] = 0;
         }
 
         lastFundingTime[asset] = block.timestamp;
@@ -464,23 +478,51 @@ contract TigerPerpetual {
     /**
      * @notice Pay funding
      */
+    /**
+     * @notice Settle the funding owed on a position.
+     * @dev The rate is signed: positive means longs pay shorts, negative means
+     *      shorts pay longs. The amount is rate * size * elapsed / 1e18 and is
+     *      applied to the position's own collateral and to the pool that
+     *      receives it. The previous version subtracted the rate itself from a
+     *      pool total and left the position's collateral untouched.
+     */
     function payFunding(bytes32 positionId) external {
         Position storage position = positions[positionId];
         require(position.owner == msg.sender, "Not owner");
+        require(!position.isLiquidated, "Position liquidated");
 
-        uint256 fundingPayment = fundingRates[position.asset].mul(block.timestamp - position.lastFundingPayment) / 1e18;
+        uint256 elapsed = block.timestamp - position.lastFundingPayment;
+        if (elapsed == 0 || position.size == 0) {
+            position.lastFundingPayment = block.timestamp;
+            return;
+        }
 
-        if (fundingPayment > 0) {
-            if (fundingRates[position.asset] > 0) {
-                // Long pays short
-                poolTotalLong[position.asset] -= uint256(fundingRates[position.asset]);
-            } else {
-                // Short pays long
-                poolTotalShort[position.asset] -= uint256(-fundingRates[position.asset]);
+        int256 rate = fundingRates[position.asset];
+        int256 amount = (rate * int256(position.size) * int256(elapsed)) / 1e18;
+
+        address asset = position.asset;
+        if (amount > 0) {
+            // Longs pay shorts: debit this position, credit the short pool.
+            uint256 owed = uint256(amount);
+            if (owed > position.collateral) {
+                owed = position.collateral;
             }
+            position.collateral -= owed;
+            position.fundingAccrued += owed;
+            poolTotalLong[asset] += owed;
+        } else if (amount < 0) {
+            // Shorts pay longs.
+            uint256 owed = uint256(-amount);
+            if (owed > position.collateral) {
+                owed = position.collateral;
+            }
+            position.collateral -= owed;
+            position.fundingAccrued += owed;
+            poolTotalShort[asset] += owed;
         }
 
         position.lastFundingPayment = block.timestamp;
+        emit FundingPaid(positionId, amount);
     }
 
     // ============================================================================
@@ -522,9 +564,28 @@ contract TigerPerpetual {
     // Price
     // ============================================================================
 
+    /**
+     * @notice Read the oracle price for `asset`.
+     * @dev Reverts when no oracle is configured or the feed is unusable. The
+     *      previous implementation returned a constant 1e18, so every position
+     *      was opened, valued and liquidated at a fictitious price of 1.
+     */
     function _getPrice(address asset) internal view returns (uint256) {
-        // Would integrate with oracle
-        return 1e18; // Placeholder
+        require(priceOracle != address(0), "Price oracle not configured");
+        require(asset != address(0), "Invalid asset");
+
+        (, int256 answer, , uint256 updatedAt, ) = ITigerPriceOracle(priceOracle).latestRoundData();
+        require(answer > 0, "Invalid oracle price");
+        require(updatedAt > 0 && block.timestamp - updatedAt <= 3600, "Stale oracle price");
+
+        uint8 feedDecimals = ITigerPriceOracle(priceOracle).decimals();
+        uint256 scaled = uint256(answer);
+        if (feedDecimals < 18) {
+            scaled = scaled * (10 ** (18 - feedDecimals));
+        } else if (feedDecimals > 18) {
+            scaled = scaled / (10 ** (feedDecimals - 18));
+        }
+        return scaled;
     }
 
     function getPrice(address asset) external view returns (uint256) {

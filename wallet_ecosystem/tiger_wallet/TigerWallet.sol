@@ -5,7 +5,7 @@ pragma solidity ^0.8.20;
  * @title TigerWallet
  * @notice User Wallet - Complete Web3 Wallet Functionality
  * @dev Non-custodial wallet with 24-word seed phrase
- * 
+ *
  * Features:
  * - 24-word BIP39 seed phrase
  * - Password protection
@@ -21,6 +21,7 @@ pragma solidity ^0.8.20;
  * - Auto-signed by master wallet
  */
 import "../libraries/SafeMath.sol";
+import "../interfaces/IWalletInterfaces.sol";
 
 contract TigerWallet {
     using SafeMath for uint256;
@@ -39,47 +40,52 @@ contract TigerWallet {
 
     address public masterWallet;
     address public walletFactory;
-    
+
     // Wallet info
     bytes public encryptedSeed;
     bytes32 public walletHash;
     string public walletName;
     uint256 public createdAt;
     bool public isActive;
-    
+
     // Security
     bytes32 public passwordHash;
     bool public isPasswordSet;
     bool public twoFactorEnabled;
     address public twoFactorAddress;
-    
+
     // Chains supported
     mapping(uint256 => bool) public supportedChains;
     uint256[] public chainIds;
-    
+
     // Balances
     mapping(uint256 => uint256) public nativeBalances;  // chainId -> balance
     mapping(uint256 => mapping(address => uint256)) public tokenBalances;  // chainId -> token -> balance
-    
+
     // Pending transactions
     mapping(bytes32 => Transaction) public pendingTransactions;
     bytes32[] public pendingTxIds;
     uint256 public pendingTxCount = 0;
-    
+
     // Transaction history
     Transaction[] public transactionHistory;
     uint256 public txHistoryCount = 0;
-    
+
     // Auto-sign settings
     bool public autoSignEnabled;
     uint256 public autoSignLimit;
     mapping(address => bool) public allowedTokens;
-    
+
+    // Token factory used by createToken. Zero means the factory has not been
+    // wired up yet, and createToken reverts rather than handing back an address
+    // that is not a token.
+    address public tokenFactory;
+
     // Multisig
     mapping(bytes32 => MultisigTx) public multisigTxs;
     bytes32[] public multisigTxIds;
     uint256 public requiredSignatures = 1;
-    
+
     // ============================================================================
     // Structs
     // ============================================================================
@@ -185,7 +191,7 @@ contract TigerWallet {
         walletName = _name;
         createdAt = block.timestamp;
         isActive = true;
-        
+
         emit WalletCreated(address(this), _name);
     }
 
@@ -268,7 +274,7 @@ contract TigerWallet {
         require(supportedChains[chainId], "Chain not supported");
         nativeBalances[chainId] = nativeBalances[chainId].add(msg.value);
         emit Deposit(msg.sender, msg.value, chainId);
-        
+
         // Record transaction
         _recordTransaction(chainId, address(0), address(this), address(0), msg.value, TxType.Receive);
     }
@@ -279,11 +285,11 @@ contract TigerWallet {
     function depositToken(uint256 chainId, address token, uint256 amount) external {
         require(supportedChains[chainId], "Chain not supported");
         require(token != address(0), "Invalid token");
-        
+
         // Transfer token from user (would use IERC20 in production)
         tokenBalances[chainId][token] = tokenBalances[chainId][token].add(amount);
         emit Deposit(msg.sender, amount, chainId);
-        
+
         _recordTransaction(chainId, address(0), address(this), token, amount, TxType.Receive);
     }
 
@@ -293,16 +299,16 @@ contract TigerWallet {
     function withdrawNative(uint256 chainId, address to, uint256 amount) external onlyMasterWallet {
         require(supportedChains[chainId], "Chain not supported");
         require(nativeBalances[chainId] >= amount, "Insufficient balance");
-        
+
         nativeBalances[chainId] = nativeBalances[chainId].sub(amount);
-        
+
         // Transfer to recipient
         (bool success, ) = to.call{value: amount}("");
         require(success, "Transfer failed");
-        
+
         bytes32 txHash = keccak256(abi.encodePacked(block.timestamp, to, amount));
         emit Withdraw(to, amount, chainId, txHash);
-        
+
         _recordTransaction(chainId, address(this), to, address(0), amount, TxType.Send);
     }
 
@@ -312,11 +318,11 @@ contract TigerWallet {
     function withdrawToken(uint256 chainId, address to, address token, uint256 amount) external onlyMasterWallet {
         require(supportedChains[chainId], "Chain not supported");
         require(tokenBalances[chainId][token] >= amount, "Insufficient balance");
-        
+
         tokenBalances[chainId][token] = tokenBalances[chainId][token].sub(amount);
-        
+
         // Transfer token (would use IERC20 in production)
-        
+
         _recordTransaction(chainId, address(this), to, token, amount, TxType.Send);
     }
 
@@ -350,20 +356,54 @@ contract TigerWallet {
         address router
     ) external onlyMasterWallet returns (uint256 amountOut) {
         require(supportedChains[chainId], "Chain not supported");
+        require(router != address(0), "Router not configured");
         require(tokenBalances[chainId][tokenIn] >= amountIn, "Insufficient balance");
-        
-        // Deduct input
+
+        // Deduct input before the external call (checks-effects-interactions).
         tokenBalances[chainId][tokenIn] = tokenBalances[chainId][tokenIn].sub(amountIn);
-        
-        // Execute swap via router (would integrate with DEX in production)
-        amountOut = amountIn; // Simplified
-        
-        // Add output
+
+        address[] memory path = new address[](2);
+        path[0] = tokenIn;
+        path[1] = tokenOut;
+
+        // Quote first so an unproductive route reverts before any tokens move.
+        uint256[] memory quoted = IUniswapV2Router(router).getAmountsOut(amountIn, path);
+        require(quoted.length == 2, "Invalid quote");
+        require(quoted[1] >= minAmountOut, "Slippage exceeded");
+
+        uint256 balanceBefore = IERC20(tokenOut).balanceOf(address(this));
+
+        _ensureAllowance(tokenIn, router, amountIn);
+
+        IUniswapV2Router(router).swapExactTokensForTokens(
+            amountIn,
+            minAmountOut,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+
+        // Measure the real output instead of trusting the quote: a
+        // fee-on-transfer or rebasing token makes the two differ.
+        amountOut = IERC20(tokenOut).balanceOf(address(this)).sub(balanceBefore);
+        require(amountOut >= minAmountOut, "Insufficient output");
+
         tokenBalances[chainId][tokenOut] = tokenBalances[chainId][tokenOut].add(amountOut);
-        
+
         emit SwapExecuted(tokenIn, tokenOut, amountIn, amountOut);
-        
-        _recordTransaction(chainId, address(this), address(this), tokenIn, amountIn, TxType.Swap);
+
+        _recordTransaction(chainId, address(this), router, tokenIn, amountIn, TxType.Swap);
+    }
+
+    /**
+     * @notice Approve `spender` for at least `amount` of `token`.
+     * @dev Tops the allowance up only when the current one is short, so repeated
+     *      swaps do not emit a redundant approval each time.
+     */
+    function _ensureAllowance(address token, address spender, uint256 amount) internal {
+        if (IERC20(token).allowance(address(this), spender) < amount) {
+            require(IERC20(token).approve(spender, type(uint256).max), "Approval failed");
+        }
     }
 
     // ============================================================================
@@ -382,17 +422,41 @@ contract TigerWallet {
         address router
     ) external onlyMasterWallet returns (uint256 amountA, uint256 amountB) {
         require(supportedChains[chainId], "Chain not supported");
-        
-        // Deduct tokens
+        require(router != address(0), "Router not configured");
+        require(tokenBalances[chainId][tokenA] >= amountADesired, "Insufficient balance A");
+        require(tokenBalances[chainId][tokenB] >= amountBDesired, "Insufficient balance B");
+
+        // Deduct before the external call (checks-effects-interactions).
         tokenBalances[chainId][tokenA] = tokenBalances[chainId][tokenA].sub(amountADesired);
         tokenBalances[chainId][tokenB] = tokenBalances[chainId][tokenB].sub(amountBDesired);
-        
-        // Add liquidity (simplified)
-        amountA = amountADesired;
-        amountB = amountBDesired;
-        
+
+        _ensureAllowance(tokenA, router, amountADesired);
+        _ensureAllowance(tokenB, router, amountBDesired);
+
+        // The router decides the final amounts (it rebalances against pool
+        // ratios), so record what it actually consumed.
+        (amountA, amountB, ) = IUniswapV2Router(router).addLiquidity(
+            tokenA,
+            tokenB,
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            address(this),
+            block.timestamp + 300
+        );
+        require(amountA > 0 && amountB > 0, "No liquidity minted");
+
+        // Refund whatever the router did not take.
+        if (amountA < amountADesired) {
+            tokenBalances[chainId][tokenA] = tokenBalances[chainId][tokenA].add(amountADesired.sub(amountA));
+        }
+        if (amountB < amountBDesired) {
+            tokenBalances[chainId][tokenB] = tokenBalances[chainId][tokenB].add(amountBDesired.sub(amountB));
+        }
+
         emit LiquidityAdded(tokenA, tokenB, amountA, amountB);
-        
+
         _recordTransaction(chainId, address(this), router, tokenA, amountA, TxType.Liquidity);
     }
 
@@ -411,13 +475,17 @@ contract TigerWallet {
         uint256 chainId
     ) external onlyMasterWallet returns (address token) {
         require(supportedChains[chainId], "Chain not supported");
-        
-        // Deploy new token (simplified - would use token factory in production)
-        token = address(this); // Placeholder
-        
-        // Mint to wallet
+        require(tokenFactory != address(0), "Token factory not configured");
+        require(totalSupply > 0, "Supply must be positive");
+
+        // Deploy a real ERC-20 through the factory. Previously this returned
+        // address(this), recording a supply against the wallet contract itself
+        // and handing callers an address that is not a token.
+        token = ITigerTokenFactory(tokenFactory).createToken(name, symbol, totalSupply, decimals);
+        require(token != address(0), "Factory returned zero address");
+
         tokenBalances[chainId][token] = totalSupply;
-        
+
         emit TokenCreated(token, name, symbol, totalSupply);
     }
 
@@ -430,14 +498,21 @@ contract TigerWallet {
      */
     function claimAirdrop(address airdropContract, uint256 chainId) external onlyMasterWallet returns (uint256 amount) {
         require(supportedChains[chainId], "Chain not supported");
-        
-        // Claim airdrop (simplified)
-        amount = 1000e18; // Placeholder
-        
+        require(airdropContract != address(0), "Airdrop contract not set");
+
+        // Measure the real claim instead of crediting a fixed amount. The
+        // previous implementation added a hardcoded 1000e18 on every call,
+        // inflating the balance with tokens that were never received.
+        uint256 balanceBefore = address(this).balance;
+        (bool ok, ) = airdropContract.call(abi.encodeWithSignature("claim(address)", address(this)));
+        require(ok, "Airdrop claim failed");
+        amount = address(this).balance.sub(balanceBefore);
+        require(amount > 0, "Airdrop paid nothing");
+
         nativeBalances[chainId] = nativeBalances[chainId].add(amount);
-        
+
         emit AirdropClaimed(airdropContract, amount);
-        
+
         _recordTransaction(chainId, airdropContract, address(this), address(0), amount, TxType.AirdropClaim);
     }
 
@@ -445,7 +520,14 @@ contract TigerWallet {
      * @notice Join campaign
      */
     function joinCampaign(address campaignContract, bytes memory data) external onlyMasterWallet {
-        // Join campaign (simplified)
+        require(campaignContract != address(0), "Campaign contract not set");
+
+        // Forward the caller-supplied payload to the campaign contract. The
+        // previous version only wrote a local history row and never contacted
+        // the campaign, so the join silently did nothing on-chain.
+        (bool ok, ) = campaignContract.call(data);
+        require(ok, "Campaign join failed");
+
         _recordTransaction(1, address(this), campaignContract, address(0), 0, TxType.CampaignJoin);
     }
 
@@ -464,7 +546,7 @@ contract TigerWallet {
         uint256 _requiredSignatures
     ) external onlyMasterWallet returns (bytes32 txId) {
         txId = keccak256(abi.encodePacked(block.timestamp, owners, to, amount));
-        
+
         MultisigTx storage tx = multisigTxs[txId];
         tx.id = txId;
         tx.owners = owners;
@@ -474,9 +556,9 @@ contract TigerWallet {
         tx.timestamp = block.timestamp;
         tx.executed = false;
         tx.confirmations = 0;
-        
+
         multisigTxIds.push(txId);
-        
+
         emit MultisigCreated(txId, msg.sender);
     }
 
@@ -486,9 +568,9 @@ contract TigerWallet {
     function confirmMultisig(bytes32 txId) external {
         MultisigTx storage tx = multisigTxs[txId];
         require(!tx.executed, "Already executed");
-        
+
         tx.confirmations++;
-        
+
         if (tx.confirmations >= tx.owners.length) {
             _executeMultisig(txId);
         }
@@ -500,16 +582,16 @@ contract TigerWallet {
     function _executeMultisig(bytes32 txId) internal {
         MultisigTx storage tx = multisigTxs[txId];
         require(!tx.executed, "Already executed");
-        
+
         tx.executed = true;
-        
+
         if (tx.token == address(0)) {
             (bool success, ) = tx.to.call{value: tx.amount}("");
             require(success, "Transfer failed");
         } else {
             tokenBalances[1][tx.token] = tokenBalances[1][tx.token].sub(tx.amount);
         }
-        
+
         emit MultisigExecuted(txId);
     }
 
@@ -526,7 +608,7 @@ contract TigerWallet {
         TxType txType
     ) internal {
         bytes32 txId = keccak256(abi.encodePacked(block.timestamp, txHistoryCount));
-        
+
         Transaction memory tx = Transaction({
             id: txId,
             chainId: chainId,
@@ -540,7 +622,7 @@ contract TigerWallet {
             status: TxStatus.Executed,
             data: ""
         });
-        
+
         transactionHistory.push(tx);
         txHistoryCount++;
     }
@@ -587,5 +669,14 @@ contract TigerWallet {
     function setMasterWallet(address _masterWallet) external {
         require(msg.sender == masterWallet, "Not master wallet");
         masterWallet = _masterWallet;
+    }
+
+    /**
+     * @notice Point createToken at the deployed token factory.
+     * @dev Owner-only. Passing the zero address disables token creation again.
+     */
+    function setTokenFactory(address _factory) external onlyMasterWallet {
+        tokenFactory = _factory;
+        emit ConfigUpdated("tokenFactory");
     }
 }
