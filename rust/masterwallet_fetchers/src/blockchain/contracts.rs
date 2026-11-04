@@ -2,6 +2,7 @@
 //! Provides ABI encoding and contract interaction
 
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 
 /// Contract interface
@@ -249,14 +250,16 @@ impl ABIEncoder {
     }
     
     /// Generate function selector
+    ///
+    /// The selector is the first four bytes of the Keccak-256 hash of the
+    /// canonical function signature. Taking raw bytes of the name, as this once
+    /// did, produces selectors that collide across functions and match nothing
+    /// on chain.
     pub fn function_selector(function_name: &str) -> [u8; 4] {
-        // Simplified - in production use proper keccak256
-        let mut hash = [0u8; 4];
-        let bytes = function_name.as_bytes();
-        for (i, &b) in bytes.iter().take(4).enumerate() {
-            hash[i] = b;
-        }
-        hash
+        let digest = Keccak256::digest(function_name.as_bytes());
+        let mut selector = [0u8; 4];
+        selector.copy_from_slice(&digest[..4]);
+        selector
     }
 }
 
@@ -287,5 +290,58 @@ impl ParamEncoder for Uint256Encoder {
         let bytes = hex::decode(&self.0[2..]).unwrap_or_default();
         result[32 - bytes.len()..].copy_from_slice(&bytes);
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Selectors are fixed by the ABI specification, so these values pin the
+    /// encoder to what real contracts dispatch on.
+    #[test]
+    fn function_selectors_match_the_published_abi() {
+        let cases: [(&str, [u8; 4]); 6] = [
+            ("transfer(address,uint256)", [0xa9, 0x05, 0x9c, 0xbb]),
+            ("balanceOf(address)", [0x70, 0xa0, 0x82, 0x31]),
+            ("approve(address,uint256)", [0x09, 0x5e, 0xa7, 0xb3]),
+            ("transferFrom(address,address,uint256)", [0x23, 0xb8, 0x72, 0xdd]),
+            ("totalSupply()", [0x18, 0x16, 0x0d, 0xdd]),
+            ("decimals()", [0x31, 0x3c, 0xe5, 0x67]),
+        ];
+        for (signature, expected) in cases {
+            assert_eq!(
+                ABIEncoder::function_selector(signature),
+                expected,
+                "selector mismatch for {signature}"
+            );
+        }
+    }
+
+    #[test]
+    fn selectors_are_distinct_for_distinct_signatures() {
+        // The previous byte-prefix scheme mapped every signature sharing a
+        // prefix to the same selector; hashing must not.
+        let a = ABIEncoder::function_selector("transfer(address,uint256)");
+        let b = ABIEncoder::function_selector("transfer(address,uint8)");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn encode_prefixes_the_selector_and_pads_arguments() {
+        let address = "0x000000000000000000000000000000000000dEaD";
+        let amount = "0x0000000000000000000000000000000000000000000000000000000000000064";
+        let encoded = ABIEncoder::encode(
+            "transfer(address,uint256)",
+            &[&AddressEncoder(address.to_string()), &Uint256Encoder(amount.to_string())],
+        )
+        .expect("encoding a well-formed call must succeed");
+
+        assert_eq!(&encoded[..4], &[0xa9, 0x05, 0x9c, 0xbb]);
+        assert_eq!(encoded.len(), 4 + 32 + 32);
+        // Left-padded address in the first word.
+        assert_eq!(&encoded[4 + 12..4 + 32], &hex::decode("000000000000000000000000000000000000dead").unwrap()[..]);
+        // Amount in the second word.
+        assert_eq!(encoded[4 + 63], 0x64);
     }
 }
