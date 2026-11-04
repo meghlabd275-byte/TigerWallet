@@ -125,7 +125,7 @@ Duplicate top-level directories were merged into one canonical home each
 | SDKs | `sdks/` (go, javascript, python, cpp) | `sdk/`, `developer_sdk/` |
 | Hardware wallet | `hardware_wallet/` (go, rust, cpp) | `hardware_backend/`, `hardware_wallet_deep/` |
 | Blockchain explorer | `blockchain_explorer_system/` | `blockchain_explorer/` |
-| NFT | `nft_ecosystem/` (go, rust, cpp) | `nft_marketplace/` |
+| NFT | `go/nft_service/` (:8004), `go/nft/` | `nft_ecosystem/`, `nft_marketplace/` |
 | Notifications | `notifications/` | `notification/` → `go/cmd/gateway/` |
 | Staking | `staking_hub/` (go, rust) | `staking/` → `go/legacy/` |
 | White label | `white_label/` (+ `white_label_admin/`) | `white_label_portal/`, `white_label_system/`, `white_label_marketplace/`, `white_label_templates/`, `white_label_analytics_ai/`, `white_label_sdk/` → `sdk/cpp/`, `white_label_sdk/` → `sdk/rust/` |
