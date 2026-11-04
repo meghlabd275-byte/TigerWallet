@@ -15,7 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -137,17 +137,43 @@ func NewSlackService(cfg SlackConfig) (*SlackService, error) {
 	}, nil
 }
 
+// slackSignatureWindow is how far a request timestamp may be from now. Slack
+// signs the timestamp into the request, so an attacker who captures one signed
+// request could otherwise replay it forever; Slack's own guidance is to reject
+// anything older than five minutes.
+const slackSignatureWindow = 5 * time.Minute
+
 // VerifySignature - Verify Slack request signature
+//
+// Returns false when the signing secret is not configured. It used to return
+// true, which turned the events endpoint into an open webhook on any
+// deployment that had not set SLACK_SIGNING_SECRET: anyone could post an event
+// callback and have it processed as if Slack had sent it.
 func (s *SlackService) VerifySignature(timestamp, signature, body string) bool {
 	if s.config.SigningSecret == "" {
-		return true
+		log.Print("slack: SLACK_SIGNING_SECRET is not set; refusing to verify a request")
+		return false
 	}
-	
+	if timestamp == "" || signature == "" {
+		return false
+	}
+
+	// Reject a replayed request. The timestamp is part of the signed string, so
+	// this is checked before the MAC.
+	sent, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	age := time.Since(time.Unix(sent, 0))
+	if age > slackSignatureWindow || age < -slackSignatureWindow {
+		return false
+	}
+
 	baseString := fmt.Sprintf("v0:%s:%s", timestamp, body)
 	mac := hmac.New(sha256.New, []byte(s.config.SigningSecret))
 	mac.Write([]byte(baseString))
 	expectedSig := "v0=" + base64.StdEncoding.EncodeToString(mac.Sum(nil))
-	
+
 	return hmac.Equal([]byte(signature), []byte(expectedSig))
 }
 
@@ -203,14 +229,8 @@ func (s *SlackService) SendMessage(channel, text string, blocks []interface{}) (
 
 // SendAlert - Send alert to Slack
 func (s *SlackService) SendAlert(channel, alertType, title, message, severity string) error {
-	color := "#36a64f" // green
-	if severity == "high" {
-		color = "#ff0000"
-	} else if severity == "medium" {
-		color = "#ffa500"
-	} else if severity == "low" {
-		color = "#ffff00"
-	}
+	// The severity is carried in the context block below. The message is sent
+	// as blocks, so there is no attachment colour to set.
 	
 	blocks := []interface{}{
 		map[string]interface{}{
@@ -279,44 +299,42 @@ func (s *SlackService) SendWithdrawalAlert(channel, userID, amount, currency, st
 }
 
 // HandleSlashCommand - Handle Slack slash command
+//
+// This service sends notifications and alerts; it holds no wallet state. The
+// commands below used to answer with invented data: a literal "0x..." deposit
+// address, a balance that was never fetched, a withdrawal that was never
+// submitted and a price that was never looked up. Answering with fabricated
+// financial data is worse than answering with nothing, so the read-only
+// commands report that the data is unavailable and the commands that would
+// move funds are refused outright.
 func (s *SlackService) HandleSlashCommand(command, text, userID, channelID string) (string, string, []interface{}) {
-	parts := strings.Fields(text)
-	
 	switch command {
-	case "/balance":
-		// Return user balance
-		return "Balance Check", "Your balance is being fetched...", nil
-	
-	case "/deposit":
-		// Return deposit address
-		return "Deposit Address", "Your deposit address is: `0x...`", nil
-	
+	case "/balance", "/deposit", "/price":
+		return "Not available",
+			"This service sends notifications only and holds no wallet state. " +
+				"Check your balance, deposit address and prices in TigerWallet.",
+			nil
+
 	case "/withdraw":
-		// Process withdrawal
-		if len(parts) < 2 {
-			return "Withdraw", "Usage: /withdraw <amount> <currency>", nil
-		}
-		return "Withdraw", fmt.Sprintf("Withdrawal request for %s %s submitted for processing", parts[0], parts[1]), nil
-	
-	case "/price":
-		// Return price
-		if len(parts) < 1 {
-			return "Price", "Usage: /price <token>", nil
-		}
-		return "Price", fmt.Sprintf("Fetching price for %s...", parts[0]), nil
-	
+		return "Not available",
+			"Withdrawals cannot be started from Slack. Use TigerWallet, where the " +
+				"request is signed and authorised.",
+			nil
+
 	case "/help":
 		blocks := []interface{}{
-			{
+			map[string]interface{}{
 				"type": "section",
 				"text": map[string]interface{}{
 					"type": "mrkdwn",
-					"text": "*Available Commands:*\n• `/balance` - Check your balance\n• `/deposit` - Get deposit address\n• `/withdraw <amount> <currency>` - Withdraw funds\n• `/price <token>` - Get token price\n• `/help` - Show this help message",
+					"text": "*Available Commands:*\n• `/help` - Show this help message\n\n" +
+						"Balance, deposit, withdrawal and price commands are not served " +
+						"from Slack. Use TigerWallet for those.",
 				},
 			},
 		}
 		return "Help", "Available commands:", blocks
-	
+
 	default:
 		return "Unknown Command", "Type /help for available commands", nil
 	}
@@ -403,19 +421,32 @@ func (s *SlackService) SlackEventsHandler(c *gin.Context) {
 	}
 	
 	var payload map[string]interface{}
-	json.Unmarshal(body, &payload)
-	
+	if err := json.Unmarshal(body, &payload); err != nil {
+		c.JSON(400, gin.H{"error": "malformed JSON body"})
+		return
+	}
+
 	// Handle URL verification challenge
 	if payload["type"] == "url_verification" {
 		c.JSON(200, gin.H{"challenge": payload["challenge"]})
 		return
 	}
-	
-	// Handle event callbacks
+
+	// Handle event callbacks. The payload is attacker-supplied, so every field
+	// is type-asserted with the comma-ok form: a bare assertion panics when the
+	// field is missing or is not an object, and gin turns that panic into a 500.
 	if payload["type"] == "event_callback" {
-		event := payload["event"].(map[string]interface{})
-		eventType := event["type"].(string)
-		
+		event, ok := payload["event"].(map[string]interface{})
+		if !ok {
+			c.JSON(400, gin.H{"error": "event_callback without an event object"})
+			return
+		}
+		eventType, ok := event["type"].(string)
+		if !ok {
+			c.JSON(400, gin.H{"error": "event without a type"})
+			return
+		}
+
 		log.Printf("Received Slack event: %s", eventType)
 	}
 	
@@ -423,6 +454,11 @@ func (s *SlackService) SlackEventsHandler(c *gin.Context) {
 }
 
 func (s *SlackService) SlashCommandHandler(c *gin.Context) {
+	if !s.verifyRequest(c) {
+		c.JSON(401, gin.H{"error": "invalid signature"})
+		return
+	}
+
 	command := c.PostForm("command")
 	text := c.PostForm("text")
 	userID := c.PostForm("user_id")
@@ -445,18 +481,56 @@ func (s *SlackService) SlashCommandHandler(c *gin.Context) {
 }
 
 func (s *SlackService) InteractiveHandler(c *gin.Context) {
+	if !s.verifyRequest(c) {
+		c.JSON(401, gin.H{"error": "invalid signature"})
+		return
+	}
+
 	payload := c.PostForm("payload")
-	
+
 	var data map[string]interface{}
-	json.Unmarshal([]byte(payload), &data)
-	
-	// Handle button clicks, menu selections, etc.
-	action := data["actions"].([]interface{})[0].(map[string]interface{})
-	actionType := action["type"].(string)
-	
+	if err := json.Unmarshal([]byte(payload), &data); err != nil {
+		c.JSON(400, gin.H{"error": "malformed payload"})
+		return
+	}
+
+	// The payload is attacker-supplied, so every field is asserted with the
+	// comma-ok form rather than panicking on a missing or mistyped one.
+	actions, ok := data["actions"].([]interface{})
+	if !ok || len(actions) == 0 {
+		c.JSON(400, gin.H{"error": "payload without actions"})
+		return
+	}
+	action, ok := actions[0].(map[string]interface{})
+	if !ok {
+		c.JSON(400, gin.H{"error": "action is not an object"})
+		return
+	}
+	actionType, ok := action["type"].(string)
+	if !ok {
+		c.JSON(400, gin.H{"error": "action without a type"})
+		return
+	}
+
 	log.Printf("Interactive action: %s", actionType)
-	
+
 	c.JSON(200, gin.H{"status": "ok"})
+}
+
+// verifyRequest reads the body and checks the Slack signature over it. It
+// restores the body so the caller can still bind the form.
+func (s *SlackService) verifyRequest(c *gin.Context) bool {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return false
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+	return s.VerifySignature(
+		c.GetHeader("X-Slack-Request-Timestamp"),
+		c.GetHeader("X-Slack-Signature"),
+		string(body),
+	)
 }
 
 // Main
