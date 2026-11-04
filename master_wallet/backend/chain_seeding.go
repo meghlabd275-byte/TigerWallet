@@ -1,6 +1,7 @@
 package main
 
-// chain_seeding.go — Seeds the 120 EVM + 66 non-EVM canonical mainnet chains
+// chain_seeding.go — Seeds the canonical EVM mainnet chains plus the curated
+// non-EVM mainnet chains
 // into the user_chains_evm / user_chains_nonevm tables on first boot. The
 // master wallet owner can add/remove/update any chain at runtime via the REST
 // API. This seeding runs only when the tables are empty (idempotent).
@@ -12,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// seedDefaultUserChains inserts the 120 EVM + 66 non-EVM canonical mainnet
+// seedDefaultUserChains inserts the canonical EVM and non-EVM mainnet
 // chains into the user_chains_evm and user_chains_nonevm tables if they are
 // empty. Idempotent — only seeds on first boot (when row count is 0).
 func seedDefaultUserChains(ctx context.Context, s *Store) {
@@ -20,7 +21,7 @@ func seedDefaultUserChains(ctx context.Context, s *Store) {
 		return
 	}
 
-	// Seed EVM chains (120).
+	// Seed EVM chains.
 	var evmCount int
 	if err := s.DB().QueryRow(ctx, `SELECT COUNT(*) FROM user_chains_evm`).Scan(&evmCount); err != nil {
 		log.Printf("WARN: seed EVM chains count: %v", err)
@@ -45,7 +46,7 @@ func seedDefaultUserChains(ctx context.Context, s *Store) {
 		log.Printf("Seeded %d EVM chains into user_chains_evm", inserted)
 	}
 
-	// Seed non-EVM chains (66).
+	// Seed non-EVM chains.
 	var nonevmCount int
 	if err := s.DB().QueryRow(ctx, `SELECT COUNT(*) FROM user_chains_nonevm`).Scan(&nonevmCount); err != nil {
 		log.Printf("WARN: seed non-EVM chains count: %v", err)

@@ -1,15 +1,87 @@
 package main
 
 // chain_seeding_test.go — Tests for the chain registry data + seeding logic.
-// Verifies 120 EVM + 66 non-EVM chains are present with valid data.
+// Verifies the EVM and non-EVM registries are present with valid data.
 
 import (
 	"testing"
 )
 
 func TestEVMChainCount120(t *testing.T) {
-	if len(defaultEVMChains) < 120 {
-		t.Errorf("expected >=120 EVM chains, got %d", len(defaultEVMChains))
+	// The registry is derived from the canonical wallet-api registry, which
+	// carries every mainnet the upstream ethereum-lists data publishes with an
+	// https RPC. The floor is the count at the time this was written.
+	if len(defaultEVMChains) < 190 {
+		t.Errorf("expected >=190 EVM chains, got %d", len(defaultEVMChains))
+	}
+}
+
+// TestMajorEVMChainsPresent guards the regression this registry had: the list
+// was generated in ascending chain-id order and cut at 120 entries, so every
+// chain whose id sorts above the cut was missing. Base, Arbitrum One, OP
+// Mainnet, Celo, Linea, Scroll, Mantle, zkSync Era and Blast were all absent
+// from the chains a MasterWallet owner could add.
+func TestMajorEVMChainsPresent(t *testing.T) {
+	required := map[int64]string{
+		1:      "Ethereum Mainnet",
+		10:     "OP Mainnet",
+		56:     "BNB Smart Chain",
+		137:    "Polygon",
+		324:    "zkSync Era",
+		2020:   "Ronin",
+		5000:   "Mantle",
+		8453:   "Base",
+		42161:  "Arbitrum One",
+		42220:  "Celo",
+		59144:  "Linea",
+		81457:  "Blast",
+		34443:  "Mode",
+		43114:  "Avalanche C-Chain",
+		534352: "Scroll",
+		57073:  "Ink",
+		80094:  "Berachain",
+	}
+	present := map[int64]bool{}
+	for _, c := range defaultEVMChains {
+		present[c.ChainID] = true
+	}
+	for chainID, name := range required {
+		if !present[chainID] {
+			t.Errorf("chain_id %d (%s) missing from the EVM registry", chainID, name)
+		}
+	}
+}
+
+// TestEVMChainIDsAreUnique keeps the seed idempotent: user_chains_evm is keyed
+// by chain_id, so a duplicate would make the CopyFrom fail on first boot.
+func TestEVMChainIDsAreUnique(t *testing.T) {
+	seen := map[int64]string{}
+	for _, c := range defaultEVMChains {
+		if prev, ok := seen[c.ChainID]; ok {
+			t.Errorf("chain_id %d appears twice: %q and %q", c.ChainID, prev, c.Name)
+			continue
+		}
+		seen[c.ChainID] = c.Name
+	}
+}
+
+// TestEVMChainsHaveExplorer guards against the generator dropping explorer
+// data. The upstream registry omits an explorer for a couple of chains
+// (Expanse Network, Viction), so the check is a ratio rather than an absolute:
+// a parsing regression that blanked the field would fail it immediately.
+func TestEVMChainsHaveExplorer(t *testing.T) {
+	withExplorer := 0
+	for _, c := range defaultEVMChains {
+		if c.ExplorerURL != "" {
+			withExplorer++
+		}
+	}
+	if len(defaultEVMChains) == 0 {
+		t.Fatal("EVM registry is empty")
+	}
+	if ratio := float64(withExplorer) / float64(len(defaultEVMChains)); ratio < 0.95 {
+		t.Errorf("only %d of %d EVM chains carry an explorer URL (%.0f%%), expected at least 95%%",
+			withExplorer, len(defaultEVMChains), ratio*100)
 	}
 }
 

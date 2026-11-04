@@ -2,7 +2,7 @@ package main
 
 // chains.go — MasterWallet chain configuration. A curated, mainnet-only set of
 // EVM chains with real RPC env-var resolution (no fabricated endpoints). Each
-// chain maps to a BIP-44 coin type + derivation path. The full 120+66 chain
+// chain maps to a BIP-44 coin type + derivation path. The full EVM + non-EVM
 // registry lives in the canonical go/wallet_api; this is the subset the
 // MasterWallet treasury/operator wallet needs for its managed chains.
 
