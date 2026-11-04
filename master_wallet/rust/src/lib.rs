@@ -277,8 +277,17 @@ pub fn sign_personal_message(priv_key: &[u8], message: &[u8]) -> Result<Vec<u8>,
     sign_hash(priv_key, &hash)
 }
 
-// Recover the public key from (prehash, signature, recovery_id).
-fn recover_pubkey(hash: &[u8], sig_bytes: &[u8], v: u8) -> Option<VerifyingKey> {
+/// Recovers the public key that produced `sig_bytes` over `hash`, using the
+/// recovery id `v`.
+///
+/// This is the counterpart to `sign_hash` and is what lets a caller confirm
+/// which key signed a message without holding it — the wallet uses it to check
+/// that an incoming dApp request was signed by the account it claims.
+///
+/// Returns `None` when `v` is not a valid recovery id or the signature is not a
+/// well-formed 64-byte r||s pair, so a malformed input cannot be mistaken for a
+/// successful recovery.
+pub fn recover_pubkey(hash: &[u8], sig_bytes: &[u8], v: u8) -> Option<VerifyingKey> {
     let rec_id = k256::ecdsa::RecoveryId::from_byte(v)?;
     let sig = k256::ecdsa::Signature::from_slice(sig_bytes).ok()?;
     VerifyingKey::recover_from_prehash(hash, &sig, rec_id).ok()

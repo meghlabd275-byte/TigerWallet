@@ -18,7 +18,7 @@ pragma solidity ^0.8.20;
  * - Order matching engine
  */
 import "../libraries/SafeMath.sol";
-import "../../wallet_ecosystem/interfaces/IWalletInterfaces.sol";
+import "../../smart_contracts/evm_contracts/interfaces/ITigerPriceOracle.sol";
 
 contract TigerOrderBook {
     using SafeMath for uint256;

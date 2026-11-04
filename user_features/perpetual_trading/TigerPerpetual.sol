@@ -16,7 +16,7 @@ pragma solidity ^0.8.20;
  * - Stable asset pool
  */
 import "../libraries/SafeMath.sol";
-import "../../wallet_ecosystem/interfaces/IWalletInterfaces.sol";
+import "../../smart_contracts/evm_contracts/interfaces/ITigerPriceOracle.sol";
 
 contract TigerPerpetual {
     using SafeMath for uint256;
