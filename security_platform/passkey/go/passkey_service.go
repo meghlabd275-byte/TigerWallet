@@ -14,10 +14,13 @@ package main
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -49,6 +52,9 @@ type Config struct {
 	RPID       string // Relying Party ID (domain)
 	RPOrigin   string // Relying Party Origin
 	Timeout    time.Duration
+
+	// EncryptionKey is the AES-256 key protecting recovery shares at rest.
+	EncryptionKey string
 }
 
 func LoadConfig() *Config {
@@ -71,7 +77,20 @@ func LoadConfig() *Config {
 		RPID:       getEnv("PASSKEY_RPID", "tigerwallet.com"),
 		RPOrigin:   getEnv("PASSKEY_ORIGIN", "https://tigerwallet.com"),
 		Timeout:    60 * time.Second,
+
+		EncryptionKey: loadEncryptionKey(),
 	}
+}
+
+// encryptionKey returns the 32-byte AES-256 key used for recovery shares. A
+// short or missing key would silently weaken the encryption, so the service
+// refuses to start rather than derive one.
+func loadEncryptionKey() string {
+	k := strings.TrimSpace(os.Getenv("PASSKEY_ENCRYPTION_KEY"))
+	if len(k) < 32 {
+		log.Fatal("passkey: PASSKEY_ENCRYPTION_KEY must be set to at least 32 characters")
+	}
+	return k[:32]
 }
 
 // mustEnv returns the named environment variable or terminates the process.
@@ -264,6 +283,7 @@ type PasskeyService struct {
 	db     *gorm.DB
 	config *Config
 	jwtKey []byte
+	encKey []byte
 }
 
 func NewPasskeyService(db *gorm.DB, config *Config) *PasskeyService {
@@ -271,6 +291,7 @@ func NewPasskeyService(db *gorm.DB, config *Config) *PasskeyService {
 		db:     db,
 		config: config,
 		jwtKey: []byte(config.JWTSecret),
+		encKey: []byte(config.EncryptionKey),
 	}
 }
 
@@ -779,6 +800,61 @@ func (s *PasskeyService) DeleteCredentialHandler(c *gin.Context) {
 }
 
 // ============================================================================
+// Recovery share encryption (AES-256-GCM)
+// ============================================================================
+
+// encryptShare seals a share with AES-256-GCM under a fresh random nonce. The
+// nonce is prefixed to the ciphertext; GCM's tag authenticates the whole blob,
+// so a tampered share fails to decrypt rather than decrypting to garbage.
+func (s *PasskeyService) encryptShare(plain string) (string, error) {
+	if len(s.encKey) != 32 {
+		return "", errors.New("passkey: encryption key must be 32 bytes")
+	}
+	block, err := aes.NewCipher(s.encKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nonce, nonce, []byte(plain), nil)
+	return base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+// decryptShare reverses encryptShare.
+func (s *PasskeyService) decryptShare(blob string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(blob)
+	if err != nil {
+		return "", err
+	}
+	if len(s.encKey) != 32 {
+		return "", errors.New("passkey: encryption key must be 32 bytes")
+	}
+	block, err := aes.NewCipher(s.encKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) < gcm.NonceSize() {
+		return "", errors.New("passkey: share ciphertext is truncated")
+	}
+	nonce, ciphertext := raw[:gcm.NonceSize()], raw[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
+// ============================================================================
 // Database Migration
 // ============================================================================
 
@@ -788,6 +864,8 @@ func Migrate(db *gorm.DB) error {
 		&PasskeyCredential{},
 		&PasskeyChallenge{},
 		&PasskeySession{},
+		&RecoveryKey{},
+		&RecoveryShare{},
 	)
 }
 
@@ -882,6 +960,11 @@ func main() {
 		{
 			protected.GET("/credentials", service.GetCredentials)
 			protected.DELETE("/credentials", service.DeleteCredentialHandler)
+
+			// Social recovery: enrol splits a fresh secret, redeem rebuilds
+			// it from shares the user holds.
+			protected.POST("/recovery/enrol", service.RecoveryEnrol)
+			protected.POST("/recovery/redeem", service.RecoveryRedeem)
 		}
 	}
 

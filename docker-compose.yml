@@ -1262,6 +1262,33 @@ services:
     restart: unless-stopped
 
 
+  # WebAuthn/FIDO2 passkey service: real attestation and assertion
+  # verification (CBOR/COSE parsing, RP ID hash, origin, challenge, ECDSA/RSA
+  # signature) plus Shamir-based social recovery with AES-256-GCM shares.
+  passkey-service:
+    build:
+      context: ./security_platform/passkey/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-passkey-service
+    ports:
+      - "9097:9097"
+    environment:
+      - PASSKEY_PORT=9097
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-tigerwallet}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - DB_NAME=${POSTGRES_DB:-tigerwallet}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      - PASSKEY_ENCRYPTION_KEY=${PASSKEY_ENCRYPTION_KEY:?PASSKEY_ENCRYPTION_KEY must be set to at least 32 characters}
+      - PASSKEY_RPID=${PASSKEY_RPID:-tigerwallet.com}
+      - PASSKEY_ORIGIN=${PASSKEY_ORIGIN:-https://tigerwallet.com}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+
 volumes:
   postgres_data:
   redis_data:
