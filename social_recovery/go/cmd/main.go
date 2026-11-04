@@ -7,12 +7,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -21,14 +32,31 @@ import (
 // ============ Configuration ============
 
 type Config struct {
-	Port             string
-	RedisURL         string
-	AdminPrivateKey  string
-	RecoveryDelay    time.Duration
+	Port            string
+	RedisURL        string
+	AdminPrivateKey string
+	RecoveryDelay   time.Duration
 	MaxGuardians    int
 	MinGuardians    int
-	EmailEnabled     bool
+	EmailEnabled    bool
 	SMSEnabled      bool
+	// On-chain recovery. Without all three the service can approve a
+	// recovery but will not claim one has happened; see ExecuteRecovery.
+	RPCURL             string
+	RecoveryContract   string
+	ExecutorPrivateKey string
+	ChainID            int64
+}
+
+// parseChainID reads the configured chain id, falling back to 1 so a typo
+// cannot silently target a different network.
+func parseChainID(raw string) int64 {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || value <= 0 {
+		log.Printf("SOCIAL_RECOVERY_CHAIN_ID %q is not a valid chain id; using 1", raw)
+		return 1
+	}
+	return value
 }
 
 func getEnv(key, defaultValue string) string {
@@ -41,49 +69,51 @@ func getEnv(key, defaultValue string) string {
 // ============ Models ============
 
 type Wallet struct {
-	ID            string   `json:"id"`
-	Address       string   `json:"address"`
-	Chain         string   `json:"chain"`
+	ID            string     `json:"id"`
+	Address       string     `json:"address"`
+	Chain         string     `json:"chain"`
 	Guardians     []Guardian `json:"guardians"`
-	Threshold     int      `json:"threshold"`
-	Status        string   `json:"status"`
-	RecoveryCount int      `json:"recoveryCount"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	Threshold     int        `json:"threshold"`
+	Status        string     `json:"status"`
+	RecoveryCount int        `json:"recoveryCount"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
 type Guardian struct {
-	ID          string     `json:"id"`
-	Address     string     `json:"address"`      // Ethereum address
-	Email       string     `json:"email,omitempty"`
-	Phone       string     `json:"phone,omitempty"`
+	ID          string       `json:"id"`
+	Address     string       `json:"address"` // Ethereum address
+	Email       string       `json:"email,omitempty"`
+	Phone       string       `json:"phone,omitempty"`
 	Type        GuardianType `json:"type"`
-	Confirmed   bool       `json:"confirmed"`
-	InvitedAt   time.Time  `json:"invitedAt"`
-	ConfirmedAt *time.Time `json:"confirmedAt,omitempty"`
+	Confirmed   bool         `json:"confirmed"`
+	InvitedAt   time.Time    `json:"invitedAt"`
+	ConfirmedAt *time.Time   `json:"confirmedAt,omitempty"`
 }
 
 type GuardianType string
 
 const (
 	GuardianTypeAddress GuardianType = "address"
-	GuardianTypeEmail  GuardianType = "email"
-	GuardianTypePhone  GuardianType = "phone"
-	GuardianTypeSocial GuardianType = "social"
+	GuardianTypeEmail   GuardianType = "email"
+	GuardianTypePhone   GuardianType = "phone"
+	GuardianTypeSocial  GuardianType = "social"
 )
 
 type RecoveryRequest struct {
-	ID              string           `json:"id"`
-	WalletID        string           `json:"walletId"`
-	NewOwnerAddress string           `json:"newOwnerAddress"`
-	Status          RecoveryStatus  `json:"status"`
-	ThresholdMet    bool            `json:"thresholdMet"`
+	ID              string              `json:"id"`
+	WalletID        string              `json:"walletId"`
+	NewOwnerAddress string              `json:"newOwnerAddress"`
+	Status          RecoveryStatus      `json:"status"`
+	ThresholdMet    bool                `json:"thresholdMet"`
 	Signatures      []GuardianSignature `json:"signatures"`
-	DelayEnd        time.Time       `json:"delayEnd"`
-	ExecutedAt      *time.Time      `json:"executedAt,omitempty"`
-	CancelledAt     *time.Time      `json:"cancelledAt,omitempty"`
-	CreatedAt       time.Time       `json:"createdAt"`
-	ExpiresAt       time.Time       `json:"expiresAt"`
+	DelayEnd        time.Time           `json:"delayEnd"`
+	ExecutedAt      *time.Time          `json:"executedAt,omitempty"`
+	ExecutedTxHash  string              `json:"executedTxHash,omitempty"`
+	Challenge       string              `json:"challenge,omitempty"`
+	CancelledAt     *time.Time          `json:"cancelledAt,omitempty"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	ExpiresAt       time.Time           `json:"expiresAt"`
 }
 
 type RecoveryStatus string
@@ -98,18 +128,18 @@ const (
 )
 
 type GuardianSignature struct {
-	GuardianID  string    `json:"guardianId"`
-	Signature   string    `json:"signature"`
-	SignedAt    time.Time `json:"signedAt"`
-	Message     string    `json:"message"`
+	GuardianID string    `json:"guardianId"`
+	Signature  string    `json:"signature"`
+	SignedAt   time.Time `json:"signedAt"`
+	Message    string    `json:"message"`
 }
 
 type RecoverySession struct {
-	WalletID     string          `json:"walletId"`
-	Challenge     string          `json:"challenge"`
-	ExpiresAt    time.Time       `json:"expiresAt"`
-	MaxAttempts  int             `json:"maxAttempts"`
-	Attempts     int             `json:"attempts"`
+	WalletID    string    `json:"walletId"`
+	Challenge   string    `json:"challenge"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	MaxAttempts int       `json:"maxAttempts"`
+	Attempts    int       `json:"attempts"`
 }
 
 // ============ Service ============
@@ -117,6 +147,9 @@ type RecoverySession struct {
 type SocialRecoveryService struct {
 	config *Config
 	redis  *redis.Client
+	// now is the clock the service reads. Tests use it to reach the end of the
+	// recovery delay without waiting a day; production leaves it as time.Now.
+	now func() time.Time
 }
 
 func NewSocialRecoveryService(config *Config) (*SocialRecoveryService, error) {
@@ -249,11 +282,11 @@ func (s *SocialRecoveryService) InitiateRecovery(ctx context.Context, walletID, 
 		ExpiresAt:       time.Now().Add(7 * 24 * time.Hour),
 	}
 
-	// Generate challenge
-	challenge := generateChallenge()
-	request.Signatures = append(request.Signatures, GuardianSignature{
-		Message: fmt.Sprintf("Recovery challenge: %s", challenge),
-	})
+	// The challenge is a nonce the guardians sign over. It used to be stored as
+	// an entry in Signatures, which meant it counted towards the threshold: a
+	// 2-of-3 wallet was satisfied by a single guardian's approval, because the
+	// placeholder made up the second count.
+	request.Challenge = generateChallenge()
 
 	if s.redis != nil {
 		data, _ := json.Marshal(request)
@@ -296,13 +329,33 @@ func (s *SocialRecoveryService) SignRecovery(ctx context.Context, requestID, gua
 		return nil, fmt.Errorf("guardian not found")
 	}
 
-	// Verify signature (in production, would verify with guardian address)
-	// For now, just add the signature
+	// A guardian may approve a given request once. Without this, one guardian
+	// could submit the same signature repeatedly and reach the threshold alone,
+	// which defeats the whole point of distributing trust.
+	for _, existing := range request.Signatures {
+		if existing.GuardianID == guardianID {
+			return nil, fmt.Errorf("guardian %s has already approved this request", guardianID)
+		}
+	}
+
+	// The signature must recover to the guardian's own address. Accepting an
+	// unverified signature here let anyone approve a recovery for any guardian
+	// and hand the wallet to an attacker-chosen owner.
+	approvalMessage := recoveryApprovalMessage(request)
+	signer, err := recoverPersonalSigner(approvalMessage, signature)
+	if err != nil {
+		return nil, fmt.Errorf("the guardian signature is not valid: %w", err)
+	}
+
+	if !strings.EqualFold(signer, guardian.Address) {
+		return nil, fmt.Errorf("the signature was produced by %s, not by guardian %s", signer, guardian.Address)
+	}
+
 	request.Signatures = append(request.Signatures, GuardianSignature{
 		GuardianID: guardianID,
 		Signature:  signature,
 		SignedAt:   time.Now(),
-		Message:    fmt.Sprintf("Approve recovery to %s", request.NewOwnerAddress),
+		Message:    approvalMessage,
 	})
 
 	// Check threshold
@@ -330,15 +383,43 @@ func (s *SocialRecoveryService) ExecuteRecovery(ctx context.Context, requestID s
 		return nil, fmt.Errorf("threshold not met")
 	}
 
-	if time.Now().Before(request.DelayEnd) {
+	if s.clock().Before(request.DelayEnd) {
 		return nil, fmt.Errorf("delay period not complete")
 	}
 
 	request.Status = RecoveryExecuting
 
-	// In production, would execute the actual blockchain transaction
+	// Approvals and the elapsed delay are not the recovery itself: the wallet is
+	// only recovered once the recovery contract has actually run. This service
+	// holds no key and has no contract, so it hands the caller a ready-to-send
+	// transaction instead of claiming the transfer already happened. Marking the
+	// request completed here would tell every client that a wallet had moved to
+	// the new owner while the chain still had the old one.
+	if s.config == nil || strings.TrimSpace(s.config.RecoveryContract) == "" ||
+		strings.TrimSpace(s.config.RPCURL) == "" || strings.TrimSpace(s.config.ExecutorPrivateKey) == "" {
+		request.Status = RecoveryApproved
+		if s.redis != nil {
+			data, _ := json.Marshal(request)
+			s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+		}
+		return request, fmt.Errorf(
+			"the recovery is approved and ready to execute, but this service is not configured to broadcast: " +
+				"set SOCIAL_RECOVERY_CONTRACT, SOCIAL_RECOVERY_RPC_URL and SOCIAL_RECOVERY_EXECUTOR_PRIVATE_KEY")
+	}
+
+	txHash, err := s.broadcastRecovery(ctx, request)
+	if err != nil {
+		request.Status = RecoveryApproved
+		if s.redis != nil {
+			data, _ := json.Marshal(request)
+			s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+		}
+		return nil, fmt.Errorf("the recovery transaction was not broadcast: %w", err)
+	}
+
 	now := time.Now()
 	request.ExecutedAt = &now
+	request.ExecutedTxHash = txHash
 	request.Status = RecoveryCompleted
 
 	// Update wallet
@@ -495,10 +576,10 @@ func NewHandler(service *SocialRecoveryService) *Handler {
 
 func (h *Handler) CreateWallet(c *gin.Context) {
 	var req struct {
-		Address   string      `json:"address" binding:"required"`
-		Chain     string      `json:"chain" binding:"required"`
-		Threshold int         `json:"threshold" binding:"required"`
-		Guardians []Guardian  `json:"guardians"`
+		Address   string     `json:"address" binding:"required"`
+		Chain     string     `json:"chain" binding:"required"`
+		Threshold int        `json:"threshold" binding:"required"`
+		Guardians []Guardian `json:"guardians"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -694,17 +775,174 @@ func (h *Handler) CancelRecovery(c *gin.Context) {
 	c.JSON(http.StatusOK, request)
 }
 
+// clock returns the service clock, defaulting to the wall clock.
+func (s *SocialRecoveryService) clock() time.Time {
+	if s.now == nil {
+		return time.Now()
+	}
+	return s.now()
+}
+
+// recoveryApprovalMessage is the exact text a guardian signs to approve a
+// recovery. It binds the approval to the request and to the new owner, so a
+// signature harvested for one recovery cannot be replayed onto another.
+func recoveryApprovalMessage(request *RecoveryRequest) string {
+	return fmt.Sprintf(
+		"TigerWallet social recovery approval\nrequest: %s\nwallet: %s\nnew owner: %s\nchallenge: %s",
+		request.ID, request.WalletID, request.NewOwnerAddress, request.Challenge)
+}
+
+// recoverPersonalSigner recovers the address that produced an EIP-191
+// personal-sign signature over message.
+func recoverPersonalSigner(message, signature string) (string, error) {
+	sig, err := hexutil.Decode(signature)
+	if err != nil {
+		return "", fmt.Errorf("the signature is not valid hex: %w", err)
+	}
+	if len(sig) != 65 {
+		return "", fmt.Errorf("the signature must be 65 bytes, got %d", len(sig))
+	}
+
+	// Some signers report the recovery id as 27/28; go-ethereum expects 0/1.
+	if sig[64] >= 27 {
+		sig[64] -= 27
+	}
+
+	hash := accounts.TextHash([]byte(message))
+	pub, err := crypto.SigToPub(hash, sig)
+	if err != nil {
+		return "", fmt.Errorf("the signature could not be recovered: %w", err)
+	}
+	return crypto.PubkeyToAddress(*pub).Hex(), nil
+}
+
+// broadcastRecovery sends the on-chain call that moves the wallet to the new
+// owner and waits for it to be mined. It returns the transaction hash only
+// after a receipt confirms success, so a caller never records a recovery that
+// reverted.
+func (s *SocialRecoveryService) broadcastRecovery(ctx context.Context, request *RecoveryRequest) (string, error) {
+	key, err := crypto.HexToECDSA(strings.TrimPrefix(s.config.ExecutorPrivateKey, "0x"))
+	if err != nil {
+		return "", fmt.Errorf("EXECUTOR_PRIVATE_KEY is not a valid private key: %w", err)
+	}
+	if !common.IsHexAddress(request.NewOwnerAddress) {
+		return "", fmt.Errorf("the new owner %q is not a valid address", request.NewOwnerAddress)
+	}
+
+	client, err := ethclient.DialContext(ctx, s.config.RPCURL)
+	if err != nil {
+		return "", fmt.Errorf("cannot reach the RPC endpoint: %w", err)
+	}
+	defer client.Close()
+
+	contract := common.HexToAddress(s.config.RecoveryContract)
+	chainID := big.NewInt(s.config.ChainID)
+	if s.config.ChainID == 0 {
+		if chainID, err = client.ChainID(ctx); err != nil {
+			return "", fmt.Errorf("cannot read the chain id: %w", err)
+		}
+	}
+
+	from := crypto.PubkeyToAddress(key.PublicKey)
+
+	// executeRecovery(address wallet, address newOwner, bytes[] signatures) is
+	// the entry point the recovery contract exposes.
+	selector := crypto.Keccak256([]byte("executeRecovery(address,address,bytes[])"))[:4]
+	type args struct {
+		Wallet     common.Address
+		NewOwner   common.Address
+		Signatures [][]byte
+	}
+	input, err := abi.Arguments{
+		{Name: "wallet", Type: mustNewType("address")},
+		{Name: "newOwner", Type: mustNewType("address")},
+		{Name: "signatures", Type: mustNewType("bytes[]")},
+	}.Pack(args{
+		Wallet:     common.HexToAddress(request.WalletID),
+		NewOwner:   common.HexToAddress(request.NewOwnerAddress),
+		Signatures: collectedSignatures(request),
+	})
+	if err != nil {
+		return "", fmt.Errorf("cannot encode the recovery call: %w", err)
+	}
+
+	nonce, err := client.PendingNonceAt(ctx, from)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the account nonce: %w", err)
+	}
+	tip, err := client.SuggestGasTipCap(ctx)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the gas tip: %w", err)
+	}
+	head, err := client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the latest header: %w", err)
+	}
+	feeCap := new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip)
+
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		GasTipCap: tip,
+		GasFeeCap: feeCap,
+		Gas:       300000,
+		To:        &contract,
+		Value:     big.NewInt(0),
+		Data:      append(selector, input...),
+	})
+	signed, err := types.SignTx(tx, types.LatestSignerForChainID(chainID), key)
+	if err != nil {
+		return "", fmt.Errorf("cannot sign the recovery transaction: %w", err)
+	}
+	if err := client.SendTransaction(ctx, signed); err != nil {
+		return "", fmt.Errorf("the node rejected the recovery transaction: %w", err)
+	}
+
+	receipt, err := bind.WaitMined(ctx, client, signed)
+	if err != nil {
+		return signed.Hash().Hex(), fmt.Errorf("the recovery transaction was sent but not confirmed: %w", err)
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return signed.Hash().Hex(), fmt.Errorf("the recovery transaction reverted in block %d", receipt.BlockNumber)
+	}
+
+	return signed.Hash().Hex(), nil
+}
+
+// collectedSignatures decodes the guardian signatures the request carries.
+func collectedSignatures(request *RecoveryRequest) [][]byte {
+	sigs := make([][]byte, 0, len(request.Signatures))
+	for _, s := range request.Signatures {
+		if decoded, err := hexutil.Decode(s.Signature); err == nil {
+			sigs = append(sigs, decoded)
+		}
+	}
+	return sigs
+}
+
+func mustNewType(kind string) abi.Type {
+	t, err := abi.NewType(kind, "", nil)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
 // ============ Main ============
 
 func main() {
 	config := &Config{
-		Port:            getEnv("PORT", "8080"),
-		RedisURL:        getEnv("REDIS_URL", "localhost:6379"),
-		RecoveryDelay:   24 * time.Hour,
-		MaxGuardians:    10,
-		MinGuardians:    2,
-		EmailEnabled:    getEnv("EMAIL_ENABLED", "true") == "true",
-		SMSEnabled:     getEnv("SMS_ENABLED", "true") == "true",
+		Port:               getEnv("PORT", "8080"),
+		RedisURL:           getEnv("REDIS_URL", "localhost:6379"),
+		RecoveryDelay:      24 * time.Hour,
+		MaxGuardians:       10,
+		MinGuardians:       2,
+		EmailEnabled:       getEnv("EMAIL_ENABLED", "true") == "true",
+		SMSEnabled:         getEnv("SMS_ENABLED", "true") == "true",
+		RPCURL:             os.Getenv("SOCIAL_RECOVERY_RPC_URL"),
+		RecoveryContract:   os.Getenv("SOCIAL_RECOVERY_CONTRACT"),
+		ExecutorPrivateKey: os.Getenv("SOCIAL_RECOVERY_EXECUTOR_PRIVATE_KEY"),
+		ChainID:            parseChainID(getEnv("SOCIAL_RECOVERY_CHAIN_ID", "1")),
 	}
 
 	service, err := NewSocialRecoveryService(config)
