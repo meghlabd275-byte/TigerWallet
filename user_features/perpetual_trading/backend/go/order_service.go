@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -77,18 +78,45 @@ type OrderService struct {
 	orders  map[string]*Order
 	redis   *redis.Client
 	orderCh chan *Order
+
+	// positionLimit caps the quantity of open interest a single user may hold.
+	// It is operator configuration (PERP_POSITION_LIMIT), not a per-user value.
+	positionLimit string
 }
 
-// NewOrderService creates a new order service
-func NewOrderService() *OrderService {
+// NewOrderService creates a new order service. rdb may be nil, in which case
+// collateral reads report zero rather than a default amount.
+func NewOrderService(rdb *redis.Client, positionLimit string) *OrderService {
 	s := &OrderService{
-		orders:  make(map[string]*Order),
-		orderCh: make(chan *Order, 1000),
+		orders:        make(map[string]*Order),
+		orderCh:       make(chan *Order, 1000),
+		redis:         rdb,
+		positionLimit: positionLimit,
 	}
 
 	go s.processOrders()
 
 	return s
+}
+
+// parseDecimal parses a decimal string into a big.Float. It returns false for
+// an empty or malformed value so a caller can distinguish "zero" from "absent"
+// instead of silently treating a missing value as a usable number.
+func parseDecimal(s string) (*big.Float, bool) {
+	if s == "" {
+		return nil, false
+	}
+	f, _, err := big.ParseFloat(s, 10, 256, big.ToNearestEven)
+	if err != nil {
+		return nil, false
+	}
+	return f, true
+}
+
+// formatDecimal renders a big.Float without an exponent and without trailing
+// zeroes, so a balance round-trips through parseDecimal unchanged.
+func formatDecimal(f *big.Float) string {
+	return f.Text('f', -1)
 }
 
 func (s *OrderService) processOrders() {
@@ -199,26 +227,146 @@ func (s *OrderService) GetOrders(ctx context.Context, userID, symbol string) ([]
 	return orders, nil
 }
 
-// GetBalance gets user balance
+// GetBalance reports the account balance for a user.
+//
+// Available funds are the user's free collateral, read from the real store, so
+// an account that has deposited nothing reports zero.
+//
+// This previously returned a constant equity of "10000" and available of
+// "10000" for every caller, so a brand-new account with no deposit was shown
+// $10,000 of tradable funds.
+//
+// Margin locked in open positions is not subtracted here; it is reported by
+// GetMarginInfo, which reads the positions themselves. Callers that need
+// spendable funds net of margin must consult both.
 func (s *OrderService) GetBalance(ctx context.Context, userID string) (*AccountBalance, error) {
-	// In production, fetch from database
+	if userID == "" {
+		return nil, fmt.Errorf("userId required")
+	}
+
+	free, err := s.FreeCollateral(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &AccountBalance{
 		UserID:        userID,
-		TotalEquity:   "10000",
-		Available:     "10000",
+		TotalEquity:   free,
+		Available:     free,
 		UsedMargin:    "0",
 		UnrealizedPNL: "0",
 	}, nil
 }
 
-// GetRiskInfo gets user risk information
+// collateralKey is the Redis hash field holding a user's free collateral.
+func collateralKey(userID string) string {
+	return "perp:collateral:" + userID
+}
+
+// FreeCollateral returns the user's unencumbered collateral as a decimal
+// string. The balance lives in Redis, which is the same store the settlement
+// path debits, so a deposit made by one replica is visible to the others. With
+// no Redis connection or no entry, the user has no collateral and "0" is
+// returned rather than a default amount.
+func (s *OrderService) FreeCollateral(ctx context.Context, userID string) (string, error) {
+	if s.redis == nil {
+		return "0", nil
+	}
+
+	value, err := s.redis.Get(ctx, collateralKey(userID)).Result()
+	if err == redis.Nil {
+		return "0", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("cannot read collateral for %s: %w", userID, err)
+	}
+
+	parsed, ok := parseDecimal(value)
+	if !ok {
+		// A corrupt entry must not be treated as a usable balance.
+		return "", fmt.Errorf("stored collateral for %s is not a valid decimal: %q", userID, value)
+	}
+	if parsed.Sign() < 0 {
+		return "", fmt.Errorf("stored collateral for %s is negative: %q", userID, value)
+	}
+
+	return formatDecimal(parsed), nil
+}
+
+// GetRiskInfo reports the user's risk limits.
+//
+// The limits are operator configuration, read from the environment, and the
+// allowance is what remains of the position limit after the user's open
+// interest is subtracted. It previously reported a hardcoded allowance of
+// "1000000" and position limit of "1000000" regardless of the user, the
+// configuration or the positions actually held.
 func (s *OrderService) GetRiskInfo(ctx context.Context, userID string) (*RiskInfo, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("userId required")
+	}
+
+	limit, ok := parseDecimal(s.positionLimit)
+	if !ok || limit.Sign() < 0 {
+		// Fail closed: an unset or malformed limit allows nothing rather than
+		// everything.
+		limit = new(big.Float)
+	}
+
+	openInterest := new(big.Float)
+	for _, order := range s.openOrdersFor(userID) {
+		if qty, ok := parseDecimal(order.RemainingQty); ok && qty.Sign() > 0 {
+			openInterest.Add(openInterest, qty)
+		} else if qty, ok := parseDecimal(order.Quantity); ok && qty.Sign() > 0 {
+			openInterest.Add(openInterest, qty)
+		}
+	}
+
+	remaining := new(big.Float).Sub(limit, openInterest)
+	if remaining.Sign() < 0 {
+		remaining = new(big.Float)
+	}
+
 	return &RiskInfo{
-		RiskLevel:          "STANDARD",
-		AllowanceRemaining: "1000000",
-		PositionLimit:      "1000000",
-		OpenInterest:       "0",
+		RiskLevel:          riskLevelFor(limit, remaining),
+		AllowanceRemaining: formatDecimal(remaining),
+		PositionLimit:      formatDecimal(limit),
+		OpenInterest:       formatDecimal(openInterest),
 	}, nil
+}
+
+// openOrdersFor returns a snapshot of the user's open orders.
+func (s *OrderService) openOrdersFor(userID string) []*Order {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var open []*Order
+	for _, order := range s.orders {
+		if order.UserID != userID {
+			continue
+		}
+		if order.Status == OrderStatusOpen || order.Status == OrderStatusPartiallyFilled {
+			open = append(open, order)
+		}
+	}
+	return open
+}
+
+// riskLevelFor grades a user by how much of their position limit is left.
+func riskLevelFor(limit, remaining *big.Float) string {
+	if limit.Sign() <= 0 {
+		return "BLOCKED"
+	}
+	used := new(big.Float).Sub(limit, remaining)
+	ratio := new(big.Float).Quo(used, limit)
+
+	switch {
+	case ratio.Cmp(big.NewFloat(0.9)) >= 0:
+		return "CRITICAL"
+	case ratio.Cmp(big.NewFloat(0.7)) >= 0:
+		return "ELEVATED"
+	default:
+		return "STANDARD"
+	}
 }
 
 // OrderToJSON converts order to JSON

@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 )
 
 // Config holds server configuration
@@ -26,6 +28,13 @@ type Config struct {
 	DatabaseURL    string
 	RedisURL       string
 	ClickHouseURL  string
+
+	// PositionLimit caps the open interest one user may hold, as a decimal
+	// string. Empty or malformed means the user may hold nothing.
+	PositionLimit string
+
+	// AllowedOrigins lists the browser origins permitted to open the WebSocket.
+	AllowedOrigins []string
 }
 
 // Server is the main perpetuals backend server
@@ -40,16 +49,40 @@ type Server struct {
 	wsHub        *WSHub
 	notification *NotificationService
 	settlement   *SettlementService
+
+	// allowedOrigins is the set of browser origins permitted to open the
+	// WebSocket. Empty means the endpoint is not browser-facing.
+	allowedOrigins map[string]struct{}
+
+	// redis holds user collateral. It is shared by the order service so a
+	// deposit written by one replica is visible to the others.
+	redis *redis.Client
 }
 
-// NewServer creates a new perpetuals backend server
-func NewServer(cfg Config) *Server {
+// NewServer creates a new perpetuals backend server.
+//
+// rdb may be nil; collateral reads then report zero rather than a default
+// amount. allowedOrigins is the set of browser origins permitted to open the
+// WebSocket; see originAllowed for how an empty set is treated.
+func NewServer(cfg Config, rdb *redis.Client, allowedOrigins []string) *Server {
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		if trimmed := strings.TrimRight(strings.TrimSpace(o), "/"); trimmed != "" {
+			originSet[trimmed] = struct{}{}
+		}
+	}
+
 	s := &Server{
-		config: cfg,
-		router: mux.NewRouter(),
+		config:         cfg,
+		router:         mux.NewRouter(),
+		allowedOrigins: originSet,
+		redis:          rdb,
 		wsUpgrader: websocket.Upgrader{
+			// A browser page that is not on the allow-list must not be able to
+			// open a WebSocket. Returning true here unconditionally let any
+			// site read a signed-in user's order and position stream.
 			CheckOrigin: func(r *http.Request) bool {
-				return true // In production, implement proper origin checking
+				return originAllowed(r, originSet)
 			},
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -68,6 +101,30 @@ func NewServer(cfg Config) *Server {
 	}
 
 	return s
+}
+
+// originAllowed reports whether a WebSocket upgrade request may proceed.
+//
+// A request with no Origin header is not a browser request, so it is allowed:
+// the origin check exists to stop a hostile page from riding a user's session,
+// and a non-browser client cannot be reached that way.
+//
+// When no origins are configured the check is skipped, because the operator has
+// declared that the endpoint is not browser-facing. Configuring even one origin
+// turns the check on for every request, so a deployment that sets
+// PERP_ALLOWED_ORIGINS gets strict enforcement.
+func originAllowed(r *http.Request, allowed map[string]struct{}) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+
+	origin := strings.TrimRight(r.Header.Get("Origin"), "/")
+	if origin == "" {
+		return true
+	}
+
+	_, ok := allowed[origin]
+	return ok
 }
 
 func (s *Server) setupRoutes() {
@@ -122,7 +179,7 @@ func (s *Server) Start() error {
 	log.Printf("Starting TigerWallet Perpetuals Backend on port %s", s.config.Port)
 
 	// Initialize services
-	s.orderService = NewOrderService()
+	s.orderService = NewOrderService(s.redis, s.config.PositionLimit)
 	s.positionSvc = NewPositionService()
 	s.marketSvc = NewMarketService()
 	s.wsHub = NewWSHub()
@@ -429,9 +486,18 @@ func main() {
 		DatabaseURL:    getEnv("DATABASE_URL", "postgres://localhost:5432/tigerwallet"),
 		RedisURL:       getEnv("REDIS_URL", "localhost:6379"),
 		ClickHouseURL:  getEnv("CLICKHOUSE_URL", "localhost:9000"),
+		PositionLimit:  getEnv("PERP_POSITION_LIMIT", ""),
+		AllowedOrigins: splitAndTrim(getEnv("PERP_ALLOWED_ORIGINS", "")),
 	}
 
-	server := NewServer(cfg)
+	rdb, err := connectRedis(cfg.RedisURL)
+	if err != nil {
+		// Collateral lives in Redis. Running without it would show every user a
+		// zero balance while orders were still accepted, so refuse to start.
+		log.Fatalf("cannot connect to Redis at %s: %v", cfg.RedisURL, err)
+	}
+
+	server := NewServer(cfg, rdb, cfg.AllowedOrigins)
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
@@ -456,4 +522,40 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// splitAndTrim splits a comma-separated list and drops blank entries.
+func splitAndTrim(value string) []string {
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// connectRedis opens and verifies the Redis connection. A ping is issued so a
+// misconfigured address fails at startup rather than on the first balance read.
+func connectRedis(url string) (*redis.Client, error) {
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		// A bare host:port is accepted as well as a redis:// URL.
+		opts = &redis.Options{Addr: url}
+	}
+
+	rdb := redis.NewClient(opts)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		rdb.Close()
+		return nil, err
+	}
+
+	return rdb, nil
 }

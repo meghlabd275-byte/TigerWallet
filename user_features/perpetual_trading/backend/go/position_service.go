@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sync"
 )
 
@@ -93,26 +94,56 @@ func (s *PositionService) ClosePosition(ctx context.Context, req ClosePositionRe
 	return result, nil
 }
 
-// GetMarginInfo gets margin information for a user
+// GetMarginInfo reports the margin the user has locked in open positions.
+//
+// Every figure is summed from the positions actually held. This previously
+// declared totalMargin and totalUnrealized, never assigned them, and returned
+// the zero-value strings, so the endpoint reported empty margin for a user
+// holding open positions. It also reported UsedMargin as the constant "0"
+// while AvailableMargin was the total, which is only correct if nothing is
+// locked.
 func (s *PositionService) GetMarginInfo(ctx context.Context, userID string) (*MarginInfo, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("userId required")
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var totalMargin, totalUnrealized string
+	totalMargin := new(big.Float)
+	totalUnrealized := new(big.Float)
 	var count int
 
 	for _, pos := range s.positions {
-		if pos.UserID == userID {
-			count++
+		if pos.UserID != userID {
+			continue
 		}
+		count++
+
+		if margin, ok := parseDecimal(pos.Margin); ok {
+			totalMargin.Add(totalMargin, margin)
+		}
+		if pnl, ok := parseDecimal(pos.UnrealizedPNL); ok {
+			totalUnrealized.Add(totalUnrealized, pnl)
+		}
+	}
+
+	// Equity is collateral plus unrealized PnL. Free margin is that equity less
+	// the collateral already committed, floored at zero: a position that has
+	// moved against the user reduces what they can commit, and never shows a
+	// negative amount available.
+	equity := new(big.Float).Add(totalMargin, totalUnrealized)
+	available := new(big.Float).Sub(equity, totalMargin)
+	if available.Sign() < 0 {
+		available = new(big.Float)
 	}
 
 	return &MarginInfo{
 		UserID:          userID,
-		TotalMargin:     totalMargin,
-		AvailableMargin: totalMargin,
-		UsedMargin:      "0",
-		TotalUnrealized: totalUnrealized,
+		TotalMargin:     formatDecimal(totalMargin),
+		AvailableMargin: formatDecimal(available),
+		UsedMargin:      formatDecimal(totalMargin),
+		TotalUnrealized: formatDecimal(totalUnrealized),
 		PositionsCount:  count,
 	}, nil
 }
