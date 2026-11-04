@@ -21,8 +21,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -52,48 +54,91 @@ type Config struct {
 	HunterAPI         string `json:"hunter_api"`
 }
 
-var cfg = Config{
-	Port:              8080,
-	DBConnection:      getDBConnection(),
-	RedisAddr:         "localhost:6379",
-	JWTSecret:         os.Getenv("JWT_SECRET"),
-	InitialRewardPool: "100000000000000000000000", // 100,000 ETH
-	MinReward:         "100000000000000000",       // 0.1 ETH
-	MaxReward:         "100000000000000000000000", // 100 ETH
-	EscrowContract:    "0x0000000000000000000000000000000000000001",
+// cfg is populated by loadConfig at startup. It is a package variable rather
+// than a function-local value because the middleware and handlers read it.
+var cfg Config
+
+// loadConfig reads configuration from the environment and validates it. It
+// returns an error instead of calling log.Fatalf so a caller can decide how to
+// report the failure, and so tests can exercise the package without a database
+// password in the environment.
+func loadConfig() (Config, error) {
+	c := Config{
+		Port:              8080,
+		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
+		JWTSecret:         os.Getenv("JWT_SECRET"),
+		InitialRewardPool: getEnv("INITIAL_REWARD_POOL", "100000000000000000000000"), // 100,000 ETH
+		MinReward:         getEnv("MIN_REWARD", "100000000000000000"),                // 0.1 ETH
+		MaxReward:         getEnv("MAX_REWARD", "100000000000000000000000"),          // 100 ETH
+		EscrowContract:    os.Getenv("ESCROW_CONTRACT"),
+		HunterAPI:         os.Getenv("HUNTER_API"),
+	}
+	if p := os.Getenv("PORT"); p != "" {
+		var port int
+		if _, err := fmt.Sscanf(p, "%d", &port); err != nil || port <= 0 || port > 65535 {
+			return Config{}, fmt.Errorf("PORT must be a valid port number, got %q", p)
+		}
+		c.Port = port
+	}
+
+	// The reward pool must be a non-negative integer; a malformed value would
+	// otherwise be silently interpreted as zero by big.Int.SetString.
+	if pool, ok := new(big.Int).SetString(c.InitialRewardPool, 10); !ok || pool.Sign() < 0 {
+		return Config{}, fmt.Errorf("INITIAL_REWARD_POOL must be a non-negative integer, got %q", c.InitialRewardPool)
+	}
+	if min, ok := new(big.Int).SetString(c.MinReward, 10); !ok || min.Sign() < 0 {
+		return Config{}, fmt.Errorf("MIN_REWARD must be a non-negative integer, got %q", c.MinReward)
+	}
+	if max, ok := new(big.Int).SetString(c.MaxReward, 10); !ok || max.Sign() < 0 {
+		return Config{}, fmt.Errorf("MAX_REWARD must be a non-negative integer, got %q", c.MaxReward)
+	}
+
+	db, err := buildDBConnection()
+	if err != nil {
+		return Config{}, err
+	}
+	c.DBConnection = db
+
+	return c, nil
 }
 
-// getRequiredEnv reads a required environment variable and fatally exits if it
-// is unset. Used for secrets that must never fall back to insecure defaults.
-func getRequiredEnv(key string) string {
+// getEnv reads an environment variable with a fallback.
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// getRequiredEnv reads a required environment variable, returning an error
+// when it is unset. Used for secrets that must never fall back to insecure
+// defaults.
+func getRequiredEnv(key string) (string, error) {
 	value := os.Getenv(key)
 	if value == "" {
-		log.Fatalf("%s environment variable must be set", key)
+		return "", fmt.Errorf("%s environment variable must be set", key)
 	}
-	return value
+	return value, nil
 }
 
-// getDBConnection builds the PostgreSQL connection string from individual env
+// buildDBConnection builds the PostgreSQL connection string from individual env
 // vars, requiring a password rather than embedding a hardcoded credential.
-func getDBConnection() string {
-	host := os.Getenv("POSTGRES_HOST")
-	if host == "" {
-		host = "localhost"
+// Credentials are URL-escaped: a password containing @, / or : would otherwise
+// be parsed as part of the host or path and silently connect elsewhere.
+func buildDBConnection() (string, error) {
+	host := getEnv("POSTGRES_HOST", "localhost")
+	port := getEnv("POSTGRES_PORT", "5432")
+	user := getEnv("POSTGRES_USER", "tigerwallet")
+	dbName := getEnv("POSTGRES_DB", "bugbounty")
+
+	password, err := getRequiredEnv("DATABASE_PASSWORD")
+	if err != nil {
+		return "", err
 	}
-	port := os.Getenv("POSTGRES_PORT")
-	if port == "" {
-		port = "5432"
-	}
-	user := os.Getenv("POSTGRES_USER")
-	if user == "" {
-		user = "tigerwallet"
-	}
-	dbName := os.Getenv("POSTGRES_DB")
-	if dbName == "" {
-		dbName = "bugbounty"
-	}
-	password := getRequiredEnv("DATABASE_PASSWORD")
-	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s", user, password, host, port, dbName)
+
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s",
+		url.QueryEscape(user), url.QueryEscape(password),
+		host, port, url.PathEscape(dbName)), nil
 }
 
 // ============================================================================
@@ -124,29 +169,38 @@ type BugBountyProgram struct {
 
 // BugReport represents a submitted bug report
 type BugReport struct {
-	ID             string     `json:"id" db:"id"`
-	ProgramID      string     `json:"program_id" db:"program_id"`
-	ReporterID     string     `json:"reporter_id" db:"reporter_id"`
-	Title          string     `json:"title" db:"title"`
-	Description    string     `json:"description" db:"description"`
-	Severity       string     `json:"severity" db:"severity"` // critical, high, medium, low, info
-	Status         string     `json:"status" db:"status"`     // submitted, triaged, accepted, rejected, fixed, rewarded
-	CVSSScore      float64    `json:"cvss_score" db:"cvss_score"`
-	CVEID          string     `json:"cve_id" db:"cve_id"`
-	AttackVector   string     `json:"attack_vector" db:"attack_vector"`
-	Impact         string     `json:"impact" db:"impact"`
-	Reproduction   string     `json:"reproduction" db:"reproduction"`
-	PoCURL         string     `json:"poc_url" db:"poc_url"`
-	PoCHash        string     `json:"poc_hash" db:"poc_hash"`
-	FixSuggested   string     `json:"fix_suggested" db:"fix_suggested"`
-	RewardAmount   string     `json:"reward_amount" db:"reward_amount"`
-	RewardCurrency string     `json:"reward_currency" db:"reward_currency"`
-	TxHash         string     `json:"tx_hash" db:"tx_hash"`
-	AssignedTo     string     `json:"assigned_to" db:"assigned_to"`
-	Comments       string     `json:"comments" db:"comments"` // JSON array
-	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
-	ResolvedAt     *time.Time `json:"resolved_at" db:"resolved_at"`
+	ID           string  `json:"id" db:"id"`
+	ProgramID    string  `json:"program_id" db:"program_id"`
+	ReporterID   string  `json:"reporter_id" db:"reporter_id"`
+	Title        string  `json:"title" db:"title"`
+	Description  string  `json:"description" db:"description"`
+	Severity     string  `json:"severity" db:"severity"` // critical, high, medium, low, info
+	Status       string  `json:"status" db:"status"`     // submitted, triaged, accepted, rejected, fixed, rewarded
+	CVSSScore    float64 `json:"cvss_score" db:"cvss_score"`
+	CVEID        string  `json:"cve_id" db:"cve_id"`
+	AttackVector string  `json:"attack_vector" db:"attack_vector"`
+	// CVSS v3.1 base metrics. They drive CVSSScore; when a reporter omits them
+	// the score reflects the Network/Low defaults rather than a guessed severity.
+	AttackComplexity   string     `json:"attack_complexity" db:"attack_complexity"`
+	PrivilegesRequired string     `json:"privileges_required" db:"privileges_required"`
+	UserInteraction    string     `json:"user_interaction" db:"user_interaction"`
+	Scope              string     `json:"scope" db:"scope"`
+	Confidentiality    string     `json:"confidentiality" db:"confidentiality"`
+	Integrity          string     `json:"integrity" db:"integrity"`
+	Availability       string     `json:"availability" db:"availability"`
+	Impact             string     `json:"impact" db:"impact"`
+	Reproduction       string     `json:"reproduction" db:"reproduction"`
+	PoCURL             string     `json:"poc_url" db:"poc_url"`
+	PoCHash            string     `json:"poc_hash" db:"poc_hash"`
+	FixSuggested       string     `json:"fix_suggested" db:"fix_suggested"`
+	RewardAmount       string     `json:"reward_amount" db:"reward_amount"`
+	RewardCurrency     string     `json:"reward_currency" db:"reward_currency"`
+	TxHash             string     `json:"tx_hash" db:"tx_hash"`
+	AssignedTo         string     `json:"assigned_to" db:"assigned_to"`
+	Comments           string     `json:"comments" db:"comments"` // JSON array
+	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at" db:"updated_at"`
+	ResolvedAt         *time.Time `json:"resolved_at" db:"resolved_at"`
 }
 
 // Hacker represents a bug bounty hunter
@@ -483,24 +537,123 @@ func (s *BugBountyService) SubmitReport(c *gin.Context) {
 	})
 }
 
-// CalculateCVSS calculates the CVSS score for a report
+// CalculateCVSS computes a real CVSS v3.1 base score from the report's attack
+// vector, attack complexity, privileges required, user interaction, scope and
+// impact metrics.
+//
+// The previous implementation mapped the severity label to a constant (high ->
+// 7.5), so every "high" report scored identically and a report with no impact
+// information scored the same as one with a full description. A base score is a
+// defined function of its metrics, so it is computed here.
 func (s *BugBountyService) calculateCVSS(report *BugReport) {
-	// Simplified CVSS calculation
-	// In production, use proper CVSS calculation library
-	severityScores := map[string]float64{
-		"critical": 9.5,
-		"high":     7.5,
-		"medium":   5.0,
-		"low":      2.5,
-		"info":     0.0,
-	}
-
-	if score, ok := severityScores[report.Severity]; ok {
-		report.CVSSScore = score
-	}
+	score := cvssV31BaseScore(cvssMetrics{
+		AttackVector:       report.AttackVector,
+		AttackComplexity:   report.AttackComplexity,
+		PrivilegesRequired: report.PrivilegesRequired,
+		UserInteraction:    report.UserInteraction,
+		Scope:              report.Scope,
+		Confidentiality:    report.Confidentiality,
+		Integrity:          report.Integrity,
+		Availability:       report.Availability,
+	})
+	report.CVSSScore = score
 
 	// Calculate reward based on CVSS
 	s.calculateReward(report)
+}
+
+// cvssMetrics holds the CVSS v3.1 base metric group for a report. Values are
+// the specification's letters (N/A/L/P, N/L/H, U/C, R/U); an unrecognised or
+// empty value falls back to the "None"/"Network" baseline, which scores 0.0
+// rather than inventing a severity.
+type cvssMetrics struct {
+	AttackVector       string // N network, A adjacent, L local, P physical
+	AttackComplexity   string // L low, H high
+	PrivilegesRequired string // N none, L low, H high
+	UserInteraction    string // N none, R required
+	Scope              string // U unchanged, C changed
+	Confidentiality    string // N none, L low, H high
+	Integrity          string // N none, L low, H high
+	Availability       string // N none, L low, H high
+}
+
+// cvssV31BaseScore implements the CVSS v3.1 base score equation:
+//
+//	If Scope is Unchanged: roundup(min(Impact + Exploitability, 10))
+//	If Scope is Changed:   roundup(min(1.08 * (Impact + Exploitability), 10))
+//	Impact = 6.42 * (1 - (1-C)(1-I)(1-A))
+//	Exploitability = 8.22 * AV * AC * PR * UI
+//
+// Roundup is the specification's: ceil to one decimal place, with the
+// floating-point fudge the spec prescribes to keep 8.6 from becoming 8.7.
+func cvssV31BaseScore(m cvssMetrics) float64 {
+	av := map[string]float64{"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2}[strings.ToUpper(m.AttackVector)]
+	ac := map[string]float64{"L": 0.77, "H": 0.44}[strings.ToUpper(m.AttackComplexity)]
+	ui := map[string]float64{"N": 0.85, "R": 0.62}[strings.ToUpper(m.UserInteraction)]
+
+	scopeChanged := strings.EqualFold(m.Scope, "C")
+
+	// Privileges Required weights differently once Scope is Changed.
+	pr := map[string]float64{}
+	if scopeChanged {
+		pr = map[string]float64{"N": 0.85, "L": 0.68, "H": 0.5}
+	} else {
+		pr = map[string]float64{"N": 0.85, "L": 0.62, "H": 0.27}
+	}
+	prValue := pr[strings.ToUpper(m.PrivilegesRequired)]
+
+	cia := map[string]float64{"N": 0.0, "L": 0.22, "H": 0.56}
+	c := cia[strings.ToUpper(m.Confidentiality)]
+	i := cia[strings.ToUpper(m.Integrity)]
+	a := cia[strings.ToUpper(m.Availability)]
+
+	// A metric outside the specification, or an absent one, cannot be scored.
+	// Returning 0 keeps the score honest instead of guessing a severity.
+	if av == 0 && !strings.EqualFold(m.AttackVector, "P") {
+		av = 0.85 // absent vector defaults to Network, the widest exposure
+	}
+	if ac == 0 {
+		ac = 0.77
+	}
+	if ui == 0 {
+		ui = 0.85
+	}
+	if prValue == 0 {
+		prValue = 0.85
+	}
+
+	impact := 6.42 * (1 - (1-c)*(1-i)*(1-a))
+	exploitability := 8.22 * av * ac * prValue * ui
+
+	if impact <= 0 {
+		return 0.0
+	}
+
+	var base float64
+	if scopeChanged {
+		base = math.Min(1.08*(impact+exploitability), 10)
+	} else {
+		base = math.Min(impact+exploitability, 10)
+	}
+
+	return cvssRoundup(base)
+}
+
+// cvssRoundup implements the CVSS v3.1 Roundup function:
+//
+//	int_input = round_to_nearest_integer(input * 100000)
+//	if int_input % 10000 == 0: return int_input / 100000.0
+//	else:                      return (floor(int_input / 10000) + 1) / 10.0
+//
+// The result always lands on a tenth, so a score is reported as 9.8 and never
+// as 9.76017. A plain math.Ceil on the raw value keeps every decimal place, and
+// ceil(x*10)/10 rounds 8.7 up to 8.8 where the specification says 8.7.
+func cvssRoundup(input float64) float64 {
+	intInput := int64(math.Round(input * 100000))
+	if intInput%10000 == 0 {
+		return float64(intInput) / 100000.0
+	}
+	return float64(intInput/10000+1) / 10.0
 }
 
 // CalculateReward calculates the reward for a report
@@ -565,7 +718,11 @@ func (s *BugBountyService) GetReport(c *gin.Context) {
 	c.JSON(200, gin.H{"success": true, "data": report})
 }
 
-// UpdateReportStatus updates the status of a report
+// UpdateReportStatus applies a status change to a report.
+//
+// Status changes follow a fixed state machine. Previously any status could be
+// written directly, including "rewarded", which is the state that pays the
+// reporter.
 func (s *BugBountyService) UpdateReportStatus(c *gin.Context) {
 	reportID := c.Param("id")
 
@@ -580,16 +737,62 @@ func (s *BugBountyService) UpdateReportStatus(c *gin.Context) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Read the current state, then decide, then apply. The decision is made
+	// before taking the write lock so a helper that takes it cannot deadlock.
+	s.mu.RLock()
+	existing, ok := s.reports[reportID]
+	var oldStatus string
+	if ok {
+		oldStatus = existing.Status
+	}
+	s.mu.RUnlock()
 
-	report, ok := s.reports[reportID]
 	if !ok {
 		c.JSON(404, gin.H{"success": false, "error": "Report not found"})
 		return
 	}
 
-	oldStatus := report.Status
+	if err := validateStatusTransition(oldStatus, req.Status); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	if req.Status == "payment_pending" {
+		// Moving to payment_pending is the approval step. The payout itself is
+		// broadcast by wallet_api and recorded through /reports/:id/tx-hash.
+		s.mu.Lock()
+		if req.RewardAmount != "" {
+			existing.RewardAmount = req.RewardAmount
+		}
+		if req.Comments != "" {
+			existing.Comments = req.Comments
+		}
+		s.mu.Unlock()
+
+		s.requestRewardPayment(existing)
+
+		s.mu.RLock()
+		updated := s.reports[reportID]
+		s.mu.RUnlock()
+
+		c.JSON(http.StatusAccepted, gin.H{
+			"success": true,
+			"status":  "payment_pending",
+			"message": "Report approved for payout; broadcast it via wallet_api, " +
+				"then POST the returned tx_hash to /api/v1/reports/:id/tx-hash",
+			"action_required": gin.H{
+				"endpoint":  strings.TrimRight(cfg.HunterAPI, "/"),
+				"report_id": reportID,
+				"amount":    updated.RewardAmount,
+				"callback":  "/api/v1/reports/" + reportID + "/tx-hash",
+			},
+			"data": updated,
+		})
+		return
+	}
+
+	s.mu.Lock()
+	report := s.reports[reportID]
 	report.Status = req.Status
 	report.UpdatedAt = time.Now()
 
@@ -601,49 +804,177 @@ func (s *BugBountyService) UpdateReportStatus(c *gin.Context) {
 		report.Comments = req.Comments
 	}
 
-	// If being rewarded, process payment
-	if req.Status == "rewarded" && oldStatus != "rewarded" {
-		s.processRewardPayment(report)
-	}
-
-	// If resolved, mark resolved time
-	if req.Status == "fixed" || req.Status == "rewarded" {
+	if req.Status == "fixed" {
 		now := time.Now()
 		report.ResolvedAt = &now
 	}
 
+	if s.db != nil {
+		if _, err := s.db.Exec(
+			`UPDATE bug_reports SET status = $1, reward_amount = $2, comments = $3, resolved_at = $4, updated_at = $5 WHERE id = $6`,
+			report.Status, report.RewardAmount, report.Comments,
+			report.ResolvedAt, report.UpdatedAt, report.ID,
+		); err != nil {
+			log.Printf("failed to persist status for report %s: %v", report.ID, err)
+		}
+	}
+	s.mu.Unlock()
+
 	c.JSON(200, gin.H{"success": true, "data": report})
 }
 
-// ProcessRewardPayment processes the reward payment
-func (s *BugBountyService) processRewardPayment(report *BugReport) {
-	// In production, this would:
-	// 1. Connect to the escrow contract
-	// 2. Transfer reward to hacker's wallet
-	// 3. Record transaction hash
-	// 4. Update program paid out amount
+// validateStatusTransition enforces the report state machine:
+//
+//	submitted -> triaged, accepted, rejected
+//	triaged   -> accepted, rejected
+//	accepted  -> payment_pending, rejected, fixed
+//	rejected  -> (terminal)
+//	fixed     -> (terminal)
+//	payment_pending -> rewarded (only via the tx-hash endpoint)
+//	rewarded  -> (terminal)
+//
+// "rewarded" is reachable only by recording a real transaction hash, so it is
+// rejected here for every source state.
+func validateStatusTransition(from, to string) error {
+	if to == "rewarded" {
+		return fmt.Errorf("a report cannot be set to rewarded directly; move it to " +
+			"payment_pending, broadcast the payout via wallet_api, then POST the " +
+			"returned tx_hash to /reports/:id/tx-hash")
+	}
 
-	rewardAmount := new(big.Int)
-	rewardAmount.SetString(report.RewardAmount, 10)
+	allowed, known := reportTransitions[from]
+	if !known {
+		return fmt.Errorf("unknown current status %q", from)
+	}
+	if from == to {
+		return nil
+	}
+	for _, candidate := range allowed {
+		if candidate == to {
+			return nil
+		}
+	}
+	return fmt.Errorf("cannot move a report from %q to %q", from, to)
+}
 
-	// Subtract from reward pool
+var reportTransitions = map[string][]string{
+	"submitted":       {"triaged", "accepted", "rejected"},
+	"triaged":         {"accepted", "rejected"},
+	"accepted":        {"payment_pending", "rejected", "fixed"},
+	"payment_pending": {"accepted", "rejected"},
+	"rejected":        {},
+	"fixed":           {},
+	"rewarded":        {},
+}
+
+// requestRewardPayment moves a report into payment_pending and returns the
+// instructions needed to broadcast the real payout.
+//
+// This service holds no signing key, so it cannot transfer funds. It previously
+// derived a transaction hash from the report id ("0x" + hex(id)), wrote it to
+// report.TxHash and decremented the reward pool, so an operator saw a paid
+// report with a hash that exists on no chain and a pool balance reduced by
+// money that never left the treasury. Payouts are now broadcast by the
+// canonical wallet_api, which signs them, and the real hash is recorded through
+// RecordRewardTxHash.
+func (s *BugBountyService) requestRewardPayment(report *BugReport) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	report.Status = "payment_pending"
+	now := time.Now()
+	report.UpdatedAt = now
+
+	if s.db != nil {
+		if _, err := s.db.Exec(
+			`UPDATE bug_reports SET status = $1, updated_at = $2 WHERE id = $3`,
+			report.Status, report.UpdatedAt, report.ID,
+		); err != nil {
+			log.Printf("failed to persist payment_pending for report %s: %v", report.ID, err)
+		}
+	}
+}
+
+// RecordRewardTxHash records the real on-chain transaction hash returned after
+// wallet_api broadcast the payout. Only then does the reward pool decrease and
+// the report become "rewarded". The hash is validated as a 32-byte hex value so
+// a placeholder cannot be stored in its place.
+func (s *BugBountyService) RecordRewardTxHash(reportID, txHash string) error {
+	if !isTxHash(txHash) {
+		return fmt.Errorf("invalid transaction hash %q", txHash)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	report, ok := s.reports[reportID]
+	if !ok {
+		return fmt.Errorf("report %s not found", reportID)
+	}
+	if report.Status != "payment_pending" && report.Status != "accepted" {
+		return fmt.Errorf("report %s is %s, not payable", reportID, report.Status)
+	}
+	if report.TxHash != "" {
+		return fmt.Errorf("report %s already has a transaction hash", reportID)
+	}
+
+	rewardAmount, ok := new(big.Int).SetString(report.RewardAmount, 10)
+	if !ok {
+		return fmt.Errorf("report %s has an unparseable reward amount %q", reportID, report.RewardAmount)
+	}
+	if rewardAmount.Sign() < 0 {
+		return fmt.Errorf("report %s has a negative reward amount", reportID)
+	}
+	if s.rewardPool.Cmp(rewardAmount) < 0 {
+		return fmt.Errorf("reward pool has %s, cannot pay %s", s.rewardPool, rewardAmount)
+	}
+
+	report.TxHash = txHash
+	report.Status = "rewarded"
+	now := time.Now()
+	report.ResolvedAt = &now
+	report.UpdatedAt = now
+
+	// The payout is confirmed on chain, so the pool and program totals move now.
 	s.rewardPool.Sub(s.rewardPool, rewardAmount)
 
-	// Generate transaction hash
-	txHash := "0x" + hex.EncodeToString([]byte(report.ID))
-	report.TxHash = txHash
-
-	// Update program paid out
-	s.mu.RLock()
-	program := s.programs[report.ProgramID]
-	s.mu.RUnlock()
-
-	if program != nil {
-		paidOut := new(big.Int)
-		paidOut.SetString(program.PaidOut, 10)
+	if program := s.programs[report.ProgramID]; program != nil {
+		paidOut, _ := new(big.Int).SetString(program.PaidOut, 10)
+		if paidOut == nil {
+			paidOut = new(big.Int)
+		}
 		paidOut.Add(paidOut, rewardAmount)
 		program.PaidOut = paidOut.String()
+		program.UpdatedAt = now
 	}
+
+	if s.db != nil {
+		if _, err := s.db.Exec(
+			`UPDATE bug_reports SET status = $1, tx_hash = $2, resolved_at = $3, updated_at = $4 WHERE id = $5`,
+			report.Status, report.TxHash, report.ResolvedAt, report.UpdatedAt, report.ID,
+		); err != nil {
+			return fmt.Errorf("persist reward for report %s: %w", report.ID, err)
+		}
+		if program := s.programs[report.ProgramID]; program != nil {
+			if _, err := s.db.Exec(
+				`UPDATE bug_bounty_programs SET paid_out = $1, updated_at = $2 WHERE id = $3`,
+				program.PaidOut, program.UpdatedAt, program.ID,
+			); err != nil {
+				return fmt.Errorf("persist program paid_out for %s: %w", program.ID, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isTxHash reports whether s is a 0x-prefixed 32-byte hex string.
+func isTxHash(s string) bool {
+	if len(s) != 66 || !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
+		return false
+	}
+	_, err := hex.DecodeString(s[2:])
+	return err == nil
 }
 
 // GetLeaderboard returns the bug bounty leaderboard
@@ -837,6 +1168,12 @@ func (s *BugBountyService) AuthMiddleware() gin.HandlerFunc {
 // ============================================================================
 
 func main() {
+	loaded, err := loadConfig()
+	if err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
+	cfg = loaded
+
 	// Initialize service
 	service := NewBugBountyService()
 	if err := service.Initialize(); err != nil {
@@ -874,6 +1211,10 @@ func main() {
 		protected.GET("/reports/:id", service.GetReport)
 		protected.PATCH("/reports/:id", service.UpdateReportStatus)
 		protected.GET("/leaderboard", service.GetLeaderboard)
+		// Records the real on-chain hash after wallet_api broadcasts a reward
+		// payout. Until this is called the report stays payment_pending and the
+		// reward pool is untouched.
+		protected.POST("/reports/:id/tx-hash", service.SetRewardTxHash)
 	}
 
 	// Start server
@@ -882,6 +1223,32 @@ func main() {
 	if err := r.Run(addr); err != nil {
 		fmt.Printf("Failed to start server: %v\n", err)
 	}
+}
+
+// SetRewardTxHash records the transaction hash of a broadcast reward payout.
+// This is the only path that marks a report "rewarded" and the only path that
+// reduces the reward pool, so the pool always reflects money that actually
+// moved on chain.
+func (s *BugBountyService) SetRewardTxHash(c *gin.Context) {
+	reportID := c.Param("id")
+	var req struct {
+		TxHash string `json:"tx_hash" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	if err := s.RecordRewardTxHash(reportID, req.TxHash); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	s.mu.RLock()
+	report := s.reports[reportID]
+	s.mu.RUnlock()
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": report})
 }
 
 // Ping reports whether the service's backing store is reachable.

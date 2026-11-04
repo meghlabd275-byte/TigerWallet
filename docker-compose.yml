@@ -1140,6 +1140,13 @@ services:
       - POSTGRES_DB=tigerwallet_bugbounty
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
+      # Reward pool sizing and the wallet_api endpoint used to broadcast a
+      # reward payout. Payouts are signed by wallet_api; this service never
+      # holds a key, so HUNTER_API must point at the canonical wallet API.
+      - INITIAL_REWARD_POOL=${INITIAL_REWARD_POOL:-100000000000000000000000}
+      - MIN_REWARD=${MIN_REWARD:-100000000000000000}
+      - MAX_REWARD=${MAX_REWARD:-100000000000000000000000}
+      - HUNTER_API=${WALLET_API_URL:-http://wallet-api:8443}
     depends_on:
       postgres:
         condition: service_healthy
