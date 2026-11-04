@@ -12,11 +12,13 @@ pragma solidity ^0.8.28;
  * signer. This contract performs a real ecrecover against the configured owner.
  */
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "../BaseAccount.sol";
 import "../interfaces/IEntryPoint.sol";
 
 contract TigerWalletAccount is BaseAccount {
     using ECDSA for bytes32;
+    using MessageHashUtils for bytes32;
 
     error NotOwner(address caller, address owner);
 
@@ -40,8 +42,13 @@ contract TigerWalletAccount is BaseAccount {
         PackedUserOperation calldata userOp,
         bytes32 userOpHash
     ) internal override returns (uint256 validationData) {
-        // userOpHash is the EIP-191 prefixed hash produced by EntryPoint.
-        address signer = userOpHash.recover(userOp.signature);
+        // EntryPoint hands over the bare EIP-712 typed-data hash, so the
+        // EIP-191 personal-sign prefix must be applied before recovery.
+        // Recovering over the bare hash always yielded a signer other than the
+        // owner, so every user operation was rejected with SIG_VALIDATION_FAILED
+        // and the account could never execute anything. SimpleAccount and
+        // VerifyingPaymaster both apply this prefix; this account must match.
+        address signer = userOpHash.toEthSignedMessageHash().recover(userOp.signature);
         if (signer != owner) {
             return SIG_VALIDATION_FAILED;
         }

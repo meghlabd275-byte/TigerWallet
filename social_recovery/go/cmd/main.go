@@ -3,13 +3,10 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -618,6 +615,85 @@ func (h *Handler) GetRecoveryRequest(c *gin.Context) {
 	c.JSON(http.StatusOK, request)
 }
 
+func (h *Handler) GetWalletByAddress(c *gin.Context) {
+	chain := c.Param("chain")
+	address := c.Param("address")
+
+	wallet, err := h.service.GetWalletByAddress(c.Request.Context(), chain, address)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, wallet)
+}
+
+func (h *Handler) RemoveGuardian(c *gin.Context) {
+	walletID := c.Param("walletId")
+	guardianID := c.Param("guardianId")
+
+	wallet, err := h.service.RemoveGuardian(c.Request.Context(), walletID, guardianID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, wallet)
+}
+
+func (h *Handler) VerifyGuardian(c *gin.Context) {
+	walletID := c.Param("walletId")
+	guardianID := c.Param("guardianId")
+
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.VerifyGuardian(c.Request.Context(), walletID, guardianID, req.Code); err != nil {
+		// The code was wrong or has expired; that is a client error, not a
+		// server fault, and the caller may retry with a fresh code.
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	wallet, err := h.service.GetWallet(c.Request.Context(), walletID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, wallet)
+}
+
+func (h *Handler) GetActiveRecovery(c *gin.Context) {
+	walletID := c.Param("walletId")
+
+	request, err := h.service.GetActiveRecoveryRequest(c.Request.Context(), walletID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, request)
+}
+
+func (h *Handler) CancelRecovery(c *gin.Context) {
+	requestID := c.Param("requestId")
+
+	request, err := h.service.CancelRecovery(c.Request.Context(), requestID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, request)
+}
+
 // ============ Main ============
 
 func main() {
@@ -654,11 +730,22 @@ func main() {
 	{
 		api.POST("/wallets", handler.CreateWallet)
 		api.GET("/wallets/:walletId", handler.GetWallet)
+		// Resolves a wallet by chain and address, which is how a client knows
+		// the chain and address but not the internal wallet id.
+		api.GET("/wallets/by-address/:chain/:address", handler.GetWalletByAddress)
+
 		api.POST("/wallets/:walletId/guardians", handler.AddGuardian)
+		api.DELETE("/wallets/:walletId/guardians/:guardianId", handler.RemoveGuardian)
+		// Verifies the code sent to an email or phone guardian.
+		api.POST("/wallets/:walletId/guardians/:guardianId/verify", handler.VerifyGuardian)
 
 		api.POST("/wallets/:walletId/recovery", handler.InitiateRecovery)
+		// The active request for a wallet, so a client can resume a recovery it
+		// did not start in this session.
+		api.GET("/wallets/:walletId/recovery", handler.GetActiveRecovery)
 		api.POST("/recovery/:requestId/sign", handler.SignRecovery)
 		api.POST("/recovery/:requestId/execute", handler.ExecuteRecovery)
+		api.POST("/recovery/:requestId/cancel", handler.CancelRecovery)
 		api.GET("/recovery/:requestId", handler.GetRecoveryRequest)
 	}
 

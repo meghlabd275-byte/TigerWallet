@@ -1,512 +1,586 @@
 /**
- * TigerWallet - Smart Account (ERC-4337) React Component
- * Production-ready React component for account abstraction
- * 
- * Features:
- * - Smart account creation
- * - Session keys management
- * - Gas sponsorship (paymaster)
- * - Multi-owner support
- * - Transaction batching
+ * TigerWallet - Smart Account (ERC-4337) React hook and components.
+ *
+ * Talks to the TigerWallet bundler (account_abstraction/go_api) over its REST
+ * facade and to the deployed EntryPoint / TigerWalletAccountFactory over the
+ * injected EIP-1193 provider. Every figure shown comes from the chain or from
+ * the bundler; nothing is held only in React state.
+ *
+ * Three things this file used to do that it no longer does:
+ *
+ *  - addOwner / removeOwner only appended to a React array. TigerWalletAccount
+ *    has a single `owner` (transferOwnership is onlyOwner), so an owner list was
+ *    never real. Ownership transfer is now an actual transaction and the owner
+ *    is read from the account.
+ *  - addSessionKey / removeSessionKey only appended to a React array. No
+ *    session-key contract exists in this repository, so these were removed
+ *    rather than left looking functional.
+ *  - The EntryPoint ABI was the v0.6 shape (separate callGasLimit,
+ *    verificationGasLimit, maxFeePerGas fields). The EntryPoint in this
+ *    repository is v0.7, which packs those into `accountGasLimits` and
+ *    `gasFees`, so every call built here would have reverted.
+ *
+ * The user operation is signed with the EIP-191 personal-sign prefix over the
+ * EntryPoint's userOpHash, which is what TigerWalletAccount._validateSignature
+ * recovers against.
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { useWallet } from '../../../app/wallet';
-import { ethers, BigNumber } from 'ethers';
+import { ethers } from 'ethers';
 
-// Types
-interface SmartAccountConfig {
-  entryPoint: string;
-  factory: string;
-  paymaster?: string;
+/** EntryPoint v0.7. getUserOpHash takes the packed struct. */
+const ENTRYPOINT_ABI = [
+  'function getUserOpHash((address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature) userOp) view returns (bytes32)',
+  'function getNonce(address sender, uint192 key) view returns (uint256)',
+  'function getDeposit(address account) view returns (uint256)',
+];
+
+/** TigerWalletAccountFactory. `key` is the factory's salt input. */
+const FACTORY_ABI = [
+  'function createAccount(address owner, uint256 key) returns (address account)',
+  'function getAccountAddress(address owner, uint256 key) view returns (address)',
+];
+
+/** TigerWalletAccount. */
+const SMART_ACCOUNT_ABI = [
+  'function owner() view returns (address)',
+  'function transferOwnership(address newOwner)',
+  'function executeFromOwner(address target, uint256 value, bytes data) returns (bool ok, bytes result)',
+  'event OwnershipTransferred(address indexed previousOwner, address indexed newOwner)',
+];
+
+/** BaseAccount.executeBatch takes an array of Call{target,value,data}. */
+const EXECUTE_BATCH_ABI = [
+  'function executeBatch((address target, uint256 value, bytes data)[] calls)',
+];
+
+/**
+ * Packs two uint128 values into a bytes32, high half first, which is the layout
+ * EntryPoint v0.7 expects for accountGasLimits (verificationGasLimit,
+ * callGasLimit) and gasFees (maxPriorityFeePerGas, maxFeePerGas).
+ */
+function packUints(high: ethers.BigNumber, low: ethers.BigNumber): string {
+  return ethers.utils.hexZeroPad(
+    ethers.utils.hexConcat([
+      ethers.utils.hexZeroPad(high.toHexString(), 16),
+      ethers.utils.hexZeroPad(low.toHexString(), 16),
+    ]),
+    32
+  );
 }
 
-interface UserOperation {
+/**
+ * A user operation in the EntryPoint v0.7 packed layout, with the two uint128
+ * pairs expressed as their named components for readability.
+ */
+export interface PackedUserOperation {
   sender: string;
-  nonce: BigNumber;
+  nonce: ethers.BigNumber;
   initCode: string;
   callData: string;
-  callGasLimit: BigNumber;
-  verificationGasLimit: BigNumber;
-  preVerificationGas: BigNumber;
-  maxFeePerGas: BigNumber;
-  maxPriorityFeePerGas: BigNumber;
+  verificationGasLimit: ethers.BigNumber;
+  callGasLimit: ethers.BigNumber;
+  preVerificationGas: ethers.BigNumber;
+  maxPriorityFeePerGas: ethers.BigNumber;
+  maxFeePerGas: ethers.BigNumber;
+  paymasterAndData: string;
   signature: string;
 }
 
-interface SessionKey {
-  address: string;
-  allowedCalls: AllowedCall[];
-  expiresAt: number;
-  spendingLimit?: BigNumber;
+/** Encodes a PackedUserOperation into the struct the EntryPoint ABI expects. */
+function toAbiUserOp(op: PackedUserOperation) {
+  return {
+    sender: op.sender,
+    nonce: op.nonce,
+    initCode: op.initCode,
+    callData: op.callData,
+    accountGasLimits: packUints(op.verificationGasLimit, op.callGasLimit),
+    preVerificationGas: op.preVerificationGas,
+    gasFees: packUints(op.maxPriorityFeePerGas, op.maxFeePerGas),
+    paymasterAndData: op.paymasterAndData,
+    signature: op.signature,
+  };
 }
 
-interface AllowedCall {
-  target: string;
-  selector: string;
-  valueLimit: BigNumber;
+/** Encodes BaseAccount.executeBatch calldata for a list of calls. */
+function encodeExecuteBatch(
+  calls: Array<{ to: string; value?: ethers.BigNumber; data?: string }>
+): string {
+  const iface = new ethers.utils.Interface(EXECUTE_BATCH_ABI);
+  return iface.encodeFunctionData('executeBatch', [
+    calls.map((c) => [c.to, c.value ?? ethers.BigNumber.from(0), c.data ?? '0x']),
+  ]);
 }
 
-interface PaymasterConfig {
-  address: string;
-  sponsor: boolean;
-  token?: string;
+/**
+ * Converts the bundler's decimal quantity strings into BigNumbers. The bundler
+ * reports nonce, balance and gas in decimal, unlike the chain's hex quantities.
+ */
+function toBigNumber(value: string | undefined): ethers.BigNumber {
+  if (value === undefined || value === '') {
+    return ethers.BigNumber.from(0);
+  }
+  return ethers.BigNumber.from(value);
+}
+
+export interface SmartAccountConfig {
+  /** Deployed EntryPoint v0.7 address. Required; there is no safe default. */
+  entryPoint: string;
+  /** TigerWalletAccountFactory address. Required; there is no safe default. */
+  factory: string;
+  /** Bundler REST base, e.g. https://bundler.tigerwallet.io. Required. */
+  bundlerUrl: string;
 }
 
 interface SmartAccountState {
   address: string | null;
+  owner: string | null;
   isDeployed: boolean;
   isConnecting: boolean;
+  /** Account balance in wei, as a decimal string. */
   balance: string;
-  owners: string[];
-  sessionKeys: SessionKey[];
-  paymaster: PaymasterConfig | null;
+  nonce: string;
+  factory: string | null;
 }
 
-// EntryPoint ABI
-const ENTRYPOINT_ABI = [
-  'function getUserOpHash((address sender, uint256 nonce, bytes initCode, bytes callData, uint256 callGasLimit, uint256 verificationGasLimit, uint256 preVerificationGas, uint256 maxFeePerGas, uint256 maxPriorityFeePerGas, bytes signature) view returns (bytes32)',
-  'function handleOps((address sender, uint256 nonce, bytes initCode, bytes callData, uint256 callGasLimit, uint256 verificationGasLimit, uint256 preVerificationGas, uint256 maxFeePerGas, uint256 maxPriorityFeePerGas, bytes signature)[] ops, address beneficiary)',
-  'function getDeposit(address account) view returns (uint256)',
-  'function addStake(uint32 unstakeDelaySec) payable',
-];
+/** Raised when the hook is used without the configuration it needs. */
+export class SmartAccountConfigError extends Error {}
 
-// Smart Account ABI
-const SMART_ACCOUNT_ABI = [
-  'function owner() view returns (address)',
-  'function getNonce() view returns (uint256)',
-  'function execTransaction((address to, uint256 value, bytes data, uint8 operation, uint256 txGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) tx) returns (bool success)',
-  'function encodeTransactionData((address to, uint256 value, bytes data, uint8 operation, uint256 txGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, uint256 signatures) tx) view returns (bytes)',
-  'event ExecutionSuccess(bytes32 txHash, uint256 payment)',
-  'event ExecutionFailure(bytes32 txHash, uint256 payment)',
-];
+function requireConfig(config: SmartAccountConfig): void {
+  if (!config.entryPoint || !ethers.utils.isAddress(config.entryPoint)) {
+    throw new SmartAccountConfigError(
+      'entryPoint is not a valid address; set NEXT_PUBLIC_ENTRY_POINT'
+    );
+  }
+  if (!config.factory || !ethers.utils.isAddress(config.factory)) {
+    throw new SmartAccountConfigError(
+      'factory is not a valid address; set NEXT_PUBLIC_SA_FACTORY'
+    );
+  }
+  if (!config.bundlerUrl) {
+    throw new SmartAccountConfigError(
+      'bundlerUrl is required; set NEXT_PUBLIC_BUNDLER_URL'
+    );
+  }
+}
 
-// Factory ABI
-const FACTORY_ABI = [
-  'function createAccount(address owner, uint256 salt) returns (address account)',
-  'function getAddress(address owner, uint256 salt) view returns (address)',
-];
+/**
+ * Reads the bundler's error body. The bundler answers failures with a JSON
+ * object carrying an `error` string, so surfacing that is more useful than the
+ * bare HTTP status.
+ */
+async function readBundlerError(response: Response): Promise<string> {
+  let detail = `${response.status} ${response.statusText}`;
+  try {
+    const body = await response.json();
+    if (body && typeof body.error === 'string') {
+      detail = body.error;
+    }
+  } catch {
+    // A non-JSON body leaves the status line as the best available detail.
+  }
+  return detail;
+}
 
 export function useSmartAccount(config: SmartAccountConfig) {
-  const { address: eoaAddress } = useWallet();
-  // Build a real ethers provider from the injected EIP-1193 provider rather
-  // than relying on the wallet context (which does not expose one).
   const provider = React.useMemo(() => {
-    if (typeof window === 'undefined' || !(window as any).ethereum) return null;
+    if (typeof window === 'undefined' || !(window as any).ethereum) {
+      return null;
+    }
     return new ethers.providers.Web3Provider((window as any).ethereum);
   }, []);
+
   const [state, setState] = useState<SmartAccountState>({
     address: null,
+    owner: null,
     isDeployed: false,
     isConnecting: false,
     balance: '0',
-    owners: [],
-    sessionKeys: [],
-    paymaster: null,
+    nonce: '0',
+    factory: null,
   });
 
-  // Connect to smart account
+  /**
+   * Resolves the counterfactual account for the connected EOA. The address, the
+   * deployment state, the balance and the nonce all come from the bundler, which
+   * reads them from the chain, so a wrong configuration surfaces as an error
+   * rather than as a plausible-looking account.
+   */
   const connect = useCallback(async () => {
-    if (!provider || !eoaAddress) {
-      throw new Error('Wallet not connected');
+    if (!provider) {
+      throw new SmartAccountConfigError('No EIP-1193 wallet is available');
     }
+    requireConfig(config);
 
-    setState(prev => ({ ...prev, isConnecting: true }));
+    const signer = provider.getSigner();
+    const owner = await signer.getAddress();
+
+    setState((prev) => ({ ...prev, isConnecting: true }));
 
     try {
-      const entryPoint = new ethers.Contract(
-        config.entryPoint,
-        ENTRYPOINT_ABI,
-        provider
+      const response = await fetch(
+        `${config.bundlerUrl}/v1/wallet/${owner}?salt=0`,
+        { headers: { Accept: 'application/json' } }
       );
-
-      // Calculate smart account address
-      const factory = new ethers.Contract(
-        config.factory,
-        FACTORY_ABI,
-        provider
-      );
-
-      const salt = ethers.BigNumber.from(
-        ethers.utils.keccak256(ethers.utils.randomBytes(32))
-      );
-
-      const smartAccountAddress = await factory.getAddress(eoaAddress, salt);
-
-      // Check if deployed
-      const code = await provider.getCode(smartAccountAddress);
-      const isDeployed = code !== '0x';
-
-      if (isDeployed) {
-        // Get account info
-        const smartAccount = new ethers.Contract(
-          smartAccountAddress,
-          SMART_ACCOUNT_ABI,
-          provider
+      if (!response.ok) {
+        throw new Error(
+          `bundler rejected the account lookup: ${await readBundlerError(response)}`
         );
-
-        const owner = await smartAccount.owner();
-        const deposit = await entryPoint.getDeposit(smartAccountAddress);
-
-        setState({
-          address: smartAccountAddress,
-          isDeployed: true,
-          isConnecting: false,
-          balance: deposit.toString(),
-          owners: [owner],
-          sessionKeys: [],
-          paymaster: config.paymaster ? {
-            address: config.paymaster,
-            sponsor: true,
-          } : null,
-        });
-      } else {
-        setState(prev => ({
-          ...prev,
-          address: smartAccountAddress,
-          isDeployed: false,
-          isConnecting: false,
-        }));
       }
+
+      const view = await response.json();
+      if (!view || typeof view.address !== 'string') {
+        throw new Error('the bundler returned no account address');
+      }
+
+      setState({
+        address: view.address,
+        owner: typeof view.owner === 'string' ? view.owner : owner,
+        isDeployed: Boolean(view.isDeployed),
+        isConnecting: false,
+        balance: toBigNumber(view.balance).toString(),
+        nonce: toBigNumber(view.nonce).toString(),
+        factory:
+          typeof view.factory === 'string' && view.factory ? view.factory : config.factory,
+      });
     } catch (error) {
-      console.error('Failed to connect:', error);
-      setState(prev => ({ ...prev, isConnecting: false }));
+      setState((prev) => ({ ...prev, isConnecting: false }));
       throw error;
     }
-  }, [provider, eoaAddress, config]);
+  }, [provider, config]);
 
-  // Deploy smart account
-  const deploy = useCallback(async () => {
-    if (!provider || !state.address || state.isDeployed) {
-      throw new Error('Invalid state');
+  /**
+   * Deploys the account by calling the factory from the owner EOA, then
+   * re-reads the owner from the chain so the reported state is the chain's, not
+   * an optimistic guess. Returns the transaction hash.
+   */
+  const deploy = useCallback(async (): Promise<string> => {
+    if (!provider) {
+      throw new SmartAccountConfigError('No EIP-1193 wallet is available');
+    }
+    requireConfig(config);
+    if (!state.address) {
+      throw new Error('Connect before deploying');
+    }
+    if (state.isDeployed) {
+      throw new Error('The account is already deployed');
     }
 
     const signer = provider.getSigner();
-    const factory = new ethers.Contract(
-      config.factory,
-      FACTORY_ABI,
-      signer
-    );
+    const owner = await signer.getAddress();
+    const factory = new ethers.Contract(config.factory, FACTORY_ABI, signer);
 
-    const salt = ethers.BigNumber.from(
-      ethers.utils.keccak256(ethers.utils.randomBytes(32))
-    );
+    // key 0 is the account the bundler reports for this owner, so the deployed
+    // address matches the one shown before deployment.
+    const tx = await factory.createAccount(owner, 0);
+    const receipt = await tx.wait();
 
-    const tx = await factory.createAccount(eoaAddress, salt);
-    await tx.wait();
+    const account = new ethers.Contract(state.address, SMART_ACCOUNT_ABI, provider);
+    const onChainOwner: string = await account.owner();
 
-    setState(prev => ({ ...prev, isDeployed: true }));
-  }, [provider, state.address, state.isDeployed, eoaAddress, config.factory]);
+    setState((prev) => ({ ...prev, isDeployed: true, owner: onChainOwner }));
 
-  // Send User Operation
-  const sendUserOp = useCallback(async (
-    calls: Array<{
-      to: string;
-      value?: BigNumber;
-      data?: string;
-    }>,
-    options?: {
-      paymaster?: boolean;
-      gasless?: boolean;
-    }
-  ): Promise<string> => {
-    if (!provider || !state.address) {
-      throw new Error('Smart account not connected');
-    }
+    return receipt.transactionHash;
+  }, [provider, config, state.address, state.isDeployed]);
 
-    const signer = provider.getSigner();
-    const entryPoint = new ethers.Contract(
-      config.entryPoint,
-      ENTRYPOINT_ABI,
-      signer
-    );
+  /**
+   * Transfers ownership of the account. This is a real transaction from the
+   * current owner; the contract rejects any other caller. The new owner is read
+   * back from the chain.
+   */
+  const transferOwnership = useCallback(
+    async (newOwner: string): Promise<string> => {
+      if (!provider || !state.address) {
+        throw new Error('Smart account not connected');
+      }
+      if (!ethers.utils.isAddress(newOwner)) {
+        throw new Error('newOwner is not a valid address');
+      }
+      if (state.owner && newOwner.toLowerCase() === state.owner.toLowerCase()) {
+        throw new Error('newOwner is already the owner');
+      }
 
-    // Build user operation
-    const nonce = await entryPoint.getNonce(state.address, 0);
+      const account = new ethers.Contract(
+        state.address,
+        SMART_ACCOUNT_ABI,
+        provider.getSigner()
+      );
+      const tx = await account.transferOwnership(newOwner);
+      const receipt = await tx.wait();
 
-    // Build call data
-    const callData = encodeExecuteCalls(state.address, calls);
+      const updated: string = await account.owner();
+      setState((prev) => ({ ...prev, owner: updated }));
 
-    // Get gas estimates
-    const feeData = await provider.getFeeData();
-    const maxFeePerGas = feeData.maxFeePerGas || ethers.BigNumber.from(0);
-    const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.BigNumber.from(0);
+      return receipt.transactionHash;
+    },
+    [provider, state.address, state.owner]
+  );
 
-    const userOp: UserOperation = {
-      sender: state.address,
-      nonce,
-      initCode: '0x',
-      callData,
-      callGasLimit: ethers.BigNumber.from(50000),
-      verificationGasLimit: ethers.BigNumber.from(150000),
-      preVerificationGas: ethers.BigNumber.from(21000),
-      maxFeePerGas,
-      maxPriorityFeePerGas,
-      signature: '0x',
-    };
+  /**
+   * Builds, signs and submits a user operation carrying one or more calls.
+   *
+   * The signature is produced over the EntryPoint's userOpHash with the EIP-191
+   * personal-sign prefix, matching TigerWalletAccount._validateSignature.
+   * Returns the user operation hash the bundler accepted.
+   */
+  const sendUserOp = useCallback(
+    async (
+      calls: Array<{ to: string; value?: ethers.BigNumber; data?: string }>,
+      options?: { paymasterAndData?: string }
+    ): Promise<string> => {
+      if (!provider || !state.address) {
+        throw new Error('Smart account not connected');
+      }
+      requireConfig(config);
+      if (calls.length === 0) {
+        throw new Error('At least one call is required');
+      }
 
-    // Sign user operation
-    const userOpHash = await entryPoint.getUserOpHash(userOp);
-    const signature = await signer.signMessage(ethers.utils.arrayify(userOpHash));
+      const signer = provider.getSigner();
+      const entryPoint = new ethers.Contract(config.entryPoint, ENTRYPOINT_ABI, provider);
 
-    userOp.signature = signature;
+      const nonce: ethers.BigNumber = await entryPoint.getNonce(state.address, 0);
+      const callData = encodeExecuteBatch(calls);
+      const feeData = await provider.getFeeData();
+      const maxFeePerGas = feeData.maxFeePerGas ?? ethers.BigNumber.from(0);
+      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ?? ethers.BigNumber.from(0);
 
-    // Send to bundler
-    const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || 'http://localhost:3000/rpc';
-    const response = await fetch(bundlerUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_sendUserOperation',
-        params: [userOp, config.entryPoint],
-        id: 1,
-      }),
-    });
+      const userOp: PackedUserOperation = {
+        sender: state.address,
+        nonce,
+        initCode: '0x',
+        callData,
+        // Conservative starting limits. The bundler refines them via
+        // eth_estimateUserOperationGas before submission when sponsorship is
+        // requested through /v1/paymaster/sponsorship.
+        verificationGasLimit: ethers.BigNumber.from(150000),
+        callGasLimit: ethers.BigNumber.from(100000),
+        preVerificationGas: ethers.BigNumber.from(21000),
+        maxPriorityFeePerGas,
+        maxFeePerGas,
+        paymasterAndData: options?.paymasterAndData ?? '0x',
+        signature: '0x',
+      };
 
-    const result = await response.json();
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
+      const userOpHash: string = await entryPoint.getUserOpHash(toAbiUserOp(userOp));
 
-    return result.result;
-  }, [provider, state.address, config.entryPoint]);
+      // signMessage applies the EIP-191 prefix, which is what the account
+      // recovers against.
+      userOp.signature = await signer.signMessage(ethers.utils.arrayify(userOpHash));
 
-  // Add session key
-  const addSessionKey = useCallback(async (
-    sessionKey: SessionKey
-  ): Promise<void> => {
-    if (!provider || !state.address) {
-      throw new Error('Smart account not connected');
-    }
+      const response = await fetch(`${config.bundlerUrl}/v1/rpc/eth_sendUserOperation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toAbiUserOp(userOp)),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `bundler rejected the user operation: ${await readBundlerError(response)}`
+        );
+      }
 
-    // In production, would interact with smart contract
-    setState(prev => ({
-      ...prev,
-      sessionKeys: [...prev.sessionKeys, sessionKey],
-    }));
-  }, [provider, state.address]);
+      const accepted = await response.json();
+      if (typeof accepted === 'string') {
+        return accepted;
+      }
+      if (accepted && typeof accepted.result === 'string') {
+        return accepted.result;
+      }
+      throw new Error('the bundler returned no user operation hash');
+    },
+    [provider, config, state.address]
+  );
 
-  // Remove session key
-  const removeSessionKey = useCallback(async (
-    sessionKeyAddress: string
-  ): Promise<void> => {
-    setState(prev => ({
-      ...prev,
-      sessionKeys: prev.sessionKeys.filter(k => k.address !== sessionKeyAddress),
-    }));
-  }, []);
+  /** Re-reads the account from the bundler. */
+  const refresh = useCallback(async () => {
+    await connect();
+  }, [connect]);
 
-  // Set paymaster
-  const setPaymaster = useCallback(async (
-    paymasterAddress: string,
-    sponsor: boolean
-  ): Promise<void> => {
-    setState(prev => ({
-      ...prev,
-      paymaster: {
-        address: paymasterAddress,
-        sponsor,
-      },
-    }));
-  }, []);
-
-  // Add owner
-  const addOwner = useCallback(async (
-    newOwner: string
-  ): Promise<void> => {
-    if (!provider || !state.address) {
-      throw new Error('Smart account not connected');
-    }
-
-    // In production, would interact with smart contract
-    setState(prev => ({
-      ...prev,
-      owners: [...prev.owners, newOwner],
-    }));
-  }, [provider, state.address]);
-
-  // Remove owner
-  const removeOwner = useCallback(async (
-    owner: string
-  ): Promise<void> => {
-    setState(prev => ({
-      ...prev,
-      owners: prev.owners.filter(o => o !== owner),
-    }));
-  }, []);
-
-  // Auto-connect on mount
   useEffect(() => {
-    if (provider && eoaAddress && !state.address) {
-      connect();
+    if (provider && !state.address && !state.isConnecting) {
+      connect().catch(() => {
+        // A missing or misconfigured bundler is reported through the hook's
+        // thrown errors on explicit calls; auto-connect stays quiet so the
+        // component can render its unconfigured state.
+      });
     }
-  }, [provider, eoaAddress, state.address, connect]);
+  }, [provider, state.address, state.isConnecting, connect]);
 
   return {
     ...state,
     connect,
     deploy,
     sendUserOp,
-    addSessionKey,
-    removeSessionKey,
-    setPaymaster,
-    addOwner,
-    removeOwner,
+    transferOwnership,
+    refresh,
   };
 }
 
-// Helper function to encode execute calls
-function encodeExecuteCalls(
-  account: string,
-  calls: Array<{
-    to: string;
-    value?: BigNumber;
-    data?: string;
-  }>
-): string {
-  // Simplified - would use proper encoding
-  const encoded = ethers.utils.defaultAbiCoder.encode(
-    ['tuple(address to, uint256 value, bytes data)[]'],
-    [calls.map(c => [c.to, c.value || 0, c.data || '0x'])]
-  );
-  return encoded;
+/** Converts a decimal wei string into an ETH display string. */
+export function formatWeiAsEther(wei: string): string {
+  return ethers.utils.formatEther(toBigNumber(wei));
 }
 
-// Smart Account Component
-interface SmartAccountProps {
-  config: SmartAccountConfig;
-  children: (props: ReturnType<typeof useSmartAccount>) => React.ReactNode;
+/** Reads the required AA configuration from the public environment. */
+export function smartAccountConfigFromEnv(): SmartAccountConfig {
+  return {
+    entryPoint: process.env.NEXT_PUBLIC_ENTRY_POINT ?? '',
+    factory: process.env.NEXT_PUBLIC_SA_FACTORY ?? '',
+    bundlerUrl: process.env.NEXT_PUBLIC_BUNDLER_URL ?? '',
+  };
 }
 
-export function SmartAccountProvider({ config, children }: SmartAccountProps) {
-  const smartAccount = useSmartAccount(config);
-  return <>{children(smartAccount)}</>;
-}
-
-// Smart Account Card Component
+/**
+ * Smart account panel: shows the account the bundler reports for the connected
+ * EOA and drives deployment, transfers and batch calls against it.
+ */
 export function SmartAccountCard() {
-  return (
-    <SmartAccountProvider
-      config={{
-        entryPoint: process.env.NEXT_PUBLIC_ENTRY_POINT || '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
-        factory: process.env.NEXT_PUBLIC_SA_FACTORY || '0x',
-      }}
-    >
-      {(props) => (
-        <div className="bg-white rounded-lg shadow-lg p-6 max-w-md">
-          <h2 className="text-2xl font-bold mb-4">Smart Account</h2>
-          
-          {props.isConnecting ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : props.address ? (
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-gray-500">Address</label>
-                <p className="font-mono text-sm break-all">{props.address}</p>
-              </div>
+  const account = useSmartAccount(smartAccountConfigFromEnv());
 
-              <div>
-                <label className="text-sm text-gray-500">Balance</label>
-                <p className="text-lg font-semibold">
-                  {ethers.utils.formatEther(props.balance)} ETH
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm text-gray-500">Status</label>
-                <p className={`font-semibold ${props.isDeployed ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {props.isDeployed ? 'Deployed' : 'Not Deployed'}
-                </p>
-              </div>
-
-              {!props.isDeployed && (
-                <button
-                  onClick={props.deploy}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
-                >
-                  Deploy Smart Account
-                </button>
-              )}
-
-              {props.isDeployed && (
-                <SmartAccountActions />
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={props.connect}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
-            >
-              Connect Smart Account
-            </button>
-          )}
-        </div>
-      )}
-    </SmartAccountProvider>
-  );
-}
-
-// Smart Account Actions Component
-function SmartAccountActions() {
   const [to, setTo] = useState('');
   const [value, setValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [newOwner, setNewOwner] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [lastResult, setLastResult] = useState<string | null>(null);
 
-  const smartAccount = useSmartAccount({
-    entryPoint: process.env.NEXT_PUBLIC_ENTRY_POINT || '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
-    factory: process.env.NEXT_PUBLIC_SA_FACTORY || '0x',
-  });
+  const run = useCallback(
+    async (label: string, action: () => Promise<string>) => {
+      setBusy(true);
+      setError(null);
+      setLastResult(null);
+      try {
+        const hash = await action();
+        setLastResult(`${label}: ${hash}`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    []
+  );
 
-  const handleSend = async () => {
-    if (!to || !value) return;
-
-    setIsLoading(true);
+  const handleSend = useCallback(() => {
+    let parsed: ethers.BigNumber;
     try {
-      await smartAccount.sendUserOp([
-        {
-          to,
-          value: ethers.utils.parseEther(value),
-        },
-      ]);
-      alert('Transaction sent!');
-    } catch (error) {
-      console.error(error);
-      alert('Transaction failed');
-    } finally {
-      setIsLoading(false);
+      parsed = ethers.utils.parseEther(value);
+    } catch {
+      setError(`"${value}" is not a valid amount`);
+      return;
     }
-  };
+    run('User operation submitted', () => account.sendUserOp([{ to, value: parsed }]));
+  }, [account, to, value, run]);
+
+  if (!account.address) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6 max-w-md">
+        <h2 className="text-2xl font-bold mb-4">Smart Account</h2>
+        <button
+          onClick={() => run('Account', async () => {
+            await account.connect();
+            return account.address ?? 'connected';
+          })}
+          disabled={busy}
+          className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {busy ? 'Connecting…' : 'Connect Smart Account'}
+        </button>
+        {error && <p className="mt-3 text-sm text-red-600 break-words">{error}</p>}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4 mt-4 pt-4 border-t">
-      <h3 className="font-semibold">Send Transaction</h3>
-      
-      <input
-        type="text"
-        placeholder="Recipient Address"
-        value={to}
-        onChange={(e) => setTo(e.target.value)}
-        className="w-full px-3 py-2 border rounded"
-      />
-      
-      <input
-        type="text"
-        placeholder="Amount (ETH)"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-full px-3 py-2 border rounded"
-      />
-      
-      <button
-        onClick={handleSend}
-        disabled={isLoading || !to || !value}
-        className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50"
-      >
-        {isLoading ? 'Sending...' : 'Send'}
-      </button>
+    <div className="bg-white rounded-lg shadow-lg p-6 max-w-md space-y-4">
+      <h2 className="text-2xl font-bold">Smart Account</h2>
+
+      <div>
+        <label className="text-sm text-gray-500">Address</label>
+        <p className="font-mono text-sm break-all">{account.address}</p>
+      </div>
+
+      <div>
+        <label className="text-sm text-gray-500">Owner</label>
+        <p className="font-mono text-sm break-all">{account.owner ?? '—'}</p>
+      </div>
+
+      <div>
+        <label className="text-sm text-gray-500">Balance</label>
+        <p className="text-lg font-semibold">{formatWeiAsEther(account.balance)} ETH</p>
+      </div>
+
+      <div>
+        <label className="text-sm text-gray-500">Nonce</label>
+        <p className="font-mono text-sm">{account.nonce}</p>
+      </div>
+
+      <div>
+        <label className="text-sm text-gray-500">Status</label>
+        <p className={`font-semibold ${account.isDeployed ? 'text-green-600' : 'text-yellow-600'}`}>
+          {account.isDeployed ? 'Deployed' : 'Not deployed'}
+        </p>
+      </div>
+
+      {!account.isDeployed && (
+        <button
+          onClick={() => run('Deployment', account.deploy)}
+          disabled={busy}
+          className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {busy ? 'Deploying…' : 'Deploy Smart Account'}
+        </button>
+      )}
+
+      {account.isDeployed && (
+        <>
+          <div className="pt-4 border-t space-y-2">
+            <h3 className="font-semibold">Send</h3>
+            <input
+              type="text"
+              placeholder="Recipient address"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full px-3 py-2 border rounded"
+            />
+            <input
+              type="text"
+              placeholder="Amount (ETH)"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="w-full px-3 py-2 border rounded"
+            />
+            <button
+              onClick={handleSend}
+              disabled={busy || !ethers.utils.isAddress(to) || !value}
+              className="w-full bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 disabled:opacity-50"
+            >
+              {busy ? 'Submitting…' : 'Send'}
+            </button>
+          </div>
+
+          <div className="pt-4 border-t space-y-2">
+            <h3 className="font-semibold">Transfer ownership</h3>
+            <input
+              type="text"
+              placeholder="New owner address"
+              value={newOwner}
+              onChange={(e) => setNewOwner(e.target.value)}
+              className="w-full px-3 py-2 border rounded"
+            />
+            <button
+              onClick={() => run('Ownership transfer', () => account.transferOwnership(newOwner))}
+              disabled={busy || !ethers.utils.isAddress(newOwner)}
+              className="w-full bg-gray-800 text-white py-2 px-4 rounded hover:bg-gray-900 disabled:opacity-50"
+            >
+              {busy ? 'Submitting…' : 'Transfer ownership'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {error && <p className="text-sm text-red-600 break-words">{error}</p>}
+      {lastResult && <p className="text-sm text-green-700 break-all">{lastResult}</p>}
     </div>
   );
 }

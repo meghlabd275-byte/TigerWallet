@@ -1,627 +1,672 @@
 /**
  * TigerWallet - Social Recovery Component
- * Guardian-based social recovery for wallet access
- * 
- * Features:
- * - Add/remove guardians
- * - Guardian confirmation tracking
- * - Recovery request workflow
- * - Time-lock anti-scam protection
+ * Guardian-based wallet recovery against the TigerWallet social-recovery
+ * service (social_recovery/go, REST under /api/v1).
+ *
+ * Every value here comes from the service; nothing is tracked only in React
+ * state. The previous version kept guardians and the threshold in local state
+ * and silently mutated them, so a user could "change the threshold" and see it
+ * applied while the service still held the old one.
+ *
+ * The service is addressable by internal wallet id, and separately by chain and
+ * address through /wallets/by-address/:chain/:address. Both are exposed here.
  */
 
-import React, { useState, useCallback } from 'react';
-import { ethers } from 'ethers';
+import React, { useState, useCallback, useEffect } from 'react';
 
-type GuardianType = 'address' | 'email' | 'phone';
+export type GuardianType = 'address' | 'email' | 'phone' | 'social';
 
-interface Guardian {
+export interface Guardian {
   id: string;
   address: string;
+  email?: string;
+  phone?: string;
   type: GuardianType;
   confirmed: boolean;
   invitedAt: string;
   confirmedAt?: string;
 }
 
-interface RecoveryRequest {
-  id: string;
-  newOwnerAddress: string;
-  status: 'pending' | 'approved' | 'executing' | 'completed' | 'cancelled';
-  thresholdMet: boolean;
-  signatures: GuardianSignature[];
-  delayEnd: string;
-  createdAt: string;
-}
+export type RecoveryStatus =
+  | 'pending'
+  | 'approved'
+  | 'executing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
-interface GuardianSignature {
+export interface GuardianSignature {
   guardianId: string;
   signature: string;
   signedAt: string;
+  message: string;
+}
+
+export interface RecoveryRequest {
+  id: string;
+  walletId: string;
+  newOwnerAddress: string;
+  status: RecoveryStatus;
+  thresholdMet: boolean;
+  signatures: GuardianSignature[];
+  delayEnd: string;
+  executedAt?: string;
+  cancelledAt?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface RecoveryWallet {
+  id: string;
+  address: string;
+  chain: string;
+  guardians: Guardian[];
+  threshold: number;
+  status: string;
+  recoveryCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialRecoveryConfig {
+  /** Base URL of the social-recovery service, without a trailing slash. */
+  apiUrl: string;
+}
+
+/** Raised when the service rejects a request. */
+export class SocialRecoveryError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'SocialRecoveryError';
+    this.status = status;
+  }
+}
+
+/**
+ * Performs a request against the service and surfaces the service's own error
+ * message. The handlers answer failures with {"error": "..."}, which is far
+ * more useful than the bare status line.
+ */
+async function request<T>(
+  apiUrl: string,
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  const response = await fetch(`${apiUrl}${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body && typeof body.error === 'string') {
+        detail = body.error;
+      }
+    } catch {
+      // A non-JSON body leaves the status line as the best available detail.
+    }
+    throw new SocialRecoveryError(response.status, detail);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return (await response.json()) as T;
 }
 
 interface SocialRecoveryState {
   isLoading: boolean;
   error: string | null;
-  guardians: Guardian[];
-  threshold: number;
+  wallet: RecoveryWallet | null;
   activeRecovery: RecoveryRequest | null;
-  walletAddress: string;
-}
-
-interface SocialRecoveryConfig {
-  apiUrl: string;
-  chainId: number;
 }
 
 export function useSocialRecovery(config: SocialRecoveryConfig) {
+  const { apiUrl } = config;
+
   const [state, setState] = useState<SocialRecoveryState>({
     isLoading: false,
     error: null,
-    guardians: [],
-    threshold: 2,
+    wallet: null,
     activeRecovery: null,
-    walletAddress: '',
   });
 
-  // Load guardians
-  const loadGuardians = useCallback(async (walletAddress: string): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await fetch(`${config.apiUrl}/api/v1/wallets/${walletAddress}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to load guardians');
+  /**
+   * Runs an operation, keeps the busy flag honest and stores the failure for the
+   * caller to render. Returns the result so callers can chain.
+   */
+  const run = useCallback(
+    async <T,>(action: () => Promise<T>): Promise<T | undefined> => {
+      setState((prev) => ({ ...prev, isLoading: true, error: null }));
+      try {
+        const result = await action();
+        setState((prev) => ({ ...prev, isLoading: false }));
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setState((prev) => ({ ...prev, isLoading: false, error: message }));
+        return undefined;
       }
+    },
+    []
+  );
 
-      const data = await response.json();
+  /** Loads a wallet by its internal id. */
+  const loadWallet = useCallback(
+    (walletId: string) =>
+      run(async () => {
+        const wallet = await request<RecoveryWallet>(
+          apiUrl,
+          `/api/v1/wallets/${encodeURIComponent(walletId)}`
+        );
+        setState((prev) => ({ ...prev, wallet }));
+        return wallet;
+      }),
+    [apiUrl, run]
+  );
 
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        guardians: data.guardians || [],
-        threshold: data.threshold || 2,
-        walletAddress,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl]);
+  /** Loads a wallet by chain and address. */
+  const loadWalletByAddress = useCallback(
+    (chain: string, address: string) =>
+      run(async () => {
+        const wallet = await request<RecoveryWallet>(
+          apiUrl,
+          `/api/v1/wallets/by-address/${encodeURIComponent(chain)}/${encodeURIComponent(address)}`
+        );
+        setState((prev) => ({ ...prev, wallet }));
+        return wallet;
+      }),
+    [apiUrl, run]
+  );
 
-  // Add guardian
-  const addGuardian = useCallback(async (
-    guardianAddress: string,
-    guardianType: GuardianType = 'address'
-  ): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await fetch(
-        `${config.apiUrl}/api/v1/wallets/${state.walletAddress}/guardians`,
-        {
+  /** Registers a wallet for social recovery. */
+  const createWallet = useCallback(
+    (address: string, chain: string, threshold: number) =>
+      run(async () => {
+        const wallet = await request<RecoveryWallet>(apiUrl, '/api/v1/wallets', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            guardian: {
-              address: guardianAddress,
-              type: guardianType,
-            },
-          }),
-        }
-      );
+          body: JSON.stringify({ address, chain, threshold }),
+        });
+        setState((prev) => ({ ...prev, wallet }));
+        return wallet;
+      }),
+    [apiUrl, run]
+  );
 
-      if (!response.ok) {
-        throw new Error('Failed to add guardian');
-      }
+  /** Adds a guardian and adopts the wallet the service returns. */
+  const addGuardian = useCallback(
+    (walletId: string, guardian: { address: string; type: GuardianType }) =>
+      run(async () => {
+        const wallet = await request<RecoveryWallet>(
+          apiUrl,
+          `/api/v1/wallets/${encodeURIComponent(walletId)}/guardians`,
+          { method: 'POST', body: JSON.stringify({ guardian }) }
+        );
+        setState((prev) => ({ ...prev, wallet }));
+        return wallet;
+      }),
+    [apiUrl, run]
+  );
 
-      const data = await response.json();
+  /** Removes a guardian. */
+  const removeGuardian = useCallback(
+    (walletId: string, guardianId: string) =>
+      run(async () => {
+        const wallet = await request<RecoveryWallet>(
+          apiUrl,
+          `/api/v1/wallets/${encodeURIComponent(walletId)}/guardians/${encodeURIComponent(guardianId)}`,
+          { method: 'DELETE' }
+        );
+        setState((prev) => ({ ...prev, wallet }));
+        return wallet;
+      }),
+    [apiUrl, run]
+  );
 
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        guardians: data.guardians,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl, state.walletAddress]);
+  /** Confirms an email or phone guardian with the code the service sent. */
+  const verifyGuardian = useCallback(
+    (walletId: string, guardianId: string, code: string) =>
+      run(async () => {
+        const wallet = await request<RecoveryWallet>(
+          apiUrl,
+          `/api/v1/wallets/${encodeURIComponent(walletId)}/guardians/${encodeURIComponent(guardianId)}/verify`,
+          { method: 'POST', body: JSON.stringify({ code }) }
+        );
+        setState((prev) => ({ ...prev, wallet }));
+        return wallet;
+      }),
+    [apiUrl, run]
+  );
 
-  // Remove guardian
-  const removeGuardian = useCallback(async (guardianId: string): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
+  /** Starts a recovery to a new owner address. */
+  const initiateRecovery = useCallback(
+    (walletId: string, newOwnerAddress: string) =>
+      run(async () => {
+        const activeRecovery = await request<RecoveryRequest>(
+          apiUrl,
+          `/api/v1/wallets/${encodeURIComponent(walletId)}/recovery`,
+          { method: 'POST', body: JSON.stringify({ newOwnerAddress }) }
+        );
+        setState((prev) => ({ ...prev, activeRecovery }));
+        return activeRecovery;
+      }),
+    [apiUrl, run]
+  );
 
-    try {
-      const response = await fetch(
-        `${config.apiUrl}/api/v1/wallets/${state.walletAddress}/guardians/${guardianId}`,
-        { method: 'DELETE' }
-      );
+  /** Loads the in-flight recovery for a wallet, if any. */
+  const loadActiveRecovery = useCallback(
+    (walletId: string) =>
+      run(async () => {
+        const activeRecovery = await request<RecoveryRequest>(
+          apiUrl,
+          `/api/v1/wallets/${encodeURIComponent(walletId)}/recovery`
+        );
+        setState((prev) => ({ ...prev, activeRecovery }));
+        return activeRecovery;
+      }),
+    [apiUrl, run]
+  );
 
-      if (!response.ok) {
-        throw new Error('Failed to remove guardian');
-      }
+  /** Adds a guardian's approval to a recovery request. */
+  const signRecovery = useCallback(
+    (requestId: string, guardianId: string, signature: string) =>
+      run(async () => {
+        const activeRecovery = await request<RecoveryRequest>(
+          apiUrl,
+          `/api/v1/recovery/${encodeURIComponent(requestId)}/sign`,
+          { method: 'POST', body: JSON.stringify({ guardianId, signature }) }
+        );
+        setState((prev) => ({ ...prev, activeRecovery }));
+        return activeRecovery;
+      }),
+    [apiUrl, run]
+  );
 
-      const data = await response.json();
+  /**
+   * Executes a recovery once the threshold is met and the delay has elapsed.
+   * The service enforces both; this never forces the transfer.
+   */
+  const executeRecovery = useCallback(
+    (requestId: string) =>
+      run(async () => {
+        const activeRecovery = await request<RecoveryRequest>(
+          apiUrl,
+          `/api/v1/recovery/${encodeURIComponent(requestId)}/execute`,
+          { method: 'POST' }
+        );
+        setState((prev) => ({ ...prev, activeRecovery }));
+        return activeRecovery;
+      }),
+    [apiUrl, run]
+  );
 
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        guardians: data.guardians,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl, state.walletAddress]);
-
-  // Initiate recovery
-  const initiateRecovery = useCallback(async (newOwnerAddress: string): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await fetch(
-        `${config.apiUrl}/api/v1/wallets/${state.walletAddress}/recovery`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            newOwnerAddress,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to initiate recovery');
-      }
-
-      const data = await response.json();
-
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        activeRecovery: data,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl, state.walletAddress]);
-
-  // Sign recovery (for guardians)
-  const signRecovery = useCallback(async (
-    requestId: string,
-    guardianId: string
-  ): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      // Sign message
-      const message = `Approve recovery request ${requestId}`;
-      const signature = await (window as any).ethereum?.request({
-        method: 'personal_sign',
-        params: [message, (window as any).ethereum.selectedAddress],
-      });
-
-      const response = await fetch(
-        `${config.apiUrl}/api/v1/recovery/${requestId}/sign`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            guardianId,
-            signature,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to sign recovery');
-      }
-
-      const data = await response.json();
-
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        activeRecovery: data,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl]);
-
-  // Execute recovery (after delay)
-  const executeRecovery = useCallback(async (requestId: string): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await fetch(
-        `${config.apiUrl}/api/v1/recovery/${requestId}/execute`,
-        { method: 'POST' }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to execute recovery');
-      }
-
-      const data = await response.json();
-
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        activeRecovery: null,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl]);
-
-  // Cancel recovery
-  const cancelRecovery = useCallback(async (requestId: string): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const response = await fetch(
-        `${config.apiUrl}/api/v1/recovery/${requestId}/cancel`,
-        { method: 'POST' }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to cancel recovery');
-      }
-
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        activeRecovery: null,
-      }));
-    } catch (error: any) {
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error.message,
-      }));
-    }
-  }, [config.apiUrl]);
-
-  // Update threshold
-  const updateThreshold = useCallback(async (newThreshold: number): Promise<void> => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    // In production, would update on smart contract
-    setState(prev => ({
-      ...prev,
-      isLoading: false,
-      threshold: newThreshold,
-    }));
-  }, []);
+  /** Cancels a pending recovery, for example after a phishing attempt. */
+  const cancelRecovery = useCallback(
+    (requestId: string) =>
+      run(async () => {
+        const activeRecovery = await request<RecoveryRequest>(
+          apiUrl,
+          `/api/v1/recovery/${encodeURIComponent(requestId)}/cancel`,
+          { method: 'POST' }
+        );
+        setState((prev) => ({ ...prev, activeRecovery }));
+        return activeRecovery;
+      }),
+    [apiUrl, run]
+  );
 
   return {
     ...state,
-    loadGuardians,
+    loadWallet,
+    loadWalletByAddress,
+    createWallet,
     addGuardian,
     removeGuardian,
+    verifyGuardian,
     initiateRecovery,
+    loadActiveRecovery,
     signRecovery,
     executeRecovery,
     cancelRecovery,
-    updateThreshold,
   };
 }
 
-// Guardian Card Component
-interface GuardianCardProps {
-  guardian: Guardian;
-  onRemove: (id: string) => void;
+/** Resolves the service base URL from the public environment. */
+export function socialRecoveryConfigFromEnv(): SocialRecoveryConfig {
+  return { apiUrl: process.env.NEXT_PUBLIC_SOCIAL_RECOVERY_URL ?? '' };
 }
 
-function GuardianCard({ guardian, onRemove }: GuardianCardProps) {
-  return (
-    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-          guardian.confirmed ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'
-        }`}>
-          {guardian.confirmed ? (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          )}
-        </div>
-        <div>
-          <p className="font-medium text-gray-900">
-            {guardian.type === 'address' 
-              ? `${guardian.address.slice(0, 6)}...${guardian.address.slice(-4)}`
-              : guardian.address
-            }
-          </p>
-          <p className="text-sm text-gray-500">
-            {guardian.confirmed ? 'Confirmed' : 'Pending confirmation'}
-          </p>
-        </div>
-      </div>
-      <button
-        onClick={() => onRemove(guardian.id)}
-        className="text-red-500 hover:text-red-700 p-2"
-      >
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-// Recovery Status Card Component
-interface RecoveryStatusCardProps {
-  recovery: RecoveryRequest;
-  onSign: () => void;
-  onExecute: () => void;
-  onCancel: () => void;
-  canSign: boolean;
-  canExecute: boolean;
-}
-
-function RecoveryStatusCard({ 
-  recovery, 
-  onSign, 
-  onExecute, 
-  onCancel, 
-  canSign, 
-  canExecute 
-}: RecoveryStatusCardProps) {
-  const statusColors = {
-    pending: 'bg-yellow-100 text-yellow-800',
-    approved: 'bg-blue-100 text-blue-800',
-    executing: 'bg-purple-100 text-purple-800',
-    completed: 'bg-green-100 text-green-800',
-    cancelled: 'bg-red-100 text-red-800',
-  };
-
-  const delayEnd = new Date(recovery.delayEnd);
-  const now = new Date();
-  const canExecuteNow = canExecute && now >= delayEnd;
-
-  return (
-    <div className="bg-white border rounded-lg p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Recovery Request</h3>
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[recovery.status]}`}>
-          {recovery.status.charAt(0).toUpperCase() + recovery.status.slice(1)}
-        </span>
-      </div>
-
-      <div className="space-y-3 mb-6">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-500">New Owner:</span>
-          <span className="font-mono">
-            {recovery.newOwnerAddress.slice(0, 6)}...{recovery.newOwnerAddress.slice(-4)}
-          </span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Signatures:</span>
-          <span>{recovery.signatures.length} confirmed</span>
-        </div>
-        {recovery.status === 'pending' && (
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">Available to execute:</span>
-            <span className={canExecuteNow ? 'text-green-600' : 'text-gray-600'}>
-              {delayEnd.toLocaleString()}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-3">
-        {recovery.status === 'pending' && canSign && !recovery.thresholdMet && (
-          <button
-            onClick={onSign}
-            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700"
-          >
-            Sign Recovery
-          </button>
-        )}
-        {recovery.status === 'approved' && canExecuteNow && (
-          <button
-            onClick={onExecute}
-            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700"
-          >
-            Execute Recovery
-          </button>
-        )}
-        {recovery.status === 'pending' && (
-          <button
-            onClick={onCancel}
-            className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300"
-          >
-            Cancel
-          </button>
-        )}
-      </div>
-
-      {recovery.status === 'pending' && !canExecuteNow && (
-        <p className="text-xs text-gray-500 mt-3 text-center">
-          24-hour delay for security. This protects against scam attacks.
-        </p>
-      )}
-    </div>
-  );
-}
-
-// Main Social Recovery Component
 interface SocialRecoveryPanelProps {
-  walletAddress: string;
+  /** Internal wallet id, or omit and supply chain plus address. */
+  walletId?: string;
+  chain?: string;
+  address?: string;
 }
 
-export function SocialRecoveryPanel({ walletAddress }: SocialRecoveryPanelProps) {
-  const [newGuardian, setNewGuardian] = useState('');
+/** Guardian management and recovery workflow for a single wallet. */
+export function SocialRecoveryPanel({ walletId, chain, address }: SocialRecoveryPanelProps) {
+  const recovery = useSocialRecovery(socialRecoveryConfigFromEnv());
+
+  const [guardianAddress, setGuardianAddress] = useState('');
+  const [guardianType, setGuardianType] = useState<GuardianType>('address');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyingGuardianId, setVerifyingGuardianId] = useState<string | null>(null);
   const [newOwner, setNewOwner] = useState('');
+  const [approvalGuardianId, setApprovalGuardianId] = useState('');
+  const [approvalSignature, setApprovalSignature] = useState('');
+  const [newWalletAddress, setNewWalletAddress] = useState('');
+  const [newWalletChain, setNewWalletChain] = useState('');
+  const [newWalletThreshold, setNewWalletThreshold] = useState('2');
+  const [lookupWalletId, setLookupWalletId] = useState('');
 
-  const {
-    isLoading,
-    error,
-    guardians,
-    threshold,
-    activeRecovery,
-    loadGuardians,
-    addGuardian,
-    removeGuardian,
-    initiateRecovery,
-    signRecovery,
-    executeRecovery,
-    cancelRecovery,
-  } = useSocialRecovery({
-    apiUrl: process.env.NEXT_PUBLIC_SOCIAL_RECOVERY_API || 'http://localhost:8443',
-    chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '1'),
-  });
+  const resolvedId = recovery.wallet?.id ?? walletId;
 
-  // Load on mount
-  React.useEffect(() => {
-    if (walletAddress) {
-      loadGuardians(walletAddress);
+  useEffect(() => {
+    if (walletId) {
+      recovery.loadWallet(walletId);
+    } else if (chain && address) {
+      recovery.loadWalletByAddress(chain, address);
     }
-  }, [walletAddress, loadGuardians]);
+    // Loading is deliberately keyed on the identifiers only; the loader
+    // callbacks are recreated whenever their inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletId, chain, address]);
 
-  const handleAddGuardian = async () => {
-    if (!newGuardian) return;
-    await addGuardian(newGuardian);
-    setNewGuardian('');
-  };
+  const handleAddGuardian = useCallback(() => {
+    if (!resolvedId || !guardianAddress) {
+      return;
+    }
+    recovery.addGuardian(resolvedId, { address: guardianAddress, type: guardianType });
+  }, [recovery, resolvedId, guardianAddress, guardianType]);
 
-  const handleInitiateRecovery = async () => {
-    if (!newOwner) return;
-    await initiateRecovery(newOwner);
-    setNewOwner('');
-  };
+  const handleVerify = useCallback(() => {
+    if (!resolvedId || !verifyingGuardianId || !verifyCode) {
+      return;
+    }
+    recovery.verifyGuardian(resolvedId, verifyingGuardianId, verifyCode).then(() => {
+      setVerifyCode('');
+      setVerifyingGuardianId(null);
+    });
+  }, [recovery, resolvedId, verifyingGuardianId, verifyCode]);
 
-  const confirmedCount = guardians.filter(g => g.confirmed).length;
+  const handleInitiate = useCallback(() => {
+    if (!resolvedId || !newOwner) {
+      return;
+    }
+    recovery.initiateRecovery(resolvedId, newOwner);
+  }, [recovery, resolvedId, newOwner]);
+
+  const handleApprove = useCallback(() => {
+    if (!recovery.activeRecovery || !approvalGuardianId || !approvalSignature) {
+      return;
+    }
+    recovery
+      .signRecovery(recovery.activeRecovery.id, approvalGuardianId, approvalSignature)
+      .then(() => {
+        setApprovalGuardianId('');
+        setApprovalSignature('');
+      });
+  }, [recovery, approvalGuardianId, approvalSignature]);
+
+  const handleCreate = useCallback(() => {
+    if (!newWalletAddress || !newWalletChain) {
+      return;
+    }
+    recovery.createWallet(newWalletAddress, newWalletChain, Number(newWalletThreshold));
+  }, [recovery, newWalletAddress, newWalletChain, newWalletThreshold]);
+
+  if (!resolvedId) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6 space-y-3">
+        <h2 className="text-xl font-bold">Social recovery</h2>
+        <p className="text-sm text-gray-600">
+          Register a wallet to protect it, or provide an existing wallet id.
+        </p>
+        <input
+          type="text"
+          placeholder="Wallet address"
+          value={newWalletAddress}
+          onChange={(e) => setNewWalletAddress(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+        />
+        <input
+          type="text"
+          placeholder="Chain (for example ethereum)"
+          value={newWalletChain}
+          onChange={(e) => setNewWalletChain(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+        />
+        <input
+          type="number"
+          min={1}
+          placeholder="Threshold"
+          value={newWalletThreshold}
+          onChange={(e) => setNewWalletThreshold(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+        />
+        <button
+          onClick={handleCreate}
+          disabled={
+            recovery.isLoading ||
+            !newWalletAddress ||
+            !newWalletChain ||
+            Number(newWalletThreshold) < 1
+          }
+          className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-50"
+        >
+          Register wallet
+        </button>
+        <input
+          type="text"
+          placeholder="…or an existing wallet id"
+          value={lookupWalletId}
+          onChange={(e) => setLookupWalletId(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+        />
+        <button
+          onClick={() => lookupWalletId && recovery.loadWallet(lookupWalletId)}
+          disabled={recovery.isLoading || !lookupWalletId}
+          className="w-full border py-2 rounded disabled:opacity-50"
+        >
+          Load wallet
+        </button>
+        {recovery.error && <p className="text-sm text-red-600">{recovery.error}</p>}
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h2 className="text-2xl font-bold mb-6">Social Recovery</h2>
+    <div className="bg-white rounded-lg shadow p-6 space-y-6">
+      <h2 className="text-xl font-bold">Social recovery</h2>
 
-      {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-6">
-          {error}
-        </div>
-      )}
-
-      {/* Active Recovery */}
-      {activeRecovery && (
-        <div className="mb-6">
-          <RecoveryStatusCard
-            recovery={activeRecovery}
-            onSign={() => signRecovery(activeRecovery.id, 'current-user')}
-            onExecute={() => executeRecovery(activeRecovery.id)}
-            onCancel={() => cancelRecovery(activeRecovery.id)}
-            canSign={false}
-            canExecute={false}
-          />
-        </div>
-      )}
-
-      {/* Guardians List */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Guardians</h3>
-          <span className="text-sm text-gray-500">
-            {confirmedCount}/{threshold} confirmed
-          </span>
-        </div>
-
-        {guardians.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">
-            No guardians added yet
+      {recovery.wallet && (
+        <div className="text-sm text-gray-700">
+          <p className="font-mono break-all">{recovery.wallet.address}</p>
+          <p>
+            {recovery.wallet.chain} · threshold {recovery.wallet.threshold} of{' '}
+            {recovery.wallet.guardians.length} · status {recovery.wallet.status}
           </p>
-        ) : (
-          <div className="space-y-3">
-            {guardians.map(guardian => (
-              <GuardianCard
-                key={guardian.id}
-                guardian={guardian}
-                onRemove={removeGuardian}
-              />
-            ))}
-          </div>
-        )}
+        </div>
+      )}
 
-        {/* Add Guardian */}
-        <div className="mt-4 pt-4 border-t">
+      <div className="space-y-2">
+        <h3 className="font-semibold">Guardians</h3>
+        {recovery.wallet?.guardians.length ? (
+          <ul className="divide-y">
+            {recovery.wallet.guardians.map((guardian) => (
+              <li key={guardian.id} className="py-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-sm truncate">{guardian.address}</p>
+                  <p className="text-xs text-gray-500">
+                    {guardian.type} · {guardian.confirmed ? 'confirmed' : 'unconfirmed'}
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  {!guardian.confirmed && (
+                    <button
+                      onClick={() => setVerifyingGuardianId(guardian.id)}
+                      className="text-xs px-2 py-1 border rounded"
+                    >
+                      Verify
+                    </button>
+                  )}
+                  <button
+                    onClick={() => recovery.removeGuardian(resolvedId, guardian.id)}
+                    disabled={recovery.isLoading}
+                    className="text-xs px-2 py-1 border rounded text-red-600 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">No guardians yet.</p>
+        )}
+      </div>
+
+      <div className="space-y-2 pt-4 border-t">
+        <h3 className="font-semibold">Add a guardian</h3>
+        <input
+          type="text"
+          placeholder="Guardian address"
+          value={guardianAddress}
+          onChange={(e) => setGuardianAddress(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+        />
+        <select
+          value={guardianType}
+          onChange={(e) => setGuardianType(e.target.value as GuardianType)}
+          className="w-full px-3 py-2 border rounded"
+        >
+          <option value="address">Address</option>
+          <option value="email">Email</option>
+          <option value="phone">Phone</option>
+          <option value="social">Social</option>
+        </select>
+        <button
+          onClick={handleAddGuardian}
+          disabled={recovery.isLoading || !guardianAddress}
+          className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-50"
+        >
+          Add guardian
+        </button>
+      </div>
+
+      {verifyingGuardianId && (
+        <div className="space-y-2 pt-4 border-t">
+          <h3 className="font-semibold">Confirm guardian</h3>
+          <input
+            type="text"
+            placeholder="Verification code"
+            value={verifyCode}
+            onChange={(e) => setVerifyCode(e.target.value)}
+            className="w-full px-3 py-2 border rounded"
+          />
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={newGuardian}
-              onChange={(e) => setNewGuardian(e.target.value)}
-              placeholder="Guardian address or email"
-              className="flex-1 px-4 py-2 border rounded-lg"
-            />
             <button
-              onClick={handleAddGuardian}
-              disabled={isLoading || !newGuardian}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              onClick={handleVerify}
+              disabled={recovery.isLoading || !verifyCode}
+              className="flex-1 bg-blue-600 text-white py-2 rounded disabled:opacity-50"
             >
-              Add
+              Confirm
+            </button>
+            <button
+              onClick={() => {
+                setVerifyingGuardianId(null);
+                setVerifyCode('');
+              }}
+              className="flex-1 border py-2 rounded"
+            >
+              Cancel
             </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Initiate Recovery */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold mb-4">Initiate Recovery</h3>
-        <p className="text-gray-600 text-sm mb-4">
-          If you've lost access to your wallet, you can initiate a recovery request.
-          Guardians will have 24 hours to review before execution.
-        </p>
-        
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newOwner}
-            onChange={(e) => setNewOwner(e.target.value)}
-            placeholder="New owner address"
-            className="flex-1 px-4 py-2 border rounded-lg"
-          />
-          <button
-            onClick={handleInitiateRecovery}
-            disabled={isLoading || !newOwner || guardians.length < threshold}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
-          >
-            Start Recovery
-          </button>
-        </div>
-        
-        {guardians.length < threshold && (
-          <p className="text-xs text-gray-500 mt-2">
-            Need at least {threshold} guardians to initiate recovery
-          </p>
+      <div className="space-y-2 pt-4 border-t">
+        <h3 className="font-semibold">Recover to a new owner</h3>
+        {recovery.activeRecovery ? (
+          <div className="text-sm space-y-1">
+            <p>
+              Status {recovery.activeRecovery.status} ·{' '}
+              {recovery.activeRecovery.signatures.length} of{' '}
+              {recovery.wallet?.threshold ?? 0} approvals
+            </p>
+            <p className="text-gray-600">New owner {recovery.activeRecovery.newOwnerAddress}</p>
+            <p className="text-gray-600">Executable after {recovery.activeRecovery.delayEnd}</p>
+
+            <div className="space-y-2 pt-2">
+              <input
+                type="text"
+                placeholder="Guardian id"
+                value={approvalGuardianId}
+                onChange={(e) => setApprovalGuardianId(e.target.value)}
+                className="w-full px-3 py-2 border rounded"
+              />
+              <input
+                type="text"
+                placeholder="Signature"
+                value={approvalSignature}
+                onChange={(e) => setApprovalSignature(e.target.value)}
+                className="w-full px-3 py-2 border rounded"
+              />
+              <button
+                onClick={handleApprove}
+                disabled={recovery.isLoading || !approvalGuardianId || !approvalSignature}
+                className="w-full bg-blue-600 text-white py-2 rounded disabled:opacity-50"
+              >
+                Add approval
+              </button>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => recovery.executeRecovery(recovery.activeRecovery!.id)}
+                disabled={recovery.isLoading || !recovery.activeRecovery.thresholdMet}
+                className="flex-1 bg-green-600 text-white py-2 rounded disabled:opacity-50"
+              >
+                Execute
+              </button>
+              <button
+                onClick={() => recovery.cancelRecovery(recovery.activeRecovery!.id)}
+                disabled={recovery.isLoading}
+                className="flex-1 border py-2 rounded text-red-600 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <input
+              type="text"
+              placeholder="New owner address"
+              value={newOwner}
+              onChange={(e) => setNewOwner(e.target.value)}
+              className="w-full px-3 py-2 border rounded"
+            />
+            <button
+              onClick={handleInitiate}
+              disabled={recovery.isLoading || !newOwner}
+              className="w-full bg-gray-800 text-white py-2 rounded disabled:opacity-50"
+            >
+              Start recovery
+            </button>
+          </>
         )}
       </div>
+
+      {recovery.error && <p className="text-sm text-red-600 break-words">{recovery.error}</p>}
     </div>
   );
 }

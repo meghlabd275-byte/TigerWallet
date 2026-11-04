@@ -2,8 +2,8 @@
 
 use crate::error::Error;
 use crate::models::*;
-use chrono::{DateTime, Utc};
-use std::sync::{Arc, RwLock};
+use chrono::Utc;
+use std::sync::RwLock;
 use std::collections::HashMap;
 use uuid::Uuid;
 
