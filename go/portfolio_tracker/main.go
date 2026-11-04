@@ -20,12 +20,18 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
+
+// priceStaleness bounds how old a cached price may be before the service
+// reports the portfolio as stale rather than presenting the total as live.
+const priceStaleness = 10 * time.Minute
 
 // ============== Data Structures ==============
 
@@ -47,8 +53,10 @@ type Position struct {
 	Protocol   string  `json:"protocol"`
 	TokenA     string  `json:"token_a,omitempty"`
 	TokenB     string  `json:"token_b,omitempty"`
+	Symbol     string  `json:"symbol"` // asset the position is denominated in
 	Balance    float64 `json:"balance"`
 	ValueUSD   float64 `json:"value_usd"`
+	Priced     bool    `json:"priced"` // false when no USD price is known
 	APY        float64 `json:"apy,omitempty"`
 	RewardUSD  float64 `json:"reward_usd,omitempty"`
 	PnL        float64 `json:"pnl,omitempty"`
@@ -95,6 +103,12 @@ type Analytics struct {
 	Allocation      []Allocation `json:"allocation"`
 	RiskScore       float64      `json:"risk_score"`
 	Diversification float64      `json:"diversification"`
+	// UnpricedPositions counts holdings with no USD price, so a client can tell
+	// that TotalValue is a lower bound rather than the whole portfolio.
+	UnpricedPositions int `json:"unpriced_positions"`
+	// PricesStale is true when no price has ever been fetched, or the last
+	// successful fetch is older than the staleness window.
+	PricesStale bool `json:"prices_stale"`
 }
 
 type Allocation struct {
@@ -137,6 +151,7 @@ type PortfolioService struct {
 
 	// Price cache
 	prices   map[string]float64
+	pricesAt time.Time
 	pricesMu sync.RWMutex
 
 	// Transaction history
@@ -155,6 +170,22 @@ func NewPortfolioService() *PortfolioService {
 		transactions: make(map[string][]Transaction),
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// priceOf returns the cached USD price for a symbol and whether it is known.
+// A missing price returns zero and false; callers must not treat the zero as a
+// valuation, which is what a default of 1.0 did before.
+func (s *PortfolioService) priceOf(symbol string) (float64, bool) {
+	if symbol == "" {
+		return 0, false
+	}
+	s.pricesMu.RLock()
+	defer s.pricesMu.RUnlock()
+	price, ok := s.prices[strings.ToUpper(symbol)]
+	if !ok || price <= 0 {
+		return 0, false
+	}
+	return price, true
 }
 
 func walletAPIBase() string {
@@ -294,6 +325,7 @@ func (s *PortfolioService) updatePrices() {
 			continue
 		}
 		s.pricesMu.Lock()
+		fetched := 0
 		for id, entry := range parsed {
 			sym := idToSym[id]
 			if sym == "" {
@@ -301,7 +333,11 @@ func (s *PortfolioService) updatePrices() {
 			}
 			if price := entry["usd"]; price > 0 {
 				s.prices[sym] = price
+				fetched++
 			}
+		}
+		if fetched > 0 {
+			s.pricesAt = time.Now()
 		}
 		s.pricesMu.Unlock()
 	}
@@ -320,14 +356,13 @@ func (s *PortfolioService) updatePortfolios() {
 			for i := range portfolio.Positions {
 				pos := &portfolio.Positions[i]
 
-				s.pricesMu.RLock()
-				price := s.prices[pos.Chain]
-				if price == 0 {
-					price = 1.0 // Default to 1 for unknown
-				}
-				s.pricesMu.RUnlock()
-
+				// Re-price from the symbol the position is denominated in. The
+				// old code looked the price up by chain and substituted 1.0 when
+				// it missed, so an ETH balance on "ethereum" was valued at $1 and
+				// the portfolio total was wrong by orders of magnitude.
+				price, priced := s.priceOf(pos.Symbol)
 				pos.ValueUSD = pos.Balance * price
+				pos.Priced = priced
 				portfolio.TotalValueUSD += pos.ValueUSD
 			}
 
@@ -363,17 +398,31 @@ func (s *PortfolioService) updateChainSummary(p *Portfolio) {
 }
 
 func (s *PortfolioService) updateAssetSummary(p *Portfolio) {
+	// Keyed by asset symbol. Keying by chain made this a second copy of
+	// updateChainSummary, and best/worst performer then reported a chain as if
+	// it were an asset.
 	assetValues := make(map[string]float64)
+	amounts := make(map[string]float64)
 	for _, pos := range p.Positions {
-		assetValues[pos.Chain] += pos.ValueUSD
+		symbol := pos.Symbol
+		if symbol == "" {
+			symbol = pos.Chain
+		}
+		assetValues[symbol] += pos.ValueUSD
+		amounts[symbol] += pos.Balance
 	}
 
 	p.Assets = nil
 	for symbol, value := range assetValues {
+		percent := 0.0
+		if p.TotalValueUSD > 0 {
+			percent = value / p.TotalValueUSD * 100
+		}
 		p.Assets = append(p.Assets, AssetSummary{
 			Symbol:   symbol,
+			Amount:   amounts[symbol],
 			ValueUSD: value,
-			Percent:  (value / p.TotalValueUSD) * 100,
+			Percent:  percent,
 		})
 	}
 }
@@ -531,32 +580,145 @@ func (s *PortfolioService) calculateAnalytics(portfolio *Portfolio) Analytics {
 		}
 	}
 
-	// Calculate allocation
-	allocation := []Allocation{
-		{Category: "DeFi", Value: portfolio.TotalValueUSD * 0.4, Percent: 40},
-		{Category: "Staking", Value: portfolio.TotalValueUSD * 0.25, Percent: 25},
-		{Category: "Trading", Value: portfolio.TotalValueUSD * 0.2, Percent: 20},
-		{Category: "NFT", Value: portfolio.TotalValueUSD * 0.1, Percent: 10},
-		{Category: "Other", Value: portfolio.TotalValueUSD * 0.05, Percent: 5},
-	}
+	// Allocation is measured from the positions actually held, grouped by
+	// position type. A fixed 40/25/20/10/5 split describes a portfolio the user
+	// does not own.
+	allocation := s.allocationByType(portfolio)
 
-	// Risk score (simplified)
-	riskScore := 5.5
-
-	// Diversification score
-	diversification := float64(len(portfolio.Chains)) / 10.0 * 100
-	if diversification > 100 {
-		diversification = 100
-	}
+	// Both scores are computed from the holdings; neither is a constant.
+	riskScore := s.riskScore(portfolio)
+	diversification := s.diversificationScore(portfolio)
 
 	return Analytics{
-		TotalValue:      portfolio.TotalValueUSD,
-		BestPerformer:   best,
-		WorstPerformer:  worst,
-		Allocation:      allocation,
-		RiskScore:       riskScore,
-		Diversification: diversification,
+		TotalValue:        portfolio.TotalValueUSD,
+		BestPerformer:     best,
+		WorstPerformer:    worst,
+		Allocation:        allocation,
+		RiskScore:         riskScore,
+		Diversification:   diversification,
+		UnpricedPositions: s.unpricedCount(portfolio),
+		PricesStale:       s.pricesStale(),
 	}
+}
+
+// allocationByType groups the portfolio's value by position type, so the
+// breakdown sums to TotalValueUSD. Types with no holdings are omitted rather
+// than reported at zero.
+func (s *PortfolioService) allocationByType(portfolio *Portfolio) []Allocation {
+	byType := map[string]float64{}
+	for _, pos := range portfolio.Positions {
+		kind := pos.Type
+		if kind == "" {
+			kind = "wallet"
+		}
+		byType[kind] += pos.ValueUSD
+	}
+
+	allocation := make([]Allocation, 0, len(byType))
+	for kind, value := range byType {
+		percent := 0.0
+		if portfolio.TotalValueUSD > 0 {
+			percent = value / portfolio.TotalValueUSD * 100
+		}
+		allocation = append(allocation, Allocation{
+			Category: kind,
+			Value:    value,
+			Percent:  percent,
+		})
+	}
+	// A map iterates in random order; sort so a client sees a stable list.
+	sort.Slice(allocation, func(i, j int) bool {
+		return allocation[i].Value > allocation[j].Value
+	})
+	return allocation
+}
+
+// riskScore is a 0-10 measure built from observable concentration, data
+// quality and position type. It is a heuristic, not a market risk model, and it
+// is derived from the user's own holdings so two different portfolios do not
+// score identically by construction.
+func (s *PortfolioService) riskScore(portfolio *Portfolio) float64 {
+	if portfolio.TotalValueUSD <= 0 || len(portfolio.Positions) == 0 {
+		return 0
+	}
+
+	// Concentration: the largest single asset's share of the portfolio.
+	largest := 0.0
+	for _, asset := range portfolio.Assets {
+		if asset.ValueUSD > largest {
+			largest = asset.ValueUSD
+		}
+	}
+	concentration := largest / portfolio.TotalValueUSD // 0..1
+
+	// Unpriced holdings understate the total and hide what the user owns.
+	unpriced := float64(s.unpricedCount(portfolio)) / float64(len(portfolio.Positions))
+
+	// LP and lending positions carry protocol risk on top of price risk.
+	protocolRisk := 0.0
+	for _, pos := range portfolio.Positions {
+		switch pos.Type {
+		case "lp", "farm":
+			protocolRisk += 0.8
+		case "lending", "staking":
+			protocolRisk += 0.5
+		}
+	}
+	protocolRisk /= float64(len(portfolio.Positions))
+
+	score := concentration*6.0 + unpriced*2.0 + protocolRisk*2.0
+	if score > 10 {
+		score = 10
+	}
+	return math.Round(score*100) / 100
+}
+
+// diversificationScore reports how evenly value is spread across chains,
+// saturating at ten effective chains. Weighting by value means ten chains where
+// one holds 99% does not score as diversified.
+func (s *PortfolioService) diversificationScore(portfolio *Portfolio) float64 {
+	if portfolio.TotalValueUSD <= 0 || len(portfolio.Chains) == 0 {
+		return 0
+	}
+
+	hhi := 0.0
+	for _, chain := range portfolio.Chains {
+		share := chain.ValueUSD / portfolio.TotalValueUSD
+		hhi += share * share
+	}
+	if hhi <= 0 {
+		return 0
+	}
+
+	// The reciprocal of the Herfindahl index is the effective chain count.
+	effective := 1.0 / hhi
+	score := effective / 10.0 * 100
+	if score > 100 {
+		score = 100
+	}
+	return math.Round(score*100) / 100
+}
+
+// unpricedCount counts positions whose value could not be converted to USD.
+func (s *PortfolioService) unpricedCount(portfolio *Portfolio) int {
+	n := 0
+	for _, pos := range portfolio.Positions {
+		if !pos.Priced {
+			n++
+		}
+	}
+	return n
+}
+
+// pricesStale reports whether the price cache is empty or older than the
+// staleness window, so a client is never shown a total as if it were live.
+func (s *PortfolioService) pricesStale() bool {
+	s.pricesMu.RLock()
+	defer s.pricesMu.RUnlock()
+	if len(s.prices) == 0 || s.pricesAt.IsZero() {
+		return true
+	}
+	return time.Since(s.pricesAt) > priceStaleness
 }
 
 func (s *PortfolioService) calculatePerformance(portfolio *Portfolio, period string) PerformanceReport {
@@ -567,12 +729,12 @@ func (s *PortfolioService) calculatePerformance(portfolio *Portfolio, period str
 	// current value only and zero change rather than fabricating trades, win
 	// rates, or a random-walk history.
 	return PerformanceReport{
-		Period:     period,
-		StartValue: portfolio.TotalValueUSD,
-		EndValue:   portfolio.TotalValueUSD,
-		Change:     0,
+		Period:        period,
+		StartValue:    portfolio.TotalValueUSD,
+		EndValue:      portfolio.TotalValueUSD,
+		Change:        0,
 		ChangePercent: 0,
-		Historical: s.generateHistory(portfolio.UserID, period),
+		Historical:    s.generateHistory(portfolio.UserID, period),
 	}
 }
 
@@ -630,22 +792,22 @@ func (s *PortfolioService) fetchWalletPositions(addresses []string, chains []str
 				if symbol == "" {
 					symbol = strings.ToUpper(chain)
 				}
-				s.pricesMu.RLock()
-				price := s.prices[symbol]
-				s.pricesMu.RUnlock()
+				price, priced := s.priceOf(symbol)
 				positions = append(positions, Position{
 					ID:       fmt.Sprintf("wallet_%s_%s", chain, address),
 					Type:     "wallet",
 					Chain:    chain,
 					Protocol: chain,
+					Symbol:   symbol,
 					Balance:  bal.Balance,
 					ValueUSD: bal.Balance * price,
+					Priced:   priced,
 				})
 			}
 
 			var tokens struct {
 				Tokens []struct {
-					Symbol string  `json:"symbol"`
+					Symbol  string  `json:"symbol"`
 					Balance float64 `json:"balance"`
 				} `json:"tokens"`
 			}
@@ -658,17 +820,17 @@ func (s *PortfolioService) fetchWalletPositions(addresses []string, chains []str
 					continue
 				}
 				symbol := strings.ToUpper(t.Symbol)
-				s.pricesMu.RLock()
-				price := s.prices[symbol]
-				s.pricesMu.RUnlock()
+				price, priced := s.priceOf(symbol)
 				positions = append(positions, Position{
 					ID:       fmt.Sprintf("token_%s_%s_%s", chain, symbol, address),
 					Type:     "wallet",
 					Chain:    chain,
 					Protocol: chain,
 					TokenA:   symbol,
+					Symbol:   symbol,
 					Balance:  t.Balance,
 					ValueUSD: t.Balance * price,
+					Priced:   priced,
 				})
 			}
 		}
