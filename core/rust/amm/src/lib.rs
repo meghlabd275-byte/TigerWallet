@@ -48,8 +48,8 @@ pub mod tick_spacing {
 }
 
 /// Maximum tick value
-pub const MAX_TICK: i32 = 221818;
-pub const MIN_TICK: i32 = -221818;
+pub const MAX_TICK: i32 = 887272;
+pub const MIN_TICK: i32 = -887272;
 
 /// Convert fee basis points to fee tier
 pub fn fee_tier_from_bps(bps: u32) -> u32 {
@@ -70,11 +70,13 @@ pub fn fee_tier_to_percentage(tier: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use num_bigint::BigUint;
+    use num_traits::Zero;
 
     #[test]
     fn test_sqrt_price_from_tick() {
         let sqrt_price = PriceMath::get_sqrt_price_at_tick(0);
-        assert_eq!(sqrt_price, Q96);
+        assert_eq!(sqrt_price, *Q96);
     }
 
     #[test]
@@ -90,8 +92,8 @@ mod tests {
             token0: "0xA".to_string(),
             token1: "0xB".to_string(),
             fee: fee::MEDIUM,
-            tick_spacing: tick_spacing::MEDIUM,
-            sqrt_price_x96: Some(Q96),
+            tick_spacing: tick_spacing::MEDIUM as u32,
+            sqrt_price_x96: Some(Q96.clone()),
         };
         
         let factory = AMMFactory::new();
@@ -106,6 +108,73 @@ mod tests {
         assert_eq!(fee_tier_to_percentage(fee::LOW), 0.05);
         assert_eq!(fee_tier_to_percentage(fee::MEDIUM), 0.3);
         assert_eq!(fee_tier_to_percentage(fee::HIGH), 1.0);
+    }
+
+    fn position(tick_lower: i32, tick_upper: i32, liquidity: u64) -> Position {
+        Position::new(
+            PositionId::new(1),
+            "0xowner".to_string(),
+            "0xA".to_string(),
+            "0xB".to_string(),
+            tick_lower,
+            tick_upper,
+            BigUint::from(liquidity),
+        )
+    }
+
+    #[test]
+    fn position_holds_only_token0_below_its_range() {
+        let pos = position(-100, 100, 1_000_000);
+        // A price below tick_lower is entirely token0.
+        let below = PriceMath::get_sqrt_price_at_tick(-200);
+        let (amount0, amount1) = pos.get_value_at_sqrt_price(&below);
+        assert!(!amount0.is_zero());
+        assert!(amount1.is_zero());
+    }
+
+    #[test]
+    fn position_holds_only_token1_above_its_range() {
+        let pos = position(-100, 100, 1_000_000);
+        // A price above tick_upper is entirely token1.
+        let above = PriceMath::get_sqrt_price_at_tick(200);
+        let (amount0, amount1) = pos.get_value_at_sqrt_price(&above);
+        assert!(amount0.is_zero());
+        assert!(!amount1.is_zero());
+    }
+
+    #[test]
+    fn position_holds_both_tokens_inside_its_range() {
+        let pos = position(-100, 100, 1_000_000);
+        let inside = PriceMath::get_sqrt_price_at_tick(0);
+        let (amount0, amount1) = pos.get_value_at_sqrt_price(&inside);
+        // The price sits exactly in the middle of a symmetric range, so both
+        // sides are non-zero and equal to the full-range halves.
+        assert!(!amount0.is_zero());
+        assert!(!amount1.is_zero());
+    }
+
+    #[test]
+    fn position_value_depends_on_its_liquidity() {
+        // The old get_value returned its arguments unchanged, so liquidity
+        // never affected the result.
+        let small = position(-100, 100, 1_000);
+        let large = position(-100, 100, 1_000_000);
+        let price = PriceMath::get_sqrt_price_at_tick(0);
+
+        let (small0, small1) = small.get_value_at_sqrt_price(&price);
+        let (large0, large1) = large.get_value_at_sqrt_price(&price);
+
+        assert!(large0 > small0);
+        assert!(large1 > small1);
+    }
+
+    #[test]
+    fn an_empty_position_is_worth_nothing() {
+        let pos = position(-100, 100, 0);
+        let price = PriceMath::get_sqrt_price_at_tick(0);
+        let (amount0, amount1) = pos.get_value_at_sqrt_price(&price);
+        assert!(amount0.is_zero());
+        assert!(amount1.is_zero());
     }
 
     #[test]

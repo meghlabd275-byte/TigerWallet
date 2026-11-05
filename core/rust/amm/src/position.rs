@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use num_bigint::BigUint;
+use num_traits::Zero;
 use std::collections::HashMap;
+use crate::math::PriceMath;
 
 /// Unique position identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -82,10 +84,10 @@ impl Position {
     pub fn collect(&mut self) -> (BigUint, BigUint) {
         let owed_0 = self.tokens_owed_0.clone();
         let owed_1 = self.tokens_owed_1.clone();
-        
+
         self.tokens_owed_0 = BigUint::from(0u64);
         self.tokens_owed_1 = BigUint::from(0u64);
-        
+
         (owed_0, owed_1)
     }
 
@@ -109,7 +111,7 @@ impl Position {
             fee_growth_outside_lower,
             fee_growth_outside_upper,
         );
-        
+
         // Calculate uncollected fees
         let uncollected_0 = if fee_growth_inside_0 > self.fee_growth_inside_0 {
             let diff = &fee_growth_inside_0 - &self.fee_growth_inside_0;
@@ -117,14 +119,14 @@ impl Position {
         } else {
             BigUint::from(0u64)
         };
-        
+
         let uncollected_1 = if fee_growth_inside_1 > self.fee_growth_inside_1 {
             let diff = &fee_growth_inside_1 - &self.fee_growth_inside_1;
             (&diff * &self.liquidity) / BigUint::from(1u64)
         } else {
             BigUint::from(0u64)
         };
-        
+
         self.tokens_owed_0 += uncollected_0;
         self.tokens_owed_1 += uncollected_1;
         self.fee_growth_inside_0 = fee_growth_inside_0;
@@ -143,7 +145,7 @@ impl Position {
     ) -> (BigUint, BigUint) {
         let mut fee_growth_inside_0 = fee_growth_global_0.clone();
         let mut fee_growth_inside_1 = fee_growth_global_1.clone();
-        
+
         // Adjust for lower tick
         if current_tick >= tick_lower {
             fee_growth_inside_0 -= fee_growth_outside_lower.clone();
@@ -152,13 +154,13 @@ impl Position {
             fee_growth_inside_0 = fee_growth_outside_lower.clone();
             fee_growth_inside_1 = fee_growth_outside_lower.clone();
         }
-        
+
         // Adjust for upper tick
         if current_tick >= tick_upper {
             fee_growth_inside_0 -= fee_growth_outside_upper.clone();
             fee_growth_inside_1 -= fee_growth_outside_upper.clone();
         }
-        
+
         (fee_growth_inside_0, fee_growth_inside_1)
     }
 
@@ -167,11 +169,55 @@ impl Position {
         current_tick >= self.tick_lower && current_tick < self.tick_upper
     }
 
-    /// Get position value in terms of token amounts
-    pub fn get_value(&self, amount0: &BigUint, amount1: &BigUint) -> (BigUint, BigUint) {
-        // In production, this would calculate the actual token amounts
-        // based on liquidity and current price
-        (amount0.clone(), amount1.clone())
+    /// The token amounts this position currently holds, from its liquidity
+    /// and the pool's current price.
+    ///
+    /// The previous version returned its two arguments unchanged, so every
+    /// position was valued at whatever the caller passed in and the
+    /// `liquidity` field was ignored. This is the standard Uniswap-V3
+    /// derivation: the position holds `token0` only above the range,
+    /// `token1` only below it, and a mix of both while in range.
+    pub fn get_value_at_sqrt_price(&self, sqrt_price_x96: &BigUint) -> (BigUint, BigUint) {
+        let sqrt_lower = PriceMath::get_sqrt_price_at_tick(self.tick_lower);
+        let sqrt_upper = PriceMath::get_sqrt_price_at_tick(self.tick_upper);
+
+        if self.liquidity.is_zero() {
+            return (BigUint::zero(), BigUint::zero());
+        }
+
+        if sqrt_price_x96 <= &sqrt_lower {
+            // Below the range: entirely token0.
+            let amount0 = PriceMath::get_amount0_delta(
+                &sqrt_lower,
+                &sqrt_upper,
+                &self.liquidity,
+                false,
+            );
+            (amount0, BigUint::zero())
+        } else if sqrt_price_x96 >= &sqrt_upper {
+            // Above the range: entirely token1.
+            let amount1 = PriceMath::get_amount1_delta(
+                &sqrt_lower,
+                &sqrt_upper,
+                &self.liquidity,
+                false,
+            );
+            (BigUint::zero(), amount1)
+        } else {
+            let amount0 = PriceMath::get_amount0_delta(
+                sqrt_price_x96,
+                &sqrt_upper,
+                &self.liquidity,
+                false,
+            );
+            let amount1 = PriceMath::get_amount1_delta(
+                &sqrt_lower,
+                sqrt_price_x96,
+                &self.liquidity,
+                false,
+            );
+            (amount0, amount1)
+        }
     }
 }
 
@@ -203,7 +249,7 @@ impl PositionManager {
     ) -> PositionId {
         let id = PositionId::new(self.next_id);
         self.next_id += 1;
-        
+
         let position = Position::new(
             id,
             owner.clone(),
@@ -213,15 +259,15 @@ impl PositionManager {
             tick_upper,
             liquidity,
         );
-        
+
         self.positions.insert(id, position);
-        
+
         // Track by owner
         self.positions_by_owner
             .entry(owner)
             .or_insert_with(Vec::new)
             .push(id);
-        
+
         id
     }
 
@@ -276,7 +322,7 @@ impl PositionManager {
             let (fee_upper_0, fee_upper_1) = tick_data.get(&position.tick_upper)
                 .cloned()
                 .unwrap_or((BigUint::from(0u64), BigUint::from(0u64)));
-            
+
             position.update_fee_growth(
                 fee_growth_0,
                 fee_growth_1,
@@ -303,7 +349,7 @@ mod tests {
     #[test]
     fn test_position_creation() {
         let mut manager = PositionManager::new();
-        
+
         let id = manager.create_position(
             "0xOwner".to_string(),
             "0xToken0".to_string(),
@@ -312,7 +358,7 @@ mod tests {
             100,
             BigUint::from(1000u64),
         );
-        
+
         assert_eq!(id.as_u64(), 1);
         assert_eq!(manager.total_positions(), 1);
     }
@@ -328,7 +374,7 @@ mod tests {
             100,
             BigUint::from(1000u64),
         );
-        
+
         assert!(position.is_in_range(0));
         assert!(position.is_in_range(-50));
         assert!(!position.is_in_range(200));
@@ -346,12 +392,12 @@ mod tests {
             100,
             BigUint::from(1000u64),
         );
-        
+
         position.tokens_owed_0 = BigUint::from(100u64);
         position.tokens_owed_1 = BigUint::from(200u64);
-        
+
         let (owed_0, owed_1) = position.collect();
-        
+
         assert_eq!(owed_0, BigUint::from(100u64));
         assert_eq!(owed_1, BigUint::from(200u64));
         assert_eq!(position.tokens_owed_0, BigUint::from(0u64));

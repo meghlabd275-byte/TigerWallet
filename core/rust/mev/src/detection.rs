@@ -123,7 +123,7 @@ impl Default for AttackDetector {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransactionData {
     pub from: String,
     pub to: String,
@@ -131,6 +131,11 @@ pub struct TransactionData {
     pub value: String,
     pub gas_price: String,
     pub hash: Option<String>,
+    /// Account nonce; `None` means the relay must resolve it.
+    #[serde(default)]
+    pub nonce: Option<u64>,
+    #[serde(default)]
+    pub chain_id: Option<u64>,
 }
 
 #[cfg(test)]
@@ -149,6 +154,8 @@ mod tests {
                 value: "0".to_string(),
                 gas_price: "100".to_string(),
                 hash: Some("0x1".to_string()),
+            
+                ..Default::default()
             },
             TransactionData {
                 from: "0xB".to_string(),
@@ -157,6 +164,8 @@ mod tests {
                 value: "0".to_string(),
                 gas_price: "50".to_string(),
                 hash: Some("0x2".to_string()),
+            
+                ..Default::default()
             },
             TransactionData {
                 from: "0xA".to_string(),
@@ -165,6 +174,8 @@ mod tests {
                 value: "0".to_string(),
                 gas_price: "100".to_string(),
                 hash: Some("0x3".to_string()),
+            
+                ..Default::default()
             },
         ];
         

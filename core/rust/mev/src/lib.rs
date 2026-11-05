@@ -9,8 +9,16 @@
 //! - Bundle simulation
 //! - Price impact analysis
 
+pub mod bundle;
+pub mod detection;
+pub mod protection;
+
+pub use bundle::{BundleBuilder, BundleResult, BundleTransaction};
+pub use detection::{AttackDetector, AttackType, Severity, SuspiciousPattern, TransactionData};
+pub use protection::{BatchProtectionResult, MEVConfig, MEVProtectionService, ProtectionResult};
+
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 

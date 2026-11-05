@@ -110,8 +110,13 @@ impl TickMap {
     }
 
     /// Insert or update a tick
-    pub fn insert(&mut self, tick: Tick) {
+    pub fn insert(&mut self, mut tick: Tick) {
         let index = tick.index;
+        // A tick held by the map is an initialized tick: `is_initialized`,
+        // `next_initialized_tick` and `prev_initialized_tick` all filter on
+        // this flag, and `Tick::new` leaves it false. Without setting it here
+        // the map reported every inserted tick as absent.
+        tick.initialized = true;
         self.ticks.insert(index, tick.clone());
         self.tick_data.insert(index, tick);
     }

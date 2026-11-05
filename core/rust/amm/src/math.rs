@@ -149,39 +149,141 @@ impl BitMath {
 pub struct PriceMath;
 
 impl PriceMath {
-    /// Get sqrt price from tick
+    /// sqrtPriceX96 for a tick, the Uniswap-V3 TickMath algorithm.
+    ///
+    /// The previous implementation started `ratio` at 2^96 and divided by 2^96
+    /// after every multiply, and inverted the ratio for negative ticks. Both
+    /// are wrong: the constants below are Q128 values, so the running product
+    /// has to start at 2^128 and be shifted right by 128, and it is the
+    /// *positive* branch that inverts (through `MAX_UINT256 / ratio`).
+    ///
+    /// It also passed byte strings still carrying their `0x` prefix to
+    /// `BigUint::parse_bytes`, which returns `None` for those, so every call
+    /// panicked on `unwrap()`.
     pub fn get_sqrt_price_at_tick(tick: i32) -> BigUint {
-        let abs_tick = tick.abs() as u32;
-        let mut ratio = BigUint::from(1u64) << 96;
-        
-        // Binary decomposition of tick
-        if abs_tick & 0x01 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffcb933bd6fad37aa2d162d", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x02 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffffffffffffffe5f83b8d41aecc0000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x04 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xffffffffffff993a3dc967a00048000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x08 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xffffffffffeb1c7cd700006c6800000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x10 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffe910d040000000000000000000000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x20 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffc6ecf00000000000000000000000000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x40 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffe8898000000000000000000000000000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x80 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffc9b180000000000000000000000000000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x100 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffc979d00000000000000000000000000000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        if abs_tick & 0x200 != 0 { ratio = ratio * BigUint::parse_bytes(b"0xfffc86c8000000000000000000000000000000000", 16).unwrap() / (BigUint::from(1u64) << 96); }
-        
-        if tick >= 0 {
-            ratio
+        let abs_tick = tick.unsigned_abs();
+        let mut ratio = BigUint::one() << 128u32;
+
+        // Each constant is 1 / 1.0001^(2^i) in Q128, straight from the
+        // reference implementation.
+        const RATIO_MULTIPLIERS: [&[u8]; 20] = [
+            b"fffcb933bd6fad37aa2d162d1a594001",
+            b"fff97272373d413259a46990580e213a",
+            b"fff2e50f5f656932ef12357cf3c7fdcc",
+            b"ffe5caca7e10e4e61c3624eaa0941cd0",
+            b"ffcb9843d60f6159c9db58835c926644",
+            b"ff973b41fa98c081472e6896dfb254c0",
+            b"ff2ea16466c96a3843ec78b326b52861",
+            b"fe5dee046a99a2a811c461f1969c3053",
+            b"fcbe86c7900a88aedcffc83b479aa3a4",
+            b"f987a7253ac413176f2b074cf7815e54",
+            b"f3392b0822b70005940c7a398e4b70f3",
+            b"e7159475a2c29b7443b29c7fa6e889d9",
+            b"d097f3bdfd2022b8845ad8f792aa5825",
+            b"a9f746462d870fdf8a65dc1f90e061e5",
+            b"70d869a156d2a1b890bb3df62baf32f7",
+            b"31be135f97d08fd981231505542fcfa6",
+            b"09aa508b5b7a84e1c677de54f3e99bc9",
+            b"005d6af8dedb81196699c329225ee604",
+            b"0002216e584f5fa1ea926041bedfe98",
+            b"000048a170391f7dc42444e8fa2",
+        ];
+
+        for (bit, encoded) in RATIO_MULTIPLIERS.iter().enumerate() {
+            if abs_tick & (1u32 << bit) != 0 {
+                let multiplier = BigUint::parse_bytes(encoded, 16)
+                    .expect("ratio multipliers are valid hex");
+                ratio = (ratio * multiplier) >> 128u32;
+            }
+        }
+
+        if tick > 0 {
+            ratio = &*MAX_UINT256 / ratio;
+        }
+
+        // Q128.128 -> Q128.96, rounding up.
+        let shifted = &ratio >> 32u32;
+        let remainder_mask = (BigUint::one() << 32u32) - BigUint::one();
+        if (&ratio & &remainder_mask).is_zero() {
+            shifted
         } else {
-            Q96.clone() / ratio
+            shifted + BigUint::one()
         }
     }
 
-    /// Get tick from sqrt price
+    /// The greatest tick whose sqrt price is at or below `sqrt_price_x96`.
+    ///
+    /// This is the Uniswap-V3 `getTickAtSqrtRatio` algorithm. The previous
+    /// version derived the tick from the bit length alone — `(msb - 96) * 2` —
+    /// which is off by roughly a factor of 6900: it reported tick 0 for
+    /// `2^96 * 1.0001^100` instead of 100, so every position was compared
+    /// against the wrong price.
     pub fn get_tick_at_sqrt_price(sqrt_price_x96: &BigUint) -> i32 {
-        if sqrt_price_x96 < &*Q96 {
-            let ratio = &*Q96 / sqrt_price_x96;
-            let msb = BitMath::most_significant_bit(&ratio);
-            -((msb as i32 - 96) * 2 + 1)
+        if sqrt_price_x96.is_zero() {
+            return TickMath::MIN_TICK;
+        }
+
+        // Clamp to the valid tick range. The reference contract reverts below
+        // MIN_SQRT_RATIO; returning an i32 we cannot, and the intermediate
+        // estimate can land one tick outside the range, which would be
+        // rejected by every caller that validates ticks.
+        if *sqrt_price_x96 < Self::get_sqrt_price_at_tick(TickMath::MIN_TICK) {
+            return TickMath::MIN_TICK;
+        }
+        if *sqrt_price_x96 >= Self::get_sqrt_price_at_tick(TickMath::MAX_TICK) {
+            return TickMath::MAX_TICK;
+        }
+
+        // Work in Q128.128 so the integer part of log2 lands in the high bits.
+        let ratio = sqrt_price_x96 << 32u32;
+        let msb = BitMath::most_significant_bit(&ratio);
+
+        // Normalise r into [2^127, 2^128).
+        let mut r: BigUint = if msb >= 128 {
+            &ratio >> (msb - 127)
         } else {
-            let msb = BitMath::most_significant_bit(sqrt_price_x96);
-            (msb as i32 - 96) * 2
+            &ratio << (127 - msb)
+        };
+
+        // log2(ratio) - 128, in Q64.64.
+        let mut log_2: BigInt = BigInt::from(msb as i64 - 128) << 64u32;
+
+        // Fourteen more bits of the fractional part.
+        for i in (50u32..=63u32).rev() {
+            r = (&r * &r) >> 127u32;
+            let bit = if (&r >> 128u32).is_zero() { 0u32 } else { 1u32 };
+            log_2 |= BigInt::from(bit) << i;
+            r >>= bit;
+        }
+
+        // Change of base to sqrt(1.0001), still Q128.128.
+        let log_sqrt10001 = &log_2
+            * BigInt::parse_bytes(b"255738958999603826347141", 10)
+                .expect("constant is valid decimal");
+
+        let low_offset = BigInt::parse_bytes(b"3402992956809132418596140100660247210", 10)
+            .expect("constant is valid decimal");
+        let high_offset = BigInt::parse_bytes(
+            b"291339464771989622907027621153398088495",
+            10,
+        )
+        .expect("constant is valid decimal");
+
+        let tick_low = ((&log_sqrt10001 - low_offset) >> 128u32)
+            .to_i32()
+            .unwrap_or(TickMath::MIN_TICK);
+        let tick_high = ((&log_sqrt10001 + high_offset) >> 128u32)
+            .to_i32()
+            .unwrap_or(TickMath::MAX_TICK);
+
+        // `log_sqrt10001` is only accurate to about one tick, so confirm the
+        // upper candidate against the exact price.
+        if tick_low == tick_high {
+            tick_low
+        } else if Self::get_sqrt_price_at_tick(tick_high) <= *sqrt_price_x96 {
+            tick_high
+        } else {
+            tick_low
         }
     }
 
@@ -287,9 +389,9 @@ impl TickMath {
     }
 
     /// Minimum tick
-    pub const MIN_TICK: i32 = -221818;
+    pub const MIN_TICK: i32 = -887272;
     /// Maximum tick
-    pub const MAX_TICK: i32 = 221818;
+    pub const MAX_TICK: i32 = 887272;
 }
 
 #[cfg(test)]
@@ -306,9 +408,86 @@ mod tests {
         assert_eq!(result, BigUint::from(10u64));
     }
 
+    /// Values from the Uniswap-V3 reference `TickMath` test vectors.
+    #[test]
+    fn tick_math_matches_uniswap_v3_reference_vectors() {
+        let q96 = BigUint::parse_bytes(b"79228162514264337593543950336", 10).unwrap();
+
+        // tick 0 is exactly 2^96.
+        assert_eq!(PriceMath::get_sqrt_price_at_tick(0), q96);
+
+        // The documented extremes of the tick range.
+        assert_eq!(
+            PriceMath::get_sqrt_price_at_tick(887272),
+            BigUint::parse_bytes(
+                b"1461446703485210103287273052203988822378723970342",
+                10
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            PriceMath::get_sqrt_price_at_tick(-887272),
+            BigUint::parse_bytes(b"4295128739", 10).unwrap()
+        );
+
+        // tick 1 is 2^96 * sqrt(1.0001) = 79232123823359799118286999568.
+        assert_eq!(
+            PriceMath::get_sqrt_price_at_tick(1),
+            BigUint::parse_bytes(b"79232123823359799118286999568", 10).unwrap()
+        );
+        // tick -1 is 2^96 / sqrt(1.0001) = 79224201403219477170569942574.
+        assert_eq!(
+            PriceMath::get_sqrt_price_at_tick(-1),
+            BigUint::parse_bytes(b"79224201403219477170569942574", 10).unwrap()
+        );
+    }
+
+    #[test]
+    fn tick_at_sqrt_price_matches_uniswap_v3_reference_vectors() {
+        let q96 = BigUint::parse_bytes(b"79228162514264337593543950336", 10).unwrap();
+
+        assert_eq!(PriceMath::get_tick_at_sqrt_price(&q96), 0);
+        assert_eq!(
+            PriceMath::get_tick_at_sqrt_price(
+                &BigUint::parse_bytes(b"79232123823359799118286999568", 10).unwrap()
+            ),
+            1
+        );
+        assert_eq!(
+            PriceMath::get_tick_at_sqrt_price(
+                &BigUint::parse_bytes(b"79224201403219477170569942574", 10).unwrap()
+            ),
+            -1
+        );
+        // Below the minimum price the tick clamps to MIN_TICK.
+        assert_eq!(
+            PriceMath::get_tick_at_sqrt_price(&BigUint::from(4295128738u64)),
+            TickMath::MIN_TICK
+        );
+    }
+
+    #[test]
+    fn tick_round_trips_across_the_whole_range() {
+        // Every tick must map to the greatest tick not above its price, so
+        // round-tripping through the price returns the same tick.
+        for tick in [
+            -887272, -100000, -1000, -100, -1, 0, 1, 100, 1000, 100000, 887272,
+        ] {
+            let price = PriceMath::get_sqrt_price_at_tick(tick);
+            assert_eq!(
+                PriceMath::get_tick_at_sqrt_price(&price),
+                tick,
+                "round trip failed for tick {tick}"
+            );
+        }
+    }
+
     #[test]
     fn test_msb() {
-        assert_eq!(BitMath::most_significant_bit(&BigUint::from(1u64) << 10), 10);
+        assert_eq!(
+            BitMath::most_significant_bit(&(BigUint::from(1u64) << 10u32)),
+            10
+        );
         assert_eq!(BitMath::most_significant_bit(&BigUint::from(1u64)), 0);
     }
 
@@ -321,7 +500,7 @@ mod tests {
     #[test]
     fn test_sqrt_price_at_tick() {
         let sqrt_price = PriceMath::get_sqrt_price_at_tick(0);
-        assert_eq!(sqrt_price, Q96);
+        assert_eq!(sqrt_price, *Q96);
     }
 
     #[test]
