@@ -29,3 +29,19 @@ target_link_libraries(tiger_admin_cpp
 install(TARGETS tiger_admin_cpp RUNTIME DESTINATION bin)
 install(DIRECTORY include/ DESTINATION include/tiger_admin FILES_MATCHING PATTERN "*.hpp")
 
+
+# Tests for the security primitives. Built only when testing is enabled so the
+# production target stays free of test code.
+enable_testing()
+
+add_executable(tiger_admin_security_tests
+    tests/test_admin_security.cpp
+    include/admin_security.cpp
+    include/admin_logger.cpp
+)
+target_include_directories(tiger_admin_security_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(tiger_admin_security_tests
+    Threads::Threads
+    OpenSSL::Crypto
+)
+add_test(NAME admin_security COMMAND tiger_admin_security_tests)

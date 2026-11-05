@@ -618,22 +618,6 @@ HttpResponse AdminHandler::proxy_to_admin_go(const HttpRequest& req,
 }
 
 // Helper methods
-std::optional<Admin> AdminHandler::get_current_admin(const HttpRequest& req) {
-    auto auth_header = req.get_header("Authorization");
-    if (!auth_header) return std::nullopt;
-    
-    std::string token = auth_header.value();
-    if (token.rfind("Bearer ", 0) == 0) {
-        token = token.substr(7);
-    }
-    
-    return AuthService::instance().validate_token(token);
-}
-
-bool AdminHandler::has_permission(const Admin& admin, const std::string& permission) {
-    return std::find(admin.permissions.begin(), admin.permissions.end(), permission) != admin.permissions.end();
-}
-
 HttpResponse AdminHandler::unauthorized(const std::string& message) {
     return HttpResponse::error(HttpStatus::UNAUTHORIZED, message);
 }

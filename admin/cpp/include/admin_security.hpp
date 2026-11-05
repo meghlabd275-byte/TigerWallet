@@ -63,7 +63,10 @@ private:
     std::string aes_encrypt(const std::string& plaintext);
     std::string aes_decrypt(const std::string& ciphertext);
 
+    // Set by initialize() from the environment. Encryption fails closed when
+    // this is empty rather than falling back to a committed key.
     std::string encryption_key_;
+    bool encryption_ready_ = false;
 };
 
 struct FeatureFlag {

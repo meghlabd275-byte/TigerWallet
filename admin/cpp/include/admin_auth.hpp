@@ -102,9 +102,10 @@ public:
     std::optional<Admin> get_admin_by_email(const std::string& email);
     std::vector<Admin> list_admins(const std::string& role, bool active_only);
 
-    Admin create_admin(const std::string& username, const std::string& email,
-                       const std::string& password, AdminRole role,
-                       const std::vector<std::string>& permissions);
+    std::optional<Admin> create_admin(const std::string& username,
+                                      const std::string& email,
+                                      const std::string& password, AdminRole role,
+                                      const std::vector<std::string>& permissions);
     bool update_admin(AdminID id, const std::string& username,
                       const std::string& email, AdminRole role);
     bool delete_admin(AdminID id);

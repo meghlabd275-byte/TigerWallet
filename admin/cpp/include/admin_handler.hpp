@@ -192,8 +192,6 @@ public:
     HttpResponse handle_health(const HttpRequest& req);
 
     // Helpers
-    std::optional<Admin> get_current_admin(const HttpRequest& req);
-    bool has_permission(const Admin& admin, const std::string& permission);
 
     HttpResponse unauthorized(const std::string& message);
     HttpResponse forbidden(const std::string& message);
