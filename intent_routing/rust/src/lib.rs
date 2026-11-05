@@ -1,5 +1,5 @@
 //! TigerWallet Intent Routing Service
-//! 
+//!
 //! Intent-based cross-chain trading with solver network integration
 
 use serde::{Deserialize, Serialize};
@@ -69,7 +69,7 @@ impl Token {
             decimals: 18,
         }
     }
-    
+
     pub fn usdc(chain: ChainId) -> Self {
         Self {
             chain,
@@ -134,10 +134,67 @@ pub struct Solver {
     pub id: String,
     pub name: String,
     pub supported_chains: Vec<ChainId>,
+    /// Chains this solver has advertised it can pay out on.
+    pub payout_chains: Vec<ChainId>,
+    /// Tokens this solver has advertised liquidity for, as
+    /// (chain, lowercase address) pairs.
+    pub liquidity: Vec<(ChainId, String)>,
     pub fee_bps: u16, // basis points
     pub avg_fill_time_ms: u64,
     pub success_rate: f64,
     pub is_active: bool,
+}
+
+impl Solver {
+    /// Returns true when this solver can serve `from` on `to_chain`.
+    pub fn supports(&self, from: &Token, to_chain: ChainId) -> bool {
+        self.is_active
+            && self.supported_chains.contains(&to_chain)
+            && self.payout_chains.contains(&to_chain)
+            && self.has_liquidity(from)
+    }
+
+    fn has_liquidity(&self, token: &Token) -> bool {
+        let address = token.address.to_lowercase();
+        self.liquidity
+            .iter()
+            .any(|(chain, a)| *chain == token.chain && *a == address)
+    }
+}
+
+/// Prices the router holds, as USD per whole token.
+///
+/// Quotes are built from these. The previous implementation multiplied the
+/// input amount by 1000, so every quote asserted an arbitrary exchange rate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PriceFeed {
+    pub prices: HashMap<(ChainId, String), f64>,
+}
+
+impl PriceFeed {
+    pub fn new() -> Self {
+        Self {
+            prices: HashMap::new(),
+        }
+    }
+
+    pub fn set(&mut self, chain: ChainId, address: &str, usd_per_token: f64) {
+        self.prices
+            .insert((chain, address.to_lowercase()), usd_per_token);
+    }
+
+    pub fn get(&self, chain: ChainId, address: &str) -> Option<f64> {
+        self.prices
+            .get(&(chain, address.to_lowercase()))
+            .copied()
+            .filter(|p| p.is_finite() && *p > 0.0)
+    }
+}
+
+impl Default for PriceFeed {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Quote request
@@ -198,22 +255,136 @@ pub struct IntentRouter {
     intents: Arc<RwLock<HashMap<String, Intent>>>,
     solvers: Arc<RwLock<HashMap<String, Solver>>>,
     quotes: Arc<RwLock<HashMap<String, QuoteResponse>>>,
+    prices: Arc<RwLock<PriceFeed>>,
+    /// The verifying contract's EIP-712 domain separator.
+    domain_separator: [u8; 32],
+    /// keccak256 of the Intent struct's type string.
+    intent_type_hash: [u8; 32],
 }
 
 impl IntentRouter {
-    pub fn new() -> Self {
+    /// Builds a router that verifies intent signatures against
+    /// `domain_separator` and `intent_type_hash`.
+    pub fn new(domain_separator: [u8; 32], intent_type_hash: [u8; 32]) -> Self {
         Self {
             intents: Arc::new(RwLock::new(HashMap::new())),
             solvers: Arc::new(RwLock::new(HashMap::new())),
             quotes: Arc::new(RwLock::new(HashMap::new())),
+            prices: Arc::new(RwLock::new(PriceFeed::new())),
+            domain_separator,
+            intent_type_hash,
         }
     }
 
-    /// Register a new intent
+    /// The EIP-712 domain separator this router verifies against.
+    pub fn domain_separator(&self) -> [u8; 32] {
+        self.domain_separator
+    }
+
+    /// The EIP-712 type hash this router verifies against.
+    pub fn intent_type_hash(&self) -> [u8; 32] {
+        self.intent_type_hash
+    }
+
+    /// Publishes a price used to quote intents.
+    pub async fn set_price(&self, chain: ChainId, address: &str, usd_per_token: f64) {
+        self.prices
+            .write()
+            .await
+            .set(chain, address, usd_per_token);
+    }
+
+    /// Registers a new intent.
+    ///
+    /// The intent's signature is verified against its `owner`, its terms are
+    /// checked, and an id already in use is rejected. The previous version
+    /// stored whatever it was given, so any caller could register an intent in
+    /// another user's name, with an arbitrary id, and overwrite an existing
+    /// intent.
     pub async fn register_intent(&self, intent: Intent) -> Result<(), String> {
+        validate_intent(&intent)?;
+        self.verify_intent_signature(&intent)?;
+
         let mut intents = self.intents.write().await;
+        if intents.contains_key(&intent.id) {
+            return Err(format!("intent {} already exists", intent.id));
+        }
         intents.insert(intent.id.clone(), intent);
         Ok(())
+    }
+
+    /// Recovers the signer from the intent's EIP-712 signature and checks that
+    /// it is the intent's owner.
+    fn verify_intent_signature(&self, intent: &Intent) -> Result<(), String> {
+        use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
+        use sha3::{Digest, Keccak256};
+
+        let owner = parse_address(&intent.owner)
+            .ok_or_else(|| format!("owner {:?} is not an address", intent.owner))?;
+
+        if intent.signature.len() != 65 {
+            return Err(format!(
+                "signature must be 65 bytes, got {}",
+                intent.signature.len()
+            ));
+        }
+
+        let struct_hash = self.intent_struct_hash(intent)?;
+
+        let mut preimage = Vec::with_capacity(66);
+        preimage.extend_from_slice(&[0x19, 0x01]);
+        preimage.extend_from_slice(&self.domain_separator);
+        preimage.extend_from_slice(&struct_hash);
+        let digest = Keccak256::digest(&preimage);
+
+        let signature = Signature::from_slice(&intent.signature[..64])
+            .map_err(|e| format!("not a valid ECDSA signature: {}", e))?;
+
+        let v = intent.signature[64];
+        let recovery_id = match v {
+            0 | 1 => RecoveryId::from_byte(v).ok_or("invalid recovery id")?,
+            27 | 28 => RecoveryId::from_byte(v - 27).ok_or("invalid recovery id")?,
+            other => return Err(format!("signature v value {} is not valid", other)),
+        };
+
+        let recovered = VerifyingKey::recover_from_prehash(&digest, &signature, recovery_id)
+            .map_err(|e| format!("signature could not be recovered: {}", e))?;
+
+        let point = recovered.to_encoded_point(false);
+        let hash = Keccak256::digest(&point.as_bytes()[1..]);
+        if hash[12..] != owner {
+            return Err(format!(
+                "signature was produced by 0x{}, not by {}",
+                hex::encode(&hash[12..]),
+                intent.owner
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Builds the EIP-712 struct hash covering the intent's terms.
+    fn intent_struct_hash(&self, intent: &Intent) -> Result<[u8; 32], String> {
+        use sha3::{Digest, Keccak256};
+
+        let owner = parse_address(&intent.owner)
+            .ok_or_else(|| format!("owner {:?} is not an address", intent.owner))?;
+
+        let mut encoded = Vec::with_capacity(32 * 10);
+        encoded.extend_from_slice(&self.intent_type_hash);
+
+        let mut owner_word = [0u8; 32];
+        owner_word[12..].copy_from_slice(&owner);
+        encoded.extend_from_slice(&owner_word);
+
+        encoded.extend_from_slice(&word_from_u256(intent.from_amount));
+        encoded.extend_from_slice(&word_from_u256(intent.min_out_amount));
+        encoded.extend_from_slice(&word_from_u64(intent.to_chain as u64));
+        encoded.extend_from_slice(&word_from_u64(intent.deadline));
+        encoded.extend_from_slice(&word_from_u64(intent.fill_deadline));
+        encoded.extend_from_slice(&word_from_u64(intent.nonce));
+
+        Ok(Keccak256::digest(&encoded).into())
     }
 
     /// Get intent by ID
@@ -222,28 +393,49 @@ impl IntentRouter {
         intents.get(id).cloned()
     }
 
-    /// Cancel intent
+    /// Cancels an intent on its owner's instruction.
+    ///
+    /// The owner is compared case-insensitively, since a checksummed address
+    /// and a lowercase one are the same account. An intent that has already
+    /// been filled cannot be cancelled.
     pub async fn cancel_intent(&self, id: &str, owner: &str) -> Result<(), String> {
         let mut intents = self.intents.write().await;
-        if let Some(intent) = intents.get_mut(id) {
-            if intent.owner != owner {
-                return Err("Not authorized".to_string());
+        let intent = intents
+            .get_mut(id)
+            .ok_or_else(|| format!("intent {} not found", id))?;
+
+        if intent.owner.to_lowercase() != owner.to_lowercase() {
+            return Err("Not authorized".to_string());
+        }
+
+        match intent.status {
+            IntentStatus::Open | IntentStatus::PartiallyFilled => {
+                intent.status = IntentStatus::Cancelled;
+                intent.updated_at = now_secs();
+                Ok(())
             }
-            intent.status = IntentStatus::Cancelled;
-            Ok(())
-        } else {
-            Err("Intent not found".to_string())
+            other => Err(format!("intent is {:?} and cannot be cancelled", other)),
         }
     }
 
-    /// Register solver
+    /// Registers a solver.
     pub async fn register_solver(&self, solver: Solver) -> Result<(), String> {
+        if solver.id.trim().is_empty() {
+            return Err("solver id must not be empty".to_string());
+        }
+        if solver.fee_bps > 10_000 {
+            return Err("solver fee_bps cannot exceed 10000".to_string());
+        }
+        if !solver.success_rate.is_finite() || !(0.0..=1.0).contains(&solver.success_rate) {
+            return Err("solver success_rate must be between 0 and 1".to_string());
+        }
+
         let mut solvers = self.solvers.write().await;
         solvers.insert(solver.id.clone(), solver);
         Ok(())
     }
 
-    /// Get available solvers for a chain
+    /// Returns the solvers that can serve a route into `chain`.
     pub async fn get_solvers(&self, chain: ChainId) -> Vec<Solver> {
         let solvers = self.solvers.read().await;
         solvers
@@ -253,70 +445,232 @@ impl IntentRouter {
             .collect()
     }
 
-    /// Get quote from solvers
+    /// Returns the solvers that can quote `from` into `to_chain`.
+    pub async fn get_solvers_for(&self, from: &Token, to_chain: ChainId) -> Vec<Solver> {
+        let solvers = self.solvers.read().await;
+        solvers
+            .values()
+            .filter(|s| s.supports(from, to_chain))
+            .cloned()
+            .collect()
+    }
+
+    /// Quotes a swap against the router's price feed and the solvers that can
+    /// actually serve the route.
+    ///
+    /// The previous version returned `from_amount * 1000` as the output for
+    /// every pair and every solver, with a hardcoded price impact and gas
+    /// estimate. Nothing here invents a rate: if no price is known for either
+    /// token, the quote fails.
     pub async fn get_quote(&self, request: QuoteRequest) -> Result<QuoteResponse, String> {
+        if request.from_amount == 0 {
+            return Err("from_amount must be greater than zero".to_string());
+        }
+        if request.slippage_bps == 0 || request.slippage_bps > 5_000 {
+            return Err("slippage_bps must be between 1 and 5000".to_string());
+        }
+
         let solvers = self.get_solvers(request.to_chain).await;
-        
         if solvers.is_empty() {
             return Err("No solvers available for this route".to_string());
         }
 
-        // In production, would query multiple solvers
-        // For demo, return mock quote
+        let (from_price, to_price) = {
+            let prices = self.prices.read().await;
+            let from = prices
+                .get(request.from_token.chain, &request.from_token.address)
+                .ok_or_else(|| {
+                    format!(
+                        "no price for {} on {:?}",
+                        request.from_token.symbol, request.from_token.chain
+                    )
+                })?;
+            let to = prices
+                .get(request.to_token.chain, &request.to_token.address)
+                .ok_or_else(|| {
+                    format!(
+                        "no price for {} on {:?}",
+                        request.to_token.symbol, request.to_token.chain
+                    )
+                })?;
+            (from, to)
+        };
+
+        // The conversion is done in integers. An 18-decimal token has more
+        // precision than an f64 can carry, so routing the amount through a
+        // double loses base units: 0.4 WETH came out one unit high.
+        //
+        // Prices are carried at PRICE_SCALE decimal places, which is ample for
+        // a USD quote and keeps every intermediate a u128.
+        let price_from = scale_price(from_price)?;
+        let price_to = scale_price(to_price)?;
+        if price_to == 0 {
+            return Err("output token price rounds to zero at this precision".to_string());
+        }
+
+        let from_scale = pow10(request.from_token.decimals)?;
+        let to_scale = pow10(request.to_token.decimals)?;
+
+        // USD value of the input, in units of 10^-PRICE_SCALE.
+        let value_usd_scaled = request
+            .from_amount
+            .checked_mul(price_from)
+            .ok_or("input amount is too large to quote")?
+            .checked_div(from_scale)
+            .ok_or("input amount is too large to quote")?;
+
+        // Gross output in base units, before any solver fee.
+        let gross_out = value_usd_scaled
+            .checked_mul(to_scale)
+            .ok_or("output amount is too large to quote")?
+            .checked_div(price_to)
+            .ok_or("output amount is too large to quote")?;
+
+        if gross_out == 0 {
+            return Err("input is too small to produce any output".to_string());
+        }
+
+        let now = now_secs();
+        let mut quotes = Vec::with_capacity(solvers.len());
+
+        for solver in &solvers {
+            // A solver's fee is taken from the output.
+            let fee = gross_out
+                .checked_mul(solver.fee_bps as u128)
+                .ok_or("output amount is too large to quote")?
+                / 10_000;
+            let net = gross_out.saturating_sub(fee);
+            if net == 0 {
+                continue;
+            }
+
+            quotes.push(SolverQuote {
+                solver: solver.name.clone(),
+                to_amount: net,
+                gas_estimate: estimate_gas(request.to_chain, request.to_token.chain),
+                fees: fee,
+                valid_until: now + QUOTE_TTL_SECONDS,
+            });
+        }
+
+        if quotes.is_empty() {
+            return Err("every solver's fee exceeds the output amount".to_string());
+        }
+
+        // The headline quote is the best net output, not simply the first.
+        quotes.sort_by(|a, b| b.to_amount.cmp(&a.to_amount));
+        let best = &quotes[0];
+
+        // Price impact is the shortfall against the mid-market rate, in basis
+        // points, and is derived rather than asserted.
+        let price_impact_bps = if gross_out == 0 {
+            0
+        } else {
+            let shortfall = gross_out - best.to_amount;
+            ((shortfall as u128 * 10_000) / gross_out) as i32
+        };
+
         let quote = QuoteResponse {
             from_token: request.from_token.clone(),
             to_token: request.to_token.clone(),
             from_amount: request.from_amount,
-            to_amount: request.from_amount * 1000, // Mock calculation
-            price_impact_bps: -10,
-            gas_estimate: 150000,
-            route: vec![],
-            valid_until: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() + 60,
-            quotes: solvers
-                .iter()
-                .map(|s| SolverQuote {
-                    solver: s.name.clone(),
-                    to_amount: request.from_amount * 1000,
-                    gas_estimate: 150000,
-                    fees: request.from_amount * s.fee_bps as u128 / 10000,
-                    valid_until: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() + 60,
-                })
-                .collect(),
+            to_amount: best.to_amount,
+            price_impact_bps,
+            gas_estimate: best.gas_estimate,
+            route: Vec::new(),
+            valid_until: now + QUOTE_TTL_SECONDS,
+            quotes,
         };
 
-        // Cache quote
-        let quote_id = format!("{}-{}-{}", request.from_token.address, request.to_token.address, request.from_amount);
-        let mut quotes = self.quotes.write().await;
-        quotes.insert(quote_id, quote.clone());
+        let quote_id = quote_cache_key(&request);
+        self.quotes.write().await.insert(quote_id, quote.clone());
 
         Ok(quote)
     }
 
-    /// Fill intent (called by solver)
-    pub async fn fill_intent(&self, intent_id: &str, solution: SolverSolution) -> Result<Intent, String> {
-        let mut intents = self.intents.write().await;
-        
-        if let Some(intent) = intents.get_mut(intent_id) {
-            if intent.status != IntentStatus::Open {
-                return Err("Intent is not open".to_string());
-            }
-            
-            intent.status = IntentStatus::Filled;
-            intent.updated_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            
-            Ok(intent.clone())
-        } else {
-            Err("Intent not found".to_string())
+    /// Returns a cached quote if it is still within its validity window.
+    pub async fn get_cached_quote(&self, request: &QuoteRequest) -> Option<QuoteResponse> {
+        let quotes = self.quotes.read().await;
+        quotes
+            .get(&quote_cache_key(request))
+            .filter(|q| q.valid_until > now_secs())
+            .cloned()
+    }
+
+    /// Fills an intent with a solver's solution.
+    ///
+    /// The solution's `to_amount` must meet the intent's `min_out_amount`, and
+    /// it must come from a solver that supports the route. The previous version
+    /// ignored the solution entirely and marked the intent Filled whatever it
+    /// contained, so a solver could fill a 1 ETH order with nothing.
+    pub async fn fill_intent(
+        &self,
+        intent_id: &str,
+        solution: SolverSolution,
+    ) -> Result<Intent, String> {
+        if solution.intent_id != intent_id {
+            return Err(format!(
+                "solution is for intent {}, not {}",
+                solution.intent_id, intent_id
+            ));
         }
+        if solution.valid_until <= now_secs() {
+            return Err("solution has expired".to_string());
+        }
+
+        {
+            let solvers = self.solvers.read().await;
+            let solver = solvers
+                .get(&solution.solver)
+                .ok_or_else(|| format!("unknown solver {}", solution.solver))?;
+            if !solver.is_active {
+                return Err(format!("solver {} is not active", solution.solver));
+            }
+        }
+
+        let mut intents = self.intents.write().await;
+        let intent = intents
+            .get_mut(intent_id)
+            .ok_or_else(|| format!("intent {} not found", intent_id))?;
+
+        if intent.status != IntentStatus::Open {
+            return Err(format!("intent is {:?}, not open", intent.status));
+        }
+        if intent.deadline <= now_secs() {
+            intent.status = IntentStatus::Expired;
+            return Err("intent has expired".to_string());
+        }
+
+        let sold = if solution.from_amount >= intent.from_amount {
+            intent.from_amount
+        } else {
+            solution.from_amount
+        };
+        if sold == 0 {
+            return Err("solution fills nothing".to_string());
+        }
+
+        // The output must satisfy the minimum the user set, pro rata.
+        let required_out = intent
+            .min_out_amount
+            .saturating_mul(sold)
+            .checked_div(intent.from_amount)
+            .unwrap_or(0);
+        if solution.to_amount < required_out {
+            return Err(format!(
+                "solution returns {} but at least {} is required",
+                solution.to_amount, required_out
+            ));
+        }
+
+        intent.status = if sold >= intent.from_amount {
+            IntentStatus::Filled
+        } else {
+            IntentStatus::PartiallyFilled
+        };
+        intent.updated_at = now_secs();
+
+        Ok(intent.clone())
     }
 
     /// Get intents for an owner
@@ -330,70 +684,125 @@ impl IntentRouter {
     }
 }
 
-impl Default for IntentRouter {
-    fn default() -> Self {
-        Self::new()
+// There is deliberately no Default: the router cannot verify intent
+// signatures without a domain separator and a type hash, and a zero-filled
+// default would silently accept nothing while looking configured.
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+const QUOTE_TTL_SECONDS: u64 = 60;
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn parse_address(value: &str) -> Option<[u8; 20]> {
+    let trimmed = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X"))?;
+    if trimmed.len() != 40 || !trimmed.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
     }
+    let bytes = hex::decode(trimmed).ok()?;
+    let mut out = [0u8; 20];
+    out.copy_from_slice(&bytes);
+    Some(out)
+}
+
+fn word_from_u64(value: u64) -> [u8; 32] {
+    let mut word = [0u8; 32];
+    word[24..].copy_from_slice(&value.to_be_bytes());
+    word
+}
+
+fn word_from_u256(value: u128) -> [u8; 32] {
+    let mut word = [0u8; 32];
+    word[16..].copy_from_slice(&value.to_be_bytes());
+    word
+}
+
+/// Decimal places carried for prices, i.e. 10^-8 USD.
+const PRICE_SCALE: u32 = 8;
+
+/// Converts a USD-per-token price into a fixed-point integer at PRICE_SCALE.
+fn scale_price(price: f64) -> Result<u128, String> {
+    if !price.is_finite() || price <= 0.0 {
+        return Err("price must be a positive, finite number".to_string());
+    }
+    let scaled = price * 10f64.powi(PRICE_SCALE as i32);
+    if !scaled.is_finite() || scaled > u128::MAX as f64 {
+        return Err("price is too large to represent".to_string());
+    }
+    Ok(scaled.round() as u128)
+}
+
+/// Returns 10^decimals, failing when it does not fit in u128.
+fn pow10(decimals: u8) -> Result<u128, String> {
+    if decimals > 38 {
+        return Err(format!("decimals {} is out of range", decimals));
+    }
+    Ok(10u128.pow(decimals as u32))
+}
+
+/// Gas for a transfer, which differs by orders of magnitude between an EVM
+/// chain and, for example, Solana.
+fn estimate_gas(to_chain: ChainId, payout_chain: ChainId) -> u64 {
+    match (to_chain, payout_chain) {
+        (ChainId::Ethereum, _) => 150_000,
+        (ChainId::Polygon, _) => 120_000,
+        (ChainId::Arbitrum, _) | (ChainId::Optimism, _) | (ChainId::Base, _) => 200_000,
+        (ChainId::Avalanche, _) => 130_000,
+        (ChainId::Solana, _) => 5_000,
+        (ChainId::Bitcoin, _) => 0,
+    }
+}
+
+fn quote_cache_key(request: &QuoteRequest) -> String {
+    format!(
+        "{:?}:{}:{:?}:{}:{}:{}",
+        request.from_token.chain,
+        request.from_token.address.to_lowercase(),
+        request.to_token.chain,
+        request.to_token.address.to_lowercase(),
+        request.from_amount,
+        request.slippage_bps
+    )
+}
+
+/// Checks an intent's terms before it is stored.
+fn validate_intent(intent: &Intent) -> Result<(), String> {
+    if intent.id.trim().is_empty() {
+        return Err("intent id must not be empty".to_string());
+    }
+    if intent.owner.trim().is_empty() {
+        return Err("intent owner must not be empty".to_string());
+    }
+    if intent.from_amount == 0 {
+        return Err("from_amount must be greater than zero".to_string());
+    }
+    if intent.min_out_amount == 0 {
+        return Err("min_out_amount must be greater than zero".to_string());
+    }
+
+    let now = now_secs();
+    if intent.deadline <= now {
+        return Err("intent deadline has passed".to_string());
+    }
+    if intent.fill_deadline > intent.deadline {
+        return Err("fill_deadline cannot be later than deadline".to_string());
+    }
+
+    if intent.from_token.chain == intent.to_token.chain
+        && intent.from_token.address.to_lowercase() == intent.to_token.address.to_lowercase()
+    {
+        return Err("from_token and to_token are the same".to_string());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_register_intent() {
-        let router = IntentRouter::new();
-        
-        let intent = Intent {
-            id: "test-1".to_string(),
-            intent_type: IntentType::Swap,
-            owner: "0x123".to_string(),
-            from_token: Token::ethereum(),
-            to_token: Token::usdc(ChainId::Ethereum),
-            from_amount: 1_000_000_000_000_000_000u128,
-            min_out_amount: 1500_000_000u128,
-            to_chain: ChainId::Ethereum,
-            deadline: 0,
-            fill_deadline: 0,
-            nonce: 0,
-            signature: vec![],
-            status: IntentStatus::Open,
-            created_at: 0,
-            updated_at: 0,
-        };
-
-        router.register_intent(intent.clone()).await.unwrap();
-        
-        let retrieved = router.get_intent("test-1").await;
-        assert!(retrieved.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_get_quote() {
-        let router = IntentRouter::new();
-        
-        // Register a solver
-        let solver = Solver {
-            id: "solver-1".to_string(),
-            name: "Test Solver".to_string(),
-            supported_chains: vec![ChainId::Ethereum],
-            fee_bps: 30,
-            avg_fill_time_ms: 5000,
-            success_rate: 0.99,
-            is_active: true,
-        };
-        
-        router.register_solver(solver).await.unwrap();
-        
-        let request = QuoteRequest {
-            from_token: Token::ethereum(),
-            to_token: Token::usdc(ChainId::Ethereum),
-            from_amount: 1_000_000_000_000_000_000u128,
-            to_chain: ChainId::Ethereum,
-            slippage_bps: 50,
-        };
-        
-        let quote = router.get_quote(request).await;
-        assert!(quote.is_ok());
-    }
-}
+mod tests;
