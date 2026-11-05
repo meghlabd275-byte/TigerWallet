@@ -241,14 +241,28 @@ impl StrategyMarketplace {
         }
     }
 
-    /// Create a new strategy listing
+    /// Creates a strategy listing.
     pub fn create_listing(&self, listing: StrategyListing) -> Result<StrategyListing, MarketplaceError> {
+        if listing.id.trim().is_empty() {
+            return Err(MarketplaceError::InvalidOperation);
+        }
+        if !listing.pricing.price_usd.is_finite() || listing.pricing.price_usd < 0.0 {
+            return Err(MarketplaceError::InvalidOperation);
+        }
+        if listing
+            .pricing
+            .subscription_price_monthly_usd
+            .is_some_and(|p| !p.is_finite() || p < 0.0)
+        {
+            return Err(MarketplaceError::InvalidOperation);
+        }
+
         let mut listings = self.listings.write().map_err(|_| MarketplaceError::LockError)?;
-        
+
         if listings.contains_key(&listing.id) {
             return Err(MarketplaceError::AlreadyExists);
         }
-        
+
         listings.insert(listing.id.clone(), listing.clone());
         Ok(listing)
     }
@@ -262,15 +276,19 @@ impl StrategyMarketplace {
     /// Get all active listings with filters
     pub fn get_listings(&self, filters: StrategyFilters) -> Result<Vec<StrategyListing>, MarketplaceError> {
         let listings = self.listings.read().map_err(|_| MarketplaceError::LockError)?;
-        
+
         let mut result: Vec<StrategyListing> = listings
             .values()
             .filter(|l| {
-                if filters.strategy_type.is_some() && l.strategy_type != filters.strategy_type.as_ref().unwrap() {
-                    return false;
+                if let Some(want) = &filters.strategy_type {
+                    if &l.strategy_type != want {
+                        return false;
+                    }
                 }
-                if filters.risk_level.is_some() && l.risk_level != filters.risk_level.as_ref().unwrap() {
-                    return false;
+                if let Some(want) = &filters.risk_level {
+                    if &l.risk_level != want {
+                        return false;
+                    }
                 }
                 if let Some(min_price) = filters.min_price {
                     if l.pricing.price_usd < min_price {
@@ -302,9 +320,10 @@ impl StrategyMarketplace {
 
         // Sort by specified order
         match filters.sort_by.as_deref().unwrap_or("rating") {
-            "price_low" => result.sort_by(|a, b| a.pricing.price_usd.partial_cmp(&b.pricing.price_usd).unwrap()),
-            "price_high" => result.sort_by(|a, b| b.pricing.price_usd.partial_cmp(&a.pricing.price_usd).unwrap()),
-            "rating" => result.sort_by(|a, b| b.rating.partial_cmp(&a.rating).unwrap()),
+            // total_cmp orders NaN deterministically instead of panicking.
+            "price_low" => result.sort_by(|a, b| a.pricing.price_usd.total_cmp(&b.pricing.price_usd)),
+            "price_high" => result.sort_by(|a, b| b.pricing.price_usd.total_cmp(&a.pricing.price_usd)),
+            "rating" => result.sort_by(|a, b| b.rating.total_cmp(&a.rating)),
             "newest" => result.sort_by(|a, b| b.created_at.cmp(&a.created_at)),
             "popular" => result.sort_by(|a, b| b.downloads.cmp(&a.downloads)),
             _ => {}
@@ -316,9 +335,9 @@ impl StrategyMarketplace {
     /// Update a strategy listing
     pub fn update_listing(&self, id: &str, updates: StrategyListingUpdate) -> Result<StrategyListing, MarketplaceError> {
         let mut listings = self.listings.write().map_err(|_| MarketplaceError::LockError)?;
-        
+
         let listing = listings.get_mut(id).ok_or(MarketplaceError::NotFound)?;
-        
+
         if let Some(name) = updates.name {
             listing.name = name;
         }
@@ -331,60 +350,226 @@ impl StrategyMarketplace {
         if let Some(status) = updates.status {
             listing.status = status;
         }
-        
+
         listing.updated_at = chrono_timestamp();
-        
+
         Ok(listing.clone())
     }
 
-    /// Add a review to a strategy
+    /// Adds a review to a strategy.
+    ///
+    /// The review is rejected when the strategy does not exist or the rating
+    /// is outside 1..=5. The previous version stored the review under any
+    /// strategy id, updated nothing when the listing was missing, and still
+    /// returned Ok, so a caller could not tell that the review had gone
+    /// nowhere.
     pub fn add_review(&self, review: StrategyReview) -> Result<StrategyReview, MarketplaceError> {
-        let mut reviews = self.reviews.write().map_err(|_| MarketplaceError::LockError)?;
-        
-        let reviews_list = reviews.entry(review.strategy_id.clone()).or_insert_with(Vec::new);
-        reviews_list.push(review.clone());
-        
-        // Update strategy rating
-        let mut listings = self.listings.write().map_err(|_| MarketplaceError::LockError)?;
-        if let Some(listing) = listings.get_mut(&review.strategy_id) {
-            let total_rating: f64 = reviews_list.iter().map(|r| r.rating as f64).sum();
-            listing.rating = total_rating / reviews_list.len() as f64;
-            listing.review_count = reviews_list.len() as u32;
+        if !(1..=5).contains(&review.rating) {
+            return Err(MarketplaceError::InvalidOperation);
         }
-        
+
+        let mut listings = self.listings.write().map_err(|_| MarketplaceError::LockError)?;
+        if !listings.contains_key(&review.strategy_id) {
+            return Err(MarketplaceError::NotFound);
+        }
+
+        let mut reviews = self.reviews.write().map_err(|_| MarketplaceError::LockError)?;
+        let reviews_list = reviews
+            .entry(review.strategy_id.clone())
+            .or_insert_with(Vec::new);
+
+        // One review per user per strategy.
+        if reviews_list.iter().any(|r| r.user_id == review.user_id) {
+            return Err(MarketplaceError::AlreadyExists);
+        }
+        reviews_list.push(review.clone());
+
+        // Recompute the listing's rating from the reviews actually held, and
+        // write it back so the two cannot drift apart.
+        let total_rating: f64 = reviews_list.iter().map(|r| r.rating as f64).sum();
+        let count = reviews_list.len() as u32;
+        if let Some(listing) = listings.get_mut(&review.strategy_id) {
+            listing.rating = total_rating / count as f64;
+            listing.review_count = count;
+        }
+
         Ok(review)
+    }
+
+    /// Returns the reviews for a strategy.
+    pub fn get_reviews(&self, strategy_id: &str) -> Result<Vec<StrategyReview>, MarketplaceError> {
+        let reviews = self.reviews.read().map_err(|_| MarketplaceError::LockError)?;
+        Ok(reviews.get(strategy_id).cloned().unwrap_or_default())
+    }
+
+    /// Places a purchase or subscription order for a strategy.
+    ///
+    /// The amount is taken from the listing's own price, not from the caller.
+    /// The previous version had no purchase path at all: `orders` and
+    /// `user_purchases` were declared and never written, so
+    /// `get_user_strategies` always returned an empty list and a strategy
+    /// could never be bought.
+    pub fn create_order(
+        &self,
+        user_id: &str,
+        strategy_id: &str,
+        order_type: OrderType,
+    ) -> Result<StrategyOrder, MarketplaceError> {
+        if user_id.trim().is_empty() {
+            return Err(MarketplaceError::Unauthorized);
+        }
+
+        let (price, is_free) = {
+            let listings = self.listings.read().map_err(|_| MarketplaceError::LockError)?;
+            let listing = listings.get(strategy_id).ok_or(MarketplaceError::NotFound)?;
+
+            if listing.status != StrategyStatus::Active {
+                return Err(MarketplaceError::InvalidOperation);
+            }
+
+            let is_free = listing.pricing.price_usd <= 0.0
+                && listing.pricing.subscription_price_monthly_usd.unwrap_or(0.0) <= 0.0;
+
+            let price = match order_type {
+                OrderType::Purchase => listing.pricing.price_usd,
+                OrderType::Subscription => listing
+                    .pricing
+                    .subscription_price_monthly_usd
+                    .ok_or(MarketplaceError::InvalidOperation)?,
+            };
+
+            if !price.is_finite() || price < 0.0 {
+                return Err(MarketplaceError::InvalidOperation);
+            }
+
+            (price, is_free)
+        };
+
+        // The order id is derived from the listing and the buyer, so a
+        // repeated request cannot be recorded twice.
+        let order_id = format!("{}-{}", strategy_id, user_id);
+        {
+            let orders = self.orders.read().map_err(|_| MarketplaceError::LockError)?;
+            if orders.contains_key(&order_id) {
+                return Err(MarketplaceError::AlreadyExists);
+            }
+        }
+
+        let now = chrono_timestamp();
+        let order = StrategyOrder {
+            id: order_id.clone(),
+            user_id: user_id.to_string(),
+            strategy_id: strategy_id.to_string(),
+            order_type,
+            amount: price,
+            currency: "USD".to_string(),
+            // A paid order stays Pending until a payment processor confirms
+            // it. A free strategy is completed immediately.
+            status: if is_free {
+                OrderStatus::Completed
+            } else {
+                OrderStatus::Pending
+            },
+            created_at: now,
+            completed_at: if is_free { Some(now) } else { None },
+        };
+
+        self.orders
+            .write()
+            .map_err(|_| MarketplaceError::LockError)?
+            .insert(order_id, order.clone());
+
+        if order.status == OrderStatus::Completed {
+            self.grant_strategy(user_id, strategy_id)?;
+        }
+
+        Ok(order)
+    }
+
+    /// Marks a pending order as paid and grants the strategy.
+    ///
+    /// This is the only path that grants access to a paid strategy, and it
+    /// takes a settlement reference so the grant can be traced.
+    pub fn complete_order(
+        &self,
+        order_id: &str,
+        settlement_reference: &str,
+    ) -> Result<StrategyOrder, MarketplaceError> {
+        if settlement_reference.trim().is_empty() {
+            return Err(MarketplaceError::PaymentFailed);
+        }
+
+        let granted = {
+            let mut orders = self.orders.write().map_err(|_| MarketplaceError::LockError)?;
+            let order = orders.get_mut(order_id).ok_or(MarketplaceError::NotFound)?;
+
+            match order.status {
+                OrderStatus::Pending | OrderStatus::Processing => {}
+                OrderStatus::Completed => return Err(MarketplaceError::AlreadyExists),
+                _ => return Err(MarketplaceError::InvalidOperation),
+            }
+
+            order.status = OrderStatus::Completed;
+            order.completed_at = Some(chrono_timestamp());
+            order.clone()
+        };
+
+        self.grant_strategy(&granted.user_id, &granted.strategy_id)?;
+        Ok(granted)
+    }
+
+    /// Returns an order by id.
+    pub fn get_order(&self, order_id: &str) -> Result<StrategyOrder, MarketplaceError> {
+        let orders = self.orders.read().map_err(|_| MarketplaceError::LockError)?;
+        orders
+            .get(order_id)
+            .cloned()
+            .ok_or(MarketplaceError::NotFound)
+    }
+
+    /// Records that `user_id` owns `strategy_id`.
+    fn grant_strategy(&self, user_id: &str, strategy_id: &str) -> Result<(), MarketplaceError> {
+        let mut purchases = self
+            .user_purchases
+            .write()
+            .map_err(|_| MarketplaceError::LockError)?;
+        let owned = purchases.entry(user_id.to_string()).or_default();
+        if !owned.iter().any(|id| id == strategy_id) {
+            owned.push(strategy_id.to_string());
+        }
+        Ok(())
     }
 
     /// Get user's purchased strategies
     pub fn get_user_strategies(&self, user_id: &str) -> Result<Vec<StrategyListing>, MarketplaceError> {
         let purchases = self.user_purchases.read().map_err(|_| MarketplaceError::LockError)?;
         let listings = self.listings.read().map_err(|_| MarketplaceError::LockError)?;
-        
+
         let strategy_ids = purchases.get(user_id).cloned().unwrap_or_default();
-        
+
         let mut user_strategies = Vec::new();
         for id in strategy_ids {
             if let Some(listing) = listings.get(&id) {
                 user_strategies.push(listing.clone());
             }
         }
-        
+
         Ok(user_strategies)
     }
 
     /// Get featured strategies
     pub fn get_featured(&self, limit: usize) -> Result<Vec<StrategyListing>, MarketplaceError> {
         let listings = self.listings.read().map_err(|_| MarketplaceError::LockError)?;
-        
+
         let mut featured: Vec<StrategyListing> = listings
             .values()
             .filter(|l| l.is_featured && l.status == StrategyStatus::Active)
             .cloned()
             .collect();
-        
-        featured.sort_by(|a, b| b.rating.partial_cmp(&a.rating).unwrap());
+
+        featured.sort_by(|a, b| b.rating.total_cmp(&a.rating));
         featured.truncate(limit);
-        
+
         Ok(featured)
     }
 
@@ -392,7 +577,7 @@ impl StrategyMarketplace {
     pub fn search(&self, query: &str) -> Result<Vec<StrategyListing>, MarketplaceError> {
         let listings = self.listings.read().map_err(|_| MarketplaceError::LockError)?;
         let query_lower = query.to_lowercase();
-        
+
         Ok(listings
             .values()
             .filter(|l| {
@@ -437,9 +622,13 @@ pub enum MarketplaceError {
     Unauthorized,
 }
 
+/// Seconds since the Unix epoch, or 0 if the clock is before it.
 fn chrono_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests;
