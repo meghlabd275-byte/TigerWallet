@@ -2,7 +2,6 @@
 
 use crate::GaslessError;
 use std::collections::HashMap;
-use tokio::sync::RwLock;
 
 /// Forwarder service
 pub struct ForwarderService {

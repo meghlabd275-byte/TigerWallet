@@ -1,5 +1,5 @@
 //! TigerWallet Institutional Custody Service
-//! 
+//!
 //! MPC custody, treasury management, RBAC, compliance reporting (SOC2)
 //!
 //! # Features
@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc};
 
 mod mpc;
 mod treasury;
@@ -71,24 +71,30 @@ impl InstitutionalCustodyService {
         if owners.is_empty() {
             return Err(CustodyError::InvalidOwners);
         }
-        
+
         if threshold == 0 || threshold > signers.len() as u32 {
             return Err(CustodyError::InvalidThreshold);
         }
 
-        // Generate wallet address
-        let wallet_address = self.generate_wallet_address(&owners);
-        
-        // Generate MPC keys
-        let mpc = self.mpc.read().await;
-        let key_share = mpc.generate_key_share(&wallet_address).await?;
-        
+        // Generate the MPC key material first: the wallet address is the
+        // address of that key, so an owner-set hash could never correspond to
+        // anything that can actually sign.
+        let key_id = Uuid::new_v4().to_string();
+        let mut mpc = self.mpc.write().await;
+        mpc.generate_key_share(&key_id).await?;
+        let wallet_address = mpc.address_for(&key_id).ok_or_else(|| {
+            CustodyError::MpcError("key generation produced no address".to_string())
+        })?;
+        mpc.bind_address(&key_id, &wallet_address)?;
+        drop(mpc);
+
         // Create wallet
         let wallet_id = Uuid::new_v4().to_string();
+        let wallet_name = name.clone();
         let wallet = CustodyWallet {
             id: wallet_id.clone(),
             address: wallet_address.clone(),
-            name,
+            name: wallet_name,
             wallet_type,
             owners: owners.clone(),
             threshold,
@@ -99,14 +105,14 @@ impl InstitutionalCustodyService {
             daily_spent: 0,
             daily_reset: Utc::now(),
         };
-        
+
         // Store wallet
         self.wallets.write().await.insert(wallet_address.clone(), wallet);
-        
+
         // Initialize RBAC
         let mut rbac = self.rbac.write().await;
         rbac.initialize_wallet(&wallet_address, &owners, &signers, threshold).await?;
-        
+
         // Initialize compliance
         let mut compliance = self.compliance.write().await;
         compliance.initialize_wallet(&wallet_address).await?;
@@ -114,7 +120,7 @@ impl InstitutionalCustodyService {
         Ok(WalletInfo {
             id: wallet_id,
             address: wallet_address,
-            name: name.clone(),
+            name,
             wallet_type,
             owners,
             threshold,
@@ -123,27 +129,10 @@ impl InstitutionalCustodyService {
         })
     }
 
-    /// Generate wallet address
-    fn generate_wallet_address(&self, owners: &[String]) -> String {
-        use ring::digest::digest;
-        
-        let mut data = vec![];
-        for owner in owners {
-            data.extend_from_slice(owner.as_bytes());
-        }
-        data.extend_from_slice(&self.chain_id.to_be_bytes());
-        data.extend_from_slice(&Utc::now().timestamp().to_be_bytes());
-        
-        let hash = digest(&ring::digest::SHA256, &data);
-        let address = &hash.as_ref()[12..];
-        
-        format!("0x{}", hex::encode(address))
-    }
-
     /// Get wallet info
     pub async fn get_wallet(&self, address: &str) -> Result<WalletInfo, CustodyError> {
         let wallets = self.wallets.read().await;
-        
+
         if let Some(wallet) = wallets.get(address) {
             Ok(WalletInfo {
                 id: wallet.id.clone(),
@@ -163,7 +152,7 @@ impl InstitutionalCustodyService {
     /// Freeze wallet
     pub async fn freeze_wallet(&self, address: &str) -> Result<(), CustodyError> {
         let mut wallets = self.wallets.write().await;
-        
+
         if let Some(wallet) = wallets.get_mut(address) {
             wallet.frozen = true;
             Ok(())
@@ -175,7 +164,7 @@ impl InstitutionalCustodyService {
     /// Unfreeze wallet
     pub async fn unfreeze_wallet(&self, address: &str) -> Result<(), CustodyError> {
         let mut wallets = self.wallets.write().await;
-        
+
         if let Some(wallet) = wallets.get_mut(address) {
             wallet.frozen = false;
             Ok(())
@@ -191,7 +180,7 @@ impl InstitutionalCustodyService {
         limit: u64,
     ) -> Result<(), CustodyError> {
         let mut wallets = self.wallets.write().await;
-        
+
         if let Some(wallet) = wallets.get_mut(address) {
             wallet.daily_limit = limit;
             Ok(())
@@ -211,21 +200,21 @@ impl InstitutionalCustodyService {
         let wallets = self.wallets.read().await;
         let wallet_data = wallets.get(wallet)
             .ok_or(CustodyError::WalletNotFound)?;
-        
+
         if wallet_data.frozen {
             return Err(CustodyError::WalletFrozen);
         }
-        
+
         // Check daily limit
         if wallet_data.daily_limit > 0 {
             if wallet_data.daily_spent + amount > wallet_data.daily_limit {
                 return Err(CustodyError::DailyLimitExceeded);
             }
         }
-        
+
         // Create request
         let request_id = Uuid::new_v4().to_string();
-        
+
         let request = WithdrawalRequest {
             id: request_id.clone(),
             wallet: wallet.to_string(),
@@ -237,7 +226,7 @@ impl InstitutionalCustodyService {
             executed: false,
             cancelled: false,
         };
-        
+
         Ok(request_id)
     }
 
@@ -253,7 +242,7 @@ impl InstitutionalCustodyService {
         if !rbac.has_role(wallet, signer, Role::Signer).await {
             return Err(CustodyError::NotAuthorized);
         }
-        
+
         // Would track approvals
         Ok(true)
     }
@@ -267,11 +256,11 @@ impl InstitutionalCustodyService {
         let wallets = self.wallets.read().await;
         let wallet_data = wallets.get(wallet)
             .ok_or(CustodyError::WalletNotFound)?;
-        
+
         if wallet_data.frozen {
             return Err(CustodyError::WalletFrozen);
         }
-        
+
         // Would execute transaction
         Ok(request_id.to_string())
     }
@@ -299,7 +288,7 @@ impl InstitutionalCustodyService {
 
     /// Add treasury funds
     pub async fn add_treasury_funds(&self, amount: u64) -> Result<(), CustodyError> {
-        let treasury = self.treasury.read().await;
+        let mut treasury = self.treasury.write().await;
         treasury.deposit(amount).await
     }
 
@@ -318,6 +307,12 @@ impl InstitutionalCustodyService {
         compliance.generate_report(wallet).await
     }
 
+    /// Check whether `account` holds `role` for `wallet`.
+    pub async fn has_role(&self, wallet: &str, account: &str, role: Role) -> bool {
+        let rbac = self.rbac.read().await;
+        rbac.has_role(wallet, account, role).await
+    }
+
     /// Grant role
     pub async fn grant_role(
         &self,
@@ -325,7 +320,7 @@ impl InstitutionalCustodyService {
         account: &str,
         role: Role,
     ) -> Result<(), CustodyError> {
-        let rbac = self.rbac.read().await;
+        let mut rbac = self.rbac.write().await;
         rbac.grant_role(wallet, account, role).await
     }
 
@@ -335,7 +330,7 @@ impl InstitutionalCustodyService {
         wallet: &str,
         account: &str,
     ) -> Result<(), CustodyError> {
-        let rbac = self.rbac.read().await;
+        let mut rbac = self.rbac.write().await;
         rbac.revoke_role(wallet, account).await
     }
 
@@ -436,33 +431,36 @@ pub struct ComplianceReport {
 pub enum CustodyError {
     #[error("Wallet not found")]
     WalletNotFound,
-    
+
     #[error("Invalid owners")]
     InvalidOwners,
-    
+
     #[error("Invalid threshold")]
     InvalidThreshold,
-    
+
     #[error("Wallet frozen")]
     WalletFrozen,
-    
+
     #[error("Daily limit exceeded")]
     DailyLimitExceeded,
-    
+
     #[error("Not authorized")]
     NotAuthorized,
-    
+
     #[error("MPC error: {0}")]
     MpcError(String),
-    
+
     #[error("Treasury error: {0}")]
     TreasuryError(String),
-    
+
     #[error("RBAC error: {0}")]
     RbacError(String),
-    
+
     #[error("Compliance error: {0}")]
     ComplianceError(String),
 }
 
 use thiserror;
+
+#[cfg(test)]
+mod tests;

@@ -74,7 +74,7 @@ impl TreasuryService {
     }
 
     /// Deposit
-    pub async fn deposit(&self, amount: u64) -> Result<(), CustodyError> {
+    pub async fn deposit(&mut self, amount: u64) -> Result<(), CustodyError> {
         if amount == 0 {
             return Err(CustodyError::TreasuryError("Invalid amount".to_string()));
         }
@@ -87,7 +87,7 @@ impl TreasuryService {
 
     /// Withdraw
     pub async fn withdraw(
-        &self,
+        &mut self,
         amount: u64,
         recipient: &str,
     ) -> Result<String, CustodyError> {
@@ -123,7 +123,7 @@ impl TreasuryService {
 
     /// Transfer
     pub async fn transfer(
-        &self,
+        &mut self,
         from: &str,
         to: &str,
         amount: u64,
@@ -156,7 +156,7 @@ impl TreasuryService {
 
     /// Approve transaction
     pub async fn approve_transaction(
-        &self,
+        &mut self,
         tx_id: &str,
         approver: &str,
     ) -> Result<bool, CustodyError> {
@@ -171,7 +171,7 @@ impl TreasuryService {
 
     /// Execute transaction
     pub async fn execute_transaction(
-        &self,
+        &mut self,
         tx_id: &str,
     ) -> Result<(), CustodyError> {
         let tx = self.transactions.get_mut(tx_id)

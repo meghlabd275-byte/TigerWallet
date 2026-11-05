@@ -173,7 +173,10 @@ go/wallet_api/wallet-api
 admin/go/admin
 kyc_onboarding_workflow/go/kyc_onboarding_workflow
 
-# build binaries
+# Build binaries. These match the executable by name; each compiled output sits
+# next to a source directory of the same name. The negations below are required
+# because those same names are used by source directories deeper in the tree,
+# which these patterns would otherwise hide from `git add`.
 *_bot
 *_system
 liquidity
@@ -181,6 +184,22 @@ monitoring_service
 advanced_cache
 rbac-admin-service
 gas_account
+!blockchain_explorer_system/
+!plugin_system/
+!gas_account/
+!user_features/
+!infrastructure/
+!go/liquidity/
+!go/monitoring_service/
+!admin/flutter/lib/features/liquidity/
+!infrastructure/advanced_cache/
+!user_features/dca_bot/
+
+# The compiled binaries those patterns are meant to catch.
+/gas_account/go/gas_account
+/infrastructure/advanced_cache/go/advanced_cache
+/user_features/dca_bot/go/dca_bot
+/white_label/system/white_label_system
 
 # build binaries
 compliance_aml

@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::Sha256;
+use chrono::Utc;
 
 // ============================================================================
 // Error Types
@@ -81,28 +82,28 @@ pub enum Permission {
     NetworkAccess,
     HttpRequest,
     WebSocket,
-    
+
     // Storage permissions
     Storage,
     LocalStorage,
-    
+
     // UI permissions
     UIConfirmation,
     UINotification,
-    
+
     // Wallet permissions
     WalletAccess,
     TransactionSign,
     MessageSign,
-    
+
     // Chain-specific
     ChainAccess(u64),  // Chain ID
     CustomChain(String),
-    
+
     // Advanced
     Interceptor,
     RPC,
-    
+
     // Custom
     Custom(String),
 }
@@ -140,7 +141,7 @@ pub struct PluginExecutionContext {
     pub resources: ResourceUsage,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResourceUsage {
     pub cpu_time_ms: u64,
     pub memory_bytes: u64,
@@ -300,7 +301,7 @@ impl PluginManager {
     /// Uninstall a plugin
     pub async fn uninstall_plugin(&self, plugin_id: &str) -> Result<(), PluginError> {
         let mut plugins = self.store.plugins.write().await;
-        
+
         if !plugins.contains_key(plugin_id) {
             return Err(PluginError::PluginNotFound);
         }
@@ -318,7 +319,7 @@ impl PluginManager {
     /// Enable/disable plugin
     pub async fn set_plugin_enabled(&self, plugin_id: &str, enabled: bool) -> Result<(), PluginError> {
         let mut plugins = self.store.plugins.write().await;
-        
+
         let plugin = plugins
             .get_mut(plugin_id)
             .ok_or(PluginError::PluginNotFound)?;
@@ -363,7 +364,7 @@ impl PluginManager {
 
         // Execute in sandbox
         let start_time = Instant::now();
-        
+
         let result = self.sandbox.execute(
             plugin_id,
             method,
@@ -514,20 +515,76 @@ impl Sandbox {
         }
     }
 
+    /// Rejects code that uses a construct the plugin did not declare.
+    ///
+    /// The previous version only looked for `eval(` and `Function(`, and
+    /// ignored the `permissions` argument entirely, so a plugin could be
+    /// granted `Storage` alone and still reach the network, the filesystem or
+    /// a child process. Each capability below is mapped to the permission that
+    /// must be present for it.
     pub fn verify_code(
         &self,
         code: &str,
         permissions: &[Permission],
     ) -> Result<(), PluginError> {
-        // In production, this would:
-        // 1. Parse and analyze the code
-        // 2. Check for dangerous patterns
-        // 3. Verify permissions match actual usage
-        // 4. Create sandboxed execution environment
-        
-        // For now, basic validation
-        if code.contains("eval(") || code.contains("Function(") {
-            return Err(PluginError::SandboxViolation);
+        // Constructs that are never allowed: they defeat the sandbox itself by
+        // building code at runtime.
+        const FORBIDDEN: &[(&str, &str)] = &[
+            ("eval(", "eval"),
+            ("Function(", "the Function constructor"),
+            ("setTimeout(", "a string passed to setTimeout"),
+            ("setInterval(", "a string passed to setInterval"),
+            ("constructor[", "the constructor escape"),
+            ("__proto__", "prototype manipulation"),
+            ("importScripts(", "importScripts"),
+        ];
+
+        for (needle, description) in FORBIDDEN {
+            if code.contains(needle) {
+                return Err(PluginError::SandboxViolation);
+            }
+        }
+
+        // Capability checks: each entry is a set of source patterns that only
+        // make sense if the plugin holds the matching permission.
+        let required: Vec<(&[&str], Permission)> = vec![
+            (&["fetch(", "XMLHttpRequest", "axios."], Permission::HttpRequest),
+            (&["WebSocket("], Permission::WebSocket),
+            (&["localStorage"], Permission::LocalStorage),
+            (&["sessionStorage", "indexedDB"], Permission::Storage),
+            (&["wallet."], Permission::WalletAccess),
+        ];
+
+        for (patterns, permission) in &required {
+            if patterns.iter().any(|pattern| code.contains(pattern))
+                && !permissions.contains(permission)
+            {
+                return Err(PluginError::PermissionDenied);
+            }
+        }
+
+        // Chain access is per-chain: every `chainId: <n>` literal must have a
+        // matching ChainAccess grant.
+        for (index, _) in code.match_indices("chainId:") {
+            let rest = &code[index + "chainId:".len()..];
+            let digits: String = rest
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(chain_id) = digits.parse::<u64>() {
+                if !permissions.contains(&Permission::ChainAccess(chain_id)) {
+                    return Err(PluginError::PermissionDenied);
+                }
+            }
+        }
+
+        // Signing and wallet access must always be explicit.
+        if code.contains("signTransaction") && !permissions.contains(&Permission::TransactionSign) {
+            return Err(PluginError::PermissionDenied);
+        }
+        if code.contains("signMessage") && !permissions.contains(&Permission::MessageSign) {
+            return Err(PluginError::PermissionDenied);
         }
 
         Ok(())
@@ -549,13 +606,15 @@ impl Sandbox {
             return Err(PluginError::ResourceLimitExceeded);
         }
 
-        // In production, execute in sandboxed environment
-        // For now, return mock response
-        Ok(serde_json::json!({
-            "success": true,
-            "method": method,
-            "params": params
-        }))
+        // Running third-party code requires a real isolation boundary
+        // (a separate process with seccomp, or a WebAssembly runtime with
+        // metered fuel). This module previously returned a success envelope
+        // without executing anything, so a plugin appeared to have run when
+        // it had not. It now fails closed until such a runtime is wired in.
+        let _ = (plugin_id, method, params);
+        Err(PluginError::PluginExecutionFailed(
+            "no sandboxed execution runtime is configured; plugin code was NOT run".to_string(),
+        ))
     }
 }
 
@@ -571,20 +630,23 @@ type RPCMethodHandler = fn(serde_json::Value) -> Result<serde_json::Value, Plugi
 
 impl RPCHandler {
     pub fn new() -> Self {
-        let mut handlers = HashMap::new();
-        
+        // The map must be typed as a function pointer, not inferred from the
+        // first item, otherwise each distinct `fn` item is its own type and
+        // the later inserts do not compile.
+        let mut handlers: HashMap<String, RPCMethodHandler> = HashMap::new();
+
         // Register default handlers
         handlers.insert("eth_blockNumber".to_string(), Self::eth_block_number);
         handlers.insert("eth_getBalance".to_string(), Self::eth_get_balance);
         handlers.insert("eth_call".to_string(), Self::eth_call);
         handlers.insert("eth_sendTransaction".to_string(), Self::eth_send_transaction);
-        
+
         Self { handlers }
     }
 
     pub async fn handle(&self, request: RPCRequest) -> Result<RPCResponse, PluginError> {
         let handler = self.handlers.get(&request.method);
-        
+
         match handler {
             Some(h) => {
                 match h(request.params) {
@@ -647,7 +709,7 @@ pub enum PluginEvent {
 }
 
 struct EventBus {
-    subscribers: Arc<RwLock<HashMap<String, Vec<tokio::sync::mpsc::Sender<PluginEvent>>>>,
+    subscribers: Arc<RwLock<HashMap<String, Vec<tokio::sync::mpsc::Sender<PluginEvent>>>>>,
 }
 
 impl EventBus {
@@ -664,10 +726,10 @@ impl EventBus {
 
     pub fn subscribe(&self, plugin_id: &str) -> tokio::sync::mpsc::Receiver<PluginEvent> {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
-        
+
         let mut subs = self.subscribers.blocking_write();
         subs.entry(plugin_id.to_string()).or_insert_with(Vec::new).push(tx);
-        
+
         rx
     }
 }
@@ -720,7 +782,7 @@ mod tests {
     #[tokio::test]
     async fn test_plugin_installation() {
         let manager = PluginManager::new(PluginConfig::default());
-        
+
         let manifest = PluginManifest {
             id: "test:plugin".to_string(),
             name: "Test Plugin".to_string(),
@@ -742,11 +804,107 @@ mod tests {
     #[test]
     fn test_sandbox_validation() {
         let sandbox = Sandbox::new();
-        
+
         let result = sandbox.verify_code("console.log('hello')", &[]);
         assert!(result.is_ok());
-        
+
         let result = sandbox.verify_code("eval('malicious')", &[]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn sandbox_rejects_runtime_code_construction() {
+        let sandbox = Sandbox::new();
+
+        for source in [
+            "eval('x')",
+            "new Function('return 1')",
+            "setTimeout(\"alert(1)\", 0)",
+            "obj.__proto__ = evil",
+            "importScripts('http://x')",
+        ] {
+            assert!(
+                sandbox.verify_code(source, &[]).is_err(),
+                "{} should be rejected",
+                source
+            );
+        }
+    }
+
+    #[test]
+    fn sandbox_enforces_declared_permissions() {
+        let sandbox = Sandbox::new();
+
+        // Network use without NetworkAccess.
+        let code = "fetch('https://api.example.com')";
+        assert!(sandbox.verify_code(code, &[]).is_err());
+        assert!(sandbox
+            .verify_code(code, &[Permission::HttpRequest])
+            .is_ok());
+
+        // WebSocket needs its own grant.
+        let ws = "new WebSocket('wss://x')";
+        assert!(sandbox.verify_code(ws, &[Permission::HttpRequest]).is_err());
+        assert!(sandbox.verify_code(ws, &[Permission::WebSocket]).is_ok());
+
+        // Storage.
+        let storage = "localStorage.setItem('k', 'v')";
+        assert!(sandbox.verify_code(storage, &[]).is_err());
+        assert!(sandbox
+            .verify_code(storage, &[Permission::LocalStorage])
+            .is_ok());
+
+        // Signing.
+        let signing = "wallet.signTransaction(tx)";
+        assert!(sandbox.verify_code(signing, &[Permission::WalletAccess]).is_err());
+        assert!(sandbox
+            .verify_code(
+                signing,
+                &[Permission::WalletAccess, Permission::TransactionSign]
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn sandbox_enforces_per_chain_grants() {
+        let sandbox = Sandbox::new();
+
+        let code = "getBalance({ chainId: 137 })";
+        // No chain grant at all.
+        assert!(sandbox.verify_code(code, &[]).is_err());
+        // A grant for a different chain is not enough.
+        assert!(sandbox
+            .verify_code(code, &[Permission::ChainAccess(1)])
+            .is_err());
+        // The matching grant is.
+        assert!(sandbox
+            .verify_code(code, &[Permission::ChainAccess(137)])
+            .is_ok());
+    }
+
+    #[test]
+    fn sandbox_execution_fails_closed_without_a_runtime() {
+        // The sandbox used to return a success envelope without running
+        // anything, so a plugin appeared to have executed when it had not.
+        let sandbox = Sandbox::new();
+        let result = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(sandbox.execute(
+                "test:plugin",
+                "doThing",
+                serde_json::json!({}),
+                &PluginExecutionContext {
+                    plugin_id: "test:plugin".to_string(),
+                    user_address: None,
+                    chain_id: 1,
+                    origin: "test".to_string(),
+                    timestamp: 0,
+                    resources: ResourceUsage::default(),
+                },
+                &PluginConfig::default(),
+            ));
+
+        assert!(result.is_err(), "execution must fail without a runtime");
     }
 }

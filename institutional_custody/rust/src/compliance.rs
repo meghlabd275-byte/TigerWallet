@@ -88,14 +88,14 @@ impl ComplianceService {
     }
 
     /// Initialize wallet
-    pub async fn initialize_wallet(&self, wallet: &str) -> Result<(), CustodyError> {
+    pub async fn initialize_wallet(&mut self, wallet: &str) -> Result<(), CustodyError> {
         self.stats.insert(wallet.to_string(), WalletStats::default());
         Ok(())
     }
 
     /// Record transaction
     pub async fn record_transaction(
-        &self,
+        &mut self,
         wallet: &str,
         tx_type: &str,
         amount: u64,
@@ -146,7 +146,7 @@ impl ComplianceService {
 
     /// Record audit entry
     pub async fn record_audit(
-        &self,
+        &mut self,
         wallet: &str,
         action: &str,
         actor: &str,

@@ -41,7 +41,7 @@ impl RbacService {
 
     /// Initialize wallet
     pub async fn initialize_wallet(
-        &self,
+        &mut self,
         wallet: &str,
         owners: &[String],
         signers: &[String],
@@ -50,7 +50,7 @@ impl RbacService {
         let wallet_roles = self.assignments
             .entry(wallet.to_string())
             .or_insert_with(HashMap::new);
-        
+
         // Grant owner roles
         for owner in owners {
             wallet_roles.insert(owner.clone(), RoleAssignment {
@@ -61,7 +61,7 @@ impl RbacService {
                 expires_at: None,
             });
         }
-        
+
         // Grant signer roles
         for signer in signers {
             wallet_roles.insert(signer.clone(), RoleAssignment {
@@ -72,13 +72,13 @@ impl RbacService {
                 expires_at: None,
             });
         }
-        
+
         Ok(())
     }
 
     /// Grant role
     pub async fn grant_role(
-        &self,
+        &mut self,
         wallet: &str,
         account: &str,
         role: Role,
@@ -86,11 +86,11 @@ impl RbacService {
         let wallet_roles = self.assignments
             .entry(wallet.to_string())
             .or_insert_with(HashMap::new);
-        
+
         if wallet_roles.contains_key(account) {
             return Err(CustodyError::RbacError("Role already granted".to_string()));
         }
-        
+
         wallet_roles.insert(account.to_string(), RoleAssignment {
             account: account.to_string(),
             role,
@@ -98,24 +98,27 @@ impl RbacService {
             granted_by: wallet.to_string(),
             expires_at: None,
         });
-        
+
         Ok(())
     }
 
     /// Revoke role
     pub async fn revoke_role(
-        &self,
+        &mut self,
         wallet: &str,
         account: &str,
     ) -> Result<(), CustodyError> {
-        let wallet_roles = self.assignments
-            .get(wallet)
+        // This previously checked that the role existed and then returned
+        // Ok(()) without removing it, so revoking a role had no effect.
+        let wallet_roles = self
+            .assignments
+            .get_mut(wallet)
             .ok_or(CustodyError::RbacError("Wallet not found".to_string()))?;
-        
-        if !wallet_roles.contains_key(account) {
+
+        if wallet_roles.remove(account).is_none() {
             return Err(CustodyError::RbacError("No role".to_string()));
         }
-        
+
         Ok(())
     }
 
@@ -142,9 +145,9 @@ impl RbacService {
         let wallet_roles = self.assignments
             .get(wallet)
             .ok_or(CustodyError::RbacError("Wallet not found".to_string()))?;
-        
+
         let mut roles = vec![];
-        
+
         for assignment in wallet_roles.values() {
             roles.push(RoleInfo {
                 account: assignment.account.clone(),
@@ -152,7 +155,7 @@ impl RbacService {
                 granted_at: assignment.granted_at,
             });
         }
-        
+
         Ok(roles)
     }
 
@@ -167,13 +170,13 @@ impl RbacService {
         let wallet_roles = self.assignments
             .get(wallet)
             .ok_or(CustodyError::RbacError("Wallet not found".to_string()))?;
-        
+
         if let Some(assignment) = wallet_roles.get(account) {
             // Owner and admin have all permissions
             if assignment.role == Role::Owner || assignment.role == Role::Admin {
                 return Ok(true);
             }
-            
+
             // Check specific permissions
             if let Some(perms) = self.permissions.get(wallet) {
                 for perm in perms {
@@ -183,7 +186,7 @@ impl RbacService {
                 }
             }
         }
-        
+
         Ok(false)
     }
 }
