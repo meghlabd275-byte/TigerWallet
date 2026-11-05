@@ -7,23 +7,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math"
-	"math/big"
+	"net/http"
 	"os"
 	"os/signal"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -63,6 +60,12 @@ type Config struct {
 	// ML Model
 	MLModelEndpoint string
 	MLAPIKey        string
+
+	// Threat intelligence file (JSON) and per-chain RPC endpoints
+	// ("1=https://...,137=https://..."). Both are optional; when unset the
+	// corresponding lookup reports "unknown" instead of a default score.
+	ThreatListPath string
+	ChainRPCURLs   string
 }
 
 func LoadConfig() *Config {
@@ -88,6 +91,9 @@ func LoadConfig() *Config {
 
 		MLModelEndpoint: getEnv("ML_MODEL_ENDPOINT", ""),
 		MLAPIKey:       getEnv("ML_API_KEY", ""),
+
+		ThreatListPath: getEnv("THREAT_LIST_PATH", ""),
+		ChainRPCURLs:   getEnv("CHAIN_RPC_URLS", ""),
 	}
 }
 
@@ -219,6 +225,8 @@ type ShieldService struct {
 	redis           *redis.Client
 	mlModel         *MLModelClient
 	riskEngine      *RiskEngine
+	threats         *ThreatDB
+	chainChecker    *ContractChecker
 	anomalyDetector *AnomalyDetector
 
 	// Rate limiting
@@ -275,20 +283,39 @@ func NewShieldService(config *Config) (*ShieldService, error) {
 	mlModel := &MLModelClient{
 		endpoint: config.MLModelEndpoint,
 		apiKey:   config.MLAPIKey,
+		client:   &http.Client{Timeout: 2 * time.Second},
 	}
 
+	// Threat intelligence. An unset path leaves the list empty, which the
+	// engine reports as "no match" rather than "safe".
+	threats := NewThreatDB()
+	if config.ThreatListPath != "" {
+		if err := threats.Load(config.ThreatListPath); err != nil {
+			return nil, fmt.Errorf("load threat intelligence: %w", err)
+		}
+	}
+
+	// On-chain contract inspection.
+	rpcURLs, err := parseChainRPCURLs(config.ChainRPCURLs)
+	if err != nil {
+		return nil, fmt.Errorf("parse chain RPC URLs: %w", err)
+	}
+	chainChecker := NewContractChecker(rpcURLs, 3*time.Second)
+
 	// Initialize risk engine
-	riskEngine := NewRiskEngine(config)
+	riskEngine := NewRiskEngine(config, threats, chainChecker)
 
 	// Initialize anomaly detector
 	anomalyDetector := NewAnomalyDetector()
 
 	service := &ShieldService{
-		config:         config,
-		db:             db,
-		redis:          redisClient,
-		mlModel:        mlModel,
+		config:          config,
+		db:              db,
+		redis:           redisClient,
+		mlModel:         mlModel,
 		riskEngine:      riskEngine,
+		threats:         threats,
+		chainChecker:    chainChecker,
 		anomalyDetector: anomalyDetector,
 		requestCounts:   make(map[string]*RateLimit),
 		anomalyCounts:   make(map[string]*AnomalyCount),
@@ -298,7 +325,6 @@ func NewShieldService(config *Config) (*ShieldService, error) {
 	// Start background tasks
 	go service.updateRiskProfiles()
 	go service.cleanupRateLimits()
-	go service.processMLPredictions()
 
 	return service, nil
 }
@@ -350,11 +376,16 @@ func (s *ShieldService) analyzeTransaction(c *gin.Context) {
 	// Analyze transaction
 	riskScore, riskFactors := s.riskEngine.AnalyzeTransaction(req, profile)
 
-	// Get ML prediction
-	mlPrediction := s.mlModel.Predict(req)
+	// Get ML prediction. When the model service is unavailable the rule score
+	// stands alone rather than being blended with an invented value.
+	mlCtx, mlCancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	mlPrediction, mlOK := s.mlModel.Predict(mlCtx, req, riskScore)
+	mlCancel()
 
-	// Calculate combined score
-	combinedScore := (riskScore*0.6 + mlPrediction*0.4)
+	combinedScore := riskScore
+	if mlOK {
+		combinedScore = riskScore*0.6 + mlPrediction*0.4
+	}
 
 	// Determine risk level
 	riskLevel := s.determineRiskLevel(combinedScore)
@@ -412,8 +443,10 @@ func (s *ShieldService) analyzeTransaction(c *gin.Context) {
 // ============================================================================
 
 type RiskEngine struct {
-	config *Config
+	config  *Config
 	weights RiskWeights
+	threats *ThreatDB
+	chain   *ContractChecker
 }
 
 type RiskWeights struct {
@@ -425,9 +458,11 @@ type RiskWeights struct {
 	BehavioralWeight float64
 }
 
-func NewRiskEngine(config *Config) *RiskEngine {
+func NewRiskEngine(config *Config, threats *ThreatDB, chain *ContractChecker) *RiskEngine {
 	return &RiskEngine{
-		config: config,
+		config:  config,
+		threats: threats,
+		chain:   chain,
 		weights: RiskWeights{
 			AddressWeight:     0.25,
 			AmountWeight:     0.20,
@@ -444,12 +479,12 @@ func (e *RiskEngine) AnalyzeTransaction(req AnalyzeRequest, profile *UserRiskPro
 	totalScore := 0.0
 
 	// 1. Address Risk Analysis
-	addressScore := e.analyzeAddressRisk(req.ToAddress)
+	addressScore, addressDesc := e.analyzeAddressRisk(req)
 	factors = append(factors, RiskFactor{
 		Name:        "Address Risk",
 		Weight:      e.weights.AddressWeight,
 		Score:       addressScore,
-		Description: e.getAddressRiskDescription(addressScore),
+		Description: addressDesc,
 	})
 	totalScore += addressScore * e.weights.AddressWeight
 
@@ -506,22 +541,57 @@ func (e *RiskEngine) AnalyzeTransaction(req AnalyzeRequest, profile *UserRiskPro
 	return totalScore, factors
 }
 
-func (e *RiskEngine) analyzeAddressRisk(toAddress string) float64 {
-	score := 0.0
+// analyzeAddressRisk scores the destination using the threat list and the
+// on-chain code at the address.
+//
+// It returns the score and the human-readable reason, so the response explains
+// why a destination was flagged instead of showing a bare number.
+func (e *RiskEngine) analyzeAddressRisk(req AnalyzeRequest) (float64, string) {
+	toAddress := req.ToAddress
 
-	// Check if address is a contract
-	if common.IsHexAddress(toAddress) {
-		// In production, would check if it's a contract
-		score += 0.2
+	if !isHexAddress(toAddress) {
+		// An address the chain cannot interpret is not something to send funds
+		// to. This is a real, checkable property, not a heuristic.
+		return 0.9, "Destination is not a valid hex address"
 	}
 
-	// Check address similarity to known addresses
-	// In production, would check against threat databases
+	// A sanctioned, phishing or drainer address is disqualifying on its own.
+	if e.threats != nil {
+		match := e.threats.Lookup(req.ChainID, toAddress)
+		if match.Found {
+			desc := fmt.Sprintf("Known %s address", match.Entry.Category)
+			if match.Entry.Source != "" {
+				desc += " (" + match.Entry.Source + ")"
+			}
+			return match.Severity, desc
+		}
+	}
 
-	// Check for newly created addresses
-	// Would check contract creation block
+	// Ask the chain whether there is code at the destination.
+	if e.chain != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
 
-	return math.Min(score, 1.0)
+		info, err := e.chain.Inspect(ctx, req.ChainID, toAddress)
+		if err == nil && info.Checked {
+			if info.IsProxy {
+				// The code that runs is not the code at this address; an
+				// upgradeable target can change behaviour after review.
+				return 0.55, "Destination is an upgradeable proxy contract (implementation " +
+					info.Implementation + ")"
+			}
+			if info.IsContract {
+				// Sending to a contract is normal, but a contract cannot
+				// return funds the way an EOA can.
+				return 0.25, fmt.Sprintf("Destination is a contract (%d bytes of code)", info.CodeSize)
+			}
+			return 0.05, "Destination is an externally owned account"
+		}
+		// err != nil: the chain did not answer. Fall through to the
+		// unverified case rather than assuming the address is safe.
+	}
+
+	return 0.4, "Destination could not be verified on-chain"
 }
 
 func (e *RiskEngine) analyzeAmountRisk(amount string, profile *UserRiskProfile) float64 {
@@ -574,12 +644,19 @@ func (e *RiskEngine) analyzeTimingRisk(profile *UserRiskProfile) float64 {
 	return 0.1
 }
 
+// analyzeNetworkRisk looks the destination up in the threat list without the
+// chain context, which catches entries listed globally.
+//
+// It used to return a constant 0.2 for every address, which contributed a fixed
+// amount to every score and distinguished nothing.
 func (e *RiskEngine) analyzeNetworkRisk(toAddress string) float64 {
-	// In production, would analyze:
-	// - Known malicious address lists
-	// - Recent interaction with high-risk addresses
-	// - Network graph analysis
-	return 0.2
+	if e.threats == nil || toAddress == "" {
+		return 0
+	}
+	if match := e.threats.Lookup(0, toAddress); match.Found {
+		return match.Severity
+	}
+	return 0
 }
 
 func (e *RiskEngine) analyzeBehavioralRisk(profile *UserRiskProfile) float64 {
@@ -682,23 +759,86 @@ func (d *AnomalyDetector) DetectAnomaly(value float64, history []float64) (bool,
 type MLModelClient struct {
 	endpoint string
 	apiKey   string
+	client   *http.Client
 }
 
-func (m *MLModelClient) Predict(req AnalyzeRequest) float64 {
-	// In production, this would call the ML model endpoint
-	// For now, return a simulated prediction based on features
+// mlPredictRequest is the payload sent to the model service.
+type mlPredictRequest struct {
+	UserAddress   string  `json:"user_address"`
+	ToAddress     string  `json:"to_address"`
+	Amount        string  `json:"amount"`
+	TokenAddress  string  `json:"token_address"`
+	ChainID       uint64  `json:"chain_id"`
+	GasPrice      string  `json:"gas_price"`
+	RuleScore     float64 `json:"rule_score"`
+}
 
-	score := 0.0
+type mlPredictResponse struct {
+	Score       float64 `json:"score"`
+	ModelVersion string `json:"model_version"`
+}
 
-	// Features based on request
-	if req.TokenAddress != "" {
-		score += 0.1 // Token transfers slightly riskier
+// Predict asks the model service for a risk score.
+//
+// The second return value reports whether a score was actually produced. The
+// previous implementation returned a constant derived from whether a token
+// address was present plus a fixed offset, which meant every transaction got
+// the same 0.2 and the 40% weight given to the model in the combined score was
+// noise. When the model is not configured or does not answer, the caller now
+// drops the model term and renormalises instead of substituting a number.
+func (m *MLModelClient) Predict(ctx context.Context, req AnalyzeRequest, ruleScore float64) (float64, bool) {
+	if m == nil || m.endpoint == "" {
+		return 0, false
 	}
 
-	// Add some randomness for demo
-	score += 0.1
+	payload, err := json.Marshal(mlPredictRequest{
+		UserAddress:  req.UserAddress,
+		ToAddress:    req.ToAddress,
+		Amount:       req.Amount,
+		TokenAddress: req.TokenAddress,
+		ChainID:      req.ChainID,
+		GasPrice:     req.GasPrice,
+		RuleScore:    ruleScore,
+	})
+	if err != nil {
+		log.Printf("ml predict: marshal request: %v", err)
+		return 0, false
+	}
 
-	return math.Min(score, 1.0)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, m.endpoint, bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("ml predict: build request: %v", err)
+		return 0, false
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if m.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+m.apiKey)
+	}
+
+	resp, err := m.client.Do(httpReq)
+	if err != nil {
+		log.Printf("ml predict: call model endpoint: %v", err)
+		return 0, false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("ml predict: model endpoint returned HTTP %d", resp.StatusCode)
+		return 0, false
+	}
+
+	var out mlPredictResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		log.Printf("ml predict: decode response: %v", err)
+		return 0, false
+	}
+	if out.Score < 0 || out.Score > 1 {
+		// A score outside the documented range means the model and this
+		// caller disagree about the contract; do not clamp silently.
+		log.Printf("ml predict: model returned an out-of-range score %v", out.Score)
+		return 0, false
+	}
+	return out.Score, true
 }
 
 // ============================================================================
@@ -917,12 +1057,10 @@ func (s *ShieldService) updateRiskProfiles() {
 
 		for i := range profiles {
 			// Update risk scores based on recent behavior
-			profiles[i].OverallRiskScore = (
-				profiles[i].TransactionRisk*0.3 +
+			profiles[i].OverallRiskScore = profiles[i].TransactionRisk*0.3 +
 				profiles[i].BehavioralRisk*0.3 +
 				profiles[i].HistoricalRisk*0.2 +
 				profiles[i].NetworkRisk*0.2
-			)
 
 			// Decay anomaly count
 			if profiles[i].LastAnomalyDetected != nil {
@@ -961,10 +1099,6 @@ func (s *ShieldService) cleanupRateLimits() {
 
 		s.mu.Unlock()
 	}
-}
-
-func (s *ShieldService) processMLPredictions() {
-	// Would process queued predictions in production
 }
 
 // ============================================================================
@@ -1016,5 +1150,46 @@ func (s *ShieldService) getStats(c *gin.Context) {
 }
 
 func (s *ShieldService) healthCheck(c *gin.Context) {
-	c.JSON(200, gin.H{"status": "healthy"})
+	status := "ok"
+	httpStatus := 200
+
+	// Probe the dependencies the service cannot work without. A health check
+	// that reports "healthy" while the database is unreachable would keep a
+	// broken replica in the load balancer's rotation.
+	dbState := "ok"
+	if sqlDB, err := s.db.DB(); err != nil {
+		dbState = "error: " + err.Error()
+		status = "degraded"
+		httpStatus = 503
+	} else if err := sqlDB.PingContext(c.Request.Context()); err != nil {
+		dbState = "unreachable: " + err.Error()
+		status = "degraded"
+		httpStatus = 503
+	}
+
+	redisState := "ok"
+	if err := s.redis.Ping(c.Request.Context()).Err(); err != nil {
+		redisState = "unreachable: " + err.Error()
+		status = "degraded"
+		httpStatus = 503
+	}
+
+	body := gin.H{
+		"status":   status,
+		"database": dbState,
+		"redis":    redisState,
+	}
+
+	// Report how much threat intelligence is loaded, so an operator can see at
+	// a glance whether the list failed to load.
+	if s.threats != nil {
+		body["threat_intelligence"] = s.threats.Stats()
+	}
+
+	// Report which chains can be inspected on-chain.
+	if s.chainChecker != nil {
+		body["chain_inspection_chains"] = s.chainChecker.ConfiguredChains()
+	}
+
+	c.JSON(httpStatus, body)
 }
