@@ -167,10 +167,16 @@ func main() {
 			mw.GET("/user-wallet-addresses", svc.ListUserWalletAddresses)
 			mw.POST("/derive-user-address", svc.DeriveUserAddress)
 
-			// Feature-flag governance (full CRUD).
-			mw.GET("/feature-flags/:flagId", svc.GetFeatureFlag)
-			mw.PUT("/feature-flags/:flagId", svc.UpsertFeatureFlag)
-			mw.DELETE("/feature-flags/:flagId", svc.DeleteFeatureFlag)
+			// Feature-flag governance. The canonical backend restricts these to
+			// admin/super_admin; without the same gate any authenticated user of
+			// the WL deployment can flip product flags.
+			ff := mw.Group("/feature-flags")
+			ff.Use(svc.RequireRole("admin", "super_admin"))
+			{
+				ff.GET("/:flagId", svc.GetFeatureFlag)
+				ff.PUT("/:flagId", svc.UpsertFeatureFlag)
+				ff.DELETE("/:flagId", svc.DeleteFeatureFlag)
+			}
 		}
 	}
 

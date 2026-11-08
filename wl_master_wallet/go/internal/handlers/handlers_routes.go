@@ -72,7 +72,7 @@ var adminScopeWhitelist = map[string]bool{
 // canonical scope for THIS product is 'wallet_admin' (MasterWallet/UserWallet
 // management). Legacy admin/treasury/operator/super_admin role strings are
 // honored via the DB fallback so existing deployments don't break.
-func (h *Handlers) requireRole(allowed ...string) gin.HandlerFunc {
+func (h *Handlers) RequireRole(allowed ...string) gin.HandlerFunc {
 	allow := map[string]bool{}
 	for _, r := range allowed {
 		allow[r] = true
@@ -1925,15 +1925,22 @@ func (h *Handlers) GetFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "flag id required"})
 		return
 	}
-	// Global (no master wallet context): return the first matching flag row.
 	var id uuid.UUID
 	var mwID *uuid.UUID
 	var desc *string
 	var enabled bool
 	var config string
 	var updated time.Time
+	// Prefer the caller's own wallet-scoped flag. Only when they have no such
+	// row do we fall back to the global row (master_wallet_id IS NULL), so one
+	// tenant never observes another tenant's flag value.
 	err := h.store.DB().QueryRow(c.Request.Context(),
-		`SELECT id, master_wallet_id, description, enabled, config::text, updated_at FROM feature_flags WHERE flag_id=$1 ORDER BY updated_at DESC LIMIT 1`, flagID).
+		`SELECT id, master_wallet_id, description, enabled, config::text, updated_at
+		   FROM feature_flags
+		  WHERE flag_id=$1 AND (master_wallet_id IN (SELECT id FROM master_wallets WHERE user_id=$2)
+		                        OR master_wallet_id IS NULL)
+		  ORDER BY master_wallet_id NULLS LAST, updated_at DESC
+		  LIMIT 1`, flagID, wlgate.UserID(c)).
 		Scan(&id, &mwID, &desc, &enabled, &config, &updated)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "feature flag not found"})
@@ -2026,7 +2033,9 @@ func (h *Handlers) DeleteFeatureFlag(c *gin.Context) {
 		}
 		tag, err = h.store.DB().Exec(c.Request.Context(), `DELETE FROM feature_flags WHERE flag_id=$1 AND master_wallet_id=$2`, flagID, mwID)
 	} else {
-		tag, err = h.store.DB().Exec(c.Request.Context(), `DELETE FROM feature_flags WHERE flag_id=$1`, flagID)
+		// Unscoped delete touches only the global row. Matching on flag_id alone
+		// would remove every tenant's override for that flag.
+		tag, err = h.store.DB().Exec(c.Request.Context(), `DELETE FROM feature_flags WHERE flag_id=$1 AND master_wallet_id IS NULL`, flagID)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
