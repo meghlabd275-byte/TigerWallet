@@ -649,11 +649,25 @@ func getMarketHandler(db *pgxpool.Pool, rdb *redis.Client) gin.HandlerFunc {
 
 // ---- Favorites ----
 
+// favoritesUserID returns the authenticated caller's id. The route group is
+// behind authMiddleware, so the JWT is the only acceptable source of identity;
+// a client-supplied user_id would let one user read, add, or delete another
+// user's favourites.
+func favoritesUserID(c *gin.Context) (string, bool) {
+	uid, _ := c.Get("user_id")
+	s, _ := uid.(string)
+	if s == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated user required"})
+		return "", false
+	}
+	return s, true
+}
+
 func listFavoritesHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID := c.Query("user_id")
-		if userID == "" {
-			userID = "anonymous"
+		userID, ok := favoritesUserID(c)
+		if !ok {
+			return
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
@@ -678,14 +692,14 @@ func addFavoriteHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			TokenID string `json:"token_id" binding:"required"`
-			UserID  string `json:"user_id"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if req.UserID == "" {
-			req.UserID = "anonymous"
+		userID, ok := favoritesUserID(c)
+		if !ok {
+			return
 		}
 		tokenID, err := uuid.Parse(req.TokenID)
 		if err != nil {
@@ -694,7 +708,7 @@ func addFavoriteHandler(db *pgxpool.Pool) gin.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		if _, err := db.Exec(ctx, `INSERT INTO favorites (id, user_id, token_id, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, token_id) DO NOTHING`, uuid.New(), req.UserID, tokenID, time.Now()); err != nil {
+		if _, err := db.Exec(ctx, `INSERT INTO favorites (id, user_id, token_id, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, token_id) DO NOTHING`, uuid.New(), userID, tokenID, time.Now()); err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable", "detail": err.Error()})
 			return
 		}
@@ -705,9 +719,9 @@ func addFavoriteHandler(db *pgxpool.Pool) gin.HandlerFunc {
 func removeFavoriteHandler(db *pgxpool.Pool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenID := c.Param("id")
-		userID := c.Query("user_id")
-		if userID == "" {
-			userID = "anonymous"
+		userID, ok := favoritesUserID(c)
+		if !ok {
+			return
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()

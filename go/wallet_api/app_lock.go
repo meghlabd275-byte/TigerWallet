@@ -722,10 +722,21 @@ func aesGCMDecrypt(key []byte, encHex string) ([]byte, error) {
 // ---------------------------------------------------------------------------
 
 // handleKYCStatus proxies GET /api/v1/kyc/status/:user_id to the listing_service.
+//
+// The target user defaults to the authenticated caller. Naming another user is
+// an administrative lookup, so it requires an admin role; without that check
+// any authenticated user could read any other user's KYC verification state.
 func handleKYCStatus(c *gin.Context) {
-	uid := c.Query("user_id")
+	uid := strings.TrimSpace(c.Query("user_id"))
 	if uid == "" {
 		uid = getUserID(c) // default to the authenticated caller
+	} else if uid != getUserID(c) && !isAdminRole(getUserRole(c)) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot read another user's KYC status"})
+		return
+	}
+	if uid == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authenticated user required"})
+		return
 	}
 	proxyKYC(c, "/api/v1/kyc/status/"+uid, "GET", nil)
 }

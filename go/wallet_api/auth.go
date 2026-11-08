@@ -109,13 +109,17 @@ func AuthMiddleware(secret string) gin.HandlerFunc {
 	}
 }
 
+// isAdminRole reports whether a role string carries admin privileges.
+func isAdminRole(role string) bool {
+	return role == "admin" || role == "wl_admin" || role == "master_wallet_admin"
+}
+
 // RequireAdmin is middleware that rejects requests unless the authenticated
 // user holds an admin-level role (admin, wl_admin, or master_wallet_admin).
 // Must be used after AuthMiddleware.
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		role := getUserRole(c)
-		if role != "admin" && role != "wl_admin" && role != "master_wallet_admin" {
+		if !isAdminRole(getUserRole(c)) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin privileges required"})
 			return
 		}
