@@ -1,15 +1,28 @@
 /**
  * TigerWallet Paper Trading Engine
- * Simulated trading environment for testing strategies
+ *
+ * A risk-free order-simulation environment: orders are matched against real
+ * market prices but no funds move. Prices come from the TigerWallet price
+ * oracle, which aggregates live venue data. If the oracle is unreachable the
+ * engine refuses to fill rather than inventing a price, so a simulated PnL is
+ * always derived from a price that actually existed.
+ *
+ * Order ids carry a `paper_` prefix and the account/order types are named
+ * Paper*, so a simulated record can never be mistaken for a settled trade.
  */
 
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
-	"math/rand"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -19,14 +32,13 @@ import (
 // ============================================================================
 
 type PaperTradingEngine struct {
-	config         *PaperTradingConfig
-	accounts       map[string]*PaperAccount
-	orders         map[string]*PaperOrder
-	positions      map[string]*PaperPosition
-	orderBook      *OrderBook
-	mu             sync.RWMutex
-	priceGenerator *PriceGenerator
-	startedAt      time.Time
+	config    *PaperTradingConfig
+	accounts  map[string]*PaperAccount
+	orders    map[string]*PaperOrder
+	positions map[string]*PaperPosition
+	prices    PriceSource
+	mu        sync.RWMutex
+	startedAt time.Time
 }
 
 type PaperTradingConfig struct {
@@ -75,42 +87,12 @@ type PaperOrder struct {
 	Quantity     float64 `json:"quantity"`
 	FilledQty    float64 `json:"filledQty"`
 	AvgFillPrice float64 `json:"avgFillPrice"`
+	Fee          float64 `json:"fee"`
 	Status       string  `json:"status"`
 	SideEffect   string  `json:"sideEffect"`
 	CreatedAt    int64   `json:"createdAt"`
 	UpdatedAt    int64   `json:"updatedAt"`
 	FilledAt     *int64  `json:"filledAt"`
-}
-
-type OrderBook struct {
-	Bids []PriceLevel `json:"bids"`
-	Asks []PriceLevel `json:"asks"`
-}
-
-type PriceLevel struct {
-	Price  float64 `json:"price"`
-	Volume float64 `json:"volume"`
-}
-
-type PriceGenerator struct {
-	basePrice  float64
-	volatility float64
-	trend      float64
-	random     *rand.Rand
-	mu         sync.RWMutex
-}
-
-type Trade struct {
-	TradeID   string  `json:"tradeId"`
-	OrderID   string  `json:"orderId"`
-	UserID    string  `json:"userId"`
-	Symbol    string  `json:"symbol"`
-	Side      string  `json:"side"`
-	Price     float64 `json:"price"`
-	Quantity  float64 `json:"quantity"`
-	Fee       float64 `json:"fee"`
-	PNL       float64 `json:"pnl"`
-	Timestamp int64   `json:"timestamp"`
 }
 
 type PaperTradingStats struct {
@@ -126,8 +108,80 @@ type PaperTradingStats struct {
 	AverageWin    float64 `json:"averageWin"`
 	AverageLoss   float64 `json:"averageLoss"`
 	ProfitFactor  float64 `json:"profitFactor"`
-	SharpeRatio   float64 `json:"sharpeRatio"`
-	MaxDrawdown   float64 `json:"maxDrawdown"`
+}
+
+// ErrNoPrice is returned when the price oracle cannot supply a symbol. The
+// engine never substitutes a synthetic price for a missing one.
+var ErrNoPrice = errors.New("no market price available for symbol")
+
+// ============================================================================
+// Price source
+// ============================================================================
+
+// PriceSource supplies the reference price used to fill orders and to mark
+// open positions. Implementations must return an error rather than a guessed
+// value when the price is unknown.
+type PriceSource interface {
+	Price(ctx context.Context, symbol string) (float64, error)
+}
+
+// OraclePriceSource reads prices from the TigerWallet price oracle over HTTP.
+type OraclePriceSource struct {
+	baseURL string
+	client  *http.Client
+}
+
+func NewOraclePriceSource(baseURL string) *OraclePriceSource {
+	return &OraclePriceSource{
+		baseURL: strings.TrimRight(baseURL, "/"),
+		client:  &http.Client{Timeout: 5 * time.Second},
+	}
+}
+
+// oraclePriceResponse mirrors the oracle field this client consumes.
+type oraclePriceResponse struct {
+	Price float64 `json:"price"`
+}
+
+// Price fetches the current USD price for symbol. A non-200 response, a
+// transport failure, or a non-positive price is reported as an error so the
+// caller can refuse the fill.
+func (o *OraclePriceSource) Price(ctx context.Context, symbol string) (float64, error) {
+	if o == nil || o.baseURL == "" {
+		return 0, fmt.Errorf("%w: price oracle not configured", ErrNoPrice)
+	}
+	// The oracle keys feeds by base asset ("BTC" for the pair "BTC/USDT").
+	base := symbol
+	if i := strings.IndexAny(symbol, "/-"); i > 0 {
+		base = symbol[:i]
+	}
+	base = strings.ToUpper(strings.TrimSpace(base))
+	if base == "" {
+		return 0, fmt.Errorf("%w: empty symbol", ErrNoPrice)
+	}
+
+	endpoint := o.baseURL + "/api/v1/price/" + url.PathEscape(base)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrNoPrice, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("%w: oracle returned %d", ErrNoPrice, resp.StatusCode)
+	}
+
+	var body oraclePriceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrNoPrice, err)
+	}
+	if !(body.Price > 0) || math.IsInf(body.Price, 0) || math.IsNaN(body.Price) {
+		return 0, fmt.Errorf("%w: oracle reported a non-positive price", ErrNoPrice)
+	}
+	return body.Price, nil
 }
 
 // ============================================================================
@@ -147,32 +201,29 @@ func NewPaperTradingEngine(config *PaperTradingConfig) *PaperTradingEngine {
 			EnableMargin:    true,
 		}
 	}
-
 	return &PaperTradingEngine{
-		config:         config,
-		accounts:       make(map[string]*PaperAccount),
-		orders:         make(map[string]*PaperOrder),
-		positions:      make(map[string]*PaperPosition),
-		orderBook:      NewOrderBook(),
-		priceGenerator: NewPriceGenerator(config.InitialCapital),
-		startedAt:      time.Now(),
+		config:    config,
+		accounts:  make(map[string]*PaperAccount),
+		orders:    make(map[string]*PaperOrder),
+		positions: make(map[string]*PaperPosition),
+		prices:    NewOraclePriceSource(getEnv("PRICE_ORACLE_URL", "http://localhost:8087")),
+		startedAt: time.Now(),
 	}
 }
 
-func NewPriceGenerator(basePrice float64) *PriceGenerator {
-	return &PriceGenerator{
-		basePrice:  basePrice,
-		volatility: 0.02,
-		trend:      0.0,
-		random:     rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
+// SetPriceSource replaces the price source. Used by tests and by deployments
+// that obtain prices from a different oracle.
+func (e *PaperTradingEngine) SetPriceSource(p PriceSource) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.prices = p
 }
 
-func NewOrderBook() *OrderBook {
-	return &OrderBook{
-		Bids: make([]PriceLevel, 0),
-		Asks: make([]PriceLevel, 0),
+func getEnv(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
 	}
+	return fallback
 }
 
 // ============================================================================
@@ -204,7 +255,6 @@ func (e *PaperTradingEngine) GetAccount(userID string) (*PaperAccount, error) {
 	if !ok {
 		return nil, fmt.Errorf("account not found: %s", userID)
 	}
-
 	return account, nil
 }
 
@@ -230,8 +280,35 @@ func (e *PaperTradingEngine) ResetAccount(userID string) error {
 			delete(e.orders, id)
 		}
 	}
+	for key := range e.positions {
+		if ownerOf(key) == userID {
+			delete(e.positions, key)
+		}
+	}
 
 	return nil
+}
+
+// ============================================================================
+// Position keys
+// ============================================================================
+
+// positionSeparator cannot appear in a user id or a symbol, so a composite key
+// always splits back into exactly two fields.
+const positionSeparator = "\x1f"
+
+// positionKey namespaces a position by its owner, so two users trading the
+// same symbol never share a position record.
+func positionKey(userID, symbol string) string {
+	return userID + positionSeparator + symbol
+}
+
+// ownerOf recovers the owning user id from a position key.
+func ownerOf(key string) string {
+	if i := strings.Index(key, positionSeparator); i >= 0 {
+		return key[:i]
+	}
+	return key
 }
 
 // ============================================================================
@@ -246,14 +323,38 @@ func (e *PaperTradingEngine) CreateOrder(userID, symbol, side, orderType string,
 	if !ok {
 		return nil, fmt.Errorf("account not found: %s", userID)
 	}
-
-	margin := quantity * price / e.config.Leverage
-
-	if side == "buy" && margin > account.MarginFree {
-		return nil, fmt.Errorf("insufficient margin: required %f, available %f", margin, account.MarginFree)
+	if !(quantity > 0) || math.IsNaN(quantity) || math.IsInf(quantity, 0) {
+		return nil, errors.New("quantity must be a positive number")
+	}
+	if side != "buy" && side != "sell" {
+		return nil, fmt.Errorf("invalid side: %s", side)
+	}
+	if orderType != "market" && orderType != "limit" {
+		return nil, fmt.Errorf("invalid order type: %s", orderType)
+	}
+	if orderType == "limit" && !(price > 0) {
+		return nil, errors.New("limit orders require a positive price")
+	}
+	if side == "sell" && !e.config.EnableShorting {
+		return nil, errors.New("shorting is disabled")
 	}
 
-	orderID := fmt.Sprintf("paper_%d_%s", time.Now().UnixNano(), userID[:8])
+	// Margin is checked against the reference price, never a caller-supplied
+	// one, so a caller cannot understate the margin an order requires.
+	refPrice := price
+	if orderType == "market" {
+		quoted, err := e.prices.Price(context.Background(), symbol)
+		if err != nil {
+			return nil, err
+		}
+		refPrice = quoted
+	}
+	margin := quantity * refPrice / e.config.Leverage
+	if margin > account.MarginFree {
+		return nil, fmt.Errorf("insufficient margin: required %.2f, available %.2f", margin, account.MarginFree)
+	}
+
+	orderID := fmt.Sprintf("paper_%d_%s", time.Now().UnixNano(), shortID(userID))
 
 	order := &PaperOrder{
 		OrderID:    orderID,
@@ -264,7 +365,6 @@ func (e *PaperTradingEngine) CreateOrder(userID, symbol, side, orderType string,
 		Price:      price,
 		StopPrice:  stopPrice,
 		Quantity:   quantity,
-		FilledQty:  0,
 		Status:     "pending",
 		SideEffect: "margin",
 		CreatedAt:  time.Now().UnixMilli(),
@@ -274,10 +374,24 @@ func (e *PaperTradingEngine) CreateOrder(userID, symbol, side, orderType string,
 	e.orders[orderID] = order
 
 	if orderType == "market" {
-		e.executeOrder(order)
+		if err := e.executeOrderLocked(order); err != nil {
+			// A market order that cannot be priced stays pending rather than
+			// being recorded as filled at a fabricated price.
+			return order, err
+		}
 	}
 
 	return order, nil
+}
+
+// shortID returns a bounded fragment of a user id for display inside an order
+// id. It never slices past the end, so short ids do not panic.
+func shortID(userID string) string {
+	const n = 8
+	if len(userID) <= n {
+		return userID
+	}
+	return userID[:n]
 }
 
 func (e *PaperTradingEngine) CancelOrder(orderID string) error {
@@ -288,14 +402,12 @@ func (e *PaperTradingEngine) CancelOrder(orderID string) error {
 	if !ok {
 		return fmt.Errorf("order not found: %s", orderID)
 	}
-
 	if order.Status != "pending" {
 		return fmt.Errorf("order cannot be cancelled: %s", order.Status)
 	}
 
 	order.Status = "cancelled"
 	order.UpdatedAt = time.Now().UnixMilli()
-
 	return nil
 }
 
@@ -307,7 +419,6 @@ func (e *PaperTradingEngine) GetOrder(orderID string) (*PaperOrder, error) {
 	if !ok {
 		return nil, fmt.Errorf("order not found: %s", orderID)
 	}
-
 	return order, nil
 }
 
@@ -321,7 +432,6 @@ func (e *PaperTradingEngine) GetOpenOrders(userID string) []*PaperOrder {
 			openOrders = append(openOrders, order)
 		}
 	}
-
 	return openOrders
 }
 
@@ -329,18 +439,19 @@ func (e *PaperTradingEngine) GetOpenOrders(userID string) []*PaperOrder {
 // Order Execution
 // ============================================================================
 
-func (e *PaperTradingEngine) executeOrder(order *PaperOrder) {
-	price := e.priceGenerator.GetPrice(order.Symbol)
+// executeOrderLocked fills a market order against the live reference price.
+// Callers must hold e.mu.
+func (e *PaperTradingEngine) executeOrderLocked(order *PaperOrder) error {
+	price, err := e.prices.Price(context.Background(), order.Symbol)
+	if err != nil {
+		return err
+	}
 
 	var fillPrice float64
 	if order.Side == "buy" {
 		fillPrice = price * (1 + e.config.Slippage)
 	} else {
 		fillPrice = price * (1 - e.config.Slippage)
-	}
-
-	if order.Price > 0 && order.OrderType == "limit" {
-		fillPrice = order.Price
 	}
 
 	order.AvgFillPrice = fillPrice
@@ -352,6 +463,7 @@ func (e *PaperTradingEngine) executeOrder(order *PaperOrder) {
 
 	account := e.accounts[order.UserID]
 	fee := order.Quantity * fillPrice * e.config.TakerFee
+	order.Fee = fee
 
 	if order.Side == "buy" {
 		margin := order.Quantity * fillPrice / e.config.Leverage
@@ -363,58 +475,73 @@ func (e *PaperTradingEngine) executeOrder(order *PaperOrder) {
 		account.Balance -= fee
 	}
 
-	e.updatePosition(order, fillPrice)
-	e.updateAccountEquity(account)
+	e.updatePositionLocked(order, fillPrice)
+	e.updateAccountEquityLocked(account)
+	return nil
 }
 
-func (e *PaperTradingEngine) updatePosition(order *PaperOrder, fillPrice float64) {
-	positionKey := fmt.Sprintf("%s_%s", order.UserID, order.Symbol)
+// updatePositionLocked applies a fill to the owner's position for the symbol.
+// Callers must hold e.mu.
+func (e *PaperTradingEngine) updatePositionLocked(order *PaperOrder, fillPrice float64) {
+	key := positionKey(order.UserID, order.Symbol)
+	account := e.accounts[order.UserID]
+	side := map[string]string{"buy": "long", "sell": "short"}[order.Side]
 
-	if existingPos, ok := e.positions[positionKey]; ok {
-		totalQty := existingPos.Quantity + order.Quantity
-		if order.Side == existingPos.Side {
-			existingPos.EntryPrice = (existingPos.EntryPrice*existingPos.Quantity + fillPrice*order.Quantity) / totalQty
-			existingPos.Quantity = totalQty
-		} else {
-			if order.Quantity >= existingPos.Quantity {
-				existingPos.Side = order.Side
-				existingPos.EntryPrice = fillPrice
-				existingPos.Quantity = order.Quantity - existingPos.Quantity
-			} else {
-				existingPos.Quantity -= order.Quantity
-			}
+	if existing, ok := e.positions[key]; ok {
+		sameSide := existing.Side == side
+
+		switch {
+		case sameSide:
+			total := existing.Quantity + order.Quantity
+			existing.EntryPrice = (existing.EntryPrice*existing.Quantity + fillPrice*order.Quantity) / total
+			existing.Quantity = total
+		case order.Quantity >= existing.Quantity:
+			// The opposing order closes the position and opens the remainder
+			// in the other direction.
+			existing.Side = side
+			existing.EntryPrice = fillPrice
+			existing.Quantity = order.Quantity - existing.Quantity
+		default:
+			existing.Quantity -= order.Quantity
 		}
-		existingPos.UpdatedAt = time.Now().UnixMilli()
-	} else if order.Side == "buy" {
-		e.positions[positionKey] = &PaperPosition{
-			Symbol:       order.Symbol,
-			Side:         "long",
-			EntryPrice:   fillPrice,
-			CurrentPrice: fillPrice,
-			Quantity:     order.Quantity,
-			Leverage:     e.config.Leverage,
-			OpenedAt:     time.Now().UnixMilli(),
-			UpdatedAt:    time.Now().UnixMilli(),
+
+		existing.CurrentPrice = fillPrice
+		existing.UpdatedAt = time.Now().UnixMilli()
+		if existing.Quantity <= 0 {
+			delete(e.positions, key)
+			delete(account.Positions, key)
+			return
 		}
-	} else if e.config.EnableShorting {
-		e.positions[positionKey] = &PaperPosition{
-			Symbol:       order.Symbol,
-			Side:         "short",
-			EntryPrice:   fillPrice,
-			CurrentPrice: fillPrice,
-			Quantity:     order.Quantity,
-			Leverage:     e.config.Leverage,
-			OpenedAt:     time.Now().UnixMilli(),
-			UpdatedAt:    time.Now().UnixMilli(),
-		}
+		account.Positions[key] = existing
+		return
 	}
+
+	pos := &PaperPosition{
+		Symbol:       order.Symbol,
+		Side:         side,
+		EntryPrice:   fillPrice,
+		CurrentPrice: fillPrice,
+		Quantity:     order.Quantity,
+		Leverage:     e.config.Leverage,
+		OpenedAt:     time.Now().UnixMilli(),
+		UpdatedAt:    time.Now().UnixMilli(),
+	}
+	e.positions[key] = pos
+	account.Positions[key] = pos
 }
 
-func (e *PaperTradingEngine) updateAccountEquity(account *PaperAccount) {
+// updateAccountEquityLocked revalues every open position of the account at the
+// current market price and recomputes equity. Callers must hold e.mu.
+func (e *PaperTradingEngine) updateAccountEquityLocked(account *PaperAccount) {
 	var totalUnrealizedPNL float64
 
-	for _, pos := range account.Positions {
-		price := e.priceGenerator.GetPrice(pos.Symbol)
+	for key, pos := range account.Positions {
+		price, err := e.prices.Price(context.Background(), pos.Symbol)
+		if err != nil {
+			// Keep the last known mark rather than fabricating a new one.
+			totalUnrealizedPNL += pos.UnrealizedPNL
+			continue
+		}
 		pos.CurrentPrice = price
 
 		if pos.Side == "long" {
@@ -427,14 +554,15 @@ func (e *PaperTradingEngine) updateAccountEquity(account *PaperAccount) {
 		if margin > 0 {
 			pos.ROE = (pos.UnrealizedPNL / margin) * 100
 		}
-
 		if pos.Side == "long" {
 			pos.LiquidationPrice = pos.EntryPrice * (1 - 1/pos.Leverage)
 		} else {
 			pos.LiquidationPrice = pos.EntryPrice * (1 + 1/pos.Leverage)
 		}
+		pos.UpdatedAt = time.Now().UnixMilli()
 
 		totalUnrealizedPNL += pos.UnrealizedPNL
+		e.positions[key] = pos
 	}
 
 	account.UnrealizedPNL = totalUnrealizedPNL
@@ -443,94 +571,64 @@ func (e *PaperTradingEngine) updateAccountEquity(account *PaperAccount) {
 }
 
 // ============================================================================
-// Price Generation
-// ============================================================================
-
-func (pg *PriceGenerator) GetPrice(symbol string) float64 {
-	pg.mu.Lock()
-	defer pg.mu.Unlock()
-
-	change := (pg.random.Float64() - 0.5) * 2 * pg.volatility
-	change += pg.trend * 0.1
-
-	pg.basePrice *= (1 + change)
-
-	noise := (pg.random.Float64() - 0.5) * pg.volatility * 0.5
-
-	return pg.basePrice * (1 + noise)
-}
-
-func (pg *PriceGenerator) SetVolatility(volatility float64) {
-	pg.mu.Lock()
-	defer pg.mu.Unlock()
-	pg.volatility = volatility
-}
-
-func (pg *PriceGenerator) SetTrend(trend float64) {
-	pg.mu.Lock()
-	defer pg.mu.Unlock()
-	pg.trend = trend
-}
-
-// ============================================================================
 // Statistics
 // ============================================================================
 
 func (e *PaperTradingEngine) GetStats(userID string) (*PaperTradingStats, error) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
 
-	positionKey := fmt.Sprintf("%s_%s", userID, "*")
-	_ = positionKey
-	var totalPNL, bestTrade, worstTrade float64
-	var winningTrades, losingTrades int
+	account, ok := e.accounts[userID]
+	if !ok {
+		return nil, fmt.Errorf("account not found: %s", userID)
+	}
+	e.updateAccountEquityLocked(account)
 
-	for key, pos := range e.positions {
-		if len(key) > len(userID) && key[:len(userID)] == userID {
-			pnl := pos.UnrealizedPNL
-			totalPNL += pnl
+	stats := &PaperTradingStats{}
+	var wins, losses int
+	var grossWin, grossLoss float64
 
-			if pnl > 0 {
-				winningTrades++
-				if pnl > bestTrade {
-					bestTrade = pnl
-				}
-			} else if pnl < 0 {
-				losingTrades++
-				if pnl < worstTrade || worstTrade == 0 {
-					worstTrade = pnl
-				}
+	for _, order := range e.orders {
+		if order.UserID != userID || order.Status != "filled" {
+			continue
+		}
+		stats.TotalTrades++
+		stats.TotalVolume += order.FilledQty * order.AvgFillPrice
+		stats.TotalFees += order.Fee
+	}
+
+	for _, pos := range account.Positions {
+		pnl := pos.UnrealizedPNL
+		stats.TotalPNL += pnl
+		switch {
+		case pnl > 0:
+			wins++
+			grossWin += pnl
+			if pnl > stats.BestTrade {
+				stats.BestTrade = pnl
+			}
+		case pnl < 0:
+			losses++
+			grossLoss += -pnl
+			if pnl < stats.WorstTrade {
+				stats.WorstTrade = pnl
 			}
 		}
 	}
 
-	totalTrades := winningTrades + losingTrades
-	winRate := float64(winningTrades) / float64(totalTrades) * 100
-
-	var averageWin, averageLoss float64
-	if winningTrades > 0 {
-		averageWin = bestTrade / float64(winningTrades)
+	stats.WinningTrades = wins
+	stats.LosingTrades = losses
+	if closed := wins + losses; closed > 0 {
+		stats.WinRate = float64(wins) / float64(closed) * 100
 	}
-	if losingTrades > 0 {
-		averageLoss = math.Abs(worstTrade) / float64(losingTrades)
+	if wins > 0 {
+		stats.AverageWin = grossWin / float64(wins)
 	}
-
-	profitFactor := 0.0
-	if averageLoss > 0 {
-		profitFactor = averageWin / averageLoss
+	if losses > 0 {
+		stats.AverageLoss = grossLoss / float64(losses)
 	}
-
-	stats := &PaperTradingStats{
-		TotalTrades:   totalTrades,
-		WinningTrades: winningTrades,
-		LosingTrades:  losingTrades,
-		WinRate:       winRate,
-		TotalPNL:      totalPNL,
-		BestTrade:     bestTrade,
-		WorstTrade:    worstTrade,
-		AverageWin:    averageWin,
-		AverageLoss:   averageLoss,
-		ProfitFactor:  profitFactor,
+	if stats.AverageLoss > 0 {
+		stats.ProfitFactor = stats.AverageWin / stats.AverageLoss
 	}
 
 	return stats, nil
@@ -544,15 +642,14 @@ func (e *PaperTradingEngine) ToJSON() (string, error) {
 		"config":    e.config,
 		"accounts":  e.accounts,
 		"orders":    e.orders,
-		"startedAt": e.startedAt.Unix(),
+		"positions": e.positions,
+		"startedAt": e.startedAt,
 	}
-
-	jsonData, err := json.MarshalIndent(data, "", "  ")
+	encoded, err := json.Marshal(data)
 	if err != nil {
 		return "", err
 	}
-
-	return string(jsonData), nil
+	return string(encoded), nil
 }
 
 // ============================================================================
@@ -563,33 +660,27 @@ func main() {
 	fmt.Println("TigerWallet - Paper Trading Engine")
 	fmt.Println("==================================")
 
-	config := &PaperTradingConfig{
-		InitialCapital:  10000.0,
-		Leverage:        3.0,
-		MakerFee:        0.001,
-		TakerFee:        0.001,
-		Slippage:        0.0005,
-		SimulationSpeed: 1.0,
-		EnableShorting:  true,
-		EnableMargin:    true,
-	}
+	engine := NewPaperTradingEngine(nil)
 
-	engine := NewPaperTradingEngine(config)
-
-	userID := "test_user_1"
+	userID := "paper_demo_account"
 	account := engine.CreateAccount(userID)
 	fmt.Printf("Created account with balance: $%.2f\n", account.Balance)
 
-	order1, err := engine.CreateOrder(userID, "BTC/USDT", "buy", "market", 0.1, 0, 0)
+	// Fill one simulated order against the live reference price. When the
+	// oracle is unreachable the order stays pending and is reported as such.
+	order, err := engine.CreateOrder(userID, "BTC/USDT", "buy", "market", 0.1, 0, 0)
 	if err != nil {
-		fmt.Printf("Order 1 error: %v\n", err)
+		fmt.Printf("Order not filled: %v\n", err)
+		if order != nil {
+			fmt.Printf("Order %s remains %s\n", order.OrderID, order.Status)
+		}
 	} else {
-		fmt.Printf("Placed order 1: %s\n", order1.OrderID)
+		fmt.Printf("Filled order %s at $%.2f\n", order.OrderID, order.AvgFillPrice)
 	}
 
 	account, _ = engine.GetAccount(userID)
 	fmt.Printf("Account balance: $%.2f\n", account.Balance)
-	fmt.Printf("Account equity: $%.2f\n", account.Equity)
+	fmt.Printf("Account equity:  $%.2f\n", account.Equity)
 
 	stats, _ := engine.GetStats(userID)
 	fmt.Printf("Total trades: %d\n", stats.TotalTrades)

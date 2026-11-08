@@ -156,6 +156,9 @@ user_wallet/go/user_wallet
 /mm_bot_platform/bot_api/bot_api
 /api_gateway/go/cmd/unified_gateway/unified_gateway
 
+# paper_trading compiled binary
+go/paper_trading/paper-trading
+
 # social_recovery compiled backend binary
 social_recovery/go/cmd/social-recovery
 
