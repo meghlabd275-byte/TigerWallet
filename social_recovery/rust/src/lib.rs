@@ -697,6 +697,93 @@ pub struct RecoveryStatistics {
 // Threshold Signature Scheme (TSS) - Advanced Recovery
 // ============================================================================
 
+/// Arithmetic in GF(2^8) with the AES reduction polynomial x^8+x^4+x^3+x+1
+/// (0x11b), matching the field used elsewhere in the wallet stack.
+///
+/// Shamir's scheme requires a finite field. Doing the polynomial arithmetic on
+/// plain bytes with wrapping arithmetic is not a field: the Lagrange
+/// coefficients below are ratios like -x_j/(x_i-x_j) whose denominators are
+/// not invertible modulo 256, so integer division both loses the value and
+/// makes the result depend on which subset of shares was supplied.
+mod gf256 {
+    /// Reduction polynomial, low byte only: x^8+x^4+x^3+x+1 = 0x1b once the
+    /// implicit x^8 term is dropped.
+    const REDUCTION: u8 = 0x1b;
+
+    /// Multiplicative inverse by exponentiation: a^254 = a^-1 in GF(2^8),
+    /// since the multiplicative group has order 255.
+    pub fn inv(a: u8) -> Option<u8> {
+        if a == 0 {
+            return None;
+        }
+        Some(pow(a, 254))
+    }
+
+    pub fn mul(mut a: u8, mut b: u8) -> u8 {
+        let mut result: u8 = 0;
+        while b != 0 {
+            if b & 1 != 0 {
+                result ^= a;
+            }
+            let high = a & 0x80;
+            a <<= 1;
+            if high != 0 {
+                a ^= REDUCTION;
+            }
+            b >>= 1;
+        }
+        result
+    }
+
+    pub fn pow(mut base: u8, mut exp: u32) -> u8 {
+        let mut result: u8 = 1;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                result = mul(result, base);
+            }
+            base = mul(base, base);
+            exp >>= 1;
+        }
+        result
+    }
+
+    /// Evaluate the polynomial whose coefficients are `coeffs` (constant term
+    /// first) at `x`.
+    pub fn eval(coeffs: &[u8], x: u8) -> u8 {
+        // Horner's method, evaluated from the highest degree down.
+        let mut acc: u8 = 0;
+        for &c in coeffs.iter().rev() {
+            acc = mul(acc, x) ^ c;
+        }
+        acc
+    }
+
+    /// Lagrange interpolation at x=0, recovering the constant term.
+    ///
+    /// Returns None when the points are degenerate (a repeated x, or a pair
+    /// whose difference has no inverse), which is what a caller must know
+    /// rather than receiving a silently wrong secret.
+    pub fn interpolate_at_zero(points: &[(u8, u8)]) -> Option<u8> {
+        let mut secret: u8 = 0;
+        for (i, &(xi, yi)) in points.iter().enumerate() {
+            let mut basis: u8 = 1;
+            for (j, &(xj, _)) in points.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                if xi == xj {
+                    return None;
+                }
+                // basis *= xj / (xj - xi), noting that subtraction is XOR.
+                let denom = xj ^ xi;
+                basis = mul(basis, mul(xj, inv(denom)?));
+            }
+            secret ^= mul(yi, basis);
+        }
+        Some(secret)
+    }
+}
+
 pub struct ThresholdSignatureScheme {
     threshold: u8,
     total_shares: u8,
@@ -708,114 +795,97 @@ impl ThresholdSignatureScheme {
     }
 
     /// Generate key shares using Shamir's Secret Sharing
+    /// Split `secret` into `num_shares` shares such that any `threshold` of
+    /// them reconstruct it, and any `threshold - 1` reveal nothing about it.
+    ///
+    /// Each byte of the secret is shared independently as the constant term of
+    /// a random polynomial of degree `threshold - 1` over GF(2^8), which is the
+    /// standard Shamir construction. Share `i` is stored as a leading x
+    /// coordinate followed by one y byte per secret byte, so a share is
+    /// `secret.len() + 1` bytes.
     pub fn generate_shares(&self, secret: &[u8], num_shares: u8) -> Result<Vec<Vec<u8>>, RecoveryError> {
+        if self.threshold == 0 || self.threshold > 255 {
+            return Err(RecoveryError::InvalidThreshold);
+        }
         if num_shares < self.threshold {
             return Err(RecoveryError::InvalidThreshold);
         }
-
-        // In production, use proper polynomial evaluation
-        // Simplified implementation for demonstration
-        let mut shares = Vec::new();
-        
-        // Generate random coefficients for polynomial
-        let mut rng = ring::rand::SystemRandom::new();
-        let mut coefficients = Vec::new();
-        
-        // Secret as constant term
-        coefficients.push(secret.to_vec());
-        
-        // Random coefficients for remaining terms
-        for _ in 1..self.threshold {
-            let mut coeff = vec![0u8; 32];
-            ring::rand::SecureRandom::fill(&mut rng, &mut coeff).map_err(|_| RecoveryError::InvalidSignature)?;
-            coefficients.push(coeff);
+        if secret.is_empty() {
+            return Err(RecoveryError::InvalidThreshold);
         }
 
-        // Evaluate polynomial at different points
-        for i in 1..=num_shares {
-            let x = vec![i];
-            let mut y = vec![0u8; secret.len()];
-            
-            // Evaluate polynomial: y = a0 + a1*x + a2*x^2 + ...
-            for (power, coeff) in coefficients.iter().enumerate() {
-                let x_pow = Self::pow(&x, power);
-                for (j, byte) in coeff.iter().enumerate() {
-                    if j < y.len() {
-                        y[j] = y[j].wrapping_add(byte.wrapping_mul(x_pow.get(0).copied().unwrap_or(1)));
-                    }
-                }
+        let mut rng = ring::rand::SystemRandom::new();
+
+        // One coefficient vector per secret byte, all sharing the same x
+        // coordinates so a single interpolation recovers every byte.
+        let mut coeffs: Vec<Vec<u8>> = Vec::with_capacity(secret.len());
+        for &byte in secret {
+            let mut c = vec![byte];
+            for _ in 1..self.threshold {
+                let mut r = [0u8; 1];
+                ring::rand::SecureRandom::fill(&mut rng, &mut r)
+                    .map_err(|_| RecoveryError::InvalidSignature)?;
+                c.push(r[0]);
             }
-            
-            // Store share as (x, y)
-            let mut share = vec![i];
-            share.extend(y);
+            coeffs.push(c);
+        }
+
+        let mut shares = Vec::with_capacity(num_shares as usize);
+        for i in 1..=num_shares {
+            let mut share = Vec::with_capacity(secret.len() + 1);
+            share.push(i);
+            for c in &coeffs {
+                share.push(gf256::eval(c, i));
+            }
             shares.push(share);
         }
 
         Ok(shares)
     }
 
-    /// Reconstruct secret from shares
+    /// Reconstruct the secret from at least `threshold` shares.
+    ///
+    /// Returns an error when too few shares are supplied, when a share is
+    /// malformed, or when the x coordinates are not distinct.
     pub fn reconstruct_secret(&self, shares: &[Vec<u8>]) -> Result<Vec<u8>, RecoveryError> {
         if shares.len() < self.threshold as usize {
             return Err(RecoveryError::InsufficientGuardians);
         }
 
-        // Use Lagrange interpolation
-        let mut result = vec![0u8; 32]; // Assuming 32-byte secret
-        
-        for i in 0..shares.len() {
-            let xi = shares[i][0];
-            let yi = &shares[i][1..];
-            
-            // Calculate Lagrange coefficient
-            let mut lagrange = 1i128;
-            for j in 0..shares.len() {
-                if i != j {
-                    let xj = shares[j][0];
-                    let numerator = -(xj as i128);
-                    let denominator = (xi as i128 - xj as i128);
-                    lagrange = lagrange * numerator / denominator;
-                }
-            }
-            
-            // Add contribution
-            for (k, byte) in yi.iter().enumerate() {
-                if k < result.len() {
-                    result[k] = result[k].wrapping_add((*byte as i128 * lagrange) as u8);
-                }
+        // Every share must carry an x coordinate plus at least one y byte, and
+        // they must all describe the same secret length.
+        let secret_len = shares
+            .first()
+            .map(|s| s.len())
+            .filter(|&n| n > 1)
+            .ok_or(RecoveryError::InvalidGuardian)?
+            - 1;
+        if shares.iter().any(|s| s.len() != secret_len + 1) {
+            return Err(RecoveryError::InvalidGuardian);
+        }
+
+        let points: Vec<(u8, Vec<u8>)> = shares
+            .iter()
+            .map(|s| (s[0], s[1..].to_vec()))
+            .collect();
+
+        let mut seen = std::collections::HashSet::new();
+        for (x, _) in &points {
+            if *x == 0 || !seen.insert(*x) {
+                return Err(RecoveryError::InvalidGuardian);
             }
         }
 
-        Ok(result)
-    }
-
-    fn pow(base: &[u8], exp: usize) -> Vec<u8> {
-        let mut result = vec![1u8; base.len()];
-        let mut base = base.to_vec();
-        let mut exp = exp;
-        
-        while exp > 0 {
-            if exp % 2 == 1 {
-                result = Self::multiply(&result, &base);
-            }
-            base = Self::multiply(&base, &base);
-            exp /= 2;
+        let mut secret = vec![0u8; secret_len];
+        for (byte_index, out) in secret.iter_mut().enumerate() {
+            let pairs: Vec<(u8, u8)> = points
+                .iter()
+                .map(|(x, ys)| (*x, ys[byte_index]))
+                .collect();
+            *out = gf256::interpolate_at_zero(&pairs).ok_or(RecoveryError::InvalidGuardian)?;
         }
-        
-        result
-    }
 
-    fn multiply(a: &[u8], b: &[u8]) -> Vec<u8> {
-        let mut result = vec![0u8; a.len()];
-        for (i, ai) in a.iter().enumerate() {
-            for (j, bj) in b.iter().enumerate() {
-                if i + j < result.len() {
-                    result[i + j] = result[i + j].wrapping_add(ai.wrapping_mul(*bj));
-                }
-            }
-        }
-        result
+        Ok(secret)
     }
 }
 
@@ -922,8 +992,62 @@ mod tests {
         
         assert_eq!(shares.len(), 3);
         
-        // Reconstruct with 2 shares
+        // Reconstruct with 2 shares. The recovered value must be the secret
+        // itself, not merely the right length.
         let recovered = tss.reconstruct_secret(&shares[..2]).unwrap();
-        assert_eq!(recovered.len(), 32);
+        assert_eq!(recovered, secret);
+    }
+}
+
+#[cfg(test)]
+mod gf256_tests {
+    use super::gf256;
+
+    // FIPS-197 worked example: 0x57 * 0x83 = 0xc1 in GF(2^8) mod 0x11b.
+    #[test]
+    fn multiplication_matches_fips_197() {
+        assert_eq!(gf256::mul(0x57, 0x83), 0xc1);
+        assert_eq!(gf256::mul(0x57, 0x13), 0xfe);
+        assert_eq!(gf256::mul(0x00, 0x83), 0x00);
+        assert_eq!(gf256::mul(0x01, 0x83), 0x83);
+        // Commutative.
+        assert_eq!(gf256::mul(0x83, 0x57), 0xc1);
+    }
+
+    // The AES S-box is built from the multiplicative inverse, so a known
+    // inverse pins the field down. inv(0x53) = 0xca.
+    #[test]
+    fn inverse_matches_aes_field() {
+        assert_eq!(gf256::inv(0x53), Some(0xca));
+        assert_eq!(gf256::mul(0x53, 0xca), 0x01);
+        assert_eq!(gf256::inv(0x00), None);
+        assert_eq!(gf256::inv(0x01), Some(0x01));
+        for a in 1u8..=255 {
+            let i = gf256::inv(a).expect("nonzero has an inverse");
+            assert_eq!(gf256::mul(a, i), 0x01, "a * a^-1 must be 1 for {a}");
+        }
+    }
+
+    #[test]
+    fn eval_is_the_polynomial_value() {
+        // p(x) = 5 + 3x + 7x^2 evaluated at x = 2.
+        let coeffs = [0x05u8, 0x03, 0x07];
+        let expected = 0x05 ^ gf256::mul(0x03, 0x02) ^ gf256::mul(0x07, gf256::mul(0x02, 0x02));
+        assert_eq!(gf256::eval(&coeffs, 0x02), expected);
+        // At x = 0 the value is the constant term.
+        assert_eq!(gf256::eval(&coeffs, 0x00), 0x05);
+    }
+
+    #[test]
+    fn interpolation_recovers_the_constant_term() {
+        // p(x) = 0x42 + 0x11 x + 0x99 x^2 over GF(2^8).
+        let coeffs = [0x42u8, 0x11, 0x99];
+        let points: Vec<(u8, u8)> = (1u8..=3).map(|x| (x, gf256::eval(&coeffs, x))).collect();
+        assert_eq!(gf256::interpolate_at_zero(&points), Some(0x42));
+    }
+
+    #[test]
+    fn interpolation_rejects_degenerate_points() {
+        assert_eq!(gf256::interpolate_at_zero(&[(1, 2), (1, 3)]), None);
     }
 }
