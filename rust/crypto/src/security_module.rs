@@ -59,35 +59,121 @@ impl RateLimiter {
 // IPFS Storage (Encrypted)
 // ============================================================================
 
+/// Client for an IPFS HTTP API endpoint.
+///
+/// The gateway URL is the API root (for example http://127.0.0.1:5001), not a
+/// read-only gateway: uploading needs `/api/v0/add`, which a public gateway
+/// does not serve. Every method reports a transport or HTTP failure instead of
+/// returning a placeholder, because a caller that stores a fabricated CID has
+/// no way to tell that the content was never pinned.
 pub struct IPFSStorage {
     gateway_url: String,
     auth_token: Option<String>,
+    client: reqwest::blocking::Client,
 }
 
 impl IPFSStorage {
     pub fn new(gateway_url: String, auth_token: Option<String>) -> Self {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new());
         IPFSStorage {
-            gateway_url,
+            gateway_url: gateway_url.trim_end_matches('/').to_string(),
             auth_token,
+            client,
         }
     }
-    
+
+    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::blocking::RequestBuilder {
+        let mut rb = self.client.request(method, format!("{}{}", self.gateway_url, path));
+        if let Some(token) = &self.auth_token {
+            rb = rb.bearer_auth(token);
+        }
+        rb
+    }
+
+    /// Add `data` to IPFS and return its CID.
     pub fn upload(&self, data: &[u8]) -> Result<String, String> {
-        // In production, upload to IPFS and return CID
-        // For now, return mock CID
-        Ok("QmXyZ...".to_string())
+        let part = reqwest::blocking::multipart::Part::bytes(data.to_vec()).file_name("blob");
+        let form = reqwest::blocking::multipart::Form::new().part("file", part);
+
+        let response = self
+            .request(reqwest::Method::POST, "/api/v0/add")
+            .query(&[("pin", "true")])
+            .multipart(form)
+            .send()
+            .map_err(|e| format!("ipfs add request failed: {e}"))?;
+
+        if !response.status().is_success() {
+            return Err(format!("ipfs add returned HTTP {}", response.status()));
+        }
+
+        let body: serde_json::Value = response
+            .json()
+            .map_err(|e| format!("ipfs add response was not JSON: {e}"))?;
+
+        body.get("Hash")
+            .and_then(|h| h.as_str())
+            .map(|h| h.to_string())
+            .ok_or_else(|| "ipfs add response carried no Hash field".to_string())
     }
-    
+
+    /// Fetch the content identified by `cid`.
     pub fn download(&self, cid: &str) -> Result<Vec<u8>, String> {
-        // In production, download from IPFS
-        Ok(Vec::new())
+        if cid.is_empty() {
+            return Err("empty CID".to_string());
+        }
+
+        let response = self
+            .request(reqwest::Method::POST, "/api/v0/cat")
+            .query(&[("arg", cid)])
+            .send()
+            .map_err(|e| format!("ipfs cat request failed: {e}"))?;
+
+        if !response.status().is_success() {
+            return Err(format!("ipfs cat returned HTTP {}", response.status()));
+        }
+
+        response
+            .bytes()
+            .map(|b| b.to_vec())
+            .map_err(|e| format!("ipfs cat body could not be read: {e}"))
     }
-    
+
+    /// Pin content that is already reachable by `cid`.
     pub fn pin(&self, cid: &str) -> Result<(), String> {
+        if cid.is_empty() {
+            return Err("empty CID".to_string());
+        }
+
+        let response = self
+            .request(reqwest::Method::POST, "/api/v0/pin/add")
+            .query(&[("arg", cid)])
+            .send()
+            .map_err(|e| format!("ipfs pin add request failed: {e}"))?;
+
+        if !response.status().is_success() {
+            return Err(format!("ipfs pin add returned HTTP {}", response.status()));
+        }
         Ok(())
     }
-    
+
+    /// Remove a pin, which leaves the content on the network if others hold it.
     pub fn unpin(&self, cid: &str) -> Result<(), String> {
+        if cid.is_empty() {
+            return Err("empty CID".to_string());
+        }
+
+        let response = self
+            .request(reqwest::Method::POST, "/api/v0/pin/rm")
+            .query(&[("arg", cid)])
+            .send()
+            .map_err(|e| format!("ipfs pin rm request failed: {e}"))?;
+
+        if !response.status().is_success() {
+            return Err(format!("ipfs pin rm returned HTTP {}", response.status()));
+        }
         Ok(())
     }
 }
