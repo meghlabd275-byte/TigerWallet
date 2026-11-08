@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find required packages
 find_package(CURL REQUIRED)
+find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -23,6 +24,7 @@ add_executable(logo_upload_service ${SOURCES})
 # Link libraries
 target_link_libraries(logo_upload_service
     ${CURL_LIBRARIES}
+    ZLIB::ZLIB
     ${OPENSSL_LIBRARIES}
     Threads::Threads
 )

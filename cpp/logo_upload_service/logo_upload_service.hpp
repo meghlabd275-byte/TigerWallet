@@ -24,8 +24,22 @@
 #include <sstream>
 #include <regex>
 #include <cstring>
+#include <filesystem>
+#include <cstdint>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <zlib.h>
+#include <cmath>
+#include <cstdlib>
 #include <openssl/md5.h>
 #include <openssl/sha.h>
+#include <openssl/hmac.h>
+#include <openssl/evp.h>
+#include <ctime>
 #include <curl/curl.h>
 
 // ============================================================================
@@ -86,6 +100,9 @@ struct ProcessingTask {
     std::string token_symbol;
     std::string chain;
     std::chrono::steady_clock::time_point start_time;
+    /// Invoked once the worker finishes: metadata and an empty error on
+    /// success, or an empty metadata and the reason on failure.
+    std::function<void(const LogoMetadata&, const std::string&)> callback;
 };
 
 struct CDNUploadResult {
@@ -182,6 +199,20 @@ public:
 private:
     std::string generatePresignedURL(const std::string& path);
     bool uploadToS3(const std::string& path, const std::vector<unsigned char>& data);
+    /// Derive the SigV4 signing key for a date/region pair.
+    std::vector<unsigned char> derive_signing_key(
+        const std::string& date_stamp,
+        const std::string& region
+    );
+    /// Add AWS Signature Version 4 headers for one S3 request.
+    bool signRequest(
+        const std::string& method,
+        const std::string& canonical_uri,
+        const std::string& canonical_query,
+        const std::string& payload,
+        const std::string& content_type,
+        std::vector<std::string>& headers
+    );
 };
 
 // ============================================================================
@@ -221,7 +252,7 @@ private:
 class RedisCache {
 private:
     LogoConfig config_;
-    void* redis_context_;
+    int socket_fd_;
     std::mutex mutex_;
     bool connected_;
 
@@ -237,9 +268,13 @@ public:
     bool ping();
 
 private:
-    std::string buildRedisCommand(const std::vector<std::string>& args);
-    bool sendCommand(const std::string& command);
-    std::string readResponse();
+    /// Serialize arguments as a RESP array, which is what the Redis wire
+    /// protocol expects for a command with binary-safe arguments.
+    static std::string buildRedisCommand(const std::vector<std::string>& args);
+    bool sendCommand(const std::vector<std::string>& args);
+    /// Read one RESP reply. Returns false on a transport error or a
+    /// protocol error reply, so a caller cannot mistake a failure for data.
+    bool readReply(std::string& out);
 };
 
 // ============================================================================
@@ -386,6 +421,23 @@ private:
     std::string buildUploadURL();
     std::string buildRequestURL(const std::string& endpoint);
     std::string readFile(const std::string& path);
+
+    /// Perform one HTTP request. Returns false on a transport error or a
+    /// non-2xx status, so a caller cannot read a failure as a success.
+    bool performRequest(
+        const std::string& method,
+        const std::string& url,
+        const std::string& body,
+        const std::string& content_type,
+        std::string& response
+    );
+
+    /// Read a string field out of a JSON object without pulling in a parser,
+    /// used for the flat metadata payloads this client consumes.
+    static std::string json_string_field(const std::string& json, const std::string& key);
+    static int json_int_field(const std::string& json, const std::string& key);
+    static std::vector<std::string> json_object_array(const std::string& json);
+    static LogoMetadata parse_metadata(const std::string& json);
 };
 
 #endif // LOGO_UPLOAD_SERVICE_HPP
