@@ -1,68 +1,159 @@
 //! Gas Simulator
-//! 
-//! Estimates gas costs for transactions.
+//!
+//! Prices gas from caller-supplied figures. Gas *prices* are chain state and
+//! must come from an oracle or RPC; this module deliberately ships no
+//! per-chain default, because a guessed price silently under- or over-states
+//! the cost of a transaction. Callers that cannot reach an oracle get `None`
+//! and must surface that, rather than quoting a fabricated number.
 
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use crate::SwapParams;
+/// Gas consumed by a native-value transfer (EIP-20 of a plain send).
+pub const GAS_NATIVE_TRANSFER: u64 = 21_000;
+/// Gas consumed by an ERC-20 transfer, net of the recipient's storage state.
+pub const GAS_TOKEN_TRANSFER: u64 = 65_000;
+/// Gas consumed by an ERC-20 approval.
+pub const GAS_TOKEN_APPROVAL: u64 = 46_000;
 
+/// Floor for an ERC-20 transfer to a fresh (zero-balance) recipient: an SSTORE
+/// from zero to non-zero costs 20k more than the warm case.
+pub const GAS_TOKEN_TRANSFER_NEW_RECIPIENT: u64 = 85_000;
+
+/// Where a gas figure came from. A caller can then decide whether a quote is
+/// authoritative enough to act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GasSource {
+    /// Measured by `eth_estimateGas`.
+    Estimate,
+    /// Read from the node's current gas price.
+    Oracle,
+    /// Supplied by the operator as a static configuration.
+    Configured,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GasPrice {
+    /// Wei per gas unit.
+    pub wei: u128,
+    pub source: GasSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GasCost {
+    pub gas: u64,
+    pub price_wei: u128,
+    pub source: GasSource,
+}
+
+impl GasCost {
+    /// Total cost in wei, or `None` if it would overflow `u128`.
+    pub fn total_wei(&self) -> Option<u128> {
+        (self.gas as u128).checked_mul(self.price_wei)
+    }
+}
+
+/// Per-operation gas limits. Defaults are the EVM's own intrinsic costs, which
+/// are protocol constants, not chain state.
 pub struct GasSimulator {
-    gas_costs: RwLock<HashMap<String, u64>>,
+    limits: RwLock<HashMap<String, u64>>,
+    prices: RwLock<HashMap<String, GasPrice>>,
 }
 
 impl GasSimulator {
     pub fn new() -> Self {
-        let simulator = Self {
-            gas_costs: RwLock::new(HashMap::new()),
-        };
-        
-        // Default gas costs
+        let limits = RwLock::new(HashMap::new());
         {
-            let mut costs = simulator.gas_costs.write().unwrap();
-            costs.insert("swap".to_string(), 150000);
-            costs.insert("transfer".to_string(), 21000);
-            costs.insert("approve".to_string(), 46000);
-            costs.insert("mint".to_string(), 200000);
-            costs.insert("burn".to_string(), 100000);
+            let mut map = limits.write().unwrap();
+            map.insert("transfer".to_string(), GAS_NATIVE_TRANSFER);
+            map.insert("token_transfer".to_string(), GAS_TOKEN_TRANSFER);
+            map.insert("approve".to_string(), GAS_TOKEN_APPROVAL);
         }
-        
-        simulator
+
+        Self {
+            limits,
+            prices: RwLock::new(HashMap::new()),
+        }
     }
-    
-    /// Estimate gas for swap
-    pub fn estimate_swap_gas(&self, params: &SwapParams) -> u64 {
-        *self.gas_costs.read().unwrap().get("swap").unwrap_or(&150000)
+
+    /// Override the gas limit for an operation.
+    pub fn set_gas_limit(&self, operation: &str, gas: u64) {
+        self.limits
+            .write()
+            .unwrap()
+            .insert(operation.to_string(), gas);
     }
-    
-    /// Estimate gas for transfer
-    pub fn estimate_transfer_gas(&self, token: &str) -> u64 {
-        if token == "0x0000000000000000000000000000000000000000" {
-            *self.gas_costs.read().unwrap().get("transfer").unwrap_or(&21000)
+
+    /// Record an observed gas price for a chain.
+    pub fn set_gas_price(&self, chain: &str, wei: u128, source: GasSource) {
+        self.prices
+            .write()
+            .unwrap()
+            .insert(chain.to_string(), GasPrice { wei, source });
+    }
+
+    /// Gas price for a chain, or `None` when none has been observed.
+    pub fn get_gas_price(&self, chain: &str) -> Option<GasPrice> {
+        self.prices.read().unwrap().get(chain).copied()
+    }
+
+    /// Gas limit registered for an operation, if any.
+    pub fn gas_limit(&self, operation: &str) -> Option<u64> {
+        self.limits.read().unwrap().get(operation).copied()
+    }
+
+    /// Cost of an operation on a chain, or `None` when either the limit or the
+    /// price is unknown.
+    pub fn estimate_cost(&self, chain: &str, operation: &str, gas: Option<u64>) -> Option<GasCost> {
+        let gas = gas.or_else(|| self.gas_limit(operation))?;
+        let price = self.get_gas_price(chain)?;
+        Some(GasCost {
+            gas,
+            price_wei: price.wei,
+            source: price.source,
+        })
+    }
+
+    /// Gas for a swap: the caller's measured estimate when available, else the
+    /// router's per-hop constant times the hop count.
+    pub fn estimate_swap_gas(&self, measured: Option<u64>, hops: usize) -> Option<u64> {
+        match measured {
+            Some(gas) if gas > 0 => Some(gas),
+            _ => {
+                let hops = u64::try_from(hops).ok()?;
+                if hops == 0 {
+                    return None;
+                }
+                crate::route_simulator::GAS_PER_HOP
+                    .checked_mul(hops as u128)
+                    .and_then(|g| u64::try_from(g).ok())
+            }
+        }
+    }
+
+    /// Gas for a transfer: 21k for native value, 65k for a token transfer to a
+    /// funded recipient, 85k when the recipient's balance slot is empty.
+    pub fn estimate_transfer_gas(&self, is_native: bool, recipient_has_balance: bool) -> u64 {
+        if is_native {
+            GAS_NATIVE_TRANSFER
+        } else if recipient_has_balance {
+            GAS_TOKEN_TRANSFER
         } else {
-            *self.gas_costs.read().unwrap().get("transfer").unwrap_or(&65000)
+            GAS_TOKEN_TRANSFER_NEW_RECIPIENT
         }
     }
-    
-    /// Estimate gas for contract interaction
-    pub fn estimate_contract_gas(&self, method: &str) -> u64 {
-        *self.gas_costs.read().unwrap().get(method).unwrap_or(&100000)
+
+    /// Gas for an arbitrary contract method, using a caller-supplied estimate
+    /// or a previously configured limit for that method.
+    pub fn estimate_contract_gas(&self, method: &str, measured: Option<u64>) -> Option<u64> {
+        measured
+            .filter(|gas| *gas > 0)
+            .or_else(|| self.gas_limit(method))
     }
-    
-    /// Get current gas price
-    pub fn get_gas_price(&self, chain: &str) -> u64 {
-        // Simplified - would fetch from oracle
-        match chain {
-            "ethereum" => 20_00000000,  // 20 Gwei
-            "bsc" => 5_00000000,      // 5 Gwei
-            "polygon" => 50_000000,    // 0.05 Gwei
-            "arbitrum" => 100_000,      // 0.0001 Gwei
-            _ => 20_00000000,
-        }
-    }
-    
-    /// Calculate total cost
-    pub fn calculate_total_cost(&self, chain: &str, gas: u64) -> u64 {
-        gas * self.get_gas_price(chain)
+}
+
+impl Default for GasSimulator {
+    fn default() -> Self {
+        Self::new()
     }
 }
