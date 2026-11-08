@@ -359,7 +359,10 @@ func (svc *Service) getAutoSignPolicy(ctx context.Context, masterID string) *aut
 
 // GetAutoSignPolicy GET /api/v1/master-wallet/:id/auto-sign-policy
 func (svc *Service) GetAutoSignPolicy(c *gin.Context) {
-	masterID := c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"policy": svc.getAutoSignPolicy(c.Request.Context(), masterID)})
 }
 

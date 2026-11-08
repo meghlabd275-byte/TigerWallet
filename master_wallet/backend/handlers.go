@@ -746,7 +746,10 @@ func (svc *Service) TransferFromSubWallet(c *gin.Context) {
 // --- Transaction handlers ---
 
 func (svc *Service) GetTransactions(c *gin.Context) {
-	masterID := c.Query("master_wallet_id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	status := c.Query("status")
 	limit := parseLimit(c.Query("limit"), 50, 200)
 	ctx := c.Request.Context()

@@ -169,6 +169,11 @@ func (svc *Service) mayAccessMasterWallet(ctx context.Context, masterID, userID,
 	if role == "admin" || role == "super_admin" || role == "operator" {
 		return true
 	}
+	// Fail closed when the store is unavailable: an ownership question that
+	// cannot be answered is not a grant.
+	if svc.store == nil || svc.store.db == nil {
+		return false
+	}
 	var createdBy string
 	if err := svc.store.db.QueryRow(ctx,
 		`SELECT COALESCE(created_by::text, '') FROM master_wallets WHERE id = $1`, masterID).Scan(&createdBy); err != nil {

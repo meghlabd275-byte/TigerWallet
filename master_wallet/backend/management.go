@@ -24,9 +24,9 @@ type policyReq struct {
 }
 
 func (svc *Service) GetPolicies(c *gin.Context) {
-	masterID := c.Query("master_wallet_id")
-	if masterID == "" {
-		masterID = c.Param("id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
 	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
@@ -85,6 +85,10 @@ func (svc *Service) CreatePolicy(c *gin.Context) {
 }
 
 func (svc *Service) UpdatePolicy(c *gin.Context) {
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	id := c.Param("pid")
 	var req policyReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -93,8 +97,8 @@ func (svc *Service) UpdatePolicy(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 	res, err := svc.store.db.Exec(ctx,
-		`UPDATE policies SET name=$1, policy_type=$2, conditions=$3, actions=$4, priority=$5 WHERE id=$6`,
-		req.Name, req.PolicyType, detailsJSON(req.Conditions), detailsJSON(req.Actions), req.Priority, id)
+		`UPDATE policies SET name=$1, policy_type=$2, conditions=$3, actions=$4, priority=$5 WHERE id=$6 AND master_wallet_id=$7`,
+		req.Name, req.PolicyType, detailsJSON(req.Conditions), detailsJSON(req.Actions), req.Priority, id, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -103,7 +107,7 @@ func (svc *Service) UpdatePolicy(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "policy not found"})
 		return
 	}
-	svc.store.audit(ctx, c.Param("id"), "policy.update", "policy", "user", currentUserID(c), "policy", id, "normal", gin.H{"name": req.Name})
+	svc.store.audit(ctx, masterID, "policy.update", "policy", "user", currentUserID(c), "policy", id, "normal", gin.H{"name": req.Name})
 	c.JSON(http.StatusOK, gin.H{"id": id, "updated": true})
 }
 
@@ -396,7 +400,10 @@ type userReq struct {
 }
 
 func (svc *Service) GetUsers(c *gin.Context) {
-	masterID := c.Query("master_wallet_id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
 		`SELECT id, email, name, role, is_active, last_login_at, created_at FROM mw_users WHERE master_wallet_id = $1 ORDER BY created_at DESC`, masterID)
@@ -540,7 +547,10 @@ func (svc *Service) DeleteUser(c *gin.Context) {
 // --- Audit logs ---
 
 func (svc *Service) GetAuditLogs(c *gin.Context) {
-	masterID := c.Query("master_wallet_id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	limit := parseLimit(c.Query("limit"), 100, 500)
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
@@ -575,18 +585,27 @@ func (svc *Service) GetAuditLogs(c *gin.Context) {
 // --- Analytics (real SQL aggregates) ---
 
 func (svc *Service) GetVolumeAnalytics(c *gin.Context) {
-	masterID := c.Query("master_wallet_id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	var totalVolume string
 	var txCount int64
-	_ = svc.store.db.QueryRow(ctx,
+	if err := svc.store.db.QueryRow(ctx,
 		`SELECT COALESCE(SUM(amount), 0)::text, COUNT(*) FROM transactions WHERE master_wallet_id = $1 AND status = 'confirmed'`,
-		masterID).Scan(&totalVolume, &txCount)
+		masterID).Scan(&totalVolume, &txCount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to compute volume analytics"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"master_wallet_id": masterID, "total_volume": totalVolume, "transaction_count": txCount, "source": "postgresql"})
 }
 
 func (svc *Service) GetTransactionAnalytics(c *gin.Context) {
-	masterID := c.Query("master_wallet_id")
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
 	rows, err := svc.store.db.Query(ctx,
 		`SELECT status, COUNT(*) FROM transactions WHERE master_wallet_id = $1 GROUP BY status`, masterID)
@@ -606,12 +625,23 @@ func (svc *Service) GetTransactionAnalytics(c *gin.Context) {
 }
 
 func (svc *Service) GetWalletAnalytics(c *gin.Context) {
+	masterID, ok := svc.requireMasterWalletAccess(c)
+	if !ok {
+		return
+	}
 	ctx := c.Request.Context()
-	var walletCount, subWalletCount, userCount int64
-	_ = svc.store.db.QueryRow(ctx, `SELECT COUNT(*) FROM master_wallets`).Scan(&walletCount)
-	_ = svc.store.db.QueryRow(ctx, `SELECT COUNT(*) FROM sub_wallets`).Scan(&subWalletCount)
-	_ = svc.store.db.QueryRow(ctx, `SELECT COUNT(*) FROM mw_users`).Scan(&userCount)
-	c.JSON(http.StatusOK, gin.H{"master_wallets": walletCount, "sub_wallets": subWalletCount, "users": userCount, "source": "postgresql"})
+	var subWalletCount, userCount int64
+	if err := svc.store.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM sub_wallets WHERE master_wallet_id = $1`, masterID).Scan(&subWalletCount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count sub wallets"})
+		return
+	}
+	if err := svc.store.db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM mw_users WHERE master_wallet_id = $1`, masterID).Scan(&userCount); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count users"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"master_wallet_id": masterID, "sub_wallets": subWalletCount, "users": userCount, "source": "postgresql"})
 }
 
 // --- Notifications ---
