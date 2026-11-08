@@ -156,6 +156,9 @@ user_wallet/go/user_wallet
 /mm_bot_platform/bot_api/bot_api
 /api_gateway/go/cmd/unified_gateway/unified_gateway
 
+# social_recovery compiled backend binary
+social_recovery/go/cmd/social-recovery
+
 # MasterWallet compiled backend binary
 master_wallet/backend/master-wallet-backend
 master_wallet/main
