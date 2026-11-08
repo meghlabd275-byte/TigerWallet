@@ -6,10 +6,9 @@ use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::error::Error;
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use reqwest::Client;
 use serde_json::json;
-use chrono::Utc;
 use tracing::{info, error, warn, debug};
 use tokio::sync::RwLock as TokioRwLock;
 
@@ -695,6 +694,15 @@ impl Fetcher for PriceFeedFetcher {
 // DAPP CONNECTION FETCHER
 // =============================================================================
 
+/// WalletConnect v2 topics are 32 bytes rendered as 64 lowercase hex
+/// characters, so a 128-bit value would be rejected by a relay. Draw the full
+/// 32 bytes from the OS CSPRNG.
+fn new_wc_topic() -> String {
+    let mut bytes = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut bytes);
+    hex::encode(bytes)
+}
+
 pub struct DAppConnectionFetcher {
     base: BaseFetcherImpl,
     sessions: RwLock<HashMap<String, WCSession>>,
@@ -711,7 +719,7 @@ impl DAppConnectionFetcher {
     pub fn create_session(&self, wallet_address: &str, peer_metadata: &str, chain_id: &str) -> WCSession {
         let now = current_timestamp();
         let session = WCSession {
-            topic: format!("{:x}", rand::random::<u128>()),
+            topic: new_wc_topic(),
             wallet_address: wallet_address.to_string(),
             peer_metadata: peer_metadata.to_string(),
             chain_id: chain_id.to_string(),
@@ -1584,5 +1592,48 @@ impl Fetcher for CrossChainRouteOptimizer {
 
     fn get_stats(&self) -> FetcherStats {
         self.base.get_stats()
+    }
+}
+
+#[cfg(test)]
+mod wc_topic_tests {
+    use super::*;
+
+    /// A WalletConnect v2 topic is 32 bytes as 64 lowercase hex characters.
+    /// A shorter value is rejected by the relay, so the width is asserted
+    /// rather than assumed.
+    #[test]
+    fn topic_is_32_bytes_of_lowercase_hex() {
+        let topic = new_wc_topic();
+        assert_eq!(topic.len(), 64, "topic must be 32 bytes of hex");
+        assert!(
+            topic
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+            "topic must be lowercase hex, got {topic}"
+        );
+    }
+
+    /// Two sessions must not share a topic. A 128-bit draw collides far
+    /// sooner than the full 32-byte draw the protocol specifies.
+    #[test]
+    fn topics_are_unique_across_sessions() {
+        let fetcher = DAppConnectionFetcher::new();
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..64 {
+            let session = fetcher.create_session("0xabc", "{}", "1");
+            assert!(seen.insert(session.topic.clone()), "topic repeated");
+        }
+    }
+
+    /// Sessions are addressable by the topic returned at creation.
+    #[test]
+    fn session_is_retrievable_by_topic() {
+        let fetcher = DAppConnectionFetcher::new();
+        let session = fetcher.create_session("0xabc", "{}", "1");
+        let found = fetcher.get_session(&session.topic).expect("session stored");
+        assert_eq!(found.wallet_address, session.wallet_address);
+        assert!(fetcher.delete_session(&session.topic));
+        assert!(fetcher.get_session(&session.topic).is_none());
     }
 }

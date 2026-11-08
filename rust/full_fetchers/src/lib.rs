@@ -8,11 +8,9 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::Duration;
 use std::thread;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
-use std::future::Future;
-use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Re-export types
 pub mod types;
