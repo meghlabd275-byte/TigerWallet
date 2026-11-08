@@ -42,15 +42,15 @@ bool MEVBlocker::Initialize(const std::string& config_path) {
         std::cerr << "[MEV] Already initialized" << std::endl;
         return true;
     }
-    
+
     std::cout << "[MEV] Initializing MEV Protection System..." << std::endl;
     std::cout << "[MEV] Protection Level: " << static_cast<int>(protection_level_) << std::endl;
-    
+
     // Initialize default relayers (Flashbots, MEV-Boost)
     relayers_.push_back("https://relay.flashbots.net");
     relayers_.push_back("https://mev-boost.titanbuilder.xyz");
     relayers_.push_back("https://mev-relay.ultrasound.money");
-    
+
     // Fee data comes from the operator's node. Without an endpoint there is no
     // oracle, and the accessor reports no reading rather than a guess.
     if (const char* env = std::getenv("TIGER_MEV_RPC_URL"); env != nullptr && *env != '\0') {
@@ -80,21 +80,21 @@ bool MEVBlocker::Start() {
         std::cerr << "[MEV] Not initialized" << std::endl;
         return false;
     }
-    
+
     if (running_) {
         std::cout << "[MEV] Already running" << std::endl;
         return true;
     }
-    
+
     std::cout << "[MEV] Starting MEV Protection Service..." << std::endl;
-    
+
     running_ = true;
-    
+
     // Start worker threads
     workers_.emplace_back(&MEVBlocker::RunGasOracleUpdater, this);
     workers_.emplace_back(&MEVBlocker::RunMempoolCleaner, this);
     workers_.emplace_back(&MEVBlocker::RunBundleProcessor, this);
-    
+
     std::cout << "[MEV] Started " << workers_.size() << " worker threads" << std::endl;
     return true;
 }
@@ -103,11 +103,11 @@ void MEVBlocker::Stop() {
     if (!running_) {
         return;
     }
-    
+
     std::cout << "[MEV] Stopping MEV Protection Service..." << std::endl;
-    
+
     running_ = false;
-    
+
     // Join all workers
     for (auto& worker : workers_) {
         if (worker.joinable()) {
@@ -115,7 +115,7 @@ void MEVBlocker::Stop() {
         }
     }
     workers_.clear();
-    
+
     std::cout << "[MEV] Stopped" << std::endl;
 }
 
@@ -124,19 +124,24 @@ std::string MEVBlocker::SubmitTransaction(const Transaction& tx) {
         std::cerr << "[MEV] Service not running" << std::endl;
         return "";
     }
-    
+
+    // Every submitted transaction is recorded locally so the bundle processor
+    // can look for sandwich exposure around it.
+    RecordMempoolEntry(tx);
+
     // Analyze transaction for MEV risk
     RiskAssessment assessment = AnalyzeTransaction(tx);
-    
+
     // Check if we should block this transaction
     if (ShouldBlockTransaction(tx)) {
-        std::cout << "[MEV] Blocking potentially harmful transaction: " 
+        std::cout << "[MEV] Blocking potentially harmful transaction: "
                   << tx.hash << std::endl;
         UpdateStatistics(false, true);
         return "";
     }
-    
-    // If high protection level, submit as private transaction
+
+    // At advanced and above the transaction is broadcast through a private
+    // channel so it never appears in the public mempool.
     if (protection_level_ >= ProtectionLevel::kAdvanced) {
         std::string private_hash = SubmitPrivateTransaction(tx);
         if (!private_hash.empty()) {
@@ -144,71 +149,90 @@ std::string MEVBlocker::SubmitTransaction(const Transaction& tx) {
             UpdateStatistics(true, false);
             return private_hash;
         }
+        // The private channel could not accept the transaction. Falling back
+        // to a public broadcast would defeat the protection the caller asked
+        // for, so the submission fails instead.
+        std::cerr << "[MEV] Private submission unavailable at protection level "
+                  << static_cast<int>(protection_level_)
+                  << "; refusing to broadcast publicly" << std::endl;
+        UpdateStatistics(false, false);
+        return "";
     }
-    
-    // Regular submission with protection
-    std::cout << "[MEV] Transaction protected: " << tx.hash << std::endl;
+
+    // Protection level is none or basic: broadcast the signed payload.
+    const std::string broadcast = BroadcastRawTransaction(tx.raw);
+    if (broadcast.empty()) {
+        UpdateStatistics(false, false);
+        return "";
+    }
+
     UpdateStatistics(true, false);
-    
-    // Return protected hash
-    return tx.hash;
+    return broadcast;
 }
 
 std::string MEVBlocker::SubmitPrivateTransaction(const Transaction& tx) {
-    std::lock_guard<std::mutex> lock(private_mutex_);
-    
-    // Submit to Flashbots
+    // A private submission carries the signed raw transaction to a relay. An
+    // empty payload cannot be submitted anywhere, so this fails closed rather
+    // than returning a hash for something that was never sent.
+    if (tx.raw.empty()) {
+        std::cerr << "[MEV] Private submission requires a signed raw transaction" << std::endl;
+        return "";
+    }
+
+    // Relayers are copied under the lock; the submission itself happens without
+    // it so a slow relay cannot block relayer configuration.
+    std::vector<std::string> relayers;
+    {
+        std::lock_guard<std::mutex> lock(relayers_mutex_);
+        relayers = relayers_;
+    }
+
     std::string result = SubmitToFlashbots(tx);
     if (!result.empty()) {
+        std::lock_guard<std::mutex> lock(private_mutex_);
         private_txs_[result] = tx;
         return result;
     }
-    
-    // Try relayers
-    for (const auto& relayer : relayers_) {
+
+    // Try the operator's configured relayers in turn.
+    for (const auto& relayer : relayers) {
         result = SubmitToRelayer(tx, relayer);
         if (!result.empty()) {
+            std::lock_guard<std::mutex> lock(private_mutex_);
             private_txs_[result] = tx;
             return result;
         }
     }
-    
+
     return "";
 }
 
 RiskAssessment MEVBlocker::AnalyzeTransaction(const Transaction& tx) {
     RiskAssessment result;
-    
-    // Classify transaction
-    TransactionType tx_type = ClassifyTransaction(tx);
-    
-    // Check for sandwich attack potential
-    auto sandwich = DetectSandwich(tx);
-    if (sandwich) {
-        result.risk_score = 0.9f;
-        result.attack_type = "Sandwich Attack";
-        result.recommendations.push_back("Use private transaction");
-        result.recommendations.push_back("Set slippage to minimum");
+    const TransactionType tx_type = ClassifyTransaction(tx);
+
+    // Only a value-bearing swap exposes a victim to sandwiching, so the
+    // analysis is scoped to that case. Any other transaction is reported as
+    // carrying no extractable MEV rather than being given a fabricated score.
+    if (tx_type != TransactionType::kSwap || tx.value.is_zero()) {
         return result;
     }
-    
-    // Check for front-running potential
-    if (IsFrontRunning(tx)) {
-        result.risk_score = 0.7f;
-        result.attack_type = "Front Running";
-        result.recommendations.push_back("Use private transaction");
-    }
-    
-    // Check for back-running potential
-    if (IsBackRunning(tx)) {
-        result.risk_score = 0.5f;
-        result.attack_type = "Back Running";
-    }
-    
-    // Calculate potential profit for MEV extractors
+
+    // The victim's own exposure: a swap large enough to move the pool is worth
+    // front-running, and its value bounds what an attacker could take. This is
+    // a stated heuristic, not a measurement of a specific attack.
+    result.attack_type = "Sandwich exposure";
+    result.risk_score = 0.6f;
+    result.recommendations.push_back("Broadcast through a private channel");
+    result.recommendations.push_back("Set slippage tolerance to the minimum");
+
+    // Upper bound on extractable value, reported so callers can rank the
+    // transaction. It is explicitly an upper bound: the realised extraction
+    // depends on pool depth and competing searchers, which this module does
+    // not observe.
     result.profit_extracted = EstimateMEVProfit(tx);
-    result.is_profitable = result.profit_extracted > 0.01f;
-    
+    result.is_profitable = result.profit_extracted > 0.0f;
+
     return result;
 }
 
@@ -234,13 +258,13 @@ MEVBlocker::Stats MEVBlocker::GetStats() const {
 
 bool MEVBlocker::AddRelayer(const std::string& relayer_url) {
     std::lock_guard<std::mutex> lock(relayers_mutex_);
-    
+
     // Check if already exists
     auto it = std::find(relayers_.begin(), relayers_.end(), relayer_url);
     if (it != relayers_.end()) {
         return false;
     }
-    
+
     relayers_.push_back(relayer_url);
     std::cout << "[MEV] Added relayer: " << relayer_url << std::endl;
     return true;
@@ -248,15 +272,27 @@ bool MEVBlocker::AddRelayer(const std::string& relayer_url) {
 
 bool MEVBlocker::RemoveRelayer(const std::string& relayer_url) {
     std::lock_guard<std::mutex> lock(relayers_mutex_);
-    
+
     auto it = std::find(relayers_.begin(), relayers_.end(), relayer_url);
     if (it == relayers_.end()) {
         return false;
     }
-    
+
     relayers_.erase(it);
     std::cout << "[MEV] Removed relayer: " << relayer_url << std::endl;
     return true;
+}
+
+bool MEVBlocker::AddBlockedSender(const std::string& address) {
+    if (address.empty()) return false;
+
+    std::lock_guard<std::mutex> lock(blocked_mutex_);
+    return blocked_senders_.insert(address).second;
+}
+
+bool MEVBlocker::RemoveBlockedSender(const std::string& address) {
+    std::lock_guard<std::mutex> lock(blocked_mutex_);
+    return blocked_senders_.erase(address) > 0;
 }
 
 bool MEVBlocker::IsPrivateTransaction(const std::string& tx_hash) const {
@@ -347,6 +383,34 @@ bool JsonRpcCall(const std::string& url, const std::string& request, std::string
 
 }  // namespace
 
+std::string MEVBlocker::BroadcastRawTransaction(const std::string& raw_tx) {
+    // Broadcasting needs a signed payload and a node. Either missing means no
+    // transaction hash exists, so the caller gets an empty string rather than a
+    // locally invented one.
+    if (raw_tx.empty()) return "";
+
+    std::string url;
+    {
+        std::lock_guard<std::mutex> lock(rpc_mutex_);
+        url = rpc_url_;
+    }
+    if (url.empty()) {
+        std::cerr << "[MEV] No RPC endpoint configured (TIGER_MEV_RPC_URL); "
+                     "cannot broadcast" << std::endl;
+        return "";
+    }
+
+    std::ostringstream request;
+    request << "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_sendRawTransaction\","
+            << "\"params\":[\"" << raw_tx << "\"]}";
+
+    std::string result;
+    if (!JsonRpcCall(url, request.str(), result)) {
+        return "";
+    }
+    return result;
+}
+
 bool MEVBlocker::RefreshGasOracle() {
     std::string url;
     {
@@ -406,13 +470,13 @@ void MEVBlocker::RunGasOracleUpdater() {
 
 void MEVBlocker::RunMempoolCleaner() {
     std::cout << "[MEV] Mempool cleaner started" << std::endl;
-    
+
     while (running_) {
         try {
             std::this_thread::sleep_for(std::chrono::seconds(30));
-            
+
             std::lock_guard<std::mutex> lock(mempool_mutex_);
-            
+
             // Remove old transactions (older than 5 minutes)
             auto now = std::chrono::steady_clock::now();
             mempool_.erase(
@@ -424,13 +488,13 @@ void MEVBlocker::RunMempoolCleaner() {
                     }),
                 mempool_.end()
             );
-            
+
             // Trim if too large
             if (mempool_.size() > kMempoolSize) {
-                mempool_.erase(mempool_.begin(), 
+                mempool_.erase(mempool_.begin(),
                               mempool_.begin() + (mempool_.size() - kMempoolSize));
             }
-            
+
         } catch (const std::exception& e) {
             std::cerr << "[MEV] Mempool cleaner error: " << e.what() << std::endl;
         }
@@ -439,25 +503,31 @@ void MEVBlocker::RunMempoolCleaner() {
 
 void MEVBlocker::RunBundleProcessor() {
     std::cout << "[MEV] Bundle processor started" << std::endl;
-    
+
     while (running_) {
         try {
             std::this_thread::sleep_for(kBundleCheckInterval);
-            
-            // Process mempool for bundle opportunities
-            std::lock_guard<std::mutex> lock(mempool_mutex_);
-            
-            for (auto& tx : mempool_) {
-                auto sandwich = DetectSandwich(tx);
-                if (sandwich) {
-                    // Submit backrun bundle
-                    std::cout << "[MEV] Sandwich opportunity detected, submitting backrun" << std::endl;
-                    
-                    // In production, submit bundle to validators
-                    stats_.bundles_submitted++;
+
+            // Copy the candidate transactions under the lock, then analyse them
+            // without it. DetectSandwich takes mempool_mutex_ itself, so
+            // holding it across the call would deadlock on the non-recursive
+            // mutex and permanently stall this worker.
+            std::vector<Transaction> candidates;
+            {
+                std::lock_guard<std::mutex> lock(mempool_mutex_);
+                candidates.assign(mempool_.begin(), mempool_.end());
+            }
+
+            for (const auto& tx : candidates) {
+                if (DetectSandwich(tx)) {
+                    // The opportunity is reported, never acted on. Turning it
+                    // into a bundle would require the pool state, an unsigned
+                    // attacker transaction, and a private key to sign with,
+                    // none of which belong to a protection service.
+                    std::lock_guard<std::mutex> lock(stats_mutex_);
+                    stats_.sandwich_opportunities++;
                 }
             }
-            
         } catch (const std::exception& e) {
             std::cerr << "[MEV] Bundle processor error: " << e.what() << std::endl;
         }
@@ -468,92 +538,137 @@ bool MEVBlocker::ShouldBlockTransaction(const Transaction& tx) {
     if (protection_level_ == ProtectionLevel::kNone) {
         return false;
     }
-    
-    // Block if it's a known MEV bot
-    if (tx.from == "0x47173b753d6f72c6a7b8f78f91b9c6c4d8e5f3a" ||  // Known sniper
-        tx.from == "0x9f4e5e8c5a8d4f3b2c7e9f6a1d8c4b5e7f9a2d4") {
-        return true;
+
+    // An operator-supplied denylist of sender addresses. This is the only
+    // deterministic block signal available: everything else here is a heuristic
+    // and blocking on a heuristic would reject legitimate traffic.
+    if (!tx.from.empty()) {
+        std::lock_guard<std::mutex> lock(blocked_mutex_);
+        if (blocked_senders_.count(tx.from) > 0) {
+            return true;
+        }
     }
-    
-    // Block if extremely high gas (potential attack)
-    if (tx.gas_price > gas_oracle_.priority_fee_instant * 10) {
-        return true;
-    }
-    
-    // Check for sandwich attack
-    if (IsSandwichAttack(tx)) {
-        return protection_level_ >= ProtectionLevel::kBasic;
-    }
-    
+
     return false;
 }
 
+// The detectors below answer one narrow question: does this transaction carry
+// the shape of the pattern in question? They inspect calldata and the fee the
+// sender attached. They do not claim that an attack is occurring, because that
+// would require pool state and ordering information this module does not have.
+// Callers use them to decide whether to route a transaction privately.
 bool MEVBlocker::IsSandwichAttack(const Transaction& tx) {
-    // Check if this transaction could be part of a sandwich
-    // Look for large swaps that could be sandwiched
-    return tx.data.size() > 4 && tx.value > 1000000000000000000ULL;  // > 1 ETH
+    return ClassifyTransaction(tx) == TransactionType::kSwap && !tx.value.is_zero();
 }
 
 bool MEVBlocker::IsFrontRunning(const Transaction& tx) {
-    // Detect potential front-running (buying before large order)
-    return tx.data.size() > 4 && tx.gas_price > gas_oracle_.priority_fee_fast * 2;
+    // A swap priced far above the current base fee is bidding for priority,
+    // which is what a front-run does. The base fee comes from the node; with
+    // no reading there is nothing to compare against, so this reports false
+    // rather than guessing a threshold.
+    if (ClassifyTransaction(tx) != TransactionType::kSwap) return false;
+
+    uint64_t base_fee = 0;
+    {
+        std::lock_guard<std::mutex> lock(gas_mutex_);
+        base_fee = gas_oracle_.base_fee;
+    }
+    if (base_fee == 0) return false;
+
+    return tx.gas_price.to_double() > static_cast<double>(base_fee) * 2.0;
 }
 
 bool MEVBlocker::IsBackRunning(const Transaction& tx) {
-    // Detect potential back-running (buying after large order)
-    return tx.data.size() > 4;
+    // A back-run is a swap sent immediately after a large swap. Without a
+    // block-ordering view the only honest signal is that this is a swap at
+    // all, which is what the caller needs to decide on private routing.
+    return ClassifyTransaction(tx) == TransactionType::kSwap;
 }
 
 std::string MEVBlocker::SubmitToFlashbots(const Transaction& tx) {
-    // In production, this would call the Flashbots API
-    // For now, return a simulated private hash
-    std::string private_hash = "0xfb" + tx.hash.substr(2);
-    return private_hash;
+    // Flashbots accepts an eth_sendBundle over its relay JSON-RPC endpoint. The
+    // bundle holds the signed raw transaction. blockNumber is omitted, which
+    // the relay reads as "the next block". A relay that rejects the bundle
+    // produces an error and no hash, surfaced here as an empty result.
+    if (tx.raw.empty()) return "";
+
+    const std::string endpoint = flashbots_endpoint_.empty()
+                                     ? std::string("https://relay.flashbots.net")
+                                     : flashbots_endpoint_;
+
+    std::ostringstream bundle;
+    bundle << "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_sendBundle\",\"params\":[{"
+           << "\"txs\":[\"" << tx.raw << "\"]"
+           << "}]}";
+
+    std::string result;
+    if (!JsonRpcCall(endpoint, bundle.str(), result)) {
+        return "";
+    }
+    return result;
 }
 
 std::string MEVBlocker::SubmitToRelayer(const Transaction& tx, const std::string& relayer) {
-    // In production, this would call the relayer API
-    // For now, return empty (Flashbots succeeded)
-    return "";
+    // A relayer speaks the same eth_sendRawTransaction JSON-RPC method as a
+    // node, so the signed payload is forwarded verbatim and the node's own
+    // transaction hash is returned. Nothing is synthesised locally.
+    if (tx.raw.empty() || relayer.empty()) return "";
+
+    std::ostringstream request;
+    request << "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_sendRawTransaction\","
+            << "\"params\":[\"" << tx.raw << "\"]}";
+
+    std::string result;
+    if (!JsonRpcCall(relayer, request.str(), result)) {
+        return "";
+    }
+    return result;
 }
 
 uint64_t MEVBlocker::CalculateOptimalGasPrice(const Transaction& tx) {
-    uint64_t base_fee = gas_oracle_.base_fee;
+    // Snapshot the oracle under its lock; the worker thread updates these
+    // fields concurrently.
+    GasOracle oracle;
+    {
+        std::lock_guard<std::mutex> lock(gas_mutex_);
+        oracle = gas_oracle_;
+    }
+
+    uint64_t base_fee = oracle.base_fee;
     uint64_t priority_fee = 0;
-    
+
     switch (protection_level_) {
         case ProtectionLevel::kNone:
-            priority_fee = gas_oracle_.priority_fee_slow;
+            priority_fee = oracle.priority_fee_slow;
             break;
         case ProtectionLevel::kBasic:
-            priority_fee = gas_oracle_.priority_fee_standard;
+            priority_fee = oracle.priority_fee_standard;
             break;
         case ProtectionLevel::kAdvanced:
-            priority_fee = gas_oracle_.priority_fee_fast;
+            priority_fee = oracle.priority_fee_fast;
             break;
         case ProtectionLevel::kMaximum:
-            priority_fee = gas_oracle_.priority_fee_instant;
+            priority_fee = oracle.priority_fee_instant;
             break;
     }
-    
+
     return base_fee + priority_fee;
 }
 
 float MEVBlocker::EstimateMEVProfit(const Transaction& tx) {
-    // Simple estimation based on transaction value
-    float profit = 0.0f;
-    
-    // Large swap = potential MEV
-    if (tx.value > uint256(10000000000000000000ULL)) {  // > 10 ETH
-        profit = static_cast<float>(tx.value.to_double() / 1e18 * 0.01);  // 1% estimate
-    }
-    
-    return profit;
+    // Upper bound on extractable value: a searcher cannot take more than the
+    // victim's own swap is worth. The realised figure depends on pool depth and
+    // competing searchers, which this module does not observe, so the bound is
+    // reported as such rather than presented as a prediction.
+    if (tx.value.is_zero()) return 0.0f;
+
+    const double value_eth = tx.value.to_double() / 1e18;
+    return static_cast<float>(value_eth);
 }
 
 void MEVBlocker::UpdateStatistics(bool protected_, bool blocked_) {
     std::lock_guard<std::mutex> lock(stats_mutex_);
-    
+
     stats_.total_transactions++;
     if (protected_) {
         stats_.protected_transactions++;
@@ -563,23 +678,45 @@ void MEVBlocker::UpdateStatistics(bool protected_, bool blocked_) {
     }
 }
 
-std::optional<MEVBlocker::SandwichOpportunity> MEVBlocker::DetectSandwich(const Transaction& tx) {
-    // Look for sandwich opportunities in mempool
+void MEVBlocker::RecordMempoolEntry(const Transaction& tx) {
     std::lock_guard<std::mutex> lock(mempool_mutex_);
-    
-    // Check if this transaction could be sandwiched
-    for (const auto& mempool_tx : mempool_) {
-        // Check if mempool_tx is a large swap that could be sandwiched
-        if (mempool_tx.value > tx.value * 2) {
-            // Found potential sandwich
-            SandwichOpportunity opp;
-            opp.victim = tx;
-            opp.front_run = mempool_tx;
-            opp.potential_profit = (mempool_tx.value - tx.value).to_uint64() / 10;
-            return opp;
-        }
+    mempool_.push_back(tx);
+    if (mempool_.size() > kMempoolSize) {
+        mempool_.erase(mempool_.begin());
     }
-    
+}
+
+std::optional<MEVBlocker::SandwichOpportunity> MEVBlocker::DetectSandwich(const Transaction& tx) {
+    // A sandwich needs a victim swap of its own. Without one there is nothing
+    // to wrap, so this reports no opportunity rather than pairing the caller's
+    // transaction with an unrelated mempool entry.
+    if (ClassifyTransaction(tx) != TransactionType::kSwap || tx.value.is_zero()) {
+        return std::nullopt;
+    }
+
+    // Look for a larger swap already in the mempool that this transaction would
+    // be sandwiched against. Pool state is not available here, so the ordering
+    // is reported as an observation for the caller to act on, never as an
+    // executed bundle.
+    std::lock_guard<std::mutex> lock(mempool_mutex_);
+    for (const auto& mempool_tx : mempool_) {
+        if (mempool_tx.hash == tx.hash) continue;
+        if (ClassifyTransaction(mempool_tx) != TransactionType::kSwap) continue;
+        if (mempool_tx.value.is_zero()) continue;
+
+        // The counterpart has to be the larger leg for the pair to be worth
+        // wrapping.
+        if (!(mempool_tx.value > tx.value)) continue;
+
+        SandwichOpportunity opp;
+        opp.victim = tx;
+        opp.front_run = mempool_tx;
+        // Difference in wei between the two legs, which bounds the value the
+        // pair exposes. Reported as an upper bound, not a realised profit.
+        opp.potential_profit = mempool_tx.value.to_uint64() - tx.value.to_uint64();
+        return opp;
+    }
+
     return std::nullopt;
 }
 
@@ -588,7 +725,7 @@ TransactionType MEVBlocker::ClassifyTransaction(const Transaction& tx) {
     if (tx.data.size() < 4) {
         return TransactionType::kTransfer;
     }
-    
+
     // Check for swap signatures (Uniswap, Sushiswap, etc.)
     std::string selector = tx.data.substr(0, 10);
     if (selector == "0x7ff36ab5" ||  // Uniswap V3 swap
@@ -596,13 +733,13 @@ TransactionType MEVBlocker::ClassifyTransaction(const Transaction& tx) {
         selector == "0x8803dbee") {  // Curve swap
         return TransactionType::kSwap;
     }
-    
+
     // Check for NFT
     if (selector == "0x23b872dd" ||  // transferFrom (NFT)
         selector == "0xb88d4fde") {  // safeTransferFrom
         return TransactionType::kNFT;
     }
-    
+
     return TransactionType::kContractInteraction;
 }
 

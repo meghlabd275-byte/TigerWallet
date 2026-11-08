@@ -1,7 +1,7 @@
 /**
  * TigerWallet MEV Protection System
  * Ultra-low latency C++ implementation for MEV blocking
- * 
+ *
  * This provides:
  * - Front-running protection
  * - Back-running protection
@@ -22,6 +22,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "keccak.hpp"
@@ -59,8 +60,8 @@ struct RiskAssessment {
     std::string attack_type;
     float risk_score;
     std::vector<std::string> recommendations;
-    
-    RiskAssessment() : is_profitable(false), profit_extracted(0.0f), 
+
+    RiskAssessment() : is_profitable(false), profit_extracted(0.0f),
                       risk_score(0.0f) {}
 };
 
@@ -73,9 +74,9 @@ struct MEVBundle {
     float priority_fee;
     std::chrono::steady_clock::time_point submitted_at;
     bool backrunnable;
-    
-    MEVBundle() : bundle_id(0), bundle_gas_price(0), 
-                  miner_reward(0), priority_fee(0.0f), 
+
+    MEVBundle() : bundle_id(0), bundle_gas_price(0),
+                  miner_reward(0), priority_fee(0.0f),
                   backrunnable(false) {}
 };
 
@@ -87,8 +88,8 @@ struct GasOracle {
     uint64_t priority_fee_fast;
     uint64_t priority_fee_instant;
     std::chrono::steady_clock::time_point updated_at;
-    
-    GasOracle() : base_fee(0), priority_fee_slow(0), 
+
+    GasOracle() : base_fee(0), priority_fee_slow(0),
                    priority_fee_standard(0), priority_fee_fast(0),
                    priority_fee_instant(0) {}
 };
@@ -101,7 +102,7 @@ struct BlockProposal {
     uint64_t base_fee;
     uint64_t gas_limit;
     std::chrono::steady_clock::time_point received_at;
-    
+
     BlockProposal() : block_number(0), slot(0), base_fee(0), gas_limit(0) {}
 };
 
@@ -111,64 +112,78 @@ public:
      * Construct MEV blocker with configuration
      */
     explicit MEVBlocker(ProtectionLevel level = ProtectionLevel::kAdvanced);
-    
+
     /**
      * Destructor - cleanup resources
      */
     ~MEVBlocker();
-    
+
     // Disable copy and move
     MEVBlocker(const MEVBlocker&) = delete;
     MEVBlocker& operator=(const MEVBlocker&) = delete;
     MEVBlocker(MEVBlocker&&) = delete;
     MEVBlocker& operator=(MEVBlocker&&) = delete;
-    
+
     /**
      * Initialize the MEV blocker
      */
     bool Initialize(const std::string& config_path);
-    
+
     /**
      * Start the MEV protection service
      */
     bool Start();
-    
+
     /**
      * Stop the MEV protection service
      */
     void Stop();
-    
+
     /**
      * Submit a transaction for MEV protection
      * Returns: Transaction hash if protected, empty if blocked
      */
     std::string SubmitTransaction(const Transaction& tx);
-    
+
     /**
      * Submit a private transaction (Flashbots)
      */
     std::string SubmitPrivateTransaction(const Transaction& tx);
-    
+
     /**
      * Analyze a transaction for MEV risk
      */
     RiskAssessment AnalyzeTransaction(const Transaction& tx);
-    
+
     /**
      * Get current gas prices
      */
     GasOracle GetGasOracle() const;
-    
+    uint64_t CalculateOptimalGasPrice(const Transaction& tx);
+    bool SimulateTransaction(const Transaction& tx, std::string& output);
+
+    /**
+     * Recommended gas price for a transaction at the configured protection
+     * level. Returns zero when no oracle reading is available, so a caller can
+     * tell "unknown" from a real figure.
+     */
+
+    /**
+     * Simulate a transaction against the node with eth_call. Returns true when
+     * the call succeeds; on failure `output` carries the node's revert data or
+     * the reason the call could not be made.
+     */
+
     /**
      * Get block proposals for validation
      */
     std::vector<BlockProposal> GetBlockProposals() const;
-    
+
     /**
      * Set protection level
      */
     void SetProtectionLevel(ProtectionLevel level);
-    
+
     /**
      * Get statistics
      */
@@ -179,26 +194,37 @@ public:
         uint64_t bundles_submitted;
         uint64_t bundles_included;
         uint64_t total_profit;
+        uint64_t sandwich_opportunities;
         float avg_protection_time_ms;
     };
-    
+
     Stats GetStats() const;
-    
+
     /**
      * Add trusted relayer
      */
     bool AddRelayer(const std::string& relayer_url);
-    
+
     /**
      * Remove trusted relayer
      */
     bool RemoveRelayer(const std::string& relayer_url);
-    
+
+    /**
+     * Add a sender address to the denylist. Only listed senders are blocked.
+     */
+    bool AddBlockedSender(const std::string& address);
+
+    /**
+     * Remove a sender address from the denylist.
+     */
+    bool RemoveBlockedSender(const std::string& address);
+
     /**
      * Check if transaction is private
      */
     bool IsPrivateTransaction(const std::string& tx_hash) const;
-    
+
     /**
      * Get flashbots protect status
      */
@@ -209,40 +235,50 @@ private:
     ProtectionLevel protection_level_;
     bool running_;
     bool initialized_;
-    
+
     // Gas oracle data
     GasOracle gas_oracle_;
     mutable std::mutex gas_mutex_;
 
     // JSON-RPC endpoint used to read live fee data (eth_gasPrice and
-    // eth_feeHistory). Empty means the oracle cannot update and callers must
-    // treat the gas estimate as unavailable rather than inventing one.
+    // eth_maxPriorityFeePerGas). Empty means the oracle cannot update and
+    // callers must treat the gas estimate as unavailable rather than inventing
+    // one.
     std::string rpc_url_;
     mutable std::mutex rpc_mutex_;
-    
+
+    // Endpoint used for private bundle submission. Defaults to the public
+    // Flashbots relay.
+    std::string flashbots_endpoint_;
+
+    // Operator-supplied sender denylist. Only addresses listed here are
+    // blocked; no address is blocked on the basis of a heuristic.
+    std::unordered_set<std::string> blocked_senders_;
+    mutable std::mutex blocked_mutex_;
+
     // Transaction pool
     std::vector<Transaction> mempool_;
     mutable std::mutex mempool_mutex_;
-    
+
     // Private transactions (Flashbots)
     std::unordered_map<std::string, Transaction> private_txs_;
     mutable std::mutex private_mutex_;
-    
+
     // Block proposals
     std::vector<BlockProposal> proposals_;
     mutable std::mutex proposals_mutex_;
-    
+
     // Relayers
     std::vector<std::string> relayers_;
     mutable std::mutex relayers_mutex_;
-    
+
     // Statistics
     Stats stats_;
     mutable std::mutex stats_mutex_;
-    
+
     // Worker threads
     std::vector<std::thread> workers_;
-    
+
     // Methods
     void RunGasOracleUpdater();
 
@@ -252,20 +288,26 @@ private:
     bool RefreshGasOracle();
     void RunMempoolCleaner();
     void RunBundleProcessor();
-    
+
     bool ShouldBlockTransaction(const Transaction& tx);
     bool IsSandwichAttack(const Transaction& tx);
     bool IsFrontRunning(const Transaction& tx);
     bool IsBackRunning(const Transaction& tx);
-    
+
     std::string SubmitToFlashbots(const Transaction& tx);
     std::string SubmitToRelayer(const Transaction& tx, const std::string& relayer);
-    
-    uint64_t CalculateOptimalGasPrice(const Transaction& tx);
+
+    // Broadcast a signed raw transaction to the configured node.
+    std::string BroadcastRawTransaction(const std::string& raw_tx);
+
     float EstimateMEVProfit(const Transaction& tx);
-    
+
     void UpdateStatistics(bool protected_, bool blocked_);
-    
+
+    // Records an analysed transaction in the local mempool view, which the
+    // bundle processor scans for sandwich exposure.
+    void RecordMempoolEntry(const Transaction& tx);
+
     // Sandwich detection
     struct SandwichOpportunity {
         Transaction front_run;
@@ -273,14 +315,13 @@ private:
         Transaction back_run;
         uint64_t potential_profit;
     };
-    
+
     std::optional<SandwichOpportunity> DetectSandwich(const Transaction& tx);
-    
+
     // Transaction classification
     TransactionType ClassifyTransaction(const Transaction& tx);
-    
+
     // Simulate transaction
-    bool SimulateTransaction(const Transaction& tx, std::string& output);
 };
 
 // Factory function
