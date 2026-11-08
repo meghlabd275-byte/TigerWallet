@@ -20,7 +20,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"sync"
@@ -1125,10 +1124,6 @@ func min(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 // ============================================================================

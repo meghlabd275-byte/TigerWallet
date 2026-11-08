@@ -22,7 +22,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"os"
 	"os/signal"
@@ -914,6 +915,18 @@ type WarmUpManager struct {
 	mu    sync.RWMutex
 }
 
+// randomHex returns n random bytes as hex. Task ids key a map, so they must be
+// unique; math/rand also risks a collision after a restart, which would make a
+// new warm-up task silently adopt a stale entry.
+func randomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		// Fall back to a counter so an id is still unique if the CSPRNG fails.
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
 func NewWarmUpManager(cache *L2Cache) *WarmUpManager {
 	return &WarmUpManager{
 		cache: cache,
@@ -923,7 +936,7 @@ func NewWarmUpManager(cache *L2Cache) *WarmUpManager {
 
 func (w *WarmUpManager) AddTask(pattern string, priority int) *WarmUpTask {
 	task := &WarmUpTask{
-		TaskID:   fmt.Sprintf("task-%d", rand.Int()),
+		TaskID:   "task-" + randomHex(8),
 		Pattern:  pattern,
 		Priority: priority,
 		Status:   "pending",

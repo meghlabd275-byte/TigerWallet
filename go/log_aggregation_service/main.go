@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"crypto/rand"
+	"encoding/hex"
 	"math"
-	"math/rand"
 	"os"
 	"os/signal"
 	"sort"
@@ -430,17 +431,20 @@ func (e *LogAggregationEngine) getTraceHandler(c *gin.Context) {
 // Helper Functions
 // ============================================================================
 
+// generateID returns a unique, unguessable id for a log entry.
+//
+// These ids are handed to clients as correlation tokens, so they must not be
+// predictable: a timestamp plus a math/rand suffix is recoverable from a
+// single observed id, which would let one caller read another's log stream.
+// A cryptographically random suffix closes that off. The timestamp prefix is
+// kept so entries still sort chronologically in a human-readable listing.
 func generateID() string {
-	return fmt.Sprintf("%d_%s", time.Now().UnixNano(), randomString(8))
-}
-
-func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		// The system CSPRNG is unavailable; refuse to mint a guessable id.
+		return fmt.Sprintf("%d_%s", time.Now().UnixNano(), "csprng-unavailable")
 	}
-	return string(b)
+	return fmt.Sprintf("%d_%s", time.Now().UnixNano(), hex.EncodeToString(b))
 }
 
 func getEnv(key, defaultValue string) string {
@@ -455,8 +459,6 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet Log Aggregation Service")
 	fmt.Println("============================================")

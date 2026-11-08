@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/signal"
 	"sort"
@@ -588,8 +587,6 @@ func getEnvInt(key string, defaultValue int) int {
 // ============================================================================
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	fmt.Println("============================================")
 	fmt.Println("TigerWallet Rate Limiter Service")
 	fmt.Println("============================================")
