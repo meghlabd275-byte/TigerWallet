@@ -1019,14 +1019,313 @@ func (e *ExchangeAPI) bybitGetOrderBook(symbol string, limit int) (*OrderBook, e
 	return ob, nil
 }
 
-// Placeholder implementations for other exchanges
-func (e *ExchangeAPI) krakenGetTicker(symbol string) (*Ticker, error) { return nil, nil }
-func (e *ExchangeAPI) kucoinGetTicker(symbol string) (*Ticker, error) { return nil, nil }
-func (e *ExchangeAPI) okxGetTicker(symbol string) (*Ticker, error)    { return nil, nil }
-func (e *ExchangeAPI) gateGetTicker(symbol string) (*Ticker, error)   { return nil, nil }
-func (e *ExchangeAPI) bitgetGetTicker(symbol string) (*Ticker, error) { return nil, nil }
-func (e *ExchangeAPI) huobiGetTicker(symbol string) (*Ticker, error)  { return nil, nil }
-func (e *ExchangeAPI) mexcGetTicker(symbol string) (*Ticker, error)   { return nil, nil }
+// getJSON performs an unauthenticated GET against an exchange endpoint and
+// decodes the JSON body. Every ticker below is a public market-data call, so no
+// signing is involved.
+func (e *ExchangeAPI) getJSON(url string) (map[string]interface{}, error) {
+	resp, err := e.httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s returned HTTP %d", e.Name, resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// krakenSymbol converts a "BASEQUOTE" pair to Kraken's "BASE/QUOTE" form.
+func krakenSymbol(symbol string) string {
+	for _, quote := range []string{"USDT", "USDC", "USD", "EUR", "BTC", "ETH"} {
+		if strings.HasSuffix(symbol, quote) && len(symbol) > len(quote) {
+			return strings.TrimSuffix(symbol, quote) + "/" + quote
+		}
+	}
+	return symbol
+}
+
+func (e *ExchangeAPI) krakenGetTicker(symbol string) (*Ticker, error) {
+	pair := krakenSymbol(symbol)
+	url := fmt.Sprintf("%s/0/public/Ticker?pair=%s", e.BaseURL, pair)
+
+	result, err := e.getJSON(url)
+	if err != nil {
+		return nil, err
+	}
+
+	if errs, ok := result["error"].([]interface{}); ok && len(errs) > 0 {
+		return nil, fmt.Errorf("kraken: %v", errs[0])
+	}
+
+	data, ok := result["result"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("kraken: unexpected response shape for %s", pair)
+	}
+
+	// Kraken keys the result by its own pair naming, so take the single entry.
+	for _, raw := range data {
+		entry, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		last := parseFloat(atIndex(entry["c"], 0))
+		return &Ticker{
+			Symbol:         symbol,
+			LastPrice:      last,
+			BidPrice:       parseFloat(atIndex(entry["b"], 0)),
+			AskPrice:       parseFloat(atIndex(entry["a"], 0)),
+			Volume24h:      parseFloat(atIndex(entry["v"], 1)),
+			QuoteVolume24h: parseFloat(atIndex(entry["v"], 0)),
+			High24h:        parseFloat(atIndex(entry["h"], 1)),
+			Low24h:         parseFloat(atIndex(entry["l"], 1)),
+			Timestamp:      time.Now().UnixMilli(),
+		}, nil
+	}
+	return nil, fmt.Errorf("kraken: empty result for %s", pair)
+}
+
+// atIndex reads element i of a JSON array such as Kraken's ["price","wholeLotVolume"].
+func atIndex(v interface{}, i int) interface{} {
+	arr, ok := v.([]interface{})
+	if !ok || i >= len(arr) {
+		return nil
+	}
+	return arr[i]
+}
+
+func (e *ExchangeAPI) kucoinGetTicker(symbol string) (*Ticker, error) {
+	url := fmt.Sprintf("%s/api/v1/market/stats?symbol=%s", e.BaseURL, symbol)
+
+	result, err := e.getJSON(url)
+	if err != nil {
+		return nil, err
+	}
+	if code := parseFloat(result["code"]); code != 200000 {
+		return nil, fmt.Errorf("kucoin: %v", result["msg"])
+	}
+
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("kucoin: missing data for %s", symbol)
+	}
+
+	return &Ticker{
+		Symbol:         symbol,
+		LastPrice:      parseFloat(data["last"]),
+		BidPrice:       parseFloat(data["buy"]),
+		AskPrice:       parseFloat(data["sell"]),
+		Volume24h:      parseFloat(data["vol"]),
+		QuoteVolume24h: parseFloat(data["volValue"]),
+		PriceChangePct: parseFloat(data["changeRate"]) * 100,
+		High24h:        parseFloat(data["high"]),
+		Low24h:         parseFloat(data["low"]),
+		Timestamp:      time.Now().UnixMilli(),
+	}, nil
+}
+
+// okxSymbol converts a "BASEQUOTE" pair to OKX's "BASE-QUOTE" form.
+func okxSymbol(symbol string) string {
+	for _, quote := range []string{"USDT", "USDC", "USD", "BTC", "ETH"} {
+		if strings.HasSuffix(symbol, quote) && len(symbol) > len(quote) {
+			return strings.TrimSuffix(symbol, quote) + "-" + quote
+		}
+	}
+	return symbol
+}
+
+func (e *ExchangeAPI) okxGetTicker(symbol string) (*Ticker, error) {
+	inst := okxSymbol(symbol)
+	url := fmt.Sprintf("%s/api/v5/market/ticker?instId=%s", e.BaseURL, inst)
+
+	result, err := e.getJSON(url)
+	if err != nil {
+		return nil, err
+	}
+	if code := result["code"]; code != nil && code != "0" {
+		return nil, fmt.Errorf("okx: %v", result["msg"])
+	}
+
+	rows, ok := result["data"].([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil, fmt.Errorf("okx: no ticker for %s", inst)
+	}
+	data, ok := rows[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("okx: malformed ticker for %s", inst)
+	}
+
+	last := parseFloat(data["last"])
+	open := parseFloat(data["open24h"])
+	changePct := 0.0
+	if open != 0 {
+		changePct = ((last - open) / open) * 100
+	}
+
+	return &Ticker{
+		Symbol:         symbol,
+		LastPrice:      last,
+		BidPrice:       parseFloat(data["bidPx"]),
+		AskPrice:       parseFloat(data["askPx"]),
+		Volume24h:      parseFloat(data["vol24h"]),
+		QuoteVolume24h: parseFloat(data["volCcy24h"]),
+		PriceChange:    last - open,
+		PriceChangePct: changePct,
+		High24h:        parseFloat(data["high24h"]),
+		Low24h:         parseFloat(data["low24h"]),
+		Timestamp:      time.Now().UnixMilli(),
+	}, nil
+}
+
+// gateSymbol converts a "BASEQUOTE" pair to Gate's "BASE_QUOTE" form.
+func gateSymbol(symbol string) string {
+	for _, quote := range []string{"USDT", "USDC", "USD", "BTC", "ETH"} {
+		if strings.HasSuffix(symbol, quote) && len(symbol) > len(quote) {
+			return strings.TrimSuffix(symbol, quote) + "_" + quote
+		}
+	}
+	return symbol
+}
+
+func (e *ExchangeAPI) gateGetTicker(symbol string) (*Ticker, error) {
+	pair := gateSymbol(symbol)
+	url := fmt.Sprintf("%s/api/v4/spot/tickers?currency_pair=%s", e.BaseURL, pair)
+
+	resp, err := e.httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gate returned HTTP %d", resp.StatusCode)
+	}
+
+	// Gate returns a bare JSON array rather than an object.
+	var rows []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("gate: no ticker for %s", pair)
+	}
+	data := rows[0]
+
+	return &Ticker{
+		Symbol:         symbol,
+		LastPrice:      parseFloat(data["last"]),
+		BidPrice:       parseFloat(data["highest_bid"]),
+		AskPrice:       parseFloat(data["lowest_ask"]),
+		Volume24h:      parseFloat(data["base_volume"]),
+		QuoteVolume24h: parseFloat(data["quote_volume"]),
+		PriceChangePct: parseFloat(data["change_percentage"]),
+		High24h:        parseFloat(data["high_24h"]),
+		Low24h:         parseFloat(data["low_24h"]),
+		Timestamp:      time.Now().UnixMilli(),
+	}, nil
+}
+
+func (e *ExchangeAPI) bitgetGetTicker(symbol string) (*Ticker, error) {
+	url := fmt.Sprintf("%s/api/v2/spot/market/tickers?symbol=%s", e.BaseURL, symbol)
+
+	result, err := e.getJSON(url)
+	if err != nil {
+		return nil, err
+	}
+	if code := result["code"]; code != nil && code != "00000" {
+		return nil, fmt.Errorf("bitget: %v", result["msg"])
+	}
+
+	rows, ok := result["data"].([]interface{})
+	if !ok || len(rows) == 0 {
+		return nil, fmt.Errorf("bitget: no ticker for %s", symbol)
+	}
+	data, ok := rows[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("bitget: malformed ticker for %s", symbol)
+	}
+
+	return &Ticker{
+		Symbol:         symbol,
+		LastPrice:      parseFloat(data["lastPr"]),
+		BidPrice:       parseFloat(data["bidPr"]),
+		AskPrice:       parseFloat(data["askPr"]),
+		Volume24h:      parseFloat(data["baseVolume"]),
+		QuoteVolume24h: parseFloat(data["quoteVolume"]),
+		PriceChangePct: parseFloat(data["change24h"]) * 100,
+		High24h:        parseFloat(data["high24h"]),
+		Low24h:         parseFloat(data["low24h"]),
+		Timestamp:      time.Now().UnixMilli(),
+	}, nil
+}
+
+// huobiSymbol converts a "BASEQUOTE" pair to Huobi's lowercase "basequote" form.
+func huobiSymbol(symbol string) string {
+	return strings.ToLower(symbol)
+}
+
+func (e *ExchangeAPI) huobiGetTicker(symbol string) (*Ticker, error) {
+	pair := huobiSymbol(symbol)
+	url := fmt.Sprintf("%s/market/detail/merged?symbol=%s", e.BaseURL, pair)
+
+	result, err := e.getJSON(url)
+	if err != nil {
+		return nil, err
+	}
+	if status := result["status"]; status != nil && status != "ok" {
+		return nil, fmt.Errorf("huobi: %v", result["err-msg"])
+	}
+
+	data, ok := result["tick"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("huobi: no ticker for %s", pair)
+	}
+
+	return &Ticker{
+		Symbol:         symbol,
+		LastPrice:      parseFloat(data["close"]),
+		BidPrice:       parseFloat(atIndex(data["bid"], 0)),
+		AskPrice:       parseFloat(atIndex(data["ask"], 0)),
+		Volume24h:      parseFloat(data["amount"]),
+		QuoteVolume24h: parseFloat(data["vol"]),
+		High24h:        parseFloat(data["high"]),
+		Low24h:         parseFloat(data["low"]),
+		Timestamp:      time.Now().UnixMilli(),
+	}, nil
+}
+
+func (e *ExchangeAPI) mexcGetTicker(symbol string) (*Ticker, error) {
+	url := fmt.Sprintf("%s/api/v3/ticker/24hr?symbol=%s", e.BaseURL, symbol)
+
+	result, err := e.getJSON(url)
+	if err != nil {
+		return nil, err
+	}
+
+	// MEXC returns an error object instead of a ticker for unknown symbols.
+	if msg, ok := result["msg"]; ok && msg != nil {
+		return nil, fmt.Errorf("mexc: %v", msg)
+	}
+
+	return &Ticker{
+		Symbol:         symbol,
+		LastPrice:      parseFloat(result["lastPrice"]),
+		BidPrice:       parseFloat(result["bidPrice"]),
+		AskPrice:       parseFloat(result["askPrice"]),
+		Volume24h:      parseFloat(result["volume"]),
+		QuoteVolume24h: parseFloat(result["quoteVolume"]),
+		PriceChange:    parseFloat(result["priceChange"]),
+		PriceChangePct: parseFloat(result["priceChangePercent"]),
+		High24h:        parseFloat(result["highPrice"]),
+		Low24h:         parseFloat(result["lowPrice"]),
+		Timestamp:      time.Now().UnixMilli(),
+	}, nil
+}
 
 // ============================================================================
 // AUTHENTICATED API METHODS

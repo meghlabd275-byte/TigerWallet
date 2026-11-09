@@ -232,18 +232,19 @@ pub struct ABIEncoder;
 impl ABIEncoder {
     /// Encode function call data
     pub fn encode(function_name: &str, params: &[&dyn ParamEncoder]) -> Result<Vec<u8>, String> {
-        // Simplified ABI encoding
-        // In production, use proper Solidity ABI encoding
-        
+
         let mut result = Vec::new();
         
         // Function selector (first 4 bytes of keccak256 of function signature)
         let selector = Self::function_selector(function_name);
         result.extend_from_slice(&selector);
         
-        // Encode parameters
+        // Encode parameters. A malformed argument aborts the whole call
+        // rather than producing calldata that would dispatch with the wrong
+        // arguments.
         for param in params {
-            result.extend_from_slice(&param.encode());
+            let word = param.encode()?;
+            result.extend_from_slice(&word);
         }
         
         Ok(result)
@@ -263,21 +264,51 @@ impl ABIEncoder {
     }
 }
 
-/// Interface for parameter encoding
+/// Interface for parameter encoding.
+///
+/// Encoding is fallible. An earlier version returned a zero word for input it
+/// could not parse, which silently turned a mistyped address into the zero
+/// address: a token transfer would then burn the funds instead of failing. A
+/// value longer than one word also underflowed `32 - len` and panicked. Both
+/// now surface as errors that the caller must handle.
 pub trait ParamEncoder {
-    fn encode(&self) -> Vec<u8>;
+    fn encode(&self) -> Result<Vec<u8>, String>;
+}
+
+/// Decodes a 0x-prefixed hex string into a single left-padded ABI word.
+fn encode_word(hex_value: &str, kind: &str) -> Result<Vec<u8>, String> {
+    let digits = hex_value
+        .strip_prefix("0x")
+        .or_else(|| hex_value.strip_prefix("0X"))
+        .unwrap_or(hex_value);
+
+    let bytes = hex::decode(digits)
+        .map_err(|e| format!("{kind} is not valid hex ({hex_value}): {e}"))?;
+
+    if bytes.len() > 32 {
+        return Err(format!(
+            "{kind} does not fit in one ABI word: {} bytes ({hex_value})",
+            bytes.len()
+        ));
+    }
+
+    let mut word = vec![0u8; 32];
+    word[32 - bytes.len()..].copy_from_slice(&bytes);
+    Ok(word)
 }
 
 /// Address parameter encoder
 pub struct AddressEncoder(pub String);
 
 impl ParamEncoder for AddressEncoder {
-    fn encode(&self) -> Vec<u8> {
-        let mut result = vec![0u8; 32];
-        let addr = &self.0[2..]; // Remove 0x prefix
-        let bytes = hex::decode(addr).unwrap_or_default();
-        result[32 - bytes.len()..].copy_from_slice(&bytes);
-        result
+    fn encode(&self) -> Result<Vec<u8>, String> {
+        let word = encode_word(&self.0, "address")?;
+        // An address occupies exactly the low 20 bytes; anything longer would
+        // silently drop the high bytes when the EVM reads the low 160 bits.
+        if self.0.trim_start_matches("0x").len() / 2 > 20 {
+            return Err(format!("address is longer than 20 bytes: {}", self.0));
+        }
+        Ok(word)
     }
 }
 
@@ -285,11 +316,8 @@ impl ParamEncoder for AddressEncoder {
 pub struct Uint256Encoder(pub String);
 
 impl ParamEncoder for Uint256Encoder {
-    fn encode(&self) -> Vec<u8> {
-        let mut result = vec![0u8; 32];
-        let bytes = hex::decode(&self.0[2..]).unwrap_or_default();
-        result[32 - bytes.len()..].copy_from_slice(&bytes);
-        result
+    fn encode(&self) -> Result<Vec<u8>, String> {
+        encode_word(&self.0, "uint256")
     }
 }
 
@@ -325,6 +353,63 @@ mod tests {
         let a = ABIEncoder::function_selector("transfer(address,uint256)");
         let b = ABIEncoder::function_selector("transfer(address,uint8)");
         assert_ne!(a, b);
+    }
+
+    /// A malformed address must fail the call instead of encoding the zero
+    /// address, which would send tokens to a burn address.
+    #[test]
+    fn encode_rejects_a_malformed_address() {
+        let err = ABIEncoder::encode(
+            "transfer(address,uint256)",
+            &[
+                &AddressEncoder("0xZZZZ".to_string()),
+                &Uint256Encoder("0x64".to_string()),
+            ],
+        )
+        .expect_err("non-hex address must not encode");
+        assert!(err.contains("address"), "unexpected error: {err}");
+    }
+
+    /// A value wider than one ABI word must be rejected. It previously
+    /// underflowed the left-pad offset and panicked.
+    #[test]
+    fn encode_rejects_a_value_wider_than_one_word() {
+        let too_wide = format!("0x{}", "ab".repeat(33));
+        let err = ABIEncoder::encode(
+            "transfer(address,uint256)",
+            &[
+                &AddressEncoder("0x000000000000000000000000000000000000dEaD".to_string()),
+                &Uint256Encoder(too_wide),
+            ],
+        )
+        .expect_err("33-byte argument must not encode");
+        assert!(err.contains("one ABI word"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn encode_rejects_an_over_long_address() {
+        let over_long = format!("0x{}", "ab".repeat(21));
+        let err = ABIEncoder::encode("transfer(address,uint256)", &[&AddressEncoder(over_long)])
+            .expect_err("21-byte address must not encode");
+        assert!(err.contains("longer than 20 bytes"), "unexpected error: {err}");
+    }
+
+    /// A bare hex string without the 0x prefix is still valid input.
+    #[test]
+    fn encode_accepts_an_unprefixed_value() {
+        let encoded = ABIEncoder::encode(
+            "transfer(address,uint256)",
+            &[
+                &AddressEncoder("000000000000000000000000000000000000dEaD".to_string()),
+                &Uint256Encoder("64".to_string()),
+            ],
+        )
+        .expect("unprefixed hex must encode");
+        assert_eq!(encoded.len(), 4 + 32 + 32);
+        // The address ends in ...dEaD, so its final two bytes are de ad.
+        assert_eq!(encoded[4 + 30], 0xde);
+        assert_eq!(encoded[4 + 31], 0xad);
+        assert_eq!(encoded[4 + 32 + 31], 0x64);
     }
 
     #[test]
