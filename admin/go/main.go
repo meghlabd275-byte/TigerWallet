@@ -71,12 +71,38 @@ func main() {
 		&handlers.LiquiditySource{},
 		&handlers.MasterWalletRecord{},
 		&handlers.MasterWalletTransaction{},
+		// Support desk: the SLA service and the ticket endpoints both read
+		// support_tickets/support_ticket_messages and their SLA deadline columns,
+		// so these tables must exist before any request reaches them.
+		&models.SupportTicket{},
+		&models.SupportTicketMessage{},
+		&models.KnowledgeBaseCategory{},
+		&models.KnowledgeBaseArticle{},
+		// Admin 2FA: the login path validates against two_factor_auths, and the
+		// enable/disable endpoints persist there.
+		&models.TwoFactorAuth{},
+		&models.FeatureFlag{},
+		&models.FeeStructure{},
+		&models.IntegrationConfig{},
+		&models.Broker{},
+		&models.BrokerClient{},
+		&models.InstitutionalClient{},
+		&models.ComplianceReport{},
+		&models.GDPRRequest{},
+		&models.MultisigWallet{},
+		&models.MultisigTransaction{},
+		&models.MultisigSigner{},
+		&models.MultisigApproval{},
+		&models.NFT{},
 	); err != nil {
 		log.Fatalf("Failed to migrate admin domain governance models: %v", err)
 	}
 
 	// Create default super admin if none exists
 	createDefaultAdmin(db, cfg, authSvc)
+
+	// --- Live request metrics (real, measured from traffic) ---
+	metricsCollector := middleware.NewMetricsCollector()
 
 	// --- Initialize all handlers (real, DB-backed) ---
 	adminHandler := handlers.NewAdminHandler(db, redisClient, cfg, authSvc)
@@ -90,7 +116,7 @@ func main() {
 	feeHandler := handlers.NewFeeHandler(db)
 	pairHandler := handlers.NewPairHandler(db)
 	apiKeyHandler := handlers.NewAPIKeyHandler(db)
-	analyticsHandler := handlers.NewAnalyticsHandler(db)
+	analyticsHandler := handlers.NewAnalyticsHandler(db, metricsCollector)
 	superAdminHandler := handlers.NewSuperAdminHandler(db, redisClient, cfg, authSvc)
 	twoFactorHandler := handlers.NewTwoFactorHandler(db, redisClient.Client, cfg)
 	notificationHandler := handlers.NewNotificationHandler(db)
@@ -144,6 +170,8 @@ func main() {
 	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.SecurityHeadersMiddleware())
 	router.Use(middleware.CORSMiddleware())
+	// Live traffic metrics back the analytics system-metrics endpoint.
+	router.Use(metricsCollector.Middleware())
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin", "timestamp": time.Now().Unix()})

@@ -149,18 +149,137 @@ func NewWebhookService() (*WebhookService, error) {
 		},
 	}
 
-	// Initialize database
+	// The event log is durable state: a webhook is only useful if the caller can
+	// later prove what was sent, to whom, and what came back. The service
+	// therefore requires a working database and refuses to start without one.
 	db, err := sql.Open("postgres", config.DatabaseURL)
 	if err != nil {
-		fmt.Printf("Warning: Database connection failed: %v\n", err)
-	} else {
-		svc.db = db
+		cancel()
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	if err := db.PingContext(ctx); err != nil {
+		cancel()
+		db.Close()
+		return nil, fmt.Errorf("connect to database: %w", err)
+	}
+	svc.db = db
+	if err := svc.ensureSchema(ctx); err != nil {
+		cancel()
+		db.Close()
+		return nil, fmt.Errorf("create webhook schema: %w", err)
 	}
 
-	// Initialize default webhooks
-	svc.initializeWebhooks()
+	// Re-arm in-flight deliveries that were interrupted by a restart so they are
+	// not silently lost.
+	svc.requeuePendingDeliveries(ctx)
 
 	return svc, nil
+}
+
+// ensureSchema creates the durable event log. The statements are idempotent so
+// startup is safe on every replica.
+func (s *WebhookService) ensureSchema(ctx context.Context) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS webhook_events (
+			id            TEXT PRIMARY KEY,
+			webhook_id    TEXT NOT NULL,
+			event         TEXT NOT NULL,
+			payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+			status        TEXT NOT NULL,
+			attempts      INTEGER NOT NULL DEFAULT 0,
+			response_code INTEGER NOT NULL DEFAULT 0,
+			response_body TEXT NOT NULL DEFAULT '',
+			latency_ms    BIGINT NOT NULL DEFAULT 0,
+			delivered_at  TIMESTAMPTZ,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS webhook_events_webhook_idx ON webhook_events (webhook_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS webhook_events_status_idx ON webhook_events (status)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// recordEvent upserts the delivery outcome. It is called for every terminal
+// transition so the event log reflects what actually happened on the wire.
+func (s *WebhookService) recordEvent(ctx context.Context, delivery *WebhookDelivery, status string, statusCode int, body string, latencyMs int64) {
+	payload, err := json.Marshal(delivery.Payload)
+	if err != nil {
+		payload = []byte("{}")
+	}
+	if len(body) > 4096 {
+		body = body[:4096]
+	}
+	var deliveredAt *time.Time
+	if status == "delivered" {
+		now := time.Now()
+		deliveredAt = &now
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO webhook_events
+			(id, webhook_id, event, payload, status, attempts, response_code, response_body, latency_ms, delivered_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			status = EXCLUDED.status,
+			attempts = EXCLUDED.attempts,
+			response_code = EXCLUDED.response_code,
+			response_body = EXCLUDED.response_body,
+			latency_ms = EXCLUDED.latency_ms,
+			delivered_at = EXCLUDED.delivered_at,
+			updated_at = NOW()`,
+		delivery.EventID, delivery.WebhookID, delivery.Event, payload, status,
+		delivery.Attempts, statusCode, body, latencyMs, deliveredAt)
+	if err != nil {
+		log.Printf("failed to persist webhook event %s: %v", delivery.EventID, err)
+	}
+}
+
+// requeuePendingDeliveries re-arms events that were queued but never delivered,
+// so a restart does not drop them.
+func (s *WebhookService) requeuePendingDeliveries(ctx context.Context) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, webhook_id, event, payload, attempts
+		FROM webhook_events WHERE status = 'pending' ORDER BY created_at LIMIT 1000`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			id, webhookID, event string
+			payloadRaw           []byte
+			attempts             int
+		)
+		if err := rows.Scan(&id, &webhookID, &event, &payloadRaw, &attempts); err != nil {
+			continue
+		}
+		s.webhooksMu.RLock()
+		wh, ok := s.webhooks[webhookID]
+		s.webhooksMu.RUnlock()
+		if !ok || !wh.Active {
+			continue
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+			payload = map[string]interface{}{}
+		}
+		delivery := &WebhookDelivery{
+			EventID: id, WebhookID: webhookID, URL: wh.URL, Event: event,
+			Payload: payload, Headers: wh.Headers, Attempts: attempts, Status: "pending",
+		}
+		select {
+		case s.queue <- delivery:
+		default:
+		}
+	}
 }
 
 func (s *WebhookService) initializeWebhooks() {
@@ -368,6 +487,7 @@ func (s *WebhookService) processDelivery(client *http.Client, delivery *WebhookD
 	latency := time.Since(startTime).Milliseconds()
 
 	if err != nil {
+		s.recordEvent(s.ctx, delivery, "failed", 0, err.Error(), latency)
 		s.handleFailure(delivery, 0, err.Error())
 		return
 	}
@@ -376,8 +496,10 @@ func (s *WebhookService) processDelivery(client *http.Client, delivery *WebhookD
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		s.recordEvent(s.ctx, delivery, "delivered", resp.StatusCode, string(body), latency)
 		s.handleSuccess(delivery, resp.StatusCode, string(body), latency)
 	} else {
+		s.recordEvent(s.ctx, delivery, "failed", resp.StatusCode, string(body), latency)
 		s.handleFailure(delivery, resp.StatusCode, string(body))
 	}
 
@@ -395,7 +517,6 @@ func (s *WebhookService) handleSuccess(delivery *WebhookDelivery, statusCode int
 	s.stats.Delivered++
 	s.statsMu.Unlock()
 
-	// Would update database
 	_ = statusCode
 	_ = body
 	_ = now
@@ -413,8 +534,12 @@ func (s *WebhookService) handleFailure(delivery *WebhookDelivery, statusCode int
 
 	// Retry if attempts < max
 	if delivery.Attempts < config.MaxRetries {
+		s.recordEvent(s.ctx, delivery, "pending", statusCode, error, 0)
 		time.Sleep(time.Second * time.Duration(delivery.Attempts))
-		s.queue <- delivery
+		select {
+		case s.queue <- delivery:
+		case <-s.ctx.Done():
+		}
 	}
 }
 
@@ -476,7 +601,12 @@ func (s *WebhookService) TriggerEvent(event string, payload map[string]interface
 			Status:    "pending",
 		}
 
-		s.queue <- delivery
+		s.recordEvent(s.ctx, delivery, "pending", 0, "", 0)
+		select {
+		case s.queue <- delivery:
+		case <-s.ctx.Done():
+			return
+		}
 	}
 }
 
@@ -635,13 +765,61 @@ func (s *WebhookService) testWebhookHandler(c *gin.Context) {
 
 func (s *WebhookService) listEventsHandler(c *gin.Context) {
 	webhookID := c.Query("webhook_id")
-	limit := c.DefaultQuery("limit", "50")
+	status := c.Query("status")
 
-	// Would query database in production
-	events := []WebhookEvent{}
+	limit := 50
+	if raw := c.DefaultQuery("limit", "50"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
 
-	_ = webhookID
-	_ = limit
+	query := `SELECT id, webhook_id, event, payload, status, attempts, response_code, response_body, delivered_at, created_at
+	          FROM webhook_events WHERE 1=1`
+	args := []interface{}{}
+	if webhookID != "" {
+		args = append(args, webhookID)
+		query += fmt.Sprintf(" AND webhook_id = $%d", len(args))
+	}
+	if status != "" {
+		args = append(args, status)
+		query += fmt.Sprintf(" AND status = $%d", len(args))
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", len(args))
+
+	rows, err := s.db.QueryContext(c.Request.Context(), query, args...)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to list events"})
+		return
+	}
+	defer rows.Close()
+
+	events := make([]WebhookEvent, 0)
+	for rows.Next() {
+		var (
+			e          WebhookEvent
+			payloadRaw []byte
+			delivered  *time.Time
+		)
+		if err := rows.Scan(&e.ID, &e.WebhookID, &e.Event, &payloadRaw, &e.Status,
+			&e.Attempts, &e.ResponseCode, &e.ResponseBody, &delivered, &e.CreatedAt); err != nil {
+			c.JSON(500, gin.H{"error": "failed to read events"})
+			return
+		}
+		if err := json.Unmarshal(payloadRaw, &e.Payload); err != nil {
+			e.Payload = map[string]interface{}{}
+		}
+		e.DeliveredAt = delivered
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		c.JSON(500, gin.H{"error": "failed to read events"})
+		return
+	}
 
 	c.JSON(200, events)
 }
@@ -649,17 +827,30 @@ func (s *WebhookService) listEventsHandler(c *gin.Context) {
 func (s *WebhookService) getEventHandler(c *gin.Context) {
 	id := c.Param("id")
 
-	event := WebhookEvent{
-		ID:        id,
-		WebhookID: "webhook_123",
-		Event:     "transaction.confirmed",
-		Payload:   map[string]interface{}{},
-		Status:    "delivered",
-		Attempts:  1,
-		CreatedAt: time.Now(),
+	var (
+		e          WebhookEvent
+		payloadRaw []byte
+		delivered  *time.Time
+	)
+	err := s.db.QueryRowContext(c.Request.Context(), `
+		SELECT id, webhook_id, event, payload, status, attempts, response_code, response_body, delivered_at, created_at
+		FROM webhook_events WHERE id = $1`, id).
+		Scan(&e.ID, &e.WebhookID, &e.Event, &payloadRaw, &e.Status, &e.Attempts,
+			&e.ResponseCode, &e.ResponseBody, &delivered, &e.CreatedAt)
+	if err == sql.ErrNoRows {
+		c.JSON(404, gin.H{"error": "event not found"})
+		return
 	}
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to read event"})
+		return
+	}
+	if err := json.Unmarshal(payloadRaw, &e.Payload); err != nil {
+		e.Payload = map[string]interface{}{}
+	}
+	e.DeliveredAt = delivered
 
-	c.JSON(200, event)
+	c.JSON(200, e)
 }
 
 func (s *WebhookService) getStatsHandler(c *gin.Context) {

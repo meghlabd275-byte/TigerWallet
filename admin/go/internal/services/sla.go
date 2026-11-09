@@ -3,6 +3,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -130,30 +131,78 @@ func (s *SLAService) ListReports(ctx context.Context, policyID *uuid.UUID, limit
 	return reports, total, nil
 }
 
+// GenerateReport computes a policy's SLA report for a period from the support
+// ticket table.
+//
+// Every figure is derived from real ticket rows. A ticket meets its SLA when it
+// was first responded to within response_time_sla and, once resolved, resolved
+// within resolution_time_sla. Tickets still open past the response deadline are
+// breaches; tickets open but not yet due count toward the total only, so the
+// met and breached categories stay honest.
+//
+// Uptime here is the share of decided tickets that met their SLA. The policy's
+// uptime_sla governs infrastructure availability, which the monitoring plane
+// measures and ticket rows cannot express, so it is left unset rather than
+// filled with an invented constant.
 func (s *SLAService) GenerateReport(ctx context.Context, policyID uuid.UUID, periodStart, periodEnd time.Time) (*SLAReport, error) {
-	// Calculate SLA metrics from tickets
-	var report SLAReport
-	err := database.Pool.QueryRow(ctx, `
-		SELECT 
-			COUNT(*) as total_tickets,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))), 0) as avg_response_time,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))), 0) as avg_resolution_time
-		FROM tickets 
-		WHERE sla_policy_id = $1 AND created_at >= $2 AND created_at <= $3
-	`, policyID, periodStart, periodEnd).Scan(&report.TotalTickets, &report.AvgResponseTime, &report.AvgResolutionTime)
+	policy, err := s.GetPolicy(ctx, policyID)
+	if err != nil {
+		return nil, err
+	}
+	if policy == nil {
+		return nil, fmt.Errorf("sla policy %s not found", policyID)
+	}
 
+	var (
+		total       int
+		met         int
+		breached    int
+		avgResponse float64
+		avgResolved float64
+	)
+	err = database.Pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) AS total_tickets,
+			COUNT(*) FILTER (
+				WHERE first_response_at IS NOT NULL
+				  AND EXTRACT(EPOCH FROM (first_response_at - created_at)) <= $4
+				  AND (resolved_at IS NULL
+				       OR EXTRACT(EPOCH FROM (resolved_at - created_at)) <= $5)
+			) AS met_sla,
+			COUNT(*) FILTER (
+				WHERE (first_response_at IS NOT NULL
+				       AND EXTRACT(EPOCH FROM (first_response_at - created_at)) > $4)
+				   OR (resolved_at IS NOT NULL
+				       AND EXTRACT(EPOCH FROM (resolved_at - created_at)) > $5)
+				   OR (first_response_at IS NULL AND EXTRACT(EPOCH FROM (NOW() - created_at)) > $4)
+			) AS breached_sla,
+			COALESCE(AVG(EXTRACT(EPOCH FROM (first_response_at - created_at)))
+			         FILTER (WHERE first_response_at IS NOT NULL), 0) AS avg_response_time,
+			COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)))
+			         FILTER (WHERE resolved_at IS NOT NULL), 0) AS avg_resolution_time
+		FROM support_tickets
+		WHERE sla_policy_id = $1 AND created_at >= $2 AND created_at <= $3
+	`, policyID, periodStart, periodEnd, policy.ResponseTimeSLA, policy.ResolutionTimeSLA).
+		Scan(&total, &met, &breached, &avgResponse, &avgResolved)
 	if err != nil {
 		return nil, err
 	}
 
-	report.ID = uuid.New()
-	report.PolicyID = policyID
-	report.PeriodStart = periodStart
-	report.PeriodEnd = periodEnd
-	report.MetSLA = report.TotalTickets // Simplified - would need actual SLA check
-	report.BreachedSLA = 0
-	report.Uptime = 99.9 // Simplified
-	report.CreatedAt = time.Now()
+	report := SLAReport{
+		ID:                uuid.New(),
+		PolicyID:          policyID,
+		PeriodStart:       periodStart,
+		PeriodEnd:         periodEnd,
+		TotalTickets:      total,
+		MetSLA:            met,
+		BreachedSLA:       breached,
+		AvgResponseTime:   avgResponse,
+		AvgResolutionTime: avgResolved,
+		CreatedAt:         time.Now(),
+	}
+	if met+breached > 0 {
+		report.Uptime = float64(met) / float64(met+breached) * 100
+	}
 
 	_, err = database.Pool.Exec(ctx, `
 		INSERT INTO sla_reports (id, policy_id, period_start, period_end, total_tickets, met_sla, breached_sla, avg_response_time, avg_resolution_time, uptime, created_at)
@@ -173,7 +222,7 @@ func (s *SLAService) CheckSLACompliance(ctx context.Context, ticketID uuid.UUID)
 	}
 
 	err := database.Pool.QueryRow(ctx, `
-		SELECT priority, sla_policy_id, created_at, first_response_at, resolved_at FROM tickets WHERE id = $1
+		SELECT priority, sla_policy_id, created_at, first_response_at, resolved_at FROM support_tickets WHERE id = $1
 	`, ticketID).Scan(&ticket.Priority, &ticket.SLAPolicyID, &ticket.CreatedAt, &ticket.FirstResponseAt, &ticket.ResolvedAt)
 
 	if err != nil {

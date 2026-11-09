@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // Admin represents an admin user
@@ -452,6 +454,10 @@ type SupportTicket struct {
 	SLAFirstResponseBy *time.Time `json:"sla_first_response_by"`
 	SLAResolutionBy    *time.Time `json:"sla_resolution_by"`
 	FirstResponseAt    *time.Time `json:"first_response_at"`
+	// SLAPolicyID links the ticket to the sla_policies row that governs it. The
+	// SLA reporting service joins on this column, and a ticket without a policy
+	// is treated as unmeasured rather than compliant.
+	SLAPolicyID pgtype.UUID `gorm:"type:uuid;index" json:"sla_policy_id,omitempty"`
 }
 
 // SupportTicketMessage represents messages in support tickets

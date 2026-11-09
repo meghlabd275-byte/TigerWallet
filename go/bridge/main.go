@@ -60,13 +60,21 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
+	// Routes are reported from the registered adapters themselves, so a bridge
+	// that has no fee schedule configured (and therefore cannot quote) does not
+	// appear as available.
+	type bridgeRoute struct {
+		Bridge string   `json:"bridge"`
+		Chains []uint64 `json:"chains"`
+	}
+	routes := make([]bridgeRoute, 0)
+	for _, br := range s.agg.Bridges() {
+		if chains := br.SupportedChains(); len(chains) > 0 {
+			routes = append(routes, bridgeRoute{Bridge: br.Name(), Chains: chains})
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"routes": []map[string]interface{}{
-			{"bridge": "Stargate", "chains": []uint64{1, 56, 137, 42161, 10, 8453}, "slippage": 0.5},
-			{"bridge": "Across", "chains": []uint64{1, 10, 42161, 137, 8453}, "slippage": 0.3},
-		},
-	})
+	json.NewEncoder(w).Encode(map[string]interface{}{"routes": routes})
 }
 
 func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {

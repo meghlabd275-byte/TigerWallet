@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -329,18 +330,35 @@ func getSystemMetrics() SystemMetrics {
 		errorRate = float64(errorReq) / float64(totalReq) * 100
 	}
 
-	return SystemMetrics{
-		TotalRequests:  totalReq,
+	metrics := SystemMetrics{
+		TotalRequests: totalReq,
 		SuccessRate:   successRate,
 		ErrorRate:     errorRate,
 		AvgLatency:    avgLat,
 		P99Latency:    p99Lat,
 		ActiveConns:   activeConns,
-		CPUUsage:      getCPUUsage(),
-		MemoryUsage:  getMemoryUsage(),
-		DiskUsage:    getDiskUsage(),
-		Timestamp:    time.Now(),
+		Timestamp:     time.Now(),
 	}
+
+	if cur, ok := readCPUSample(); ok {
+		hostMetricsMu.Lock()
+		prev, had := lastCPUSample, haveCPUSample
+		lastCPUSample, haveCPUSample = cur, true
+		hostMetricsMu.Unlock()
+		if had {
+			if pct, ok := cpuUsagePercent(prev, cur); ok {
+				metrics.CPUUsage = pct
+			}
+		}
+	}
+	if pct, ok := memoryUsagePercent(); ok {
+		metrics.MemoryUsage = pct
+	}
+	if pct, ok := diskUsagePercent(); ok {
+		metrics.DiskUsage = pct
+	}
+
+	return metrics
 }
 
 func getProductMetrics() []ProductMetrics {
@@ -377,18 +395,106 @@ func getProductMetrics() []ProductMetrics {
 	return result
 }
 
-func getCPUUsage() float64 {
-	// Simplified - in production would use actual system metrics
-	return 45.5
+// readProcFile reads a kernel-exposed counter file. /proc is the authoritative
+// source for host metrics on Linux, so no value has to be guessed.
+func readProcFile(path string) ([]string, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	return strings.Fields(string(data)), true
 }
 
-func getMemoryUsage() float64 {
-	return 62.3
+// cpuSample captures the cumulative jiffy counters from /proc/stat.
+type cpuSample struct {
+	idle  uint64
+	total uint64
 }
 
-func getDiskUsage() float64 {
-	return 38.7
+func readCPUSample() (cpuSample, bool) {
+	fields, ok := readProcFile("/proc/stat")
+	if !ok || len(fields) < 5 || fields[0] != "cpu" {
+		return cpuSample{}, false
+	}
+	var sample cpuSample
+	for i, f := range fields[1:] {
+		v, err := strconv.ParseUint(f, 10, 64)
+		if err != nil {
+			return cpuSample{}, false
+		}
+		sample.total += v
+		if i == 3 { // field 4 is the idle counter
+			sample.idle = v
+		}
+	}
+	if sample.total == 0 {
+		return cpuSample{}, false
+	}
+	return sample, true
 }
+
+// cpuUsagePercent computes busy CPU between two cumulative samples. It returns
+// false until a previous sample exists, so the first scrape reports no reading
+// rather than an invented one.
+func cpuUsagePercent(prev, cur cpuSample) (float64, bool) {
+	if cur.total <= prev.total {
+		return 0, false
+	}
+	totalDelta := cur.total - prev.total
+	if totalDelta == 0 {
+		return 0, false
+	}
+	idleDelta := cur.idle - prev.idle
+	return float64(totalDelta-idleDelta) / float64(totalDelta) * 100, true
+}
+
+// memoryUsagePercent reads MemTotal/MemAvailable from /proc/meminfo.
+func memoryUsagePercent() (float64, bool) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, false
+	}
+	var total, available float64
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		v, err := strconv.ParseFloat(fields[1], 64)
+		if err != nil {
+			continue
+		}
+		switch fields[0] {
+		case "MemTotal:":
+			total = v
+		case "MemAvailable:":
+			available = v
+		}
+	}
+	if total <= 0 {
+		return 0, false
+	}
+	return (total - available) / total * 100, true
+}
+
+// diskUsagePercent reports the used fraction of the filesystem holding the
+// working directory, via statfs(2).
+func diskUsagePercent() (float64, bool) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(".", &st); err != nil || st.Blocks == 0 {
+		return 0, false
+	}
+	used := st.Blocks - st.Bavail
+	return float64(used) / float64(st.Blocks) * 100, true
+}
+
+// Host metric sampling state. CPU utilisation is only meaningful as a delta
+// between two cumulative /proc/stat reads.
+var (
+	hostMetricsMu  sync.Mutex
+	lastCPUSample cpuSample
+	haveCPUSample bool
+)
 
 // Background metrics collection
 func startMetricsCollection() {

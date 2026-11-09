@@ -1224,6 +1224,15 @@ services:
       - "8480:8470"
     environment:
       - PORT=8470
+      # Bridge fee schedules. A bridge with no FEE_BPS set is treated as
+      # unconfigured and reports no routes, so it can never contribute a
+      # made-up price to the aggregator. Values are operator policy.
+      - BRIDGE_STARGATE_FEE_BPS=${BRIDGE_STARGATE_FEE_BPS:-5}
+      - BRIDGE_STARGATE_FEE_FIXED=${BRIDGE_STARGATE_FEE_FIXED:-0}
+      - BRIDGE_STARGATE_DURATION_SEC=${BRIDGE_STARGATE_DURATION_SEC:-300}
+      - BRIDGE_ACROSS_FEE_BPS=${BRIDGE_ACROSS_FEE_BPS:-3}
+      - BRIDGE_ACROSS_FEE_FIXED=${BRIDGE_ACROSS_FEE_FIXED:-0}
+      - BRIDGE_ACROSS_DURATION_SEC=${BRIDGE_ACROSS_DURATION_SEC:-180}
     restart: unless-stopped
 
   # TOTP and WebAuthn. The /2fa/* proxy targets this port; the service also

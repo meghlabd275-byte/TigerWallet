@@ -14,17 +14,110 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 // ============== Data Structures ==============
+
+// Config holds the gateway's runtime configuration. Every value that affects
+// security is read from the environment and validated at startup; there is no
+// hardcoded credential or permissive default anywhere in this file.
+type Config struct {
+	// JWTSecret is the HS256 key used to verify bearer tokens. Required.
+	JWTSecret []byte
+	// AdminToken authorises the gateway's own management endpoints. Required.
+	AdminToken string
+	// APIKeys maps a presented key to the key record it authenticates.
+	APIKeys map[string]*APIKey
+}
+
+// LoadConfig reads and validates the gateway configuration. It fails closed:
+// if any required secret is missing, empty, or a well-known placeholder the
+// gateway refuses to start rather than running without authentication.
+func LoadConfig() (*Config, error) {
+	secret := os.Getenv("GATEWAY_JWT_SECRET")
+	if err := requireSecret("GATEWAY_JWT_SECRET", secret); err != nil {
+		return nil, err
+	}
+
+	admin := os.Getenv("GATEWAY_ADMIN_TOKEN")
+	if err := requireSecret("GATEWAY_ADMIN_TOKEN", admin); err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		JWTSecret:  []byte(secret),
+		AdminToken: admin,
+		APIKeys:    make(map[string]*APIKey),
+	}
+
+	// GATEWAY_API_KEYS is an optional comma-separated list of key:userID:rps
+	// triples. Each entry becomes a live API key; nothing is seeded implicitly.
+	raw := strings.TrimSpace(os.Getenv("GATEWAY_API_KEYS"))
+	if raw == "" {
+		return cfg, nil
+	}
+	for _, entry := range strings.Split(raw, ",") {
+		parts := strings.Split(strings.TrimSpace(entry), ":")
+		if len(parts) != 3 || parts[0] == "" {
+			return nil, fmt.Errorf("GATEWAY_API_KEYS entry %q must be key:user_id:requests_per_second", entry)
+		}
+		rps, err := strconv.ParseFloat(parts[2], 64)
+		if err != nil || rps <= 0 {
+			return nil, fmt.Errorf("GATEWAY_API_KEYS entry %q has an invalid rate limit", entry)
+		}
+		cfg.APIKeys[parts[0]] = &APIKey{
+			ID:        "key_" + shortFingerprint(parts[0]),
+			Key:       parts[0],
+			UserID:    parts[1],
+			Name:      "env:" + parts[1],
+			RateLimit: rps,
+			Active:    true,
+			CreatedAt: time.Now().Unix(),
+		}
+	}
+	return cfg, nil
+}
+
+// placeholderSecrets are configuration values that look like credentials but
+// are not; accepting one would be equivalent to running with no auth at all.
+var placeholderSecrets = map[string]bool{
+	"change-me": true, "changeme": true, "change-me-in-production": true,
+	"secret": true, "password": true, "your-secret-here": true,
+	"dev-only-change-me": true, "tigerwallet-super-admin-secret-change-me": true,
+	"test": true, "example": true, "todo": true,
+}
+
+func requireSecret(name, value string) error {
+	v := strings.TrimSpace(value)
+	if len(v) < 32 {
+		return fmt.Errorf("%s must be set to a value of at least 32 characters (got %d)", name, len(v))
+	}
+	if placeholderSecrets[strings.ToLower(v)] {
+		return fmt.Errorf("%s is set to a placeholder value and must be replaced with a real secret", name)
+	}
+	return nil
+}
+
+// shortFingerprint returns a stable, non-reversible identifier for a secret so
+// that key material never appears in logs, IDs, or API responses.
+func shortFingerprint(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return fmt.Sprintf("%x", sum[:6])
+}
 
 type Route struct {
 	Path      string          `json:"path"`
@@ -100,6 +193,10 @@ type APIGateway struct {
 	rateLimiters    map[string]*RateLimiter
 	requestLogs     []RequestLog
 
+	// cfg carries the verified JWT key and admin token. It is never nil for a
+	// running gateway because NewAPIGateway rejects a missing configuration.
+	cfg *Config
+
 	mu        sync.RWMutex
 	startTime time.Time
 	stats     struct {
@@ -111,20 +208,24 @@ type APIGateway struct {
 	server *http.Server
 }
 
-func NewAPIGateway() *APIGateway {
+func NewAPIGateway(cfg *Config) (*APIGateway, error) {
+	if cfg == nil || len(cfg.JWTSecret) == 0 || cfg.AdminToken == "" {
+		return nil, fmt.Errorf("api gateway requires a validated configuration (JWT secret and admin token)")
+	}
 	g := &APIGateway{
 		routes:          make(map[string]*Route),
-		apiKeys:         make(map[string]*APIKey),
+		apiKeys:         cfg.APIKeys,
 		circuitBreakers: make(map[string]*CircuitBreaker),
 		rateLimiters:    make(map[string]*RateLimiter),
 		requestLogs:     make([]RequestLog, 0, 10000),
+		cfg:             cfg,
 		startTime:       time.Now(),
 	}
 
 	g.initRoutes()
 	g.initCircuitBreakers()
 
-	return g
+	return g, nil
 }
 
 func (g *APIGateway) initRoutes() {
@@ -403,24 +504,104 @@ func (g *APIGateway) handleReady(w http.ResponseWriter, r *http.Request) {
 
 // ============== Helpers ==============
 
+// validateAuth authenticates a request against either a configured API key or
+// a JWT bearer token signed with the gateway's HS256 secret. Both paths are
+// cryptographic: a key must match a registered key exactly (constant time) and
+// a token must carry a valid HMAC-SHA256 signature, an unexpired "exp", and a
+// subject. Anything else is rejected.
 func (g *APIGateway) validateAuth(r *http.Request) bool {
-	// Check API key
-	apiKey := r.Header.Get("X-API-Key")
-	if apiKey != "" {
-		if key, exists := g.apiKeys[apiKey]; exists && key.Active {
+	if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+		if key := g.lookupAPIKey(apiKey); key != nil && key.Active {
+			if key.ExpiresAt != 0 && time.Now().Unix() > key.ExpiresAt {
+				return false
+			}
 			return true
 		}
 	}
 
-	// Check Bearer token
 	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		token := strings.TrimPrefix(auth, "Bearer ")
-		// In production, validate JWT
-		return len(token) > 10
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	if token == "" {
+		return false
+	}
+	return g.verifyJWT(token)
+}
+
+// lookupAPIKey finds the registered key whose material matches the presented
+// value. It compares every candidate in constant time so that a timing signal
+// cannot be used to discover a valid key prefix.
+func (g *APIGateway) lookupAPIKey(presented string) *APIKey {
+	var match *APIKey
+	for stored, key := range g.apiKeys {
+		if subtle.ConstantTimeCompare([]byte(stored), []byte(presented)) == 1 {
+			match = key
+		}
+	}
+	return match
+}
+
+// verifyJWT validates an HS256 JWT. It rejects any token whose header names a
+// different algorithm (including "none"), whose signature does not match, or
+// whose exp/nbf claims place it outside its validity window.
+func (g *APIGateway) verifyJWT(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
 	}
 
-	return false
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return false
+	}
+	var header struct {
+		Alg string `json:"alg"`
+		Typ string `json:"typ"`
+	}
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		return false
+	}
+	if !strings.EqualFold(header.Alg, "HS256") {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, g.cfg.JWTSecret)
+	mac.Write([]byte(parts[0] + "." + parts[1]))
+	expected := mac.Sum(nil)
+
+	provided, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || len(provided) != len(expected) {
+		return false
+	}
+	if subtle.ConstantTimeCompare(provided, expected) != 1 {
+		return false
+	}
+
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var claims struct {
+		Sub string  `json:"sub"`
+		Exp float64 `json:"exp"`
+		Nbf float64 `json:"nbf"`
+	}
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		return false
+	}
+	if strings.TrimSpace(claims.Sub) == "" {
+		return false
+	}
+	now := float64(time.Now().Unix())
+	if claims.Exp == 0 || now >= claims.Exp {
+		return false
+	}
+	if claims.Nbf != 0 && now < claims.Nbf {
+		return false
+	}
+	return true
 }
 
 func (g *APIGateway) checkRateLimit(r *http.Request, route *Route, ip string) bool {
@@ -583,7 +764,15 @@ func min(a, b float64) float64 {
 func main() {
 	log.Println("Starting TigerWallet API Gateway...")
 
-	gateway := NewAPIGateway()
+	cfg, err := LoadConfig()
+	if err != nil {
+		log.Fatalf("configuration error: %v", err)
+	}
+
+	gateway, err := NewAPIGateway(cfg)
+	if err != nil {
+		log.Fatalf("configuration error: %v", err)
+	}
 	if err := gateway.Run(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

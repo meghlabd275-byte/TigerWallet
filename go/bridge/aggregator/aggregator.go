@@ -79,7 +79,7 @@ type QuoteResponse struct {
 	GasEstimate   uint64        `json:"gas_estimate"`
 	Duration      time.Duration `json:"duration"`
 	EstimatedTime int64         `json:"estimated_time"` // seconds
-	Fee           string        `json:"fee"` // human-readable bridge fee
+	Fee           string        `json:"fee"`            // human-readable bridge fee
 	Slippage      float64       `json:"slippage"`
 	Route         []Hop         `json:"route"`
 }
@@ -135,6 +135,23 @@ func (b *BridgeAggregator) RegisterBridge(name string, bridge Bridge) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.bridges[name] = bridge
+}
+
+// Bridges returns the registered adapters in a stable order. Callers use it to
+// report which bridges are actually available rather than a hardcoded list.
+func (b *BridgeAggregator) Bridges() []Bridge {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	names := make([]string, 0, len(b.bridges))
+	for name := range b.bridges {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]Bridge, 0, len(names))
+	for _, name := range names {
+		out = append(out, b.bridges[name])
+	}
+	return out
 }
 
 // GetQuote finds best bridge quote
@@ -285,105 +302,6 @@ func (b *BridgeAggregator) findIntermediateChains(src, dst uint64) []uint64 {
 // Bridge Implementations
 // ============================================================================
 
-// StargateBridge represents Stargate bridge
-type StargateBridge struct {
-	rpcURL string
-}
-
-// NewStargateBridge creates Stargate bridge
-func NewStargateBridge(rpcURL string) *StargateBridge {
-	return &StargateBridge{rpcURL: rpcURL}
-}
-
-func (s *StargateBridge) Name() string              { return "Stargate" }
-func (s *StargateBridge) SupportedChains() []uint64 { return []uint64{1, 56, 137, 42161, 10, 8453} }
-
-func (s *StargateBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteResponse, error) {
-	if req.Amount == nil || req.Amount.Sign() <= 0 {
-		return QuoteResponse{}, fmt.Errorf("invalid amount")
-	}
-	fee := new(big.Int).Mul(req.Amount, big.NewInt(5))
-	fee.Div(fee, big.NewInt(1000))
-	amountOut := new(big.Int).Sub(req.Amount, fee)
-	return QuoteResponse{
-		Bridge:    "Stargate",
-		SrcToken:  req.SrcToken,
-		DstToken:  req.DstToken,
-		AmountIn:  req.Amount,
-		AmountOut: amountOut,
-		BridgeFee: fee,
-		Duration:  5 * time.Minute,
-		Slippage:      0.5,
-		Route:        []Hop{{Bridge: "Stargate", Chain: req.DstChain}},
-		EstimatedTime: int64(5 * 60),
-		Fee:          fee.String(),
-	}, nil
-}
-
-func (s *StargateBridge) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	return ExecuteResponse{
-		Status:     StatusPending,
-		ExecutedAt: time.Now(),
-	}, nil
-}
-
-func (s *StargateBridge) GetStatus(ctx context.Context, txHash string) (BridgeStatus, error) {
-	if txHash == "" {
-		return StatusFailed, fmt.Errorf("empty tx hash")
-	}
-	return StatusPending, nil
-}
-
-// AcrossBridge represents Across bridge
-type AcrossBridge struct {
-	rpcURL string
-}
-
-// NewAcrossBridge creates Across bridge
-func NewAcrossBridge(rpcURL string) *AcrossBridge {
-	return &AcrossBridge{rpcURL: rpcURL}
-}
-
-func (a *AcrossBridge) Name() string              { return "Across" }
-func (a *AcrossBridge) SupportedChains() []uint64 { return []uint64{1, 10, 42161, 137, 8453} }
-
-func (a *AcrossBridge) GetQuote(ctx context.Context, req QuoteRequest) (QuoteResponse, error) {
-	if req.Amount == nil || req.Amount.Sign() <= 0 {
-		return QuoteResponse{}, fmt.Errorf("invalid amount")
-	}
-	fee := new(big.Int).Mul(req.Amount, big.NewInt(3))
-	fee.Div(fee, big.NewInt(1000))
-	amountOut := new(big.Int).Sub(req.Amount, fee)
-	return QuoteResponse{
-		Bridge:    "Across",
-		SrcToken:  req.SrcToken,
-		DstToken:  req.DstToken,
-		AmountIn:  req.Amount,
-		AmountOut: amountOut,
-		BridgeFee: fee,
-		Duration:  3 * time.Minute,
-		Slippage:      0.3,
-		Route:        []Hop{{Bridge: "Across", Chain: req.DstChain}},
-		EstimatedTime: int64(3 * 60),
-		Fee:          fee.String(),
-	}, nil
-}
-
-func (a *AcrossBridge) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	return ExecuteResponse{
-		Status:     StatusPending,
-		ExecutedAt: time.Now(),
-	}, nil
-}
-
-func (a *AcrossBridge) GetStatus(ctx context.Context, txHash string) (BridgeStatus, error) {
-	if txHash == "" {
-		return StatusFailed, fmt.Errorf("empty tx hash")
-	}
-	return StatusPending, nil
-}
-
-// ============================================================================
 // Utilities
 // ============================================================================
 

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/tigerwallet/admin/internal/middleware"
 	"github.com/tigerwallet/admin/internal/models"
 	"github.com/tigerwallet/admin/pkg/database"
 
@@ -13,12 +14,15 @@ import (
 
 // AnalyticsHandler handles analytics-related requests
 type AnalyticsHandler struct {
-	db *database.PostgresDB
+	db      *database.PostgresDB
+	metrics *middleware.MetricsCollector
 }
 
-// NewAnalyticsHandler creates a new analytics handler
-func NewAnalyticsHandler(db *database.PostgresDB) *AnalyticsHandler {
-	return &AnalyticsHandler{db: db}
+// NewAnalyticsHandler creates a new analytics handler. metrics must be the same
+// collector installed as router middleware; it supplies the live traffic
+// figures reported by GetSystemMetrics.
+func NewAnalyticsHandler(db *database.PostgresDB, metrics *middleware.MetricsCollector) *AnalyticsHandler {
+	return &AnalyticsHandler{db: db, metrics: metrics}
 }
 
 // DashboardStats represents dashboard statistics
@@ -276,28 +280,52 @@ func (h *AnalyticsHandler) GetRevenueAnalytics(c *gin.Context) {
 	c.JSON(http.StatusOK, analytics)
 }
 
-// GetSystemMetrics gets system metrics
+// GetSystemMetrics reports live API and host metrics. Every field is measured:
+// the traffic figures come from the metrics middleware and the host figures
+// from the kernel. A metric that cannot be read is reported as null rather than
+// replaced with a plausible-looking number.
 func (h *AnalyticsHandler) GetSystemMetrics(c *gin.Context) {
-	var metrics struct {
-		Uptime            float64 `json:"uptime"`
-		CPUUsage          float64 `json:"cpu_usage"`
-		MemoryUsage       float64 `json:"memory_usage"`
-		DiskUsage         float64 `json:"disk_usage"`
-		APILatency        float64 `json:"api_latency"`
-		ActiveConnections int64   `json:"active_connections"`
-		RequestsPerSecond float64 `json:"requests_per_second"`
+	type systemMetrics struct {
+		UptimeSeconds     float64  `json:"uptime_seconds"`
+		TotalRequests     uint64   `json:"total_requests"`
+		TotalErrors       uint64   `json:"total_errors"`
+		APILatencyMs      float64  `json:"api_latency_ms"`
+		RequestsPerSecond float64  `json:"requests_per_second"`
+		ActiveConnections int64    `json:"active_connections"`
+		CPUUsage          *float64 `json:"cpu_usage"`
+		MemoryUsage       *float64 `json:"memory_usage"`
+		DiskUsage         *float64 `json:"disk_usage"`
 	}
 
-	// In real implementation, would fetch from system monitoring
-	metrics.Uptime = 99.99
-	metrics.CPUUsage = 45.5
-	metrics.MemoryUsage = 62.3
-	metrics.DiskUsage = 38.7
-	metrics.APILatency = 25.5
-	metrics.ActiveConnections = 1250
-	metrics.RequestsPerSecond = 450.0
+	var out systemMetrics
+	if h.metrics != nil {
+		snap := h.metrics.Snapshot()
+		out.UptimeSeconds = snap.UptimeSeconds
+		out.TotalRequests = snap.TotalRequests
+		out.TotalErrors = snap.TotalErrors
+		out.APILatencyMs = snap.AvgLatencyMs
+		out.RequestsPerSecond = snap.RequestsPerSecond
+	}
 
-	c.JSON(http.StatusOK, metrics)
+	// PostgreSQL reports the live backend count, which is the authoritative
+	// measure of connections held by this service.
+	if h.db != nil && h.db.DB != nil {
+		if sqlDB, err := h.db.DB.DB(); err == nil {
+			out.ActiveConnections = int64(sqlDB.Stats().OpenConnections)
+		}
+	}
+
+	if pct, ok := hostCPUPercent(); ok {
+		out.CPUUsage = &pct
+	}
+	if pct, ok := hostMemoryPercent(); ok {
+		out.MemoryUsage = &pct
+	}
+	if pct, ok := hostDiskPercent(); ok {
+		out.DiskUsage = &pct
+	}
+
+	c.JSON(http.StatusOK, out)
 }
 
 // GetCustomDateRangeAnalytics gets analytics for a custom date range
