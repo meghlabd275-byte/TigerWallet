@@ -2,10 +2,9 @@
 //! High-performance trading charts with TradingView integration
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder, middleware};
-use chrono::{DateTime, Utc, Duration};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
-use std::sync::Arc;
 
 // ============================================================================
 // Data Models
@@ -287,16 +286,25 @@ async fn get_chart_data(
     let timeframe = params.get("timeframe").cloned().unwrap_or_else(|| "1h".to_string());
     let limit: i32 = params.get("limit").and_then(|s| s.parse().ok()).unwrap_or(100);
 
-    let rows = sqlx::query(
-        "SELECT time, open, high, low, close, volume FROM candlestick_data 
-         WHERE symbol = $1 AND timeframe = $2 ORDER BY time DESC LIMIT $3"
+    let rows = match sqlx::query(
+        "SELECT time, open, high, low, close, volume FROM candlestick_data
+         WHERE replace(replace(upper(symbol), '/', ''), '-', '') = $1
+           AND timeframe = $2
+         ORDER BY time DESC LIMIT $3",
     )
-    .bind(&symbol)
+    .bind(normalize_symbol(&symbol))
     .bind(&timeframe)
     .bind(limit)
     .fetch_all(&state.db_pool)
     .await
-    .unwrap_or_default();
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(symbol = %symbol, error = %e, "failed to load chart data");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "chart data is unavailable" }));
+        }
+    };
 
     let candles: Vec<Candle> = rows
         .iter()
@@ -347,13 +355,22 @@ async fn get_indicators(
     let period: usize = params.get("period").and_then(|s| s.parse().ok()).unwrap_or(14);
 
     // Get price data
-    let rows = sqlx::query(
-        "SELECT close FROM candlestick_data WHERE symbol = $1 ORDER BY time DESC LIMIT 100"
+    let rows = match sqlx::query(
+        "SELECT close FROM candlestick_data
+          WHERE replace(replace(upper(symbol), '/', ''), '-', '') = $1
+          ORDER BY time DESC LIMIT 100",
     )
-    .bind(&symbol)
+    .bind(normalize_symbol(&symbol))
     .fetch_all(&state.db_pool)
     .await
-    .unwrap_or_default();
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(symbol = %symbol, error = %e, "failed to load indicator prices");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "indicator data is unavailable" }));
+        }
+    };
 
     let prices: Vec<f64> = rows
         .iter()
@@ -429,32 +446,81 @@ async fn get_indicators(
     HttpResponse::Ok().json(serde_json::json!({ "indicators": indicators }))
 }
 
+/// Strips the separators exchanges disagree on, so ETH/USDT, ETH-USDT and
+/// ETHUSDT all resolve to the same pair.
+fn normalize_symbol(raw: &str) -> String {
+    raw.chars()
+        .filter(|ch| *ch != '/' && *ch != '-' && *ch != '_')
+        .flat_map(|ch| ch.to_uppercase())
+        .collect()
+}
+
+/// Loads one side of a pair's aggregated order book.
+async fn load_levels(
+    pool: &Pool<Postgres>,
+    symbol: &str,
+    side: &str,
+    descending: bool,
+    depth: i64,
+) -> Result<Vec<PriceLevel>, sqlx::Error> {
+    let sql = format!(
+        "SELECT l.price, l.total_quantity
+           FROM order_book_levels l
+           JOIN trading_pairs p ON p.id = l.pair_id
+          WHERE replace(replace(upper(p.symbol), '/', ''), '-', '') = $1
+            AND l.side = $2
+          ORDER BY l.price {} LIMIT $3",
+        if descending { "DESC" } else { "ASC" }
+    );
+
+    let rows = sqlx::query(&sql)
+        .bind(symbol)
+        .bind(side)
+        .bind(depth)
+        .fetch_all(pool)
+        .await?;
+
+    Ok(rows
+        .iter()
+        .map(|row| PriceLevel {
+            price: row.try_get::<f64, _>("price").unwrap_or(0.0),
+            quantity: row.try_get::<f64, _>("total_quantity").unwrap_or(0.0),
+        })
+        .collect())
+}
+
 async fn get_order_book(
     state: web::Data<AppState>,
     web::Query(params): web::Query<std::collections::HashMap<String, String>>,
 ) -> impl Responder {
-    let symbol = params.get("symbol").cloned().unwrap_or_else(|| "ETHUSDT".to_string());
-    let depth: i32 = params.get("depth").and_then(|s| s.parse().ok()).unwrap_or(20);
+    let symbol = normalize_symbol(
+        params.get("symbol").map(String::as_str).unwrap_or("ETHUSDT"),
+    );
+    // Bounded so a caller cannot ask for an unbounded result set.
+    let depth = params
+        .get("depth")
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(20)
+        .clamp(1, 500);
 
-    // Generate mock order book (in production, would connect to exchange)
-    let mut bids = Vec::new();
-    let mut asks = Vec::new();
-    let base_price = 2500.0;
+    // Bids descend from the best price, asks ascend from it.
+    let bids = match load_levels(&state.db_pool, &symbol, "buy", true, depth).await {
+        Ok(levels) => levels,
+        Err(e) => {
+            tracing::error!(symbol = %symbol, error = %e, "failed to load bid levels");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "order book is unavailable" }));
+        }
+    };
 
-    for i in 0..depth {
-        let bid_price = base_price - (i as f64 * 0.5);
-        let ask_price = base_price + ((i + 1) as f64 * 0.5);
-        
-        bids.push(PriceLevel {
-            price: bid_price,
-            quantity: 10.0 - (i as f64 * 0.3),
-        });
-        
-        asks.push(PriceLevel {
-            price: ask_price,
-            quantity: 10.0 - (i as f64 * 0.3),
-        });
-    }
+    let asks = match load_levels(&state.db_pool, &symbol, "sell", false, depth).await {
+        Ok(levels) => levels,
+        Err(e) => {
+            tracing::error!(symbol = %symbol, error = %e, "failed to load ask levels");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "order book is unavailable" }));
+        }
+    };
 
     let order_book = OrderBook {
         symbol,
@@ -466,35 +532,114 @@ async fn get_order_book(
     HttpResponse::Ok().json(serde_json::json!({ "orderBook": order_book }))
 }
 
+/// Computes 24h statistics from the aggregated candle window.
+///
+/// change_percent_24h is relative to the window's opening price; turnover is
+/// the quote-denominated sum supplied by the query.
+fn derive_market_stats(
+    symbol: String,
+    open: f64,
+    high: f64,
+    low: f64,
+    close: f64,
+    volume: f64,
+    turnover: f64,
+) -> MarketStats {
+    let change = close - open;
+    let change_percent = if open == 0.0 {
+        0.0
+    } else {
+        (change / open) * 100.0
+    };
+
+    MarketStats {
+        symbol,
+        price: close,
+        change_24h: change,
+        change_percent_24h: change_percent,
+        high_24h: high,
+        low_24h: low,
+        volume_24h: volume,
+        turnover_24h: turnover,
+    }
+}
+
 async fn get_market_stats(
     state: web::Data<AppState>,
     web::Query(params): web::Query<std::collections::HashMap<String, String>>,
 ) -> impl Responder {
-    let symbol = params.get("symbol").cloned().unwrap_or_else(|| "ETHUSDT".to_string());
+    let symbol = normalize_symbol(
+        params.get("symbol").map(String::as_str).unwrap_or("ETHUSDT"),
+    );
+    let timeframe = params.get("timeframe").map(String::as_str).unwrap_or("1h");
 
-    // Generate mock stats
-    let stats = MarketStats {
-        symbol,
-        price: 2500.0,
-        change_24h: 50.0,
-        change_percent_24h: 2.0,
-        high_24h: 2600.0,
-        low_24h: 2400.0,
-        volume_24h: 150000.0,
-        turnover_24h: 375000000.0,
+    let row = match sqlx::query(
+        "SELECT
+             (array_agg(open  ORDER BY time ASC))[1]  AS open_24h,
+             MAX(high)                                AS high_24h,
+             MIN(low)                                 AS low_24h,
+             (array_agg(close ORDER BY time DESC))[1] AS close_24h,
+             SUM(volume)                              AS volume_24h,
+             SUM(volume * close)                      AS turnover_24h
+           FROM candlestick_data
+          WHERE replace(replace(upper(symbol), '/', ''), '-', '') = $1
+            AND timeframe = $2
+            AND time >= NOW() - INTERVAL '24 hours'",
+    )
+    .bind(&symbol)
+    .bind(timeframe)
+    .fetch_one(&state.db_pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::error!(symbol = %symbol, error = %e, "failed to load market stats");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "market statistics are unavailable" }));
+        }
     };
+
+    // The aggregates are NULL when the window holds no candles; reporting a
+    // zeroed ticker would be indistinguishable from a real, flat market.
+    let open: Option<f64> = row.try_get("open_24h").unwrap_or(None);
+    let close: Option<f64> = row.try_get("close_24h").unwrap_or(None);
+    let (open, close) = match (open, close) {
+        (Some(open), Some(close)) => (open, close),
+        _ => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "no candles recorded for this pair in the last 24 hours"
+            }));
+        }
+    };
+
+    let stats = derive_market_stats(
+        symbol,
+        open,
+        row.try_get::<f64, _>("high_24h").unwrap_or(open),
+        row.try_get::<f64, _>("low_24h").unwrap_or(open),
+        close,
+        row.try_get::<f64, _>("volume_24h").unwrap_or(0.0),
+        row.try_get::<f64, _>("turnover_24h").unwrap_or(0.0),
+    );
 
     HttpResponse::Ok().json(serde_json::json!({ "stats": stats }))
 }
 
 async fn get_trading_pairs(state: web::Data<AppState>) -> impl Responder {
-    let rows = sqlx::query(
+    let rows = match sqlx::query(
         "SELECT id, base_asset, quote_asset, symbol, status, min_price, max_price,
-         tick_size, min_quantity, max_quantity, step_size FROM trading_pairs WHERE status = 'active'"
+         tick_size, min_quantity, max_quantity, step_size FROM trading_pairs WHERE status = 'active'",
     )
     .fetch_all(&state.db_pool)
     .await
-    .unwrap_or_else(|_| vec![]);
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to load trading pairs");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "trading pairs are unavailable" }));
+        }
+    };
 
     let rows: Vec<TradingPair> = rows
         .iter()
@@ -522,14 +667,21 @@ async fn search_symbol(
 ) -> impl Responder {
     let query = params.get("q").cloned().unwrap_or_default();
 
-    let rows = sqlx::query(
-        "SELECT id, base_asset, quote_asset, symbol, status FROM trading_pairs 
-         WHERE symbol ILIKE $1 OR base_asset ILIKE $1 OR quote_asset ILIKE $1 LIMIT 10"
+    let rows = match sqlx::query(
+        "SELECT id, base_asset, quote_asset, symbol, status FROM trading_pairs
+         WHERE symbol ILIKE $1 OR base_asset ILIKE $1 OR quote_asset ILIKE $1 LIMIT 10",
     )
     .bind(format!("%{}%", query))
     .fetch_all(&state.db_pool)
     .await
-    .unwrap_or_default();
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(query = %query, error = %e, "failed to search symbols");
+            return HttpResponse::ServiceUnavailable()
+                .json(serde_json::json!({ "error": "symbol search is unavailable" }));
+        }
+    };
 
     let results: Vec<TradingPair> = rows
         .iter()
@@ -571,8 +723,10 @@ async fn main() -> std::io::Result<()> {
 
     tracing::info!("Starting TigerWallet Trading Charts Service");
 
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet".to_string());
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        eprintln!("DATABASE_URL must be set; refusing to start without a database connection string");
+        std::process::exit(1);
+    });
 
     let db_pool = init_database(&database_url)
         .await
@@ -599,4 +753,68 @@ async fn main() -> std::io::Result<()> {
     .bind(("0.0.0.0", 8090))?
     .run()
     .await
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_symbol_unifies_the_separators_exchanges_disagree_on() {
+        for raw in ["ETHUSDT", "ETH/USDT", "ETH-USDT", "eth_usdt", "EthUsdt"] {
+            assert_eq!(normalize_symbol(raw), "ETHUSDT", "failed for {raw}");
+        }
+    }
+
+    #[test]
+    fn derive_market_stats_computes_change_from_the_window_open() {
+        let stats = derive_market_stats("ETHUSDT".to_string(), 2_000.0, 2_200.0, 1_900.0, 2_100.0, 500.0, 1_000_000.0);
+
+        assert_eq!(stats.price, 2_100.0);
+        assert_eq!(stats.change_24h, 100.0);
+        assert_eq!(stats.change_percent_24h, 5.0);
+        assert_eq!(stats.high_24h, 2_200.0);
+        assert_eq!(stats.low_24h, 1_900.0);
+    }
+
+    #[test]
+    fn derive_market_stats_handles_a_negative_move() {
+        let stats = derive_market_stats("ETHUSDT".to_string(), 2_000.0, 2_000.0, 1_800.0, 1_900.0, 10.0, 19_000.0);
+
+        assert_eq!(stats.change_24h, -100.0);
+        assert_eq!(stats.change_percent_24h, -5.0);
+    }
+
+    /// A zero opening price must not produce a division by zero (NaN or inf),
+    /// which would serialise as a non-finite JSON number.
+    #[test]
+    fn derive_market_stats_does_not_divide_by_zero() {
+        let stats = derive_market_stats("NEW".to_string(), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+        assert_eq!(stats.change_percent_24h, 0.0);
+        assert!(stats.change_percent_24h.is_finite());
+    }
+
+    /// Technical indicators are computed over the returned candles, so they
+    /// must agree with a hand-computed reference.
+    #[test]
+    fn calculate_sma_matches_a_reference_window() {
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let sma = calculate_sma(&data, 3);
+
+        // Leading entries are padded, then means of each 3-wide window.
+        assert_eq!(sma.len(), 5);
+        assert_eq!(sma[2], 2.0); // (1+2+3)/3
+        assert_eq!(sma[3], 3.0); // (2+3+4)/3
+        assert_eq!(sma[4], 4.0); // (3+4+5)/3
+    }
+
+    #[test]
+    fn calculate_sma_returns_empty_when_there_is_not_enough_data() {
+        assert!(calculate_sma(&[1.0, 2.0], 5).is_empty());
+    }
 }
