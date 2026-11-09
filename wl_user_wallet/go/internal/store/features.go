@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -243,6 +244,106 @@ func (s *Store) LaunchpoolStake(ctx context.Context, userID uuid.UUID, amount st
 	_, err := s.db.Exec(ctx,
 		`INSERT INTO launchpool (id, user_id, amount) VALUES ($1,$2,$3::numeric)`, id, userID, amount)
 	return id, err
+}
+
+// ErrStakeNotFound is returned when an unstake request matches no stake.
+var ErrStakeNotFound = errors.New("no matching launchpool stake")
+
+// LaunchpoolUnstake releases a stake and returns the amount released.
+//
+// An empty amount releases the whole stake. A partial amount is accepted only
+// when it is smaller than the stake, otherwise the caller would be releasing
+// more than they hold. The comparison and the subtraction both run in
+// PostgreSQL NUMERIC, so no floating point rounding is introduced.
+func (s *Store) LaunchpoolUnstake(ctx context.Context, userID uuid.UUID, stakeID, amount string) (string, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var id, held string
+	if stakeID != "" {
+		err = tx.QueryRow(ctx,
+			`SELECT id, amount FROM launchpool WHERE id=$1 AND user_id=$2 FOR UPDATE`,
+			stakeID, userID).Scan(&id, &held)
+	} else {
+		err = tx.QueryRow(ctx,
+			`SELECT id, amount FROM launchpool WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+			userID).Scan(&id, &held)
+	}
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrStakeNotFound
+		}
+		return "", err
+	}
+
+	if amount == "" {
+		if _, err := tx.Exec(ctx, `DELETE FROM launchpool WHERE id=$1`, id); err != nil {
+			return "", err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return "", err
+		}
+		return held, nil
+	}
+
+	if _, err := parsePositiveAmount(amount); err != nil {
+		return "", err
+	}
+
+	var over bool
+	if err := tx.QueryRow(ctx, `SELECT $1::numeric > $2::numeric`, amount, held).Scan(&over); err != nil {
+		return "", err
+	}
+	if over {
+		return "", fmt.Errorf("amount exceeds the stake of %s", held)
+	}
+
+	var remaining string
+	if err := tx.QueryRow(ctx,
+		`UPDATE launchpool SET amount = amount - $1::numeric WHERE id=$2 RETURNING amount`,
+		amount, id).Scan(&remaining); err != nil {
+		return "", err
+	}
+	if isZeroNumeric(remaining) {
+		if _, err := tx.Exec(ctx, `DELETE FROM launchpool WHERE id=$1`, id); err != nil {
+			return "", err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return amount, nil
+}
+
+// parsePositiveAmount rejects anything that is not a positive decimal.
+//
+// The value is only validated here; the arithmetic itself runs in PostgreSQL
+// NUMERIC, so this check exists to return a clear error rather than a driver
+// cast failure.
+func parsePositiveAmount(s string) (string, error) {
+	f, _, err := big.ParseFloat(s, 10, 256, big.ToNearestEven)
+	if err != nil {
+		return "", fmt.Errorf("invalid amount")
+	}
+	if f.Sign() <= 0 {
+		return "", fmt.Errorf("amount must be greater than zero")
+	}
+	return s, nil
+}
+
+// isZeroNumeric reports whether a PostgreSQL NUMERIC text value is zero.
+func isZeroNumeric(v string) bool {
+	for i := 0; i < len(v); i++ {
+		switch v[i] {
+		case '0', '.', '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // ---- Token sales ----

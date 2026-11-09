@@ -189,8 +189,12 @@ func main() {
                         wallet.GET("/token-sales", svc.ListTokenSales)
                         wallet.POST("/token-sales/:id/participate", svc.ParticipateTokenSale)
 
-                        // Public mirror + auth aliases + missing launchpool/unstake
-                        wallet.POST("/launchpool/unstake", svc.StakingUnstake)
+                        // Public mirror + auth aliases.
+                        // launchpool/unstake is served by the launchpool store, not
+                        // by the liquid-staking handler: routing it to StakingUnstake
+                        // made every call fail with "unsupported staking asset" while
+                        // the caller believed it was unstaking a launchpool position.
+                        wallet.POST("/launchpool/unstake", svc.LaunchpoolUnstake)
                         // Alias central auth & create user routes (SDKs also hit /register|login)
                         wallet.POST("/register", svc.Register)
                         wallet.POST("/login", svc.Login)

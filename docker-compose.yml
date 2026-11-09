@@ -701,6 +701,12 @@ services:
       TWO_PARTY_GATE_URL: "http://license-service:8460"
       TWO_PARTY_GATE_TOKEN: "${WL_GATE_TOKEN:-}"
       HEARTBEAT_INTERVAL: "30s"
+      # Live staking rates. STAKING_APR_PROVIDER_<SYMBOL> names a known
+      # provider (lido, rocketpool) or a URL; the rate is read from that
+      # provider per request. Unset means the API reports the rate as null
+      # rather than a constant.
+      STAKING_APR_PROVIDER_STETH: "${STAKING_APR_PROVIDER_STETH:-lido}"
+      STAKING_APR_PROVIDER_RETH: "${STAKING_APR_PROVIDER_RETH:-rocketpool}"
     depends_on:
       postgres:
         condition: service_healthy
