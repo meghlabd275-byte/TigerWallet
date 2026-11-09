@@ -58,7 +58,7 @@ func LoadConfig() *Config {
 		DBName:          getEnv("DB_NAME", "tigerwallet_master"),
 		RedisHost:       getEnv("REDIS_HOST", "localhost"),
 		RedisPort:       getEnv("REDIS_PORT", "6379"),
-		EncryptionKey:   getEnv("ENCRYPTION_KEY", "master-wallet-32-byte-key!!"),
+		EncryptionKey:   mustEnv("ENCRYPTION_KEY"),
 		FeeWalletAddress: getEnv("FEE_WALLET", ""),
 		PlatformFeePercent: 0.3, // 0.3% default
 	}

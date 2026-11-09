@@ -62,7 +62,7 @@ func LoadConfig() *Config {
 		RedisHost:     getEnv("REDIS_HOST", "localhost"),
 		RedisPort:     getEnv("REDIS_PORT", "6379"),
 		JWTSecret:     getEnv("JWT_SECRET", ""),
-		EncryptionKey: getEnv("ENCRYPTION_KEY", "admin-32-byte-encryption-key!!"),
+		EncryptionKey: mustEnv("ENCRYPTION_KEY"),
 	}
 }
 
