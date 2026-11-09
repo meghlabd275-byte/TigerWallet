@@ -1,0 +1,27 @@
+# The order book is a standalone Foundry project. Install its test dependency
+# once before running the suite (lib/ is gitignored):
+#
+#   git clone --depth 1 https://github.com/foundry-rs/forge-std.git lib/forge-std
+#   forge test
+#
+# It is a standalone Foundry project. Its imports reach the shared
+# libraries/ and interfaces/ next to it with a relative `../` path, which solc
+# resolves against the importing file. Forge normalises that prefix away and
+# looks for `libraries/...` under the project root, so the two remappings below
+# point the normalised names back at the real directories, and allow_paths
+# admits the parent directory to solc's read scope.
+[profile.default]
+src = "."
+test = "test"
+out = "out"
+libs = ["lib"]
+allow_paths = [".."]
+solc_version = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+evm_version = "cancun"
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "libraries/=../libraries/",
+  "interfaces/=../interfaces/",
+]
