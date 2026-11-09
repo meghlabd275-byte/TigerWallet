@@ -161,8 +161,9 @@ func (ss *SwapService) initializeDefaultData() {
 		{ID: "link", Symbol: "LINK", Name: "Chainlink", Chain: "ethereum", Decimals: 18, Contract: "0x514910771AF9Ca656af840dff83E8264EcF986CA", IsVerified: true, IsActive: true},
 		{ID: "uni", Symbol: "UNI", Name: "Uniswap", Chain: "ethereum", Decimals: 18, Contract: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", IsVerified: true, IsActive: true},
 		{ID: "aave", Symbol: "AAVE", Name: "Aave", Chain: "ethereum", Decimals: 18, Contract: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", IsVerified: true, IsActive: true},
-		{ID: "matic", Symbol: "MATIC", Name: "Polygon", Chain: "polygon", Decimals: 18, Contract: "0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0", IsVerified: true, IsActive: true},
-		{ID: "bnb", Symbol: "BNB", Name: "BNB", Chain: "bsc", Decimals: 18, Contract: "0xB8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8", IsVerified: true, IsActive: true},
+		{ID: "matic", Symbol: "MATIC", Name: "Polygon", Chain: "polygon", Decimals: 18, Contract: "0x0000000000000000000000000000000000001010", IsVerified: true, IsActive: true},
+		// BNB is the native coin on BSC, so it has no contract address.
+		{ID: "bnb", Symbol: "BNB", Name: "BNB", Chain: "bsc", Decimals: 18, Contract: "", IsVerified: true, IsActive: true},
 		{ID: "sol", Symbol: "SOL", Name: "Solana", Chain: "solana", Decimals: 9, Contract: "", IsVerified: true, IsActive: true},
 		{ID: "avax", Symbol: "AVAX", Name: "Avalanche", Chain: "avalanche", Decimals: 18, Contract: "", IsVerified: true, IsActive: true},
 		{ID: "arbc", Symbol: "ARB", Name: "Arbitrum", Chain: "arbitrum", Decimals: 18, Contract: "0x912CE59144191C1204E64559FE8253a0e49E6548", IsVerified: true, IsActive: true},

@@ -76,7 +76,7 @@ export const CONTRACT_ADDRESSES: Record<number, {
   [CHAIN_IDS.sepolia]: {
     factory: "",
     router: "",
-    WETH: "0xfFf9976782d46CC05630D1f6eB18b0f4982AcB37",
+    WETH: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
     tigerToken: "",
     masterChef: "",
     staking: "",

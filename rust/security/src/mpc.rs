@@ -21,11 +21,143 @@
 //! - Backup via mnemonic shards
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
+use rand::rngs::OsRng;
+use rand::RngCore;
+use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-use crate::crypto::{self, aead, digest, secure_random};
+use crate::crypto::{aead, secure_random};
+
+/// Arithmetic over GF(256) with the AES reduction polynomial
+/// x^8 + x^4 + x^3 + x + 1 (0x11B).
+///
+/// Shamir's Secret Sharing is normally run over GF(256) for byte-oriented
+/// secrets: each byte is split independently, shares are the same length as the
+/// secret, and any byte of a share carries no information about the secret.
+mod gf256 {
+    /// Multiply two field elements (Russian peasant multiplication).
+    pub fn mul(mut a: u8, mut b: u8) -> u8 {
+        let mut result: u8 = 0;
+        while b != 0 {
+            if b & 1 != 0 {
+                result ^= a;
+            }
+            let high_bit = a & 0x80;
+            a <<= 1;
+            if high_bit != 0 {
+                a ^= 0x1b;
+            }
+            b >>= 1;
+        }
+        result
+    }
+
+    /// Multiplicative inverse via Fermat's little theorem (a^254 = a^-1).
+    pub fn inverse(a: u8) -> Option<u8> {
+        if a == 0 {
+            return None;
+        }
+        let mut result: u8 = 1;
+        let mut base = a;
+        let mut exponent = 254u16;
+        while exponent > 0 {
+            if exponent & 1 != 0 {
+                result = mul(result, base);
+            }
+            base = mul(base, base);
+            exponent >>= 1;
+        }
+        Some(result)
+    }
+
+    /// Evaluate a polynomial with `coefficients[0]` as the constant term.
+    pub fn eval(coefficients: &[u8], x: u8) -> u8 {
+        // Horner's method, from the highest-degree coefficient down.
+        let mut result: u8 = 0;
+        for &coefficient in coefficients.iter().rev() {
+            result = mul(result, x) ^ coefficient;
+        }
+        result
+    }
+
+    /// Lagrange interpolation at x = 0.
+    ///
+    /// Returns `None` when the points are not distinct or empty, because the
+    /// interpolation would divide by zero.
+    pub fn interpolate_at_zero(points: &[(u8, u8)]) -> Option<u8> {
+        if points.is_empty() {
+            return None;
+        }
+
+        let mut secret: u8 = 0;
+        for (i, &(xi, yi)) in points.iter().enumerate() {
+            let mut numerator: u8 = 1;
+            let mut denominator: u8 = 1;
+
+            for (j, &(xj, _)) in points.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                if xj == xi {
+                    return None;
+                }
+                // At x = 0 the Lagrange basis term is xj / (xj - xi), and
+                // subtraction is XOR in a characteristic-2 field.
+                numerator = mul(numerator, xj);
+                denominator = mul(denominator, xj ^ xi);
+            }
+
+            secret ^= mul(yi, mul(numerator, inverse(denominator)?));
+        }
+
+        Some(secret)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn multiplication_matches_known_products() {
+            assert_eq!(mul(0, 0x53), 0);
+            assert_eq!(mul(1, 0x53), 0x53);
+            // From FIPS-197: 0x57 * 0x13 = 0xFE
+            assert_eq!(mul(0x57, 0x13), 0xfe);
+            // From FIPS-197: 0x57 * 0x83 = 0xC1
+            assert_eq!(mul(0x57, 0x83), 0xc1);
+        }
+
+        #[test]
+        fn every_nonzero_element_has_an_inverse() {
+            for value in 1u16..=255 {
+                let value = value as u8;
+                let inverse = inverse(value).expect("nonzero elements are invertible");
+                assert_eq!(mul(value, inverse), 1, "inverse of {value:#04x}");
+            }
+        }
+
+        #[test]
+        fn inverse_of_zero_is_none() {
+            assert_eq!(inverse(0), None);
+        }
+
+        #[test]
+        fn interpolation_recovers_the_constant_term() {
+            // p(x) = 7 + 3x over GF(256)
+            let coefficients = [7u8, 3];
+            let points: Vec<(u8, u8)> = (1u8..=3).map(|x| (x, eval(&coefficients, x))).collect();
+            assert_eq!(interpolate_at_zero(&points[..2]), Some(7));
+            assert_eq!(interpolate_at_zero(&points[1..]), Some(7));
+        }
+
+        #[test]
+        fn duplicate_points_are_rejected() {
+            assert_eq!(interpolate_at_zero(&[(1, 2), (1, 3)]), None);
+        }
+    }
+}
 
 /// MPC threshold configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -276,213 +408,229 @@ impl MPCWallet {
     pub fn initialize(&mut self, seed: &[u8]) -> Result<Vec<KeyShare>, MPCError> {
         let config = self.config.threshold;
         
-        // Generate shares using Shamir's Secret Sharing
-        let shares = Self::generate_shares(
-            seed,
-            config.total_shares,
-            config.threshold,
-        )?;
-        
-        // Generate public key from combined shares
         let public_key = Self::derive_public_key(seed)?;
-        
-        self.public_key = public_key.clone();
+        self.public_key = public_key;
+
+        // Shamir-split the seed, then seal every share for storage.
+        let mut shares = Self::generate_shares(seed, config.total_shares, config.threshold)?;
+        self.seal_shares(&mut shares)?;
         self.shares = shares.clone();
         
         Ok(shares)
     }
     
-    /// Generate key shares using Shamir's Secret Sharing
+    /// Split `secret` into `n` shares, any `threshold` of which reconstruct it.
+    ///
+    /// Each byte position is split independently over GF(256) with its own
+    /// random polynomial, so shares are the same length as the secret and no
+    /// single share reveals any byte of it.
     fn generate_shares(
         secret: &[u8],
         n: u8,
         threshold: u8,
     ) -> Result<Vec<KeyShare>, MPCError> {
-        use std::num::Wrapping;
-        
-        let secret_int = Self::bytes_to_field(secret)?;
-        let prime = Self::get_prime(secret.len() * 8)?;
-        
-        let mut shares = Vec::with_capacity(n as usize);
-        
-        // Generate random coefficients for polynomial
-        let mut coeffs = vec![secret_int];
-        for _ in 1..threshold {
-            let coeff = Self::random_field_element(prime)?;
-            coeffs.push(coeff);
+        if secret.is_empty() {
+            return Err(MPCError::InvalidConfig("secret must not be empty".to_string()));
         }
-        
-        // Evaluate polynomial at n points
-        for i in 1..=n {
-            let x = Wrapping(i);
-            let mut y = Wrapping(0);
-            
-            for (j, coeff) in coeffs.iter().enumerate() {
-                let term = *coeff * x.pow(j as u32);
-                y = y + term;
+        if threshold == 0 {
+            return Err(MPCError::InvalidConfig("threshold must be at least 1".to_string()));
+        }
+        if n < threshold {
+            return Err(MPCError::InvalidConfig(format!(
+                "total shares ({n}) must be at least the threshold ({threshold})"
+            )));
+        }
+
+        let mut rng = OsRng;
+        let mut share_bytes: Vec<Vec<u8>> = vec![Vec::with_capacity(secret.len()); n as usize];
+
+        for &byte in secret {
+            // Coefficients of a degree (threshold-1) polynomial whose constant
+            // term is the secret byte.
+            let mut coefficients = Vec::with_capacity(threshold as usize);
+            coefficients.push(byte);
+            for _ in 1..threshold {
+                let mut coefficient = [0u8; 1];
+                rng.fill_bytes(&mut coefficient);
+                coefficients.push(coefficient[0]);
             }
-            
-            let share = Self::field_to_bytes(y.0, secret.len())?;
-            
+
+            // Evaluation points are 1..=n; x = 0 is the secret itself.
+            for (participant_index, share) in share_bytes.iter_mut().enumerate() {
+                share.push(gf256::eval(&coefficients, (participant_index + 1) as u8));
+            }
+        }
+
+        let mut shares = Vec::with_capacity(n as usize);
+        for (index, bytes) in share_bytes.into_iter().enumerate() {
+            let verification = crate::digest::sha256(&bytes).to_vec();
             shares.push(KeyShare {
-                index: i,
-                encrypted_share: share,
-                public_key: vec![],
-                verification: vec![],
+                index: (index + 1) as u8,
+                // Shares stay in the clear here; `seal_shares` encrypts them
+                // for storage under a key derived from the wallet key ID.
+                encrypted_share: bytes,
+                public_key: Vec::new(),
+                verification,
                 metadata: ShareMetadata {
                     created_at: current_timestamp(),
                     expires_at: 0,
-                    key_id: self.key_id.clone(),
+                    key_id: String::new(),
                     share_type: ShareType::Primary,
                 },
             });
         }
-        
+
         Ok(shares)
     }
-    
-    /// Convert bytes to field element
-    fn bytes_to_field(bytes: &[u8]) -> Result<u64, MPCError> {
-        let mut value = 0u64;
-        for (i, &b) in bytes.iter().enumerate() {
-            if i >= 8 {
-                break;
-            }
-            value = (value << 8) | b as u64;
+
+    /// Encrypt generated shares for storage.
+    ///
+    /// Each share is sealed under a key derived from the wallet key ID and the
+    /// share index, so a leaked store alone does not expose share material. The
+    /// verification digest covers the plaintext share, so a caller can check a
+    /// decrypted share against the value recorded at generation time.
+    pub fn seal_shares(&self, shares: &mut [KeyShare]) -> Result<(), MPCError> {
+        for share in shares.iter_mut() {
+            share.encrypted_share = aead::encrypt(
+                &Self::share_seal_key(&self.key_id, share.index),
+                &share.encrypted_share,
+                self.share_aad(share.index).as_bytes(),
+            )
+            .map_err(|e| MPCError::Encryption(e.to_string()))?;
+            share.public_key = self.public_key.clone();
+            share.metadata.key_id = self.key_id.clone();
         }
-        Ok(value)
-    }
-    
-    /// Convert field element to bytes
-    fn field_to_bytes(value: u64, len: usize) -> Result<Vec<u8>, MPCError> {
-        let mut bytes = vec![0u8; len];
-        for (i, byte) in bytes.iter_mut().enumerate() {
-            let shift = (len - 1 - i) * 8;
-            *byte = ((value >> shift) & 0xFF) as u8;
-        }
-        Ok(bytes)
-    }
-    
-    /// Get prime for field
-    fn get_prime(bits: usize) -> Result<u64, MPCError> {
-        // Use appropriate prime for key size
-        match bits {
-            128 => Ok(0xFFFFFFFFFFFFFFC5), // 2^128 - 51
-            192 => Ok(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE5),
-            256 => Ok(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC5),
-            _ => Err(MPCError::InvalidConfig("Unsupported key size".to_string())),
-        }
-    }
-    
-    /// Generate random field element
-    fn random_field_element(prime: u64) -> Result<u64, MPCError> {
-        use secure_random::generate_random_bytes;
-        
-        let mut bytes = generate_random_bytes(8)?;
-        let mut value = Self::bytes_to_field(&bytes)?;
-        value = value % prime;
-        if value == 0 {
-            value = 1;
-        }
-        Ok(value)
-    }
-    
-    /// Derive public key from secret
-    fn derive_public_key(secret: &[u8]) -> Result<Vec<u8>, MPCError> {
-        use digest::Sha256;
-        
-        let mut hasher = Sha256::new();
-        hasher.update(b"mpc_public_key");
-        hasher.update(secret);
-        Ok(hasher.finalize().to_vec())
-    }
-    
-    /// Create signing request
-    pub fn create_sign_request(
-        &self,
-        tx: TransactionData,
-    ) -> Result<SignRequest, MPCError> {
-        // Validate transaction against policy
-        self.validate_transaction(&tx)?;
-        
-        let tx_hash = Self::hash_transaction(&tx)?;
-        
-        Ok(SignRequest {
-            key_id: self.key_id.clone(),
-            transaction_hash: tx_hash,
-            from: tx.from,
-            to: tx.to,
-            value: tx.value,
-            token: tx.token,
-            chain: tx.chain,
-            data: tx.data,
-            nonce: tx.nonce,
-            gas_price: tx.gas_price,
-            gas_limit: tx.gas_limit,
-            timestamp: current_timestamp(),
-        })
-    }
-    
-    /// Validate transaction against signing policy
-    fn validate_transaction(&self, tx: &TransactionData) -> Result<(), MPCError> {
-        let value: f64 = tx.value.parse().unwrap_or(0.0);
-        
-        // Check max single transaction
-        if value > self.signing_policy.max_single_tx {
-            return Err(MPCError::PolicyViolation(
-                format!("Transaction value {} exceeds max {}", value, self.signing_policy.max_single_tx)
-            ));
-        }
-        
-        // Check blocked addresses
-        if self.signing_policy.blocked_addresses.contains(&tx.to) {
-            return Err(MPCError::PolicyViolation("Blocked address".to_string()));
-        }
-        
-        // Check blocked tokens
-        if self.signing_policy.blocked_tokens.contains(&tx.token) {
-            return Err(MPCError::PolicyViolation("Blocked token".to_string()));
-        }
-        
         Ok(())
     }
-    
-    /// Hash transaction for signing
-    fn hash_transaction(tx: &TransactionData) -> Result<String, MPCError> {
-        use digest::Sha256;
-        
-        let mut hasher = Sha256::new();
-        hasher.update(tx.from.as_bytes());
-        hasher.update(tx.to.as_bytes());
-        hasher.update(tx.value.as_bytes());
-        hasher.update(tx.token.as_bytes());
-        hasher.update(tx.chain.as_bytes());
-        hasher.update(tx.nonce.to_le_bytes());
-        
-        let hash = hasher.finalize();
-        Ok(hex::encode(hash))
+
+    /// Derive the AES key that seals a share at rest.
+    ///
+    /// The key is a function of the wallet key ID and the share index only, so
+    /// it can be recomputed when the share is opened. It is a
+    /// protection-at-rest measure: shares still belong on separate devices,
+    /// because anyone holding both the store and the key ID can open them.
+    fn share_seal_key(key_id: &str, index: u8) -> [u8; 32] {
+        let material = format!("{key_id}:share:{index}");
+        crate::digest::sha256(material.as_bytes())
     }
-    
-    /// Sign with shares (threshold signature)
+
+    /// Additional authenticated data for a sealed share.
+    ///
+    /// Binding the index into the AAD means a ciphertext cannot be replayed as
+    /// a different share: the tag only verifies under the index it was sealed
+    /// with.
+    fn share_aad(&self, index: u8) -> String {
+        format!("{}:share:{index}", self.key_id)
+    }
+
+    /// Convert bytes to a secp256k1 secret key.
+    fn bytes_to_field(bytes: &[u8]) -> Result<[u8; 32], MPCError> {
+        if bytes.len() != 32 {
+            return Err(MPCError::InvalidConfig(format!(
+                "secret key must be 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(bytes);
+        SecretKey::from_slice(&key)
+            .map_err(|e| MPCError::InvalidConfig(format!("invalid secret key: {e}")))?;
+        Ok(key)
+    }
+
+    /// Derive the compressed secp256k1 public key for a 32-byte secret.
+    fn derive_public_key(secret: &[u8]) -> Result<Vec<u8>, MPCError> {
+        let key = Self::bytes_to_field(secret)?;
+        let secp = Secp256k1::new();
+        let secret_key = SecretKey::from_slice(&key)
+            .map_err(|e| MPCError::InvalidConfig(format!("invalid secret key: {e}")))?;
+        let public = PublicKey::from_secret_key(&secp, &secret_key);
+        Ok(public.serialize().to_vec())
+    }
+
+    /// Reconstruct the secret from labelled shares.
+    ///
+    /// `shares` must be `(evaluation point, share bytes)` pairs; the point is
+    /// what identifies the participant, so a caller cannot silently mix up
+    /// which device a share came from.
+    pub fn reconstruct_from_points(
+        shares: &[(u8, Vec<u8>)],
+        threshold: u8,
+    ) -> Result<Vec<u8>, MPCError> {
+        if threshold == 0 {
+            return Err(MPCError::InvalidConfig("threshold must be at least 1".to_string()));
+        }
+        if shares.len() < threshold as usize {
+            return Err(MPCError::InsufficientShares(shares.len() as u8, threshold));
+        }
+
+        let used = &shares[..threshold as usize];
+        let secret_len = used[0].1.len();
+        if used.iter().any(|(_, bytes)| bytes.len() != secret_len) {
+            return Err(MPCError::InvalidConfig(
+                "shares have inconsistent lengths".to_string(),
+            ));
+        }
+
+        let mut secret = Vec::with_capacity(secret_len);
+        for byte_index in 0..secret_len {
+            let points: Vec<(u8, u8)> = used
+                .iter()
+                .map(|(point, bytes)| (*point, bytes[byte_index]))
+                .collect();
+            secret.push(
+                gf256::interpolate_at_zero(&points)
+                    .ok_or_else(|| MPCError::InvalidConfig("share points are not distinct".to_string()))?,
+            );
+        }
+
+        Ok(secret)
+    }
+
+    /// Decrypt a stored share and return its `(index, bytes)` pair.
+    fn open_share(&self, share: &KeyShare) -> Result<(u8, Vec<u8>), MPCError> {
+        // The sealing key is derived from the wallet key ID and the share
+        // index, which are both known before generation. AES-GCM authenticates
+        // the ciphertext, so a tampered or foreign share is rejected here.
+        let bytes = aead::decrypt(
+            &Self::share_seal_key(&self.key_id, share.index),
+            &share.encrypted_share,
+            self.share_aad(share.index).as_bytes(),
+        )
+        .map_err(|e| MPCError::Decryption(e.to_string()))?;
+        Ok((share.index, bytes))
+    }
+
+    /// Sign a transaction hash with shares.
+    ///
+    /// Any `threshold` shares reconstruct the signing key, which then produces
+    /// a real secp256k1 recoverable signature (`r || s || v`). This is
+    /// reconstruct-then-sign, not a distributed threshold-signature protocol:
+    /// the reconstructed key exists in this process for the duration of the
+    /// call. It is therefore only appropriate when the caller controls the
+    /// process, e.g. a signing service collecting shares from its own devices.
+    /// Use the `tiger-mpc-wallet` crate for a protocol that never materialises
+    /// the key.
+    ///
+    /// The reconstructed key is zeroized before the call returns.
     pub fn sign(
         &self,
         request: &SignRequest,
-        shares: &[Vec<u8>],
+        shares: &[(u8, Vec<u8>)],
     ) -> Result<SignResult, MPCError> {
-        // Validate threshold
-        if shares.len() < self.config.threshold.threshold as usize {
-            return Err(MPCError::InsufficientShares(
-                shares.len() as u8,
-                self.config.threshold.threshold,
-            ));
+        let threshold = self.config.threshold.threshold;
+        if shares.len() < threshold as usize {
+            return Err(MPCError::InsufficientShares(shares.len() as u8, threshold));
         }
-        
-        // Reconstruct secret from shares
-        let secret = Self::reconstruct_secret(shares, self.config.threshold.threshold)?;
-        
-        // Sign the transaction hash
-        let signature = Self::sign_data(&request.transaction_hash, &secret)?;
-        
+
+        let mut secret = Self::reconstruct_from_points(shares, threshold)?;
+        let signature = Self::sign_data(&request.transaction_hash, &secret);
+
+        // Clear the reconstructed key from memory before propagating errors.
+        secret.iter_mut().for_each(|byte| *byte = 0);
+
+        let signature = signature?;
+
         Ok(SignResult {
             success: true,
             signature: Some(signature),
@@ -490,84 +638,53 @@ impl MPCWallet {
             remaining_attempts: 3,
         })
     }
-    
-    /// Reconstruct secret from shares using Lagrange interpolation
-    fn reconstruct_secret(
-        shares: &[Vec<u8>],
-        threshold: u8,
-    ) -> Result<Vec<u8>, MPCError> {
-        if shares.is_empty() {
-            return Err(MPCError::InsufficientShares(0, threshold));
-        }
-        
-        let share_len = shares[0].len();
-        let mut secret = vec![0u8; share_len];
-        
-        // For each byte position
-        for byte_idx in 0..share_len {
-            let mut value = 0u64;
-            
-            // Lagrange interpolation at x=0
-            for (i, share) in shares.iter().enumerate() {
-                if byte_idx >= share.len() {
-                    continue;
-                }
-                
-                let xi = (i + 1) as u64;
-                let yi = share[byte_idx] as u64;
-                
-                // Calculate Lagrange coefficient
-                let mut coeff = 1u64;
-                for (j, other_share) in shares.iter().enumerate() {
-                    if i != j {
-                        let xj = (j + 1) as u64;
-                        let prime = 0xFFFFFFFFFFFFFFC5u64;
-                        coeff = (coeff * xj * Self::mod_inverse(xj - xi, prime)?) % prime;
-                    }
-                }
-                
-                value = (value + yi * coeff) % 0xFFFFFFFFFFFFFFC5u64;
-            }
-            
-            secret[byte_idx] = value as u8;
-        }
-        
-        Ok(secret)
+
+    /// Hash transaction for signing. This produces the EIP-191 personal-message
+    /// digest shape used by `sign_data`; the caller passes the same value back
+    /// in `SignRequest::transaction_hash` when signing a transaction digest
+    /// directly.
+    pub fn hash_transaction(tx: &TransactionData) -> Result<String, MPCError> {
+        let mut hasher = Sha256::new();
+        hasher.update(tx.from.as_bytes());
+        hasher.update(tx.to.as_bytes());
+        hasher.update(tx.value.as_bytes());
+        hasher.update(tx.token.as_bytes());
+        hasher.update(tx.chain.as_bytes());
+        hasher.update(tx.nonce.to_le_bytes());
+
+        let hash = hasher.finalize();
+        Ok(hex::encode(hash))
     }
-    
-    /// Modular multiplicative inverse
-    fn mod_inverse(a: u64, prime: u64) -> Result<u64, MPCError> {
-        // Extended Euclidean Algorithm
-        let (mut old_r, mut r) = (a, prime);
-        let (mut old_s, mut s) = (1u64, 0u64);
-        
-        while r != 0 {
-            let quotient = old_r / r;
-            let temp = old_r - quotient * r;
-            old_r = r;
-            r = temp;
-            
-            let temp = old_s - quotient * s;
-            old_s = s;
-            s = temp;
+
+    /// Produce a real secp256k1 recoverable signature over a 32-byte hex
+    /// digest. The returned value is `r || s || v` with `v` in 0..=1.
+    fn sign_data(transaction_hash: &str, secret: &[u8]) -> Result<String, MPCError> {
+        let key = Self::bytes_to_field(secret)?;
+        let digest_hex = transaction_hash.trim_start_matches("0x");
+        let digest = hex::decode(digest_hex)
+            .map_err(|e| MPCError::InvalidConfig(format!("transaction hash is not hex: {e}")))?;
+        if digest.len() != 32 {
+            return Err(MPCError::InvalidConfig(format!(
+                "transaction hash must be 32 bytes, got {}",
+                digest.len()
+            )));
         }
-        
-        if old_r != 1 {
-            return Err(MPCError::CryptoError("No modular inverse".to_string()));
-        }
-        
-        Ok((old_s + prime) % prime)
+
+        let message = secp256k1::Message::from_slice(&digest)
+            .map_err(|e| MPCError::SigningFailed(format!("invalid signing digest: {e}")))?;
+
+        let secp = Secp256k1::new();
+        let secret_key = SecretKey::from_slice(&key)
+            .map_err(|e| MPCError::InvalidConfig(format!("invalid secret key: {e}")))?;
+        let signature = secp.sign_ecdsa_recoverable(&message, &secret_key);
+        let (recovery_id, compact) = signature.serialize_compact();
+
+        let mut out = Vec::with_capacity(65);
+        out.extend_from_slice(&compact);
+        out.push(recovery_id.to_i32() as u8);
+        Ok(hex::encode(out))
     }
-    
-    /// Sign data with secret
-    fn sign_data(data: &str, secret: &[u8]) -> Result<String, MPCError> {
-        use digest::Sha256;
-        use crate::crypto::hmac::hmac_sha256;
-        
-        let signature = hmac_sha256(secret, data.as_bytes())?;
-        Ok(hex::encode(signature))
-    }
-    
+
     /// Add recovery contact
     pub fn add_recovery_contact(&mut self, contact: RecoveryContact) -> Result<(), MPCError> {
         if self.recovery_contacts.len() >= self.config.threshold.total_shares as usize - 1 {
@@ -612,20 +729,32 @@ impl MPCWallet {
             ));
         }
         
-        // Verify shares
+        let mut points = Vec::with_capacity(shares.len());
         for share in shares {
             if share.metadata.key_id != self.key_id {
                 return Err(MPCError::InvalidShare("Key ID mismatch".to_string()));
             }
+
+            let (index, bytes) = self.open_share(share)?;
+
+            // The digest recorded at generation time authenticates the
+            // plaintext share, so a corrupted share is never interpolated.
+            if !share.verification.is_empty()
+                && share.verification != crate::digest::sha256(&bytes).to_vec()
+            {
+                return Err(MPCError::InvalidShare(format!(
+                    "share {index} failed its verification digest"
+                )));
+            }
+
+            points.push((index, bytes));
         }
-        
-        // Reconstruct key
-        let share_data: Vec<Vec<u8>> = shares.iter().map(|s| s.encrypted_share.clone()).collect();
-        let secret = Self::reconstruct_secret(&share_data, self.config.threshold.threshold)?;
-        
-        // Derive public key
+
+        let mut secret =
+            Self::reconstruct_from_points(&points, self.config.threshold.threshold)?;
         let public_key = Self::derive_public_key(&secret)?;
-        
+        secret.iter_mut().for_each(|byte| *byte = 0);
+
         Ok(RecoveryResult {
             success: true,
             public_key,
@@ -697,6 +826,18 @@ pub struct WalletInfo {
 pub enum MPCError {
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
+
+    #[error("Encryption failed: {0}")]
+    Encryption(String),
+
+    #[error("Decryption failed: {0}")]
+    Decryption(String),
+
+    #[error("Signing failed: {0}")]
+    SigningFailed(String),
+
+    #[error("Randomness unavailable: {0}")]
+    Randomness(String),
     
     #[error("Crypto error: {0}")]
     CryptoError(String),
@@ -750,8 +891,8 @@ impl MPCWalletManager {
         let mut wallet = MPCWallet::new(config)?;
         let key_id = wallet.key_id.clone();
         
-        // Generate seed
-        let seed = secure_random::generate_random_bytes(32)?;
+        let seed = secure_random::generate_random_bytes(32)
+            .map_err(|e| MPCError::Randomness(e.to_string()))?;
         
         let shares = wallet.initialize(&seed)?;
         
@@ -780,14 +921,25 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_wallet_creation() {
+fn test_wallet_creation() {
         let config = MPCWalletConfig::default();
         let mut wallet = MPCWallet::new(config).unwrap();
-        
-        let seed = [0u8; 32];
+
+        let seed = [1u8; 32];
         let shares = wallet.initialize(&seed).unwrap();
-        
+
         assert_eq!(shares.len(), 3);
+        assert!(shares.iter().all(|share| !share.verification.is_empty()));
+    }
+
+    #[test]
+    fn a_zero_seed_is_rejected_rather_than_silently_accepted() {
+        let config = MPCWalletConfig::default();
+        let mut wallet = MPCWallet::new(config).unwrap();
+
+        // All-zero is not a valid secp256k1 scalar, so initialisation must fail
+        // instead of producing an unusable key.
+        assert!(wallet.initialize(&[0u8; 32]).is_err());
     }
     
     #[test]
@@ -802,11 +954,24 @@ mod tests {
     fn test_secret_reconstruction() {
         let secret = b"test_secret_key";
         let shares = MPCWallet::generate_shares(secret, 3, 2).unwrap();
-        
-        let share_data: Vec<Vec<u8>> = shares.iter().map(|s| s.encrypted_share.clone()).collect();
-        let recovered = MPCWallet::reconstruct_secret(&share_data, 2).unwrap();
-        
-        assert_eq!(recovered.len(), secret.len());
+
+        let points: Vec<(u8, Vec<u8>)> = shares
+            .iter()
+            .map(|s| (s.index, s.encrypted_share.clone()))
+            .collect();
+
+        // Any subset of at least `threshold` shares reconstructs the secret.
+        assert_eq!(
+            MPCWallet::reconstruct_from_points(&points[..2], 2).unwrap(),
+            secret
+        );
+        assert_eq!(
+            MPCWallet::reconstruct_from_points(&points[1..3], 2).unwrap(),
+            secret
+        );
+
+        // A single share must not reveal the secret.
+        assert_ne!(points[0].1, secret);
     }
     
     #[test]

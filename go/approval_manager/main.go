@@ -126,8 +126,8 @@ func NewApprovalManager(config *Config) *ApprovalManager {
 		"0x3fC91A3afd703E599c8bfCee1B2b2d05d6A7d7C":  {Address: "0x3fC91A3afd703E599c8bfCee1B2b2d05d6A7d7C", Name: "Velodrome Router", Category: "defi", RiskLevel: "low", Verified: true},
 		"0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23":  {Address: "0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23", Name: "SushiSwap Polygon", Category: "defi", RiskLevel: "low", Verified: true},
 		"0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff": {Address: "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", Name: "QuickSwap Router", Category: "defi", RiskLevel: "low", Verified: true},
-		"0x0d4A10D435F5D2Cf1ba80F6553F15D0f12d0b3E5": {Address: "0x0d4A10D435F5D2Cf1ba80F6553F15D0f12d0b3E5", Name: "SpookySwap", Category: "defi", RiskLevel: "low", Verified: true},
-		"0xf164fC0Ec4E93085d2d0055634f0C981f0b3a0E":  {Address: "0xf164fC0Ec4E93085d2d0055634f0C981f0b3a0E", Name: "Uniswap V2 Factory", Category: "defi", RiskLevel: "low", Verified: true},
+		"0xF491e7B69E4244ad4002BC14e878a34207E38c29": {Address: "0xF491e7B69E4244ad4002BC14e878a34207E38c29", Name: "SpookySwap", Category: "defi", RiskLevel: "low", Verified: true},
+		"0xf164fC0Ec4E93095b804a4795bBe1e041497b92a": {Address: "0xf164fC0Ec4E93095b804a4795bBe1e041497b92a", Name: "Uniswap V2 Factory", Category: "defi", RiskLevel: "low", Verified: true},
 		"0x1F98431c8aD98523631AE4a59f267346ea31F984": {Address: "0x1F98431c8aD98523631AE4a59f267346ea31F984", Name: "Uniswap V3 Factory", Category: "defi", RiskLevel: "low", Verified: true},
 	}
 
@@ -312,17 +312,17 @@ func (s *ApprovalManager) spenderAddressesForChain(chainID uint64) []common.Addr
 		{1, []string{
 			"0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2 Router
 			"0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3 SwapRouter
-			"0x68b3465833fb72A70ecDF485E0e4C7bD56652831", // Uniswap V3 SwapRouter02
+			"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45", // Uniswap V3 SwapRouter02
 			"0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F", // SushiSwap Router
-			"0x88ad09518695c6c3712AC10a214b5316c99Ce64", // SushiSwap SwapRouter (DEXT)
+			"0x88ad09518695c6c3712AC10a214b5316c99Ce64",  // SushiSwap SwapRouter (DEXT)
 		}},
 		{56, []string{
 			"0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap Router
-			"0x05fF2B0DB69458A0750b88bc4d5d4f6560B23F23", // PancakeSwap Router V1
+			"0x05fF2B0DB69458A0750b88Cc0b6Bf88c05E5a5Bd", // PancakeSwap Router V1
 		}},
 		{137, []string{
 			"0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff", // QuickSwap Router
-			"0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23c", // SushiSwap Polygon
+			"0x1b02dA8Cb690d5974d0D3D3f2d5eC40c80c7F23",  // SushiSwap Polygon
 		}},
 		{10, []string{
 			"0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3 SwapRouter (Optimism)
@@ -391,7 +391,7 @@ func (s *ApprovalManager) getCommonTokens(chainID uint64) []TokenInfo {
 		return []TokenInfo{
 			{Address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", Symbol: "USDC", Name: "USD Coin", Decimals: 6},
 			{Address: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", Symbol: "WBTC", Name: "Wrapped Bitcoin", Decimals: 8},
-			{Address: "0x53E0bca35eC356bf5f7524E5d7833d3A333EC20c", Symbol: "AAVE", Name: "Aave", Decimals: 18},
+			{Address: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", Symbol: "AAVE", Name: "Aave", Decimals: 18},
 		}
 	default:
 		return []TokenInfo{}

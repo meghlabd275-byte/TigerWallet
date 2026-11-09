@@ -54,6 +54,7 @@ impl MultiSigWallet {
             data,
             status: TransactionStatus::Pending,
             confirmations: 0,
+            tx_hash: None,
             created_at: chrono::Utc::now(),
         };
 
@@ -108,11 +109,16 @@ impl MultiSigWallet {
         Ok(threshold_reached)
     }
 
-    /// Execute a confirmed transaction
+    /// Marks a fully confirmed transaction as executed.
+    ///
+    /// `broadcast_hash` must be the hash returned by the chain for the broadcast
+    /// the caller performed. This crate holds no RPC client, so it must never
+    /// invent one: pass an empty string to record the execution without a hash.
     pub fn execute_transaction(
         &self,
         tx_id: &str,
-    ) -> Result<String, MultiSigError> {
+        broadcast_hash: &str,
+    ) -> Result<Option<String>, MultiSigError> {
         let tx = self.transactions.read()
             .map_err(|_| MultiSigError::LockError)?
             .get(tx_id)
@@ -123,19 +129,22 @@ impl MultiSigWallet {
             return Err(MultiSigError::InsufficientConfirmations);
         }
 
-        // Generate execution tx hash
-        let exec_tx_hash = self.generate_execution_hash(&tx);
+        let recorded = match broadcast_hash.trim() {
+            "" => None,
+            hash if hash.len() == 66 && hash.starts_with("0x") => Some(hash.to_string()),
+            _ => return Err(MultiSigError::InvalidTransactionHash),
+        };
 
-        // Update status
         let mut guard = self.transactions.write()
             .map_err(|_| MultiSigError::LockError)?;
         let tx = guard
             .get_mut(tx_id)
             .ok_or(MultiSigError::TransactionNotFound)?;
-        
-        tx.status = TransactionStatus::Executed;
 
-        Ok(exec_tx_hash)
+        tx.status = TransactionStatus::Executed;
+        tx.tx_hash = recorded.clone();
+
+        Ok(recorded)
     }
 
     /// Revoke a confirmation
@@ -185,18 +194,6 @@ impl MultiSigWallet {
         
         format!("0x{}", hex::encode(hasher.finalize()))
     }
-
-    /// Generate execution transaction hash
-    fn generate_execution_hash(&self, tx: &MultiSigTransaction) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(tx.tx_id.as_bytes());
-        hasher.update(tx.from.as_bytes());
-        hasher.update(tx.to.as_bytes());
-        hasher.update(tx.value.as_bytes());
-        hasher.update(&tx.data);
-        
-        format!("0x{}", hex::encode(hasher.finalize()))
-    }
 }
 
 /// Multi-sig transaction
@@ -209,6 +206,9 @@ pub struct MultiSigTransaction {
     pub data: Vec<u8>,
     pub status: TransactionStatus,
     pub confirmations: usize,
+    /// Hash returned by the chain when the caller broadcast the transaction.
+    /// `None` until a broadcast hash has been supplied to `execute_transaction`.
+    pub tx_hash: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -248,23 +248,79 @@ pub enum MultiSigError {
     
     #[error("Execution failed: {0}")]
     ExecutionFailed(String),
+
+    #[error("A transaction hash must be 32 bytes of hex")]
+    InvalidTransactionHash,
 }
 
 // ============================================================================
 // THRESHOLD SIGNATURES (MPC)
 // ============================================================================
 
-/// Threshold signature scheme for distributed signing
+/// Shamir secret sharing over GF(256) plus the signing step that rebuilds a
+/// secp256k1 key from any `threshold` shares.
+///
+/// The field is GF(2^8) modulo the AES polynomial x^8 + x^4 + x^3 + x + 1.
+/// Addition is XOR and multiplication uses log/exp tables, so reconstruction is
+/// exact for every secret. The previous implementation interpolated with f64
+/// and wrapping byte arithmetic, which could not reconstruct anything and
+/// panicked on any secret longer than 32 bytes.
 pub struct ThresholdSigner {
     threshold: usize,
     total_signers: usize,
     shares: HashMap<String, Vec<u8>>,
 }
 
+/// `log` maps a field element to its exponent; `exp` is the inverse table and
+/// is doubled in length so the sum of two logs needs no modulo.
+const fn gf_tables() -> ([u8; 256], [u8; 512]) {
+    let mut exp = [0u8; 512];
+    let mut log = [0u8; 256];
+    // The generator must be 3 (x + 1): 2 has order 51 modulo the AES
+    // polynomial, so a table built from it would be incomplete.
+    let mut x: u16 = 1;
+    let mut i = 0;
+    while i < 255 {
+        exp[i] = x as u8;
+        log[x as usize] = i as u8;
+        x = (x << 1) ^ x;
+        if x & 0x100 != 0 {
+            x ^= 0x11b;
+        }
+        i += 1;
+    }
+    let mut i = 255;
+    while i < 512 {
+        exp[i] = exp[i - 255];
+        i += 1;
+    }
+    (log, exp)
+}
+
+const GF_TABLES: ([u8; 256], [u8; 512]) = gf_tables();
+const GF_LOG: [u8; 256] = GF_TABLES.0;
+const GF_EXP: [u8; 512] = GF_TABLES.1;
+
+fn gf_mul(a: u8, b: u8) -> u8 {
+    if a == 0 || b == 0 {
+        return 0;
+    }
+    GF_EXP[GF_LOG[a as usize] as usize + GF_LOG[b as usize] as usize]
+}
+
+fn gf_div(a: u8, b: u8) -> u8 {
+    assert!(b != 0, "division by zero in GF(256)");
+    if a == 0 {
+        return 0;
+    }
+    let diff = GF_LOG[a as usize] as i16 - GF_LOG[b as usize] as i16;
+    GF_EXP[((diff + 255) % 255) as usize]
+}
+
 impl ThresholdSigner {
     /// Create a new threshold signer
     pub fn new(threshold: usize, total_signers: usize) -> Result<Self, MultiSigError> {
-        if threshold > total_signers || threshold == 0 {
+        if threshold > total_signers || threshold == 0 || total_signers > 255 {
             return Err(MultiSigError::InvalidThreshold);
         }
 
@@ -275,98 +331,106 @@ impl ThresholdSigner {
         })
     }
 
-    /// Generate shares for all signers (Shamir's Secret Sharing)
+    pub fn threshold(&self) -> usize {
+        self.threshold
+    }
+
+    pub fn total_signers(&self) -> usize {
+        self.total_signers
+    }
+
+    /// Splits `secret` into `total_signers` shares, any `threshold` of which
+    /// reconstruct it. The secret length is not limited.
     pub fn generate_shares(&mut self, secret: &[u8]) -> Result<HashMap<String, Vec<u8>>, MultiSigError> {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
-        
-        // Generate random coefficients for polynomial
-        let mut coefficients: Vec<Vec<u8>> = Vec::new();
-        coefficients.push(secret.to_vec());
-        
-        for _ in 1..self.threshold {
-            let mut coeff = vec![0u8; 32];
-            rng.fill(&mut coeff[..]);
-            coefficients.push(coeff);
+        if secret.is_empty() {
+            return Err(MultiSigError::InvalidOwners);
         }
-        
-        // Evaluate polynomial at different points
+        let mut rng = rand::thread_rng();
+
+        // One random degree-(threshold-1) polynomial per secret byte, each with
+        // the secret byte as its constant term.
+        let mut coefficients: Vec<Vec<u8>> = Vec::with_capacity(secret.len());
+        for byte in secret {
+            let mut poly = Vec::with_capacity(self.threshold);
+            poly.push(*byte);
+            for _ in 1..self.threshold {
+                poly.push(rng.gen::<u8>());
+            }
+            coefficients.push(poly);
+        }
+
         let mut shares = HashMap::new();
         for i in 0..self.total_signers {
+            // Evaluation points are 1..=total_signers, never 0: f(0) is the secret.
             let x = (i + 1) as u8;
-            let y = self.evaluate_polynomial(&coefficients, x);
+            let y: Vec<u8> = coefficients
+                .iter()
+                .map(|poly| {
+                    let mut acc = 0u8;
+                    for coeff in poly.iter().rev() {
+                        acc = gf_mul(acc, x) ^ coeff;
+                    }
+                    acc
+                })
+                .collect();
             shares.insert(format!("signer_{}", i), y);
         }
-        
+
         self.shares = shares.clone();
         Ok(shares)
     }
 
-    /// Evaluate polynomial at point x
-    fn evaluate_polynomial(&self, coefficients: &[Vec<u8>], x: u8) -> Vec<u8> {
-        let mut result = vec![0u8; 32];
-        
-        for (i, coeff) in coefficients.iter().enumerate() {
-            let x_pow = Self::pow_u8(x, i as u8);
-            for (j, byte) in coeff.iter().enumerate() {
-                result[j] = result[j].wrapping_add(byte.wrapping_mul(x_pow));
-            }
-        }
-        
-        result
-    }
-
-    /// Power calculation for u8
-    fn pow_u8(mut base: u8, mut exp: u8) -> u8 {
-        let mut result: u8 = 1;
-        while exp > 0 {
-            if exp % 2 == 1 {
-                result = result.wrapping_mul(base);
-            }
-            base = base.wrapping_mul(base);
-            exp /= 2;
-        }
-        result
-    }
-
-    /// Combine shares to reconstruct secret
+    /// Reconstructs the secret from `threshold` shares by Lagrange
+    /// interpolation at x = 0.
     pub fn combine_shares(&self, shares: &HashMap<String, Vec<u8>>) -> Result<Vec<u8>, MultiSigError> {
         if shares.len() < self.threshold {
             return Err(MultiSigError::InsufficientConfirmations);
         }
 
-        let mut secret = vec![0u8; 32];
-        
-        // Lagrange interpolation
-        for (i, (key, share)) in shares.iter().enumerate() {
-            let x_i = (i + 1) as f64;
-            
-            // Calculate Lagrange coefficient
-            let mut lagrange = 1.0;
-            for (j, _) in shares.iter().enumerate() {
+        let mut points: Vec<(u8, Vec<u8>)> = Vec::with_capacity(shares.len());
+        for (key, value) in shares.iter() {
+            let index: usize = key
+                .strip_prefix("signer_")
+                .and_then(|s| s.parse().ok())
+                .ok_or(MultiSigError::InvalidOwners)?;
+            if index >= self.total_signers {
+                return Err(MultiSigError::InvalidOwners);
+            }
+            points.push(((index + 1) as u8, value.clone()));
+        }
+        points.sort_by_key(|(x, _)| *x);
+        points.truncate(self.threshold);
+
+        let share_len = points[0].1.len();
+        if points.iter().any(|(_, y)| y.len() != share_len) {
+            return Err(MultiSigError::InvalidOwners);
+        }
+
+        let mut secret = vec![0u8; share_len];
+        for (i, (x_i, y_i)) in points.iter().enumerate() {
+            let mut coefficient = 1u8;
+            for (j, (x_j, _)) in points.iter().enumerate() {
                 if i != j {
-                    let x_j = (j + 1) as f64;
-                    lagrange *= -x_j / (x_i - x_j);
+                    // Lagrange basis at x = 0: product over j != i of x_j / (x_j + x_i).
+                    coefficient = gf_mul(coefficient, gf_div(*x_j, *x_j ^ *x_i));
                 }
             }
-            
-            // Add share weighted by Lagrange coefficient
-            let lagrange_int = (lagrange * 256.0) as i32;
-            for (k, byte) in share.iter().enumerate() {
-                secret[k] = secret[k].wrapping_add(byte.wrapping_mul(lagrange_int as u8));
+            for (k, byte) in y_i.iter().enumerate() {
+                secret[k] ^= gf_mul(*byte, coefficient);
             }
         }
 
         Ok(secret)
     }
 
-    /// Sign a message using threshold signatures
+    /// Signs `message` with the key rebuilt from `shares`.
     pub fn sign(&self, message: &[u8], shares: &HashMap<String, Vec<u8>>) -> Result<Signature, MultiSigError> {
         let secret = self.combine_shares(shares)?;
-        
+
         let signing_key = SigningKey::from_bytes(secret.as_slice().into())
             .map_err(|e| MultiSigError::ExecutionFailed(e.to_string()))?;
-        
+
         let signature = signing_key.sign(message);
         Ok(signature)
     }
@@ -406,9 +470,19 @@ mod tests {
         let confirmed = wallet.confirm_transaction(&tx_id, &owners[1]).unwrap();
         assert!(confirmed);
         
-        // Execute
-        let exec_hash = wallet.execute_transaction(&tx_id).unwrap();
-        assert!(exec_hash.starts_with("0x"));
+        // Execute: the caller supplies the hash its broadcast returned.
+        let broadcast = "0x1111111111111111111111111111111111111111111111111111111111111111";
+        let exec_hash = wallet.execute_transaction(&tx_id, broadcast).unwrap();
+        assert_eq!(exec_hash.as_deref(), Some(broadcast));
+
+        // A caller with no broadcast hash records the execution without one.
+        assert_eq!(wallet.execute_transaction(&tx_id, "").unwrap(), None);
+
+        // A malformed hash is rejected rather than stored.
+        assert!(matches!(
+            wallet.execute_transaction(&tx_id, "0xdeadbeef"),
+            Err(MultiSigError::InvalidTransactionHash)
+        ));
     }
 
     #[test]
@@ -425,5 +499,63 @@ mod tests {
         
         let reconstructed = signer.combine_shares(&partial_shares).unwrap();
         assert_eq!(secret.to_vec(), reconstructed);
+    }
+
+    #[test]
+    fn any_threshold_subset_reconstructs_the_secret() {
+        let mut signer = ThresholdSigner::new(2, 3).unwrap();
+        let secret = b"a much longer secret than thirty two bytes, on purpose";
+        let shares = signer.generate_shares(secret).unwrap();
+
+        for (a, b) in [("signer_0", "signer_1"), ("signer_0", "signer_2"), ("signer_1", "signer_2")] {
+            let mut subset = HashMap::new();
+            subset.insert(a.to_string(), shares[a].clone());
+            subset.insert(b.to_string(), shares[b].clone());
+            assert_eq!(signer.combine_shares(&subset).unwrap(), secret.to_vec());
+        }
+    }
+
+    #[test]
+    fn a_single_share_reveals_nothing() {
+        let mut signer = ThresholdSigner::new(2, 3).unwrap();
+        let secret = b"never derived from one share alone";
+        let shares = signer.generate_shares(secret).unwrap();
+
+        let mut subset = HashMap::new();
+        subset.insert("signer_0".to_string(), shares["signer_0"].clone());
+        assert!(matches!(
+            signer.combine_shares(&subset),
+            Err(MultiSigError::InsufficientConfirmations)
+        ));
+    }
+
+    #[test]
+    fn shares_are_distinct_and_secret_is_not_a_share() {
+        let mut signer = ThresholdSigner::new(3, 5).unwrap();
+        let secret = vec![0x42u8; 32];
+        let shares = signer.generate_shares(&secret).unwrap();
+
+        assert_eq!(shares.len(), 5);
+        for share in shares.values() {
+            assert_ne!(*share, secret);
+        }
+        assert_ne!(shares["signer_0"], shares["signer_1"]);
+    }
+
+    #[test]
+    fn threshold_signing_matches_a_direct_signature() {
+        use k256::ecdsa::signature::Signer;
+        let mut signer = ThresholdSigner::new(2, 3).unwrap();
+        let secret = [0x11u8; 32];
+        let shares = signer.generate_shares(&secret).unwrap();
+
+        let mut subset = HashMap::new();
+        subset.insert("signer_0".to_string(), shares["signer_0"].clone());
+        subset.insert("signer_2".to_string(), shares["signer_2"].clone());
+
+        let combined = signer.sign(b"payload", &subset).unwrap();
+        let direct_key = SigningKey::from_bytes((&secret).into()).unwrap();
+        let direct: k256::ecdsa::Signature = direct_key.sign(b"payload");
+        assert_eq!(combined.to_bytes(), direct.to_bytes());
     }
 }

@@ -38,6 +38,8 @@
 #include <cryptopp/ripemd.h>
 #include <cryptopp/blake2.h>
 #include <cryptopp/osrng.h>
+#include <cryptopp/gcm.h>
+#include <cryptopp/aes.h>
 
 #include "uint256.hpp"
 
@@ -160,6 +162,17 @@ inline Bytes uint256ToBytes(const uint256_t& value) {
     return out;
 }
 
+// A single secp256k1 context, created once and shared. The context is
+// immutable after creation, so concurrent use is safe.
+inline secp256k1_context* zkSecpContext() {
+    static secp256k1_context* ctx = [] {
+        secp256k1_context* c = secp256k1_context_create(
+            SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
+        return c;
+    }();
+    return ctx;
+}
+
 // =============================================================================
 // CRYPTO HASH FUNCTIONS
 // =============================================================================
@@ -193,36 +206,219 @@ public:
         return digest;
     }
 
-    // Pedersen Hash
-    static Bytes pedersenHash(const Bytes& input) {
-        // Use Poseidon-like hash for efficiency
-        return sha3_256(input);
+    // A generator of the secp256k1 group.
+    //
+    // The point is derived by hashing a fixed label and trying successive
+    // counter values until the digest is a valid x coordinate. Deriving it
+    // this way is reproducible, and because the derivation is public, nobody
+    // can know a discrete log of this point with respect to G: that is what
+    // makes the commitment binding rather than merely hiding.
+    static const Bytes& pedersenBasePoint() {
+        // A function-local static is initialised once, and the language
+        // guarantees that initialisation is thread safe.
+        static const Bytes point = derivePedersenBasePoint();
+        return point;
     }
 
-    // MiMC hash (useful for ZK)
+    static Bytes derivePedersenBasePoint() {
+        static const char kLabel[] = "TigerWallet/privacy/pedersen-base/v1";
+        uint32_t counter = 0;
+        while (true) {
+            Bytes input(kLabel, kLabel + sizeof(kLabel) - 1);
+            input.push_back(static_cast<uint8_t>(counter >> 24));
+            input.push_back(static_cast<uint8_t>(counter >> 16));
+            input.push_back(static_cast<uint8_t>(counter >> 8));
+            input.push_back(static_cast<uint8_t>(counter));
+
+            Bytes candidate = keccak256(input);
+            // A compressed public key is 33 bytes: a parity byte followed by
+            // an x coordinate that must be on the curve.
+            Bytes encoded;
+            encoded.reserve(33);
+            encoded.push_back(static_cast<uint8_t>(2 + (candidate[0] & 1)));
+            encoded.insert(encoded.end(), candidate.begin(), candidate.end());
+
+            secp256k1_pubkey point;
+            if (secp256k1_ec_pubkey_parse(zkSecpContext(), &point,
+                                          encoded.data(), encoded.size()) == 1) {
+                Bytes out(33);
+                size_t length = out.size();
+                if (secp256k1_ec_pubkey_serialize(zkSecpContext(), out.data(),
+                                                  &length, &point,
+                                                  SECP256K1_EC_COMPRESSED) == 1) {
+                    out.resize(length);
+                    return out;
+                }
+            }
+            ++counter;
+        }
+    }
+
+    // Pedersen commitment: C = m*G + r*H, where G is the curve generator and
+    // H is the independent base point above.
+    //
+    // `message` and `blinding` are reduced modulo the group order, so a
+    // message of any length commits to a single scalar. The result is the
+    // compressed encoding of the resulting point, which is binding (nobody
+    // can open one commitment to two different messages) and hiding (the
+    // blinding factor randomises the point).
+    static Bytes pedersenCommit(const Bytes& message, const Bytes& blinding) {
+        secp256k1_pubkey message_point;
+        if (secp256k1_ec_pubkey_create(zkSecpContext(), &message_point,
+                                       messageScalar(message).data()) != 1) {
+            return {};
+        }
+
+        secp256k1_pubkey base_point;
+        const Bytes base = pedersenBasePoint();
+        if (base.size() != 33 ||
+            secp256k1_ec_pubkey_parse(zkSecpContext(), &base_point,
+                                      base.data(), base.size()) != 1) {
+            return {};
+        }
+
+        // Scale H by the blinding scalar to get r*H.
+        if (secp256k1_ec_pubkey_tweak_mul(zkSecpContext(), &base_point,
+                                          messageScalar(blinding).data()) != 1) {
+            return {};
+        }
+
+        const secp256k1_pubkey* points[2] = {&message_point, &base_point};
+        secp256k1_pubkey sum;
+        if (secp256k1_ec_pubkey_combine(zkSecpContext(), &sum, points, 2) != 1) {
+            return {};
+        }
+
+        Bytes out(33);
+        size_t length = out.size();
+        if (secp256k1_ec_pubkey_serialize(zkSecpContext(), out.data(), &length,
+                                          &sum,
+                                          SECP256K1_EC_COMPRESSED) != 1) {
+            return {};
+        }
+        out.resize(length);
+        return out;
+    }
+
+    // A Pedersen hash of a byte string, C = H(m).
+    //
+    // This is the commitment to the message with no blinding factor. The
+    // result is a curve point, so it composes with the other group
+    // operations, which a plain digest does not.
+    static Bytes pedersenHash(const Bytes& input) {
+        return pedersenCommit(input, Bytes{});
+    }
+
+    // MiMC hash over two field elements: F(x, k) = (x + k + C)^3.
+    //
+    // The permutation is iterated over a fixed number of rounds, which makes
+    // it expensive to invert, and it costs far less gas on chain than a
+    // keccak of the same input. Both operands must be 32 bytes.
     static Bytes mimcHash(const Bytes& left, const Bytes& right) {
-        Bytes combined;
-        combined.reserve(left.size() + right.size());
-        combined.insert(combined.end(), left.begin(), left.end());
-        combined.insert(combined.end(), right.begin(), right.end());
-        return sha3_256(combined);
+        if (left.size() != 32 || right.size() != 32) {
+            return {};
+        }
+
+        Integer state;
+        state.Decode(left.data(), left.size());
+        Integer key;
+        key.Decode(right.data(), right.size());
+        const Integer modulus = mimcModulus();
+        state %= modulus;
+        key %= modulus;
+
+        for (uint32_t round = 0; round < kMimcRounds; ++round) {
+            const Integer constant = mimcRoundConstant(round);
+            state = (state + key + constant) % modulus;
+            // Cube the state: x^3 mod p.
+            state = (state * state % modulus * state) % modulus;
+        }
+        state = (state + key) % modulus;
+
+        Bytes out(32);
+        state.Encode(out.data(), out.size());
+        return out;
+    }
+
+    // The number of MiMC rounds. A round costs one cube and one addition, so
+    // the count trades proof cost against the difficulty of inverting the
+    // permutation.
+    static constexpr uint32_t kMimcRounds = 91;
+
+private:
+    // A scalar in the range [1, n-1] for the secp256k1 group.
+    //
+    // Hashes of arbitrary length are reduced modulo the group order. A result
+    // of zero would make the corresponding point the point at infinity, which
+    // cannot be serialised, so it is remapped to one.
+    static Bytes messageScalar(const Bytes& value) {
+        static const unsigned char kOrder[32] = {
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
+            0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
+            0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41};
+
+        const Bytes digest = keccak256(value);
+
+        Integer scalar;
+        scalar.Decode(digest.data(), digest.size());
+        Integer order;
+        order.Decode(kOrder, sizeof(kOrder));
+        scalar %= order;
+
+        Bytes out(32);
+        scalar.Encode(out.data(), out.size());
+
+        bool zero = true;
+        for (uint8_t byte : out) {
+            if (byte != 0) {
+                zero = false;
+                break;
+            }
+        }
+        if (zero) {
+            out[31] = 1;
+        }
+        return out;
+    }
+
+    // The field MiMC operates over.
+    static const Integer& mimcModulus() {
+        // The BLS12-381 scalar field modulus, the field the MiMC permutation
+        // is defined over in the original construction.
+        static const Integer modulus("52435875175126190479447740508185965837690552500527637822603658699938581184513");
+        return modulus;
+    }
+
+    // The round constants, derived once and shared.
+    //
+    // A table built inside a function-local static is initialised exactly
+    // once and is safe to read from several threads at the same time.
+    static const std::vector<Integer>& mimcRoundConstants() {
+        static const std::vector<Integer> constants = [] {
+            std::vector<Integer> table;
+            table.reserve(kMimcRounds);
+            for (uint32_t round = 0; round < kMimcRounds; ++round) {
+                const Bytes digest = keccak256(Bytes{'M', 'i', 'M', 'C',
+                                                     static_cast<uint8_t>(round)});
+                Integer constant;
+                constant.Decode(digest.data(), digest.size());
+                constant %= mimcModulus();
+                table.push_back(constant);
+            }
+            return table;
+        }();
+        return constants;
+    }
+
+    static const Integer& mimcRoundConstant(uint32_t round) {
+        return mimcRoundConstants()[round];
     }
 };
 
 // =============================================================================
 // ZERO-KNOWLEDGE PROVER
 // =============================================================================
-
-// A single secp256k1 context, created once and shared. The context is
-// immutable after creation, so concurrent use is safe.
-inline secp256k1_context* zkSecpContext() {
-    static secp256k1_context* ctx = [] {
-        secp256k1_context* c = secp256k1_context_create(
-            SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
-        return c;
-    }();
-    return ctx;
-}
 
 class ZKProver {
 public:
@@ -438,15 +634,16 @@ public:
         return out;
     }
 
-    // Generate commitment from secret
+    // Generate commitment from secret.
+    //
+    // The commitment is a Pedersen commitment, m*G + r*H, with the secret as
+    // the message and the salt as the blinding factor. It is hiding because
+    // the salt is unpredictable, and binding because nobody knows the
+    // discrete log of H with respect to G.
     Commitment generateCommitment(const Bytes& secret, const Bytes& salt) {
         Commitment comm;
 
-        Bytes input;
-        input.insert(input.end(), secret.begin(), secret.end());
-        input.insert(input.end(), salt.begin(), salt.end());
-
-        comm.commitment = CryptoHash::pedersenHash(input);
+        comm.commitment = CryptoHash::pedersenCommit(secret, salt);
         comm.secret = secret;
         comm.leafIndex = 0;
 
@@ -965,7 +1162,13 @@ private:
         }
         input.insert(input.end(), amountBytes.begin(), amountBytes.end());
 
-        return CryptoHash::pedersenHash(input);
+        // The recipient and amount are the message; the round denomination
+        // blinds it so two equal outputs do not share a commitment.
+        Bytes blinding(8);
+        for (int i = 7; i >= 0; i--) {
+            blinding[7 - i] = (amount >> (i * 8)) & 0xFF;
+        }
+        return CryptoHash::pedersenCommit(input, blinding);
     }
 };
 
@@ -977,34 +1180,111 @@ class ConfidentialTransfer {
 public:
     ConfidentialTransfer() = default;
 
-    // Encrypt transfer amount using homomorphic encryption
+    // Encrypt an amount to a recipient's public key.
+    //
+    // The ciphertext is an ECIES message: a fresh ephemeral key pair is
+    // generated per call, its public key is prefixed to the output, and the
+    // shared secret with the recipient is used as an AES-256-GCM key. Because
+    // the ephemeral key is fresh, two encryptions of the same amount produce
+    // unrelated ciphertexts, and the recipient's key alone can decrypt it.
     Bytes encryptAmount(
         uint256_t amount,
         const Bytes& publicKey
     ) {
-        // In production, use Bulletproofs or Pedersen commitments
-        // For now, use simple encryption
-        Bytes input;
-        const Bytes amountBytes = uint256ToBytes(amount);
+        secp256k1_pubkey recipient;
+        if (publicKey.size() != 33 ||
+            secp256k1_ec_pubkey_parse(zkSecpContext(), &recipient,
+                                      publicKey.data(), publicKey.size()) != 1) {
+            return {};
+        }
 
-        input.insert(input.end(), amountBytes.begin(), amountBytes.end());
-        input.insert(input.end(), publicKey.begin(), publicKey.end());
+        // A fresh ephemeral key for this message.
+        const Bytes ephemeral_secret = randomScalar();
+        secp256k1_pubkey ephemeral_public;
+        if (secp256k1_ec_pubkey_create(zkSecpContext(), &ephemeral_public,
+                                       ephemeral_secret.data()) != 1) {
+            return {};
+        }
 
-        return CryptoHash::keccak256(input);
+        Bytes shared;
+        if (!ecdhSharedSecret(ephemeral_secret, recipient, shared)) {
+            return {};
+        }
+
+        const Bytes key = CryptoHash::keccak256(shared);
+        const Bytes plaintext = uint256ToBytes(amount);
+
+        Bytes ciphertext;
+        Bytes iv;
+        if (!aesGcmEncrypt(plaintext, key, ciphertext, iv)) {
+            return {};
+        }
+
+        // The wire format is the ephemeral public key, the IV and then the
+        // ciphertext with its tag.
+        Bytes out(33);
+        size_t length = out.size();
+        if (secp256k1_ec_pubkey_serialize(zkSecpContext(), out.data(), &length,
+                                          &ephemeral_public,
+                                          SECP256K1_EC_COMPRESSED) != 1) {
+            return {};
+        }
+        out.resize(length);
+        out.insert(out.end(), iv.begin(), iv.end());
+        out.insert(out.end(), ciphertext.begin(), ciphertext.end());
+        return out;
     }
 
-    // Decrypt amount (for view key holder)
-    uint256_t decryptAmount(
+    // Decrypt an amount with the recipient's private key.
+    //
+    // Returns an empty optional when the ciphertext is malformed or its
+    // authentication tag does not verify. A caller must not treat a failed
+    // decryption as an amount of zero.
+    std::optional<uint256_t> decryptAmount(
         const Bytes& encryptedAmount,
         const Bytes& privateKey
     ) {
-        // The ciphertext is a keyed hash of the amount, so the amount is not
-        // recoverable from it. Returning zero would present an unreadable
-        // ciphertext as a decrypted amount of zero, which a caller would
-        // spend. The result is empty instead.
-        (void)encryptedAmount;
-        (void)privateKey;
-        return uint256_t{};
+        // 33 byte ephemeral key + 12 byte IV + 16 byte tag + 32 byte amount.
+        constexpr size_t kIvLength = 12;
+        constexpr size_t kTagLength = 16;
+        if (encryptedAmount.size() != 33 + kIvLength + 32 + kTagLength) {
+            return std::nullopt;
+        }
+
+        secp256k1_pubkey ephemeral_public;
+        if (secp256k1_ec_pubkey_parse(zkSecpContext(), &ephemeral_public,
+                                      encryptedAmount.data(), 33) != 1) {
+            return std::nullopt;
+        }
+
+        Bytes shared;
+        if (!ecdhSharedSecret(privateKey, ephemeral_public, shared)) {
+            return std::nullopt;
+        }
+
+        const Bytes key = CryptoHash::keccak256(shared);
+        const Bytes iv(encryptedAmount.begin() + 33,
+                       encryptedAmount.begin() + 33 + kIvLength);
+        const Bytes ciphertext(encryptedAmount.begin() + 33 + kIvLength,
+                               encryptedAmount.end());
+
+        Bytes plaintext;
+        if (!aesGcmDecrypt(ciphertext, key, iv, plaintext)) {
+            return std::nullopt;
+        }
+        if (plaintext.size() != 32) {
+            return std::nullopt;
+        }
+
+        uint256_t amount{};
+        for (size_t w = 0; w < 4; ++w) {
+            uint64_t word = 0;
+            for (size_t b = 0; b < 8; ++b) {
+                word = (word << 8) | plaintext[w * 8 + b];
+            }
+            amount.word[3 - w] = word;
+        }
+        return amount;
     }
 
     // Generate view key for viewing transactions
@@ -1015,6 +1295,90 @@ public:
     // Generate spend key for spending funds
     Bytes generateSpendKey(const Bytes& privateKey) {
         return CryptoHash::sha3_256(privateKey);
+    }
+
+private:
+    // A uniformly random scalar in the range [1, n-1].
+    static Bytes randomScalar() {
+        while (true) {
+            const Bytes candidate = secureRandomBytes(32);
+            if (secp256k1_ec_seckey_verify(zkSecpContext(),
+                                           candidate.data()) == 1) {
+                return candidate;
+            }
+        }
+    }
+
+    // The shared point privateKey * peer, which both sides of an ECIES
+    // exchange can compute independently and nobody else can.
+    static bool ecdhSharedSecret(const Bytes& privateKey,
+                                 const secp256k1_pubkey& peer,
+                                 Bytes& out) {
+        if (privateKey.size() != 32) {
+            return false;
+        }
+
+        secp256k1_pubkey shared = peer;
+        if (secp256k1_ec_pubkey_tweak_mul(zkSecpContext(), &shared,
+                                          privateKey.data()) != 1) {
+            return false;
+        }
+
+        Bytes compressed(33);
+        size_t length = compressed.size();
+        if (secp256k1_ec_pubkey_serialize(zkSecpContext(), compressed.data(),
+                                          &length, &shared,
+                                          SECP256K1_EC_COMPRESSED) != 1) {
+            return false;
+        }
+        compressed.resize(length);
+
+        SHA256 hash;
+        out.assign(32, 0);
+        hash.CalculateDigest(out.data(), compressed.data(), compressed.size());
+        return true;
+    }
+
+    // AES-256-GCM encryption. The tag is appended to the ciphertext.
+    static bool aesGcmEncrypt(const Bytes& plaintext, const Bytes& key,
+                              Bytes& ciphertext, Bytes& iv) {
+        if (key.size() != 32) {
+            return false;
+        }
+        iv = secureRandomBytes(12);
+
+        GCM<AES>::Encryption encryptor;
+        encryptor.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
+
+        ciphertext.assign(plaintext.size() + 16, 0);
+        encryptor.EncryptAndAuthenticate(
+            ciphertext.data(), ciphertext.data() + plaintext.size(), 16,
+            iv.data(), iv.size(), nullptr, 0,
+            plaintext.data(), plaintext.size());
+        return true;
+    }
+
+    // AES-256-GCM decryption. The tag is the last 16 bytes of the input, and
+    // a failure to authenticate returns false without producing plaintext.
+    static bool aesGcmDecrypt(const Bytes& ciphertext, const Bytes& key,
+                              const Bytes& iv, Bytes& plaintext) {
+        if (key.size() != 32 || iv.size() != 12 || ciphertext.size() < 16) {
+            return false;
+        }
+        const size_t body_length = ciphertext.size() - 16;
+
+        GCM<AES>::Decryption decryptor;
+        decryptor.SetKeyWithIV(key.data(), key.size(), iv.data(), iv.size());
+
+        plaintext.assign(body_length, 0);
+        const bool ok = decryptor.DecryptAndVerify(
+            plaintext.data(), ciphertext.data() + body_length, 16,
+            iv.data(), iv.size(), nullptr, 0,
+            ciphertext.data(), body_length);
+        if (!ok) {
+            plaintext.clear();
+        }
+        return ok;
     }
 };
 

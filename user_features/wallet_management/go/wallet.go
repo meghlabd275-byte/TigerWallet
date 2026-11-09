@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/tyler-smith/go-bip39"
 	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
 )
 
 // Chain chain information
@@ -248,7 +248,7 @@ func (m *WalletManager) initializeDefaultTokens() {
 		{Symbol: "ETH", Name: "Ethereum", Address: "0x0000000000000000000000000000000000000000", Decimals: 18, ChainID: 1, Logo: "eth.png", IsNative: true},
 		{Symbol: "USDT", Name: "Tether USD", Address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", Decimals: 6, ChainID: 1, Logo: "usdt.png", IsStable: true, IsNative: false},
 		{Symbol: "USDC", Name: "USD Coin", Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Decimals: 6, ChainID: 1, Logo: "usdc.png", IsStable: true, IsNative: false},
-		{Symbol: "WBTC", Name: "Wrapped Bitcoin", Address: "0x2260FAC5E5542a773Aa44fCF2df52aDCEb44661f", Decimals: 8, ChainID: 1, Logo: "wbtc.png", IsNative: false},
+		{Symbol: "WBTC", Name: "Wrapped Bitcoin", Address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", Decimals: 8, ChainID: 1, Logo: "wbtc.png", IsNative: false},
 		{Symbol: "BNB", Name: "BNB", Address: "0x0000000000000000000000000000000000000000", Decimals: 18, ChainID: 56, Logo: "bnb.png", IsNative: true},
 		{Symbol: "CAKE", Name: "PancakeSwap", Address: "0x0E09FaBB73Bd3ade0a17ECC321fD13a19e81cE82", Decimals: 18, ChainID: 56, Logo: "cake.png", IsNative: false},
 		{Symbol: "MATIC", Name: "Polygon", Address: "0x0000000000000000000000000000000000000000", Decimals: 18, ChainID: 137, Logo: "matic.png", IsNative: true},
@@ -364,11 +364,11 @@ func (m *WalletManager) Send(to, amount, tokenAddress string, chainID int64) (*T
 		return nil, fmt.Errorf("wallet_api not configured (set WALLET_API_URL)")
 	}
 	payload, _ := json.Marshal(map[string]interface{}{
-		"address":   wallet.Address,
-		"chain_id":  chainID,
-		"to":        to,
-		"amount":    amount,
-		"token":     tokenAddress,
+		"address":  wallet.Address,
+		"chain_id": chainID,
+		"to":       to,
+		"amount":   amount,
+		"token":    tokenAddress,
 	})
 	resp, err := m.postJSON(m.backendURL+"/api/v1/send", string(payload))
 	if err != nil {

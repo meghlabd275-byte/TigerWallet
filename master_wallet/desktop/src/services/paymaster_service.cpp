@@ -29,7 +29,7 @@ namespace tiger {
 namespace master {
 namespace paymaster {
 
-constexpr const char* DEFAULT_ENTRY_POINT = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3";
+constexpr const char* DEFAULT_ENTRY_POINT = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
 constexpr const uint64_t DEFAULT_STAKE_AMOUNT = 100000000000000000ULL;
 constexpr const uint32_t CACHE_DURATION_MS = 15000;
 
@@ -108,8 +108,8 @@ std::string PaymasterService::getPaymasterToken(const std::string& chainId) {
     static const std::map<std::string, std::string> wrappedTokens = {
         {"1", "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"},    // WETH
         {"56", "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"},  // WBNB
-        {"137", "0x0d500B1d8E8aF31C80447cB82c33A5639970C530"}, // WMATIC
-        {"42161", "0x82aF49447D8a07e3bd95BD0d56f91cfFdc2e216a"},// WETH
+        {"137", "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"}, // WMATIC
+        {"42161", "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"},// WETH
         {"10", "0x4200000000000000000000000000000000000006"},   // WETH
     };
     if (!config_.isTokenPaymaster) return config_.paymasterAddress;

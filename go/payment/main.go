@@ -61,35 +61,40 @@ var StablecoinContracts = map[string]map[string]common.Address{
 	"ethereum": {
 		"USDT": common.HexToAddress("0xdAC17F958D2ee523a2206206994597C13D831ec7"),
 		"USDC": common.HexToAddress("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-		"DAI":  common.HexToAddress("0x6B175474E89094C44Da98b954E1162928195441"),
+		"DAI":  common.HexToAddress("0x6B175474E89094C44Da98b954EedeAC495271d0F"),
 		"TUSD": common.HexToAddress("0x0000000000085d4780B73119b644AE5ecd22b376"),
-		"BUSD": common.HexToAddress("0x4Fabb145d64652a948d72533023f6E7A623C7C1"),
-		"USDP": common.HexToAddress("0x8E870D67F660D95d5be530380D0eC7bd38803f1"),
+		"BUSD": common.HexToAddress("0x4Fabb145d64652a948d72533023f6E7A623C7C53"),
+		"USDP": common.HexToAddress("0x8E870D67F660D95d5be530380D0eC0bd388289E1"),
 	},
 	"bsc": {
 		"USDT": common.HexToAddress("0x55d398326f99059fF775485246999027B3197955"),
 		"USDC": common.HexToAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"),
 		"BUSD": common.HexToAddress("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"),
-		"DAI":  common.HexToAddress("0x1AF3F329e8BE154074D8769D1FFa4eE0581611d2"),
+		"DAI":  common.HexToAddress("0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3"),
 	},
 	"polygon": {
 		"USDT": common.HexToAddress("0xc2132D05D31c914a87C6611C10748AEb04B58e8F"),
-		"USDC": common.HexToAddress("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
-		"DAI":  common.HexToAddress("0x53E0bca35eC356bf5f759F85f4c0eB9b4e961736"),
+		"USDC": common.HexToAddress("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
+		"DAI":  common.HexToAddress("0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"),
 	},
 	"arbitrum": {
-		"USDT": common.HexToAddress("0xFd086bC7CD5C481DCC93C85BD541717E78c15C93"),
-		"USDC": common.HexToAddress("0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8"),
-		"DAI":  common.HexToAddress("0xDA10009cBd1D4b23f113b0fA7E0ABb0C16d8a6F5"),
+		"USDT": common.HexToAddress("0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9"),
+		"USDC": common.HexToAddress("0xaf88d065e77c8cC2239327C5EDb3A432268e5831"),
+		"DAI":  common.HexToAddress("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"),
 	},
 	"optimism": {
-		"USDT": common.HexToAddress("0x94b008aA00579c1307B0EF2c3ad04f9DB46BcE52"),
-		"USDC": common.HexToAddress("0x7F5c764cBc14f9669B88837ca1490cCa17c31607"),
-		"DAI":  common.HexToAddress("0xDA10009cBd1D4b23f113b0fA7E0ABb0C16d8a6F5"),
+		"USDT": common.HexToAddress("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
+		"USDC": common.HexToAddress("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"),
+		"DAI":  common.HexToAddress("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"),
 	},
 	"avalanche": {
-		"USDT": common.HexToAddress("0x9702230A8Ea53601f5cD2dc6f84C4b8e8f78Ec74"),
+		"USDT": common.HexToAddress("0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7"),
 		"USDC": common.HexToAddress("0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"),
+	},
+	"base": {
+		"USDT": common.HexToAddress("0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"),
+		"USDC": common.HexToAddress("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+		"DAI":  common.HexToAddress("0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb"),
 	},
 }
 
@@ -101,6 +106,7 @@ var ChainIDs = map[string]int64{
 	"arbitrum":  42161,
 	"optimism":  10,
 	"avalanche": 43114,
+	"base":      8453,
 }
 
 // ============================================================================

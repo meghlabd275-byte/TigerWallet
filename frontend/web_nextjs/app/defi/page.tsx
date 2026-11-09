@@ -49,7 +49,7 @@ const FALLBACK_PROTOCOLS: DeFiProtocol[] = [
   { id: 'uniswap', name: 'Uniswap', category: 'dex', tvl: '—', apy: '—', chains: [1, 56, 137, 42161], logo: '🦄', contractAddress: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', protocolUrl: 'https://app.uniswap.org' },
   { id: 'curve', name: 'Curve', category: 'dex', tvl: '—', apy: '—', chains: [1, 56], logo: '🔵', contractAddress: '0xD533a949740bb3306d119CC777fa900bA034cd52', protocolUrl: 'https://curve.fi' },
   { id: 'lido', name: 'Lido', category: 'yield', tvl: '—', apy: '—', chains: [1], logo: '💧', contractAddress: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', protocolUrl: 'https://stake.lido.fi' },
-  { id: 'pancake', name: 'PancakeSwap', category: 'dex', tvl: '—', apy: '—', chains: [56], logo: '🥞', contractAddress: '0x18BF1C73aC38B4e2c60c2b1a3a3cE33c38D78f3E', protocolUrl: 'https://pancakeswap.finance' },
+  { id: 'pancake', name: 'PancakeSwap', category: 'dex', tvl: '—', apy: '—', chains: [56], logo: '🥞', contractAddress: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', protocolUrl: 'https://pancakeswap.finance' },
   { id: 'sushi', name: 'SushiSwap', category: 'dex', tvl: '—', apy: '—', chains: [1, 56, 137], logo: '🍣', contractAddress: '0x6B3595068778DD592e39A122f4f5a5cF09C90fE2', protocolUrl: 'https://www.sushi.com' },
 ];
 

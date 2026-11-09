@@ -15,14 +15,14 @@ var defaultTokenRegistry = map[int64][]TokenInfo{
 		{Contract: "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9", Symbol: "AAVE", Name: "Aave", Decimals: 18, ChainID: 1},
 	},
 	56: {
-		{Contract: "0xe9e7CEA3DedcA5984780Bafc599bD69ACd087D56", Symbol: "BUSD", Name: "Binance USD", Decimals: 18, ChainID: 56},
+		{Contract: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56", Symbol: "BUSD", Name: "Binance USD", Decimals: 18, ChainID: 56},
 		{Contract: "0x55d398326f99059fF775485246999027B3197955", Symbol: "USDT", Name: "Tether USD", Decimals: 18, ChainID: 56},
-		{Contract: "0x8AC76A51cc950d9822D68b83E1BEc96492dac657", Symbol: "USDC", Name: "USD Coin", Decimals: 18, ChainID: 56},
+		{Contract: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", Symbol: "USDC", Name: "USD Coin", Decimals: 18, ChainID: 56},
 		{Contract: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8", Symbol: "ETH", Name: "Ethereum", Decimals: 18, ChainID: 56},
-		{Contract: "0x7130d2A12BFEBC97F94433167556dF6bd90B5Aed", Symbol: "BTCB", Name: "BTCB", Decimals: 18, ChainID: 56},
+		{Contract: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", Symbol: "BTCB", Name: "BTCB", Decimals: 18, ChainID: 56},
 	},
 	137: {
-		{Contract: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 137},
+		{Contract: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 137},
 		{Contract: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", Symbol: "USDT", Name: "Tether USD", Decimals: 6, ChainID: 137},
 		{Contract: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 137},
 		{Contract: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", Symbol: "WETH", Name: "Wrapped Ether", Decimals: 18, ChainID: 137},
@@ -30,19 +30,19 @@ var defaultTokenRegistry = map[int64][]TokenInfo{
 	42161: {
 		{Contract: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 42161},
 		{Contract: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", Symbol: "USDT", Name: "Tether USD", Decimals: 6, ChainID: 42161},
-		{Contract: "0xDA10009cBd1D6e9500de913b00040000f0a3e64c", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 42161},
+		{Contract: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 42161},
 		{Contract: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", Symbol: "WETH", Name: "Wrapped Ether", Decimals: 18, ChainID: 42161},
 	},
 	10: {
 		{Contract: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 10},
-		{Contract: "0x94b008aA00579c1307B0EF2c499a594F0EF90116", Symbol: "USDT", Name: "Tether USD", Decimals: 6, ChainID: 10},
-		{Contract: "0xDA10009cBd1D6e9500de913b00040000f0a3e64c", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 10},
+		{Contract: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", Symbol: "USDT", Name: "Tether USD", Decimals: 6, ChainID: 10},
+		{Contract: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 10},
 		{Contract: "0x4200000000000000000000000000000000000006", Symbol: "WETH", Name: "Wrapped Ether", Decimals: 18, ChainID: 10},
 	},
 	8453: {
 		{Contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 8453},
 		{Contract: "0x4200000000000000000000000000000000000006", Symbol: "WETH", Name: "Wrapped Ether", Decimals: 18, ChainID: 8453},
-		{Contract: "0x50c5725949A6F0c72E6C3a7794904489D5667281", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 8453},
+		{Contract: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 8453},
 	},
 }
 

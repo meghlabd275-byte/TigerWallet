@@ -8,17 +8,19 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
@@ -40,9 +42,9 @@ type TransactionBundle struct {
 	ID              string        `json:"id"`
 	Transactions    []PrivateTx   `json:"transactions"`
 	BlockNumber     uint64        `json:"block_number"`
-	MinBlockNumber uint64        `json:"min_block_number"`
-	MaxBlockNumber uint64        `json:"max_block_number"`
-	RevertingHashes []string     `json:"reverting_hashes"`
+	MinBlockNumber  uint64        `json:"min_block_number"`
+	MaxBlockNumber  uint64        `json:"max_block_number"`
+	RevertingHashes []string      `json:"reverting_hashes"`
 	StateChanges    []StateChange `json:"state_changes"`
 	GasPrice        string        `json:"gas_price"`
 	Status          string        `json:"status"` // pending, included, failed
@@ -53,18 +55,18 @@ type TransactionBundle struct {
 }
 
 type PrivateTx struct {
-	Hash         string `json:"hash"`
-	From         string `json:"from"`
-	To           string `json:"to"`
-	Value        string `json:"value"`
-	Data         string `json:"data"`
-	Gas          string `json:"gas"`
-	GasPrice     string `json:"gas_price"`
-	Nonce        uint64 `json:"nonce"`
-	ChainID      uint64 `json:"chain_id"`
-	AccessList   []string `json:"access_list,omitempty"`
-	MaxFeePerGas string `json:"max_fee_per_gas,omitempty"`
-	MaxPriorityFeePerGas string `json:"max_priority_fee_per_gas,omitempty"`
+	Hash                 string   `json:"hash"`
+	From                 string   `json:"from"`
+	To                   string   `json:"to"`
+	Value                string   `json:"value"`
+	Data                 string   `json:"data"`
+	Gas                  string   `json:"gas"`
+	GasPrice             string   `json:"gas_price"`
+	Nonce                uint64   `json:"nonce"`
+	ChainID              uint64   `json:"chain_id"`
+	AccessList           []string `json:"access_list,omitempty"`
+	MaxFeePerGas         string   `json:"max_fee_per_gas,omitempty"`
+	MaxPriorityFeePerGas string   `json:"max_priority_fee_per_gas,omitempty"`
 	// RawSignedTx is the hex-encoded signed raw transaction (0x-prefixed) that
 	// is broadcast to the network. The transaction hash is derived from this,
 	// never fabricated from request metadata.
@@ -72,31 +74,31 @@ type PrivateTx struct {
 }
 
 type StateChange struct {
-	Address string `json:"address"`
-	Balance string `json:"balance"`
+	Address string            `json:"address"`
+	Balance string            `json:"balance"`
 	Storage map[string]string `json:"storage,omitempty"`
 }
 
 type MEVProtectionRequest struct {
-	WalletAddress   string              `json:"wallet_address"`
-	ChainID         uint64              `json:"chain_id"`
+	WalletAddress   string             `json:"wallet_address"`
+	ChainID         uint64             `json:"chain_id"`
 	Transactions    []ProtectedTx      `json:"transactions"`
 	ProtectionLevel MEVProtectionLevel `json:"protection_level"`
-	MaxBlockNumber  uint64              `json:"max_block_number"`
+	MaxBlockNumber  uint64             `json:"max_block_number"`
 }
 
 type ProtectedTx struct {
-	To          string   `json:"to"`
-	Value       string   `json:"value"`
-	Data        string   `json:"data"`
-	GasLimit    string   `json:"gas_limit"`
-	GasPrice    string   `json:"gas_price"`
-	Nonce       uint64   `json:"nonce"`
-	ChainID     uint64   `json:"chain_id"`
+	To       string `json:"to"`
+	Value    string `json:"value"`
+	Data     string `json:"data"`
+	GasLimit string `json:"gas_limit"`
+	GasPrice string `json:"gas_price"`
+	Nonce    uint64 `json:"nonce"`
+	ChainID  uint64 `json:"chain_id"`
 	// RawSignedTx is the hex-encoded signed raw transaction submitted by the
 	// caller. It is required: the service derives the tx hash from the
 	// broadcast result rather than fabricating one.
-	RawSignedTx string   `json:"raw_signed_tx"`
+	RawSignedTx string `json:"raw_signed_tx"`
 }
 
 type ProtectedBundle struct {
@@ -108,47 +110,38 @@ type ProtectedBundle struct {
 	TxHashes    []string `json:"tx_hashes"`
 }
 
-type SandwichAttack struct {
-	ID             string `json:"id"`
-	FrontRunTx    string `json:"front_run_tx"`
-	VictimTx      string `json:"victim_tx"`
-	BackRunTx     string `json:"back_run_tx"`
-	Profit        string `json:"profit"`
-	BlockNumber   uint64 `json:"block_number"`
-	Timestamp     int64  `json:"timestamp"`
-	TokenIn       string `json:"token_in"`
-	TokenOut      string `json:"token_out"`
-	AmountIn      string `json:"amount_in"`
-	AmountOut     string `json:"amount_out"`
-}
-
 type BlockedAddress struct {
-	Address     string    `json:"address"`
-	Reason      string    `json:"reason"`
-	BlockedAt   time.Time `json:"blocked_at"`
-	BlockedBy   string    `json:"blocked_by"` // system, admin
-	Expiration  time.Time `json:"expiration,omitempty"`
+	Address    string    `json:"address"`
+	Reason     string    `json:"reason"`
+	BlockedAt  time.Time `json:"blocked_at"`
+	BlockedBy  string    `json:"blocked_by"` // system, admin
+	Expiration time.Time `json:"expiration,omitempty"`
 }
 
 type SimulationResult struct {
-	Success              bool              `json:"success"`
-	GasUsed              uint64            `json:"gas_used"`
-	GasPrice             string            `json:"gas_price"`
-	Logs                 []json.RawMessage `json:"logs"`
-	ReturnValue          string            `json:"return_value"`
-	StateChanges         []StateChange     `json:"state_changes"`
-	MEVOpportunities     []MEVOpportunity  `json:"mev_opportunities"`
-	SandwichVulnerable   bool              `json:"sandwich_vulnerable"`
-	SandwichAttack       *SandwichAttack   `json:"sandwich_attack,omitempty"`
+	Success          bool              `json:"success"`
+	GasUsed          uint64            `json:"gas_used"`
+	GasPrice         string            `json:"gas_price"`
+	Logs             []json.RawMessage `json:"logs"`
+	ReturnValue      string            `json:"return_value"`
+	StateChanges     []StateChange     `json:"state_changes"`
+	MEVOpportunities []MEVOpportunity  `json:"mev_opportunities"`
+	// SandwichVulnerable is always false unless a live mempool feed is
+	// configured. DEX transactions are instead routed through the private
+	// relay, which removes the exposure at the source.
+	SandwichVulnerable bool `json:"sandwich_vulnerable"`
+	// RevertReason carries the node's revert message when the simulated call
+	// failed. Empty when the call succeeded.
+	RevertReason string `json:"revert_reason,omitempty"`
 }
 
 type MEVOpportunity struct {
-	Type        string `json:"type"` // arbitrage, liquidation, sandwich
-	Profit      string `json:"profit"`
-	TokenIn     string `json:"token_in"`
-	TokenOut    string `json:"token_out"`
-	Amount      string `json:"amount"`
-	 DEXPool    string `json:"dex_pool"`
+	Type     string `json:"type"` // arbitrage, liquidation, sandwich
+	Profit   string `json:"profit"`
+	TokenIn  string `json:"token_in"`
+	TokenOut string `json:"token_out"`
+	Amount   string `json:"amount"`
+	DEXPool  string `json:"dex_pool"`
 }
 
 // ============================================================================
@@ -156,23 +149,21 @@ type MEVOpportunity struct {
 // ============================================================================
 
 type MEVProtectionService struct {
-	config        *Config
-	redis         *redis.Client
-	bundles       map[string]*TransactionBundle
-	bundleMu      sync.RWMutex
-	blockedAddrs  map[string]*BlockedAddress
-	blockedMu     sync.RWMutex
-	sandwichAddrs map[string]*SandwichAttack
-	sandwichMu    sync.RWMutex
+	config       *Config
+	redis        *redis.Client
+	bundles      map[string]*TransactionBundle
+	bundleMu     sync.RWMutex
+	blockedAddrs map[string]*BlockedAddress
+	blockedMu    sync.RWMutex
 }
 
 type Config struct {
-	FlashbotsRPC     string
-	FlashbotsSecret  string
-	RedisAddr        string
-	Port             string
-	BundleTimeout    time.Duration
-	MaxBundleSize    int
+	FlashbotsRPC        string
+	FlashbotsSigningKey string
+	RedisAddr           string
+	Port                string
+	BundleTimeout       time.Duration
+	MaxBundleSize       int
 }
 
 // ============================================================================
@@ -181,11 +172,10 @@ type Config struct {
 
 func NewMEVProtectionService(config *Config) *MEVProtectionService {
 	service := &MEVProtectionService{
-		config:        config,
-		redis:         redis.NewClient(&redis.Options{Addr: config.RedisAddr}),
-		bundles:       make(map[string]*TransactionBundle),
+		config:       config,
+		redis:        redis.NewClient(&redis.Options{Addr: config.RedisAddr}),
+		bundles:      make(map[string]*TransactionBundle),
 		blockedAddrs: make(map[string]*BlockedAddress),
-		sandwichAddrs: make(map[string]*SandwichAttack),
 	}
 
 	// Start background tasks
@@ -197,10 +187,10 @@ func NewMEVProtectionService(config *Config) *MEVProtectionService {
 // Create Protected Bundle - sends transactions through Flashbots MEV-Share
 func (s *MEVProtectionService) CreateProtectedBundle(ctx context.Context, req *MEVProtectionRequest) (*ProtectedBundle, error) {
 	bundleID := generateBundleID()
-	
+
 	bundle := &TransactionBundle{
-		ID:              bundleID,
-		Transactions:    make([]PrivateTx, 0, len(req.Transactions)),
+		ID:             bundleID,
+		Transactions:   make([]PrivateTx, 0, len(req.Transactions)),
 		MinBlockNumber: 0,
 		MaxBlockNumber: req.MaxBlockNumber,
 		Status:         "pending",
@@ -262,219 +252,213 @@ func (s *MEVProtectionService) CreateProtectedBundle(ctx context.Context, req *M
 	}, nil
 }
 
-// Simulate transaction to detect MEV risks
+// SimulateTransaction executes the transaction against a real JSON-RPC node and
+// reports what the node returns: `eth_estimateGas` for the gas limit and
+// `eth_call` for the return data and revert reason. Nothing is estimated or
+// invented locally. Balance diffs and MEV opportunities are NOT derived here --
+// they need `eth_simulateV1`/`debug_traceCall` and a live mempool feed, so the
+// corresponding fields are returned empty rather than filled with placeholders.
 func (s *MEVProtectionService) SimulateTransaction(ctx context.Context, tx *PrivateTx) (*SimulationResult, error) {
+	rpcURL := os.Getenv("ETH_RPC_URL")
+	if rpcURL == "" {
+		return nil, fmt.Errorf("simulation requires a JSON-RPC endpoint; set ETH_RPC_URL")
+	}
+	if tx.From == "" || tx.To == "" {
+		return nil, fmt.Errorf("simulation requires both from and to addresses")
+	}
+
+	params := map[string]interface{}{
+		"from": tx.From,
+		"to":   tx.To,
+	}
+	if tx.Value != "" {
+		params["value"] = normalizeHexQuantity(tx.Value)
+	}
+	if tx.Data != "" {
+		params["data"] = tx.Data
+	}
+	if tx.MaxFeePerGas != "" {
+		params["maxFeePerGas"] = normalizeHexQuantity(tx.MaxFeePerGas)
+	}
+	if tx.MaxPriorityFeePerGas != "" {
+		params["maxPriorityFeePerGas"] = normalizeHexQuantity(tx.MaxPriorityFeePerGas)
+	} else if tx.GasPrice != "" {
+		params["gasPrice"] = normalizeHexQuantity(tx.GasPrice)
+	}
+
 	result := &SimulationResult{
-		Success:            true,
-		GasUsed:            21000,
-		GasPrice:           tx.GasPrice,
-		MEVOpportunities:   []MEVOpportunity{},
-		SandwichVulnerable: false,
+		GasPrice:         tx.GasPrice,
+		StateChanges:     []StateChange{},
+		MEVOpportunities: []MEVOpportunity{},
+		Logs:             []json.RawMessage{},
+		ReturnValue:      "0x",
 	}
 
-	// Sandwich vulnerability requires a live mempool/secret-mempool feed;
-	// none is configured here, so it is reported as not-vulnerable rather than
-	// fabricating a detection. DEX transactions are routed through the private
-	// relay (Flashbots) which prevents sandwiching at the source.
-
-	// Simulate state changes
-	result.StateChanges = []StateChange{
-		{
-			Address: tx.From,
-			Balance: "-"+tx.Value,
-		},
-		{
-			Address: tx.To,
-			Balance: tx.Value,
-		},
+	var gasHex string
+	if err := rpcCall(ctx, rpcURL, "eth_estimateGas", []interface{}{params}, &gasHex); err == nil {
+		if parsed, perr := strconv.ParseUint(strings.TrimPrefix(gasHex, "0x"), 16, 64); perr == nil {
+			result.GasUsed = parsed
+		}
 	}
 
-	// Simulate return value (simplified)
-	result.ReturnValue = "0x"
-
-	// Check for MEV opportunities
-	if s.isDEXTransaction(tx) {
-		result.MEVOpportunities = s.analyzeMEVOpportunities(tx)
+	var returnHex string
+	if err := rpcCall(ctx, rpcURL, "eth_call", []interface{}{params, "latest"}, &returnHex); err != nil {
+		// A revert is a legitimate simulation outcome, not a service error.
+		result.Success = false
+		result.RevertReason = err.Error()
+		return result, nil
 	}
 
+	result.Success = true
+	if returnHex != "" {
+		result.ReturnValue = returnHex
+	}
 	return result, nil
 }
 
-// detectSandwichVulnerability reports whether a DEX transaction is
-// sandwich-vulnerable. It is fail-closed: without a live mempool feed it never
-// fabricates a detection record (no fake IDs/hashes/timestamps); DEX
-// transactions are instead routed through the private relay, the real mitigation.
-func (s *MEVProtectionService) detectSandwichVulnerability(ctx context.Context, tx *PrivateTx) (*SandwichAttack, bool) {
-	_ = ctx
-	return nil, s.isDEXTransaction(tx)
-}
-
-// Analyze MEV opportunities in transaction
-func (s *MEVProtectionService) analyzeMEVOpportunities(tx *PrivateTx) []MEVOpportunity {
-	opportunities := []MEVOpportunity{}
-
-	// Check for arbitrage opportunity
-	if s.hasPriceImpact(tx) {
-		opportunities = append(opportunities, MEVOpportunity{
-			Type:     "arbitrage",
-			Profit:   "0.01",
-			TokenIn:  s.extractTokenFromData(tx.Data, 0),
-			TokenOut: s.extractTokenFromData(tx.Data, 1),
-			Amount:   tx.Value,
-			DEXPool:  "unknown",
-		})
+// rpcCall performs a single JSON-RPC request and decodes `result` into out.
+// Transport failures and JSON-RPC error objects are surfaced as Go errors so a
+// caller can never mistake a failed call for a successful one.
+func rpcCall(ctx context.Context, rpcURL, method string, params []interface{}, out interface{}) error {
+	body, err := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal %s request: %w", method, err)
 	}
 
-	// Check for liquidation opportunity
-	if s.isLiquidation(tx) {
-		opportunities = append(opportunities, MEVOpportunity{
-			Type:     "liquidation",
-			Profit:   "0.5",
-			TokenIn:  "ETH",
-			TokenOut: "USDC",
-			Amount:   "1000",
-			DEXPool:  "aave",
-		})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("build %s request: %w", method, err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	return opportunities
-}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s request: %w", method, err)
+	}
+	defer resp.Body.Close()
 
-// Block address from MEV extraction
-func (s *MEVProtectionService) BlockAddress(ctx context.Context, addr *BlockedAddress) error {
-	addr.BlockedAt = time.Now()
-	addr.BlockedBy = "admin"
-
-	s.blockedMu.Lock()
-	s.blockedAddrs[strings.ToLower(addr.Address)] = addr
-	s.blockedMu.Unlock()
-
-	// Store in Redis with 24h TTL
-	addrJSON, _ := json.Marshal(addr)
-	s.redis.Set(ctx, fmt.Sprintf("mev:block:%s", strings.ToLower(addr.Address)), addrJSON, 24*time.Hour)
-
+	var envelope struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return fmt.Errorf("decode %s response: %w", method, err)
+	}
+	if envelope.Error != nil {
+		return fmt.Errorf("%s: %s", method, envelope.Error.Message)
+	}
+	if len(envelope.Result) == 0 {
+		return fmt.Errorf("%s returned an empty result", method)
+	}
+	if err := json.Unmarshal(envelope.Result, out); err != nil {
+		return fmt.Errorf("decode %s result: %w", method, err)
+	}
 	return nil
 }
 
-// Check if address is blocked
-func (s *MEVProtectionService) IsAddressBlocked(ctx context.Context, addr string) bool {
-	s.blockedMu.RLock()
-	defer s.blockedMu.RUnlock()
+// normalizeHexQuantity renders a decimal or hex quantity as 0x-prefixed hex,
+// which is the only encoding the JSON-RPC specification accepts for quantities.
+func normalizeHexQuantity(value string) string {
+	if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+		return "0x" + strings.TrimPrefix(strings.TrimPrefix(value, "0x"), "0X")
+	}
+	if n, err := strconv.ParseUint(value, 10, 64); err == nil {
+		return "0x" + strconv.FormatUint(n, 16)
+	}
+	return value
+}
 
-	if blocked, ok := s.blockedAddrs[strings.ToLower(addr)]; ok {
+// BlockAddress adds an address to the blocklist that the bundle path consults
+// before a transaction is relayed.
+func (s *MEVProtectionService) BlockAddress(ctx context.Context, addr *BlockedAddress) error {
+	if addr.Address == "" {
+		return fmt.Errorf("address is required")
+	}
+	addr.Address = strings.ToLower(addr.Address)
+	addr.BlockedAt = time.Now()
+	if addr.BlockedBy == "" {
+		addr.BlockedBy = "admin"
+	}
+
+	s.blockedMu.Lock()
+	s.blockedAddrs[addr.Address] = addr
+	s.blockedMu.Unlock()
+
+	addrJSON, err := json.Marshal(addr)
+	if err != nil {
+		return fmt.Errorf("marshal blocked address: %w", err)
+	}
+	if err := s.redis.Set(ctx, "mev:block:"+addr.Address, addrJSON, 24*time.Hour).Err(); err != nil {
+		return fmt.Errorf("persist blocked address: %w", err)
+	}
+	return nil
+}
+
+// IsAddressBlocked reports whether an address is on the blocklist.
+func (s *MEVProtectionService) IsAddressBlocked(ctx context.Context, addr string) bool {
+	key := strings.ToLower(addr)
+
+	s.blockedMu.RLock()
+	blocked, ok := s.blockedAddrs[key]
+	s.blockedMu.RUnlock()
+	if ok {
 		if blocked.Expiration.IsZero() || blocked.Expiration.After(time.Now()) {
 			return true
 		}
 	}
 
-	// Check Redis
-	result, err := s.redis.Exists(ctx, fmt.Sprintf("mev:block:%s", strings.ToLower(addr))).Result()
-	return err == nil && result > 0
+	count, err := s.redis.Exists(ctx, "mev:block:"+key).Result()
+	return err == nil && count > 0
 }
 
-// Get sandwich attack data
-func (s *MEVProtectionService) GetSandwichAttacks(ctx context.Context, limit int) ([]*SandwichAttack, error) {
-	s.sandwichMu.RLock()
-	defer s.sandwichMu.RUnlock()
-
-	attacks := make([]*SandwichAttack, 0, limit)
-	count := 0
-	for _, attack := range s.sandwichAddrs {
-		if count >= limit {
-			break
-		}
-		attacks = append(attacks, attack)
-		count++
-	}
-
-	return attacks, nil
-}
-
-// Get bundle status
+// GetBundleStatus returns a bundle by id, from memory or from the shared Redis
+// store when another replica created it.
 func (s *MEVProtectionService) GetBundleStatus(ctx context.Context, bundleID string) (*TransactionBundle, error) {
 	s.bundleMu.RLock()
-	defer s.bundleMu.RUnlock()
-
 	bundle, ok := s.bundles[bundleID]
-	if !ok {
-		// Try Redis
-		bundleJSON, err := s.redis.Get(ctx, fmt.Sprintf("mev:bundle:%s", bundleID)).Result()
-		if err != nil {
-			return nil, fmt.Errorf("bundle not found")
-		}
-		json.Unmarshal([]byte(bundleJSON), &bundle)
+	s.bundleMu.RUnlock()
+	if ok {
+		return bundle, nil
 	}
 
-	return bundle, nil
+	bundleJSON, err := s.redis.Get(ctx, "mev:bundle:"+bundleID).Result()
+	if err != nil {
+		return nil, fmt.Errorf("bundle not found")
+	}
+	var stored TransactionBundle
+	if err := json.Unmarshal([]byte(bundleJSON), &stored); err != nil {
+		return nil, fmt.Errorf("decode stored bundle: %w", err)
+	}
+	return &stored, nil
 }
 
-// Cancel bundle
+// CancelBundle marks a pending bundle as cancelled and drops it from Redis. A
+// bundle that has already been broadcast cannot be recalled, so only pending
+// bundles can be cancelled.
 func (s *MEVProtectionService) CancelBundle(ctx context.Context, bundleID string) error {
 	s.bundleMu.Lock()
 	defer s.bundleMu.Unlock()
 
-	if bundle, ok := s.bundles[bundleID]; ok {
-		bundle.Status = "cancelled"
-		s.redis.Del(ctx, fmt.Sprintf("mev:bundle:%s", bundleID))
+	bundle, ok := s.bundles[bundleID]
+	if !ok {
+		return fmt.Errorf("bundle not found")
 	}
-
+	if bundle.Status != "pending" {
+		return fmt.Errorf("bundle is already %s and cannot be cancelled", bundle.Status)
+	}
+	bundle.Status = "cancelled"
+	if err := s.redis.Del(ctx, "mev:bundle:"+bundleID).Err(); err != nil {
+		return fmt.Errorf("remove bundle from store: %w", err)
+	}
 	return nil
-}
-
-// ============================================================================
-// Helper Methods
-// ============================================================================
-
-func (s *MEVProtectionService) isDEXTransaction(tx *PrivateTx) bool {
-	dexAddresses := []string{
-		"0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", // Uniswap V2
-		"0xE592427A0AEce92De3Edee1F18E0157C05861564", // Uniswap V3
-		"0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9", // Sushiswap
-		"0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8", // Uniswap V3 USDC/ETH
-	}
-
-	txData := strings.ToLower(tx.Data)
-	for _, addr := range dexAddresses {
-		if strings.Contains(txData, strings.ToLower(addr[2:10])) {
-			return true
-		}
-	}
-
-	// Check method IDs
-	methodIDs := []string{"0x7ff36ab5", "0x38ed1739", "0x8803dbee", "0x18cbafe5", "0x5ae401dc"} // swapExactETHForTokens, swapExactTokensForETH, etc.
-	for _, methodID := range methodIDs {
-		if strings.HasPrefix(txData, methodID) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (s *MEVProtectionService) hasPriceImpact(tx *PrivateTx) bool {
-	// Simplified - in production would analyze DEX pools
-	return s.isDEXTransaction(tx)
-}
-
-func (s *MEVProtectionService) isLiquidation(tx *PrivateTx) bool {
-	// Check for Aave/Compound liquidation methods
-	liquidateMethods := []string{"0xee9194d6", "0x9b3a4c25"} // liquidationCall
-	txData := strings.ToLower(tx.Data)
-	for _, method := range liquidateMethods {
-		if strings.HasPrefix(txData, method) {
-			return true
-		}
-	}
-	return false
-}
-
-func (s *MEVProtectionService) extractTokenFromData(data string, index int) string {
-	// Simplified token extraction from swap data
-	// In production, would properly parse contract calldata
-	if len(data) > 10 {
-		return "TOKEN"
-	}
-	return ""
 }
 
 // broadcastBundle submits each signed raw transaction in the bundle to the
@@ -483,17 +467,52 @@ func (s *MEVProtectionService) extractTokenFromData(data string, index int) stri
 // real transaction hashes reported by the network. A tx hash is NEVER
 // fabricated; it is always the value returned by the broadcast.
 func (s *MEVProtectionService) broadcastBundle(ctx context.Context, bundle *TransactionBundle, level MEVProtectionLevel) (txHashes []string, bundleHash string, err error) {
-	rpcURL := s.config.FlashbotsRPC
-	if level != MEVLevelFlashbots {
-		// For non-flashbots protection, fall back to a public RPC endpoint that
-		// must be configured. Without a real broadcast there is no real hash.
-		rpcURL = os.Getenv("ETH_RPC_URL")
-		if rpcURL == "" {
-			return nil, "", fmt.Errorf("transaction broadcast not implemented - cannot generate tx hash without broadcasting; ETH_RPC_URL environment variable must be set")
+	if level == MEVLevelFlashbots {
+		// Submit the signed transactions as ONE atomic bundle through the
+		// authenticated relay. The relay returns the bundle hash it computed over
+		// the signed payload; the individual transaction hashes are the hashes of
+		// the signed transactions themselves (the relay does not echo them back).
+		if s.config.FlashbotsSigningKey == "" {
+			return nil, "", fmt.Errorf("FLASHBOTS_SIGNING_KEY environment variable must be set for flashbots-protected bundles")
 		}
+		if len(bundle.Transactions) > s.config.MaxBundleSize {
+			return nil, "", fmt.Errorf("bundle exceeds the maximum of %d transactions", s.config.MaxBundleSize)
+		}
+
+		signedTxs := make([]string, 0, len(bundle.Transactions))
+		txHashes = make([]string, 0, len(bundle.Transactions))
+		for _, tx := range bundle.Transactions {
+			hash, hErr := signedTxHash(tx.RawSignedTx)
+			if hErr != nil {
+				return nil, "", fmt.Errorf("invalid signed transaction for nonce %d: %w", tx.Nonce, hErr)
+			}
+			signedTxs = append(signedTxs, tx.RawSignedTx)
+			txHashes = append(txHashes, hash)
+		}
+
+		params := []interface{}{map[string]interface{}{"txs": signedTxs}}
+		if bundle.MaxBlockNumber > 0 {
+			params[0].(map[string]interface{})["blockNumber"] = "0x" + strconv.FormatUint(bundle.MaxBlockNumber, 16)
+		}
+
+		var relayResult struct {
+			BundleHash string `json:"bundleHash"`
+		}
+		if err := s.flashbotsRPC(ctx, "eth_sendBundle", params, &relayResult); err != nil {
+			return nil, "", fmt.Errorf("eth_sendBundle failed: %w", err)
+		}
+		if relayResult.BundleHash == "" {
+			return nil, "", fmt.Errorf("eth_sendBundle returned an empty bundle hash")
+		}
+		return txHashes, relayResult.BundleHash, nil
 	}
-	if s.config.FlashbotsSecret == "" && level == MEVLevelFlashbots {
-		return nil, "", fmt.Errorf("FLASHBOTS_SECRET environment variable must be set for flashbots-protected bundles")
+
+	// Non-flashbots levels broadcast each signed transaction to a regular
+	// JSON-RPC node. Without a configured node there is no broadcast, and
+	// therefore no real hash to report.
+	rpcURL := os.Getenv("ETH_RPC_URL")
+	if rpcURL == "" {
+		return nil, "", fmt.Errorf("cannot broadcast without a JSON-RPC endpoint; set ETH_RPC_URL")
 	}
 
 	txHashes = make([]string, 0, len(bundle.Transactions))
@@ -506,77 +525,171 @@ func (s *MEVProtectionService) broadcastBundle(ctx context.Context, bundle *Tran
 	}
 
 	// The bundle hash is derived deterministically from the ordered list of
-	// real on-chain transaction hashes returned by the relay/RPC, not from a
-	// timestamp or request metadata.
-	bundleIDSource := strings.Join(txHashes, ":")
-	digest := sha256.Sum256([]byte(bundleIDSource))
-	bundleHash = "0x" + hex.EncodeToString(digest[:])
-	return txHashes, bundleHash, nil
+	// real on-chain transaction hashes returned by the node, so it is a function
+	// of network-returned values only.
+	digest := crypto.Keccak256([]byte(strings.Join(txHashes, ":")))
+	return txHashes, "0x" + hex.EncodeToString(digest), nil
 }
 
 // sendRawTransaction calls eth_sendRawTransaction against the given JSON-RPC
 // endpoint and returns the transaction hash reported by the node.
 func (s *MEVProtectionService) sendRawTransaction(ctx context.Context, rpcURL, rawSignedTx string) (string, error) {
-	payload := map[string]interface{}{
+	var hash string
+	if err := rpcCall(ctx, rpcURL, "eth_sendRawTransaction", []interface{}{rawSignedTx}, &hash); err != nil {
+		return "", err
+	}
+	if hash == "" {
+		return "", fmt.Errorf("eth_sendRawTransaction returned an empty transaction hash")
+	}
+	return hash, nil
+}
+
+// signedTxHash returns the transaction hash of a signed raw transaction, i.e.
+// keccak256 over the raw transaction bytes (the RLP payload for legacy
+// transactions, the EIP-2718 envelope for typed ones). This is exactly the
+// hash a node returns from eth_sendRawTransaction.
+func signedTxHash(rawSignedTx string) (string, error) {
+	hexBody := strings.TrimPrefix(rawSignedTx, "0x")
+	if hexBody == "" {
+		return "", fmt.Errorf("empty signed transaction")
+	}
+	raw, err := hex.DecodeString(hexBody)
+	if err != nil {
+		return "", fmt.Errorf("signed transaction is not valid hex: %w", err)
+	}
+	if len(raw) == 0 {
+		return "", fmt.Errorf("empty signed transaction")
+	}
+	return hex.EncodeToString(crypto.Keccak256(raw)), nil
+}
+
+// flashbotsRPC performs a JSON-RPC call against the Flashbots relay. The relay
+// authenticates callers with an X-Flashbots-Signature header produced by
+// signing the keccak256 hash of the request body with the configured key.
+func (s *MEVProtectionService) flashbotsRPC(ctx context.Context, method string, params []interface{}, out interface{}) error {
+	body, err := json.Marshal(map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
-		"method":  "eth_sendRawTransaction",
-		"params":  []string{rawSignedTx},
-	}
-	body, err := json.Marshal(payload)
+		"method":  method,
+		"params":  params,
+	})
 	if err != nil {
-		return "", fmt.Errorf("marshal rpc request: %w", err)
+		return fmt.Errorf("marshal %s request: %w", method, err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rpcURL, strings.NewReader(string(body)))
+	signature, err := signFlashbotsBody(s.config.FlashbotsSigningKey, body)
 	if err != nil {
-		return "", fmt.Errorf("build rpc request: %w", err)
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.FlashbotsRPC, strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("build %s request: %w", method, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Flashbots-Signature", signature)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("rpc request: %w", err)
+		return fmt.Errorf("%s request: %w", method, err)
 	}
 	defer resp.Body.Close()
 
-	var result struct {
-		Result string `json:"result"`
+	var envelope struct {
+		Result json.RawMessage `json:"result"`
 		Error  *struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode rpc response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return fmt.Errorf("decode %s response: %w", method, err)
 	}
-	if result.Error != nil {
-		return "", fmt.Errorf("rpc error %d: %s", result.Error.Code, result.Error.Message)
+	if envelope.Error != nil {
+		return fmt.Errorf("%s: %s", method, envelope.Error.Message)
 	}
-	if result.Result == "" {
-		return "", fmt.Errorf("rpc returned empty transaction hash")
+	if len(envelope.Result) == 0 {
+		return fmt.Errorf("%s returned an empty result", method)
 	}
-	return result.Result, nil
+	if err := json.Unmarshal(envelope.Result, out); err != nil {
+		return fmt.Errorf("decode %s result: %w", method, err)
+	}
+	return nil
 }
 
+// signFlashbotsBody builds the X-Flashbots-Signature header value:
+// "<checksummed-address>:0x<65-byte recoverable signature over keccak256(body)>".
+// The key must be a 0x-prefixed 32-byte hex private key. It fails closed when
+// the key is missing or malformed, so an unsigned bundle can never be sent.
+func signFlashbotsBody(privateKeyHex string, body []byte) (string, error) {
+	key := strings.TrimPrefix(privateKeyHex, "0x")
+	if key == "" {
+		return "", fmt.Errorf("FLASHBOTS_SIGNING_KEY is not configured; refusing to call the relay unsigned")
+	}
+	raw, err := hex.DecodeString(key)
+	if err != nil || len(raw) != 32 {
+		return "", fmt.Errorf("FLASHBOTS_SIGNING_KEY must be a 32-byte hex private key")
+	}
+
+	priv, err := crypto.ToECDSA(raw)
+	if err != nil {
+		return "", fmt.Errorf("invalid FLASHBOTS_SIGNING_KEY: %w", err)
+	}
+
+	digest := crypto.Keccak256(body)
+	sig, err := crypto.Sign(digest, priv)
+	if err != nil {
+		return "", fmt.Errorf("sign flashbots request: %w", err)
+	}
+	// crypto.Sign appends the recovery id as 0/1; EIP-155 style headers use 27/28.
+	sig[64] += 27
+
+	return crypto.PubkeyToAddress(priv.PublicKey).Hex() + ":0x" + hex.EncodeToString(sig), nil
+}
+
+// syncBlocklist refreshes the in-memory blocklist from Redis. The map is rebuilt
+// from scratch so entries whose Redis TTL has expired stop being honoured; SCAN
+// is used instead of KEYS so a large keyspace never blocks the Redis event loop.
+func (s *MEVProtectionService) syncBlocklist(ctx context.Context) {
+	refreshed := make(map[string]*BlockedAddress)
+
+	var cursor uint64
+	for {
+		keys, next, err := s.redis.Scan(ctx, cursor, "mev:block:*", 200).Result()
+		if err != nil {
+			log.Printf("blocklist scan failed: %v", err)
+			return
+		}
+		for _, key := range keys {
+			addr := strings.TrimPrefix(key, "mev:block:")
+			data, err := s.redis.Get(ctx, key).Result()
+			if err != nil {
+				continue
+			}
+			var blocked BlockedAddress
+			if err := json.Unmarshal([]byte(data), &blocked); err != nil {
+				log.Printf("blocklist entry %s is not decodable: %v", addr, err)
+				continue
+			}
+			refreshed[addr] = &blocked
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	s.blockedMu.Lock()
+	s.blockedAddrs = refreshed
+	s.blockedMu.Unlock()
+}
 
 func (s *MEVProtectionService) startBlocklistSync() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		ctx := context.Background()
-		// Sync blocklist from Redis
-		keys, _ := s.redis.Keys(ctx, "mev:block:*").Result()
-		for _, key := range keys {
-			addr := strings.Replace(key, "mev:block:", "", 1)
-			data, _ := s.redis.Get(ctx, key).Result()
-			var blocked BlockedAddress
-			json.Unmarshal([]byte(data), &blocked)
-			s.blockedMu.Lock()
-			s.blockedAddrs[addr] = &blocked
-			s.blockedMu.Unlock()
-		}
+		s.syncBlocklist(context.Background())
 	}
 }
 
@@ -591,7 +704,6 @@ func (s *MEVProtectionService) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/simulate", s.handleSimulate)
 	r.POST("/block", s.handleBlockAddress)
 	r.GET("/block/:address", s.handleCheckBlocked)
-	r.GET("/sandwich", s.handleGetSandwichAttacks)
 	r.GET("/protected-chains", s.handleGetProtectedChains)
 }
 
@@ -604,7 +716,7 @@ func (s *MEVProtectionService) handleCreateBundle(c *gin.Context) {
 
 	bundle, err := s.CreateProtectedBundle(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusCreated, bundle)
@@ -664,16 +776,6 @@ func (s *MEVProtectionService) handleCheckBlocked(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"blocked": blocked})
 }
 
-func (s *MEVProtectionService) handleGetSandwichAttacks(c *gin.Context) {
-	limit := 10
-	if l := c.Query("limit"); l != "" {
-		fmt.Sscanf(l, "%d", &limit)
-	}
-
-	attacks, _ := s.GetSandwichAttacks(c.Request.Context(), limit)
-	c.JSON(http.StatusOK, gin.H{"attacks": attacks})
-}
-
 func (s *MEVProtectionService) handleGetProtectedChains(c *gin.Context) {
 	chains := []string{
 		"ethereum",
@@ -692,20 +794,21 @@ func (s *MEVProtectionService) handleGetProtectedChains(c *gin.Context) {
 // ============================================================================
 
 func generateBundleID() string {
-	data := fmt.Sprintf("%d-%s", time.Now().UnixNano(), "bundle")
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:16])
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		log.Fatalf("generate bundle id: %v", err)
+	}
+	return hex.EncodeToString(buf)
 }
-
 
 // ============================================================================
 // Main
 // ============================================================================
 
 func main() {
-	flashbotsSecret := os.Getenv("FLASHBOTS_SECRET")
-	if flashbotsSecret == "" {
-		log.Println("warning: FLASHBOTS_SECRET not set; flashbots-protected bundles will be rejected at broadcast time")
+	flashbotsSigningKey := os.Getenv("FLASHBOTS_SIGNING_KEY")
+	if flashbotsSigningKey == "" {
+		log.Println("warning: FLASHBOTS_SIGNING_KEY not set; flashbots-protected bundles will be rejected at broadcast time")
 	}
 	port := os.Getenv("MEV_PROTECTION_PORT")
 	if port == "" {
@@ -717,12 +820,12 @@ func main() {
 	}
 
 	config := &Config{
-		FlashbotsRPC:    "https://relay.flashbots.net",
-		FlashbotsSecret: flashbotsSecret,
-		RedisAddr:       redisAddr,
-		Port:            port,
-		BundleTimeout:   5 * time.Minute,
-		MaxBundleSize:   10,
+		FlashbotsRPC:        "https://relay.flashbots.net",
+		FlashbotsSigningKey: flashbotsSigningKey,
+		RedisAddr:           redisAddr,
+		Port:                port,
+		BundleTimeout:       5 * time.Minute,
+		MaxBundleSize:       10,
 	}
 
 	r := gin.Default()

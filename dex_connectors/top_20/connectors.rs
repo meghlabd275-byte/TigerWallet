@@ -89,10 +89,10 @@ fn get_router_address(dex: &str, chain_id: u32) -> String {
         ("pancakeswap_v4", 56) => "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4".to_string(), // Smart Router
         ("curve_finance", 1) => "0x99a58482BD75cbab83b27EC03CA68fF489b5788f".to_string(), // Router
         ("balancer_v2", 1) => "0xBA12222222228d8Ba445958a75a0704d566BF2C8".to_string(), // Vault
-        ("maverick", 1) => "0xbBb90af057E44a579a2A77A17dC9c0660eB19Af2".to_string(), // Router
+        ("maverick", 1) => "0x7448c7456a97769F6cD04F1E83A4a23cCdC46aBD".to_string(), // Router
         ("aerodrome", 8453) => "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43".to_string(),
         ("velodrome_v3", 10) => "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858".to_string(),
-        ("spirit_swap", 250) => "0x16327E3fDa4723d75523651Fc967f111e4698f8c".to_string(),
+        ("spirit_swap", 250) => "0x16327E3FbDaCA3bcF7E38F5Af2599D2DDc33aE52".to_string(),
         ("spookyswap", 250) => "0xF491e7B69E4244ad4002BC14e878a34207E38c29".to_string(),
         _ => String::new(), // aggregators & orderbooks: no direct router
     }

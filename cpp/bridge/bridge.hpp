@@ -332,14 +332,14 @@ public:
         // BNB Chain
         tokens_["56"]["0x0000000000000000000000000000000000000000"] =
             {"0x0000000000000000000000000000000000000000", "BNB", "BNB", 18, "", true};
-        tokens_["56"]["0x55d398326f99059ff775892246c05b17634fb5ae"] =
-            {"0x55d398326f99059ff775892246c05b17634fb5ae", "Tether USD", "USDT", 18, "", false};
+        tokens_["56"]["0x55d398326f99059fF775485246999027B3197955"] =
+            {"0x55d398326f99059fF775485246999027B3197955", "Tether USD", "USDT", 18, "", false};
 
         // Solana
         tokens_["101"]["So11111111111111111111111111111111111111112"] =
             {"So11111111111111111111111111111111111111112", "Wrapped SOL", "SOL", 9, "", true};
-        tokens_["101"]["EPjFWdd5AufqSSBcMpttL8mYMBc2sSjNR9m1RVzvtq"] =
-            {"EPjFWdd5AufqSSBcMpttL8mYMBc2sSjNR9m1RVzvtq", "USD Coin", "USDC", 6, "", false};
+        tokens_["101"]["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"] =
+            {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "USD Coin", "USDC", 6, "", false};
     }
 
     void initialize_protocols() {

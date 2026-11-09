@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
             name: "QuickSwap",
             logo: "⚡",
             color: "#6c8fc5",
-            factory: "0x5757371414417b8C6CAad45bAeF941aB7dab7B3B",
+            factory: "0x5757371414417b8C6CAad45bAeF941aBc7d3ab32",
         });
         m
     };

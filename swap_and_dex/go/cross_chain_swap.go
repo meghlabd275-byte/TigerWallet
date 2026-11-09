@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -25,128 +24,128 @@ import (
 
 // Configuration
 type SwapConfig struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // Supported Chains
 const (
-	CHAIN_ETHEREUM       = 1
-	CHAIN_POLYGON       = 137
-	CHAIN_BSC           = 56
-	CHAIN_ARBITRUM      = 42161
-	CHAIN_OPTIMISM      = 10
-	CHAIN_AVALANCHE     = 43114
-	CHAIN_SOLANA        = "solana"
-	CHAIN_NEAR         = "near"
-	CHAIN_APTOS        = "aptos"
+	CHAIN_ETHEREUM  = 1
+	CHAIN_POLYGON   = 137
+	CHAIN_BSC       = 56
+	CHAIN_ARBITRUM  = 42161
+	CHAIN_OPTIMISM  = 10
+	CHAIN_AVALANCHE = 43114
+	CHAIN_SOLANA    = "solana"
+	CHAIN_NEAR      = "near"
+	CHAIN_APTOS     = "aptos"
 )
 
 // Swap Status
 const (
-	STATUS_PENDING    = "pending"
+	STATUS_PENDING   = "pending"
 	STATUS_INITIATED = "initiated"
-	STATUS_ACCEPTED = "accepted"
+	STATUS_ACCEPTED  = "accepted"
 	STATUS_COMPLETED = "completed"
-	STATUS_FAILED   = "failed"
+	STATUS_FAILED    = "failed"
 	STATUS_REFUNDED  = "refunded"
 )
 
 // Swap Types
 const (
-	TYPE_DIRECT_SWAP    = "direct"
+	TYPE_DIRECT_SWAP = "direct"
 	TYPE_BRIDGE_SWAP = "bridge"
-	TYPE_ATOMIC    = "atomic"
+	TYPE_ATOMIC      = "atomic"
 )
 
 // Swap struct represents a cross-chain swap
 type Swap struct {
-	ID               uint      `gorm:"primaryKey" json:"id"`
-	SwapID          string    `gorm:"uniqueIndex" json:"swap_id"`
-	Type           string    `json:"type"`
-	FromChain      int64     `json:"from_chain"`
-	ToChain        int64     `json:"to_chain"`
-	FromToken     string    `json:"from_token"`
-	ToToken       string    `json:"to_token"`
-	Sender        string    `json:"sender"`
-	Recipient     string    `json:"recipient"`
-	FromAmount    string    `json:"from_amount"`
-	ToAmount      string    `json:"to_amount"`
-	MinAmount     string    `json:"min_amount"`
-	HashLock      string    `json:"hash_lock"`
-	Secret        string    `json:"secret"` // Encrypted
-	TimeLock      int64     `json:"time_lock"`
-	Status       string    `json:"status"`
-	FromTxHash   string    `json:"from_tx_hash"`
-	ToTxHash     string    `json:"to_tx_hash"`
-	BlockNumber  int64     `json:"block_number"`
-	Fee          string    `json:"fee"`
-	Slippage     float64   `json:"slippage"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	CompletedAt  *time.Time `json:"completed_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	SwapID      string     `gorm:"uniqueIndex" json:"swap_id"`
+	Type        string     `json:"type"`
+	FromChain   int64      `json:"from_chain"`
+	ToChain     int64      `json:"to_chain"`
+	FromToken   string     `json:"from_token"`
+	ToToken     string     `json:"to_token"`
+	Sender      string     `json:"sender"`
+	Recipient   string     `json:"recipient"`
+	FromAmount  string     `json:"from_amount"`
+	ToAmount    string     `json:"to_amount"`
+	MinAmount   string     `json:"min_amount"`
+	HashLock    string     `json:"hash_lock"`
+	Secret      string     `json:"secret"` // Encrypted
+	TimeLock    int64      `json:"time_lock"`
+	Status      string     `json:"status"`
+	FromTxHash  string     `json:"from_tx_hash"`
+	ToTxHash    string     `json:"to_tx_hash"`
+	BlockNumber int64      `json:"block_number"`
+	Fee         string     `json:"fee"`
+	Slippage    float64    `json:"slippage"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CompletedAt *time.Time `json:"completed_at"`
 }
 
 // BridgeRoute represents a bridge route
 type BridgeRoute struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	Name            string    `json:"name"`
-	FromChain       int64     `json:"from_chain"`
-	ToChain         int64     `json:"to_chain"`
-	FromToken      string    `json:"from_token"`
-	ToToken        string    `json:"to_token"`
-	Contract      string    `json:"contract"`
-	MinAmount     string    `json:"min_amount"`
-	MaxAmount     string    `json:"max_amount"`
-	Fee           string    `json:"fee"`
-	FeeToken      string    `json:"fee_token"`
-	EstimatedTime int64     `json:"estimated_time"`
-	IsActive      bool      `json:"is_active"`
+	ID            uint   `gorm:"primaryKey" json:"id"`
+	Name          string `json:"name"`
+	FromChain     int64  `json:"from_chain"`
+	ToChain       int64  `json:"to_chain"`
+	FromToken     string `json:"from_token"`
+	ToToken       string `json:"to_token"`
+	Contract      string `json:"contract"`
+	MinAmount     string `json:"min_amount"`
+	MaxAmount     string `json:"max_amount"`
+	Fee           string `json:"fee"`
+	FeeToken      string `json:"fee_token"`
+	EstimatedTime int64  `json:"estimated_time"`
+	IsActive      bool   `json:"is_active"`
 }
 
 // SwapQuote represents a swap quote
 type SwapQuote struct {
-	FromChain    int64   `json:"from_chain"`
-	ToChain    int64   `json:"to_chain"`
-	FromToken  string `json:"from_token"`
-	ToToken   string `json:"to_token"`
-	FromAmount string `json:"from_amount"`
-	ToAmount  string `json:"to_amount"`
-	MinAmount string `json:"min_amount"`
-	Fee       string `json:"fee"`
-	FeeToken  string `json:"fee_token"`
+	FromChain   int64   `json:"from_chain"`
+	ToChain     int64   `json:"to_chain"`
+	FromToken   string  `json:"from_token"`
+	ToToken     string  `json:"to_token"`
+	FromAmount  string  `json:"from_amount"`
+	ToAmount    string  `json:"to_amount"`
+	MinAmount   string  `json:"min_amount"`
+	Fee         string  `json:"fee"`
+	FeeToken    string  `json:"fee_token"`
 	PriceImpact float64 `json:"price_impact"`
-	Provider  string `json:"provider"`
-	Route     string `json:"route"`
+	Provider    string  `json:"provider"`
+	Route       string  `json:"route"`
 }
 
 // LiquidityPool represents a liquidity pool
 type LiquidityPool struct {
-	ID           uint   `gorm:"primaryKey" json:"id"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
 	PoolAddress string `gorm:"uniqueIndex" json:"pool_address"`
-	ChainID    int64  `json:"chain_id"`
-	Token0     string `json:"token0"`
-	Token1     string `json:"token1"`
-	Reserve0   string `json:"reserve0"`
-	Reserve1   string `json:"reserve1"`
-	Liquidity  string `json:"liquidity"`
-	Fee        int64  `json:"fee"`
+	ChainID     int64  `json:"chain_id"`
+	Token0      string `json:"token0"`
+	Token1      string `json:"token1"`
+	Reserve0    string `json:"reserve0"`
+	Reserve1    string `json:"reserve1"`
+	Liquidity   string `json:"liquidity"`
+	Fee         int64  `json:"fee"`
 }
 
 // SwapService main service
 type SwapService struct {
-	db      *gorm.DB
-	redis   *redis.Client
-	config  SwapConfig
-	routes  sync.Map // route name -> BridgeRoute
-	pools   sync.Map // pool address -> LiquidityPool
-	quotes  sync.Map // swap_id -> SwapQuote
+	db     *gorm.DB
+	redis  *redis.Client
+	config SwapConfig
+	routes sync.Map // route name -> BridgeRoute
+	pools  sync.Map // pool address -> LiquidityPool
+	quotes sync.Map // swap_id -> SwapQuote
 }
 
 // NewSwapService creates new service
@@ -175,11 +174,11 @@ func NewSwapService(cfg SwapConfig) (*SwapService, error) {
 	}
 
 	return &SwapService{
-		db:      db,
-		redis:   rdb,
-		config:  cfg,
-		routes:  sync.Map{},
-		pools:   sync.Map{},
+		db:     db,
+		redis:  rdb,
+		config: cfg,
+		routes: sync.Map{},
+		pools:  sync.Map{},
 		quotes: sync.Map{},
 	}, nil
 }
@@ -221,21 +220,21 @@ func (s *SwapService) CreateSwap(req CreateSwapRequest) (*Swap, error) {
 	swap := &Swap{
 		SwapID:     swapID,
 		Type:       req.Type,
-		FromChain: req.FromChain,
-		ToChain:   req.ToChain,
-		FromToken: req.FromToken,
-		ToToken:  req.ToToken,
-		Sender:   req.Sender,
-		Recipient: req.Recipient,
+		FromChain:  req.FromChain,
+		ToChain:    req.ToChain,
+		FromToken:  req.FromToken,
+		ToToken:    req.ToToken,
+		Sender:     req.Sender,
+		Recipient:  req.Recipient,
 		FromAmount: req.FromAmount,
-		ToAmount:  req.ToAmount,
-		MinAmount: req.MinAmount,
-		HashLock: hashLock,
-		TimeLock: timeLock,
-		Status:   STATUS_PENDING,
-		Fee:      req.Fee,
-		Slippage:  req.Slippage,
-		CreatedAt: time.Now(),
+		ToAmount:   req.ToAmount,
+		MinAmount:  req.MinAmount,
+		HashLock:   hashLock,
+		TimeLock:   timeLock,
+		Status:     STATUS_PENDING,
+		Fee:        req.Fee,
+		Slippage:   req.Slippage,
+		CreatedAt:  time.Now(),
 	}
 
 	s.db.Create(swap)
@@ -246,9 +245,9 @@ func (s *SwapService) CreateSwap(req CreateSwapRequest) (*Swap, error) {
 // InitiateSwap initiates a swap (sender deposits funds)
 func (s *SwapService) InitiateSwap(swapID, txHash string) error {
 	result := s.db.Model(&Swap{}).Where("swap_id = ?", swapID).Updates(map[string]interface{}{
-		"status":      STATUS_INITIATED,
+		"status":       STATUS_INITIATED,
 		"from_tx_hash": txHash,
-		"updated_at":  time.Now(),
+		"updated_at":   time.Now(),
 	})
 
 	if result.RowsAffected == 0 {
@@ -277,8 +276,8 @@ func (s *SwapService) AcceptSwap(swapID, secret, txHash string) error {
 	}
 
 	result := s.db.Model(&Swap{}).Where("swap_id = ?", swapID).Updates(map[string]interface{}{
-		"status":      STATUS_ACCEPTED,
-		"to_tx_hash":  txHash,
+		"status":     STATUS_ACCEPTED,
+		"to_tx_hash": txHash,
 		"secret":     secret,
 		"updated_at": time.Now(),
 	})
@@ -362,43 +361,22 @@ func (s *SwapService) GetQuote(req QuoteRequest) (*SwapQuote, error) {
 
 	quote := &SwapQuote{
 		FromChain:   req.FromChain,
-		ToChain:    req.ToChain,
-		FromToken:  req.FromToken,
-		ToToken:   req.ToToken,
-		FromAmount: req.FromAmount,
-		ToAmount:  toAmount,
-		MinAmount: minAmount,
-		Fee:      "0",
-		FeeToken:  req.FromToken,
+		ToChain:     req.ToChain,
+		FromToken:   req.FromToken,
+		ToToken:     req.ToToken,
+		FromAmount:  req.FromAmount,
+		ToAmount:    toAmount,
+		MinAmount:   minAmount,
+		Fee:         "0",
+		FeeToken:    req.FromToken,
 		PriceImpact: 0.5,
-		Provider: "TigerWallet",
-		Route:    "direct",
+		Provider:    "TigerWallet",
+		Route:       "direct",
 	}
 
 	s.quotes.Store(quote.Route, quote)
 
 	return quote, nil
-}
-
-// ExecuteSwap executes a swap
-func (s *SwapService) ExecuteSwap(req ExecuteSwapRequest) (*Swap, error) {
-	swap, err := s.GetSwap(req.SwapID)
-	if err != nil {
-		return nil, err
-	}
-
-	if swap.Status != STATUS_INITIATED {
-		return nil, fmt.Errorf("swap not in correct state")
-	}
-
-	// Simulate broadcast
-	toTxHash := "0x" + generateHash()
-
-	swap.ToTxHash = toTxHash
-	swap.Status = STATUS_ACCEPTED
-	s.db.Save(swap)
-
-	return swap, nil
 }
 
 // AddRoute adds a bridge route
@@ -473,30 +451,26 @@ func (s *SwapService) CalculateSwap(poolAddress, fromToken, fromAmount string) (
 // API Handlers
 
 type CreateSwapRequest struct {
-	Type        string  `json:"type" binding:"required"`
+	Type       string  `json:"type" binding:"required"`
 	FromChain  int64   `json:"from_chain" binding:"required"`
 	ToChain    int64   `json:"to_chain" binding:"required"`
 	FromToken  string  `json:"from_token" binding:"required"`
-	ToToken   string  `json:"to_token" binding:"required"`
-	Sender    string  `json:"sender" binding:"required"`
-	Recipient string  `json:"recipient" binding:"required"`
-	FromAmount string `json:"from_amount" binding:"required"`
-	ToAmount  string  `json:"to_amount"`
+	ToToken    string  `json:"to_token" binding:"required"`
+	Sender     string  `json:"sender" binding:"required"`
+	Recipient  string  `json:"recipient" binding:"required"`
+	FromAmount string  `json:"from_amount" binding:"required"`
+	ToAmount   string  `json:"to_amount"`
 	MinAmount  string  `json:"min_amount"`
-	Fee       string  `json:"fee"`
-	Slippage  float64 `json:"slippage"`
+	Fee        string  `json:"fee"`
+	Slippage   float64 `json:"slippage"`
 }
 
 type QuoteRequest struct {
-	FromChain  int64   `json:"from_chain" binding:"required"`
-	ToChain    int64   `json:"to_chain" binding:"required"`
-	FromToken  string  `json:"from_token" binding:"required"`
-	ToToken   string  `json:"to_token" binding:"required"`
+	FromChain  int64  `json:"from_chain" binding:"required"`
+	ToChain    int64  `json:"to_chain" binding:"required"`
+	FromToken  string `json:"from_token" binding:"required"`
+	ToToken    string `json:"to_token" binding:"required"`
 	FromAmount string `json:"from_amount" binding:"required"`
-}
-
-type ExecuteSwapRequest struct {
-	SwapID string `json:"swap_id" binding:"required"`
 }
 
 func (s *SwapService) CreateSwapHandler(c *gin.Context) {
@@ -517,7 +491,7 @@ func (s *SwapService) CreateSwapHandler(c *gin.Context) {
 
 func (s *SwapService) InitiateSwapHandler(c *gin.Context) {
 	var req struct {
-		SwapID  string `json:"swap_id" binding:"required"`
+		SwapID string `json:"swap_id" binding:"required"`
 		TxHash string `json:"tx_hash" binding:"required"`
 	}
 
@@ -536,7 +510,7 @@ func (s *SwapService) InitiateSwapHandler(c *gin.Context) {
 
 func (s *SwapService) AcceptSwapHandler(c *gin.Context) {
 	var req struct {
-		SwapID  string `json:"swap_id" binding:"required"`
+		SwapID string `json:"swap_id" binding:"required"`
 		Secret string `json:"secret" binding:"required"`
 		TxHash string `json:"tx_hash" binding:"required"`
 	}
@@ -653,24 +627,18 @@ func parseInt64(s string) int64 {
 	return i
 }
 
-func generateHash() string {
-	var b [32]byte
-	rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
-
 // Main
 
 func main() {
 	cfg := SwapConfig{
 		ServerPort: getEnv("SWAP_SERVER_PORT", "8083"),
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "postgres"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: mustEnv("DB_PASSWORD"),
-		DBName:    getEnv("DB_NAME", "swap_db"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
+		DBName:     getEnv("DB_NAME", "swap_db"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
 	}
 
 	service, err := NewSwapService(cfg)

@@ -173,7 +173,7 @@ function Header() {
               </div>
             ) : (
               <button
-                onClick={() => setWalletState({ ...walletState, isConnected: true, address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E', balance: 12500.50 })}
+                onClick={() => setWalletState({ ...walletState, isConnected: true, address: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789', balance: 12500.50 })}
                 className="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-white font-medium"
               >
                 Connect Wallet
@@ -211,7 +211,7 @@ function DropdownItem({ icon, label, onClick }: { icon: React.ReactNode; label: 
 function BalanceCard() {
   const [walletState] = useState<WalletState>({
     isConnected: true,
-    address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E',
+    address: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
     balance: 12500.50,
     tokens: [],
     transactions: [],

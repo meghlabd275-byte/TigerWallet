@@ -72,7 +72,7 @@ BridgeManager::~BridgeManager() {
 void BridgeManager::initializeSupportedChains() {
     supportedChains["ethereum"] = ChainInfo{1, "Ethereum", "ETH", ChainType::EVM, 12, "https://eth.llamarpc.com", "https://etherscan.io", "", "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"};
     supportedChains["bsc"] = ChainInfo{56, "BNB Smart Chain", "BNB", ChainType::EVM, 15, "https://bsc-dataseed.binance.org", "https://bscscan.com", "", "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"};
-    supportedChains["polygon"] = ChainInfo{137, "Polygon", "MATIC", ChainType::EVM, 15, "https://polygon-rpc.com", "https://polygonscan.com", "", "0x0d500b1d8e8f31a01fb648e5c11b06c9e5a9c3a3"};
+    supportedChains["polygon"] = ChainInfo{137, "Polygon", "MATIC", ChainType::EVM, 15, "https://polygon-rpc.com", "https://polygonscan.com", "", "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"};
     supportedChains["arbitrum"] = ChainInfo{42161, "Arbitrum One", "ETH", ChainType::EVM, 15, "https://arb1.arbitrum.io/rpc", "https://arbiscan.io", "", "0x82af49447d8a07e3bd95bd0d56f35241523fbab1"};
     supportedChains["optimism"] = ChainInfo{10, "Optimism", "ETH", ChainType::EVM, 15, "https://mainnet.optimism.io", "https://optimistic.etherscan.io", "", "0x4200000000000000000000000000000000000006"};
     supportedChains["avalanche"] = ChainInfo{43114, "Avalanche C-Chain", "AVAX", ChainType::EVM, 15, "https://api.avax.network/ext/bc/C/rpc", "https://snowtrace.io", "", "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7"};
@@ -108,12 +108,12 @@ void BridgeManager::initializeTokenMappers() {
         {"MATIC", TokenInfo{"MATIC", "0x0000000000000000000000000000000000000000", 18, true}},
         {"USDT", TokenInfo{"USDT", "0xc2132d05d31c914a87c6611c10748aeb04b58e8f", 6, false}},
         {"USDC", TokenInfo{"USDC", "0x2791bca1f2de4661ed88a30c99a7a9449aa84174", 6, false}},
-        {"ETH", TokenInfo{"ETH", "0x7ceb23fd6bc0add59e62ac255261c05d1c1eae19", 18, false}},
+        {"ETH", TokenInfo{"ETH", "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", 18, false}},
         {"WBTC", TokenInfo{"WBTC", "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6", 8, false}}
     };
     tokenMappers["arbitrum"] = {
         {"ETH", TokenInfo{"ETH", "0x0000000000000000000000000000000000000000", 18, true}},
-        {"USDT", TokenInfo{"USDT", "0xfd086b7a5c8c0e5c6d7a8b9c0d1e2f3a4b5c6d7e", 6, false}},
+        {"USDT", TokenInfo{"USDT", "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", 6, false}},
         {"USDC", TokenInfo{"USDC", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", 6, false}},
         {"ARB", TokenInfo{"ARB", "", 18, true}}
     };

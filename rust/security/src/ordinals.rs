@@ -25,18 +25,15 @@
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
-
-use bitcoin::address::Address;
-use bitcoin::consensus::encode::serialize;
-use bitcoin::hashes::{sha256, Hash};
-use bitcoin::key::{PrivateKey, PublicKey};
-use bitcoin::opcodes::all::{OP_IF, OP_ELSE, OP_ENDIF};
-use bitcoin::psbt::PartiallySignedTransaction;
-use bitcoin::script::{Builder, Script};
-use bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
-use bitcoin::transaction::{Transaction, TxIn, TxOut, Txid};
-use bitcoin::{Network, WPubkeyHash, WScriptHash};
+use bitcoin::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
+use bitcoin::hashes::Hash;
+use bitcoin::key::PublicKey;
+use bitcoin::psbt::Psbt;
+use bitcoin::script::{Builder, PushBytesBuf, ScriptBuf};
+use bitcoin::secp256k1::{All, Secp256k1, SecretKey};
+use bitcoin::sighash::EcdsaSighashType;
+use bitcoin::taproot::TapNodeHash;
+use bitcoin::{Address, Network};
 use serde::{Deserialize, Serialize};
 
 /// Maximum inscription content size (408 KB)
@@ -229,126 +226,167 @@ pub enum BRC20Action {
     TransferSend,
 }
 
-/// Ordinals wallet
+/// Ordinals wallet.
+///
+/// The key material is derived with BIP-32 (BIP-84 path) from the caller's
+/// seed and never leaves the struct. Both the native SegWit and Taproot
+/// addresses are derived from that key.
 pub struct OrdinalsWallet {
     secp: Secp256k1<All>,
-    keypair: Keypair,
+    secret_key: SecretKey,
+    public_key: PublicKey,
     network: Network,
-    derivation_path: Vec<u32>,
+    derivation_path: DerivationPath,
+}
+
+/// BIP-84 account path: m/84'/coin'/account'.
+fn bip84_path(coin_type: u32, account: u32) -> Result<DerivationPath, OrdinalsError> {
+    Ok(DerivationPath::from(vec![
+        ChildNumber::from_hardened_idx(84)
+            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?,
+        ChildNumber::from_hardened_idx(coin_type)
+            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?,
+        ChildNumber::from_hardened_idx(account)
+            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?,
+    ]))
 }
 
 impl OrdinalsWallet {
-    /// Create a new ordinals wallet from seed
+    /// Create a wallet from a BIP-39 seed.
+    ///
+    /// `seed` must be the 64-byte BIP-39 seed output (not the mnemonic itself),
+    /// which is what keeps the addresses interoperable with every other BIP-32
+    /// wallet.
     pub fn new(seed: &[u8], network: Network) -> Result<Self, OrdinalsError> {
         let secp = Secp256k1::new();
-        
-        // Derive key using BIP-32 from seed
-        let key = Self::derive_key(&secp, seed, &[
-            0x8000002C, // 44' (Bitcoin purpose)
-            0x80000000, // 0' (Bitcoin)
-            0x80000000, // 0' (change)
-            0,         // 0 (address index)
-            0,         // 0 (internal)
-        ])?;
-        
-        let keypair = Keypair::from_seckey_slice(&secp, key.as_slice())
+
+        let master = ExtendedPrivKey::new_master(network, seed)
+            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?;
+
+        let path = bip84_path(0, 0)?;
+        let derived = master
+            .derive_priv(&secp, &path)
+            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?;
+
+        let secret_key = SecretKey::from_slice(&derived.private_key.secret_bytes())
             .map_err(|e| OrdinalsError::InvalidKey(e.to_string()))?;
-        
+        let public_key = PublicKey::new(secp256k1::PublicKey::from_secret_key(&secp, &secret_key));
+
         Ok(Self {
             secp,
-            keypair,
+            secret_key,
+            public_key,
             network,
-            derivation_path: vec![44 | 0x80000000, 0 | 0x80000000, 0 | 0x80000000, 0, 0],
+            derivation_path: path,
         })
     }
-    
-    /// Create wallet from existing private key
+
+    /// Create a wallet from a hex-encoded 32-byte private key.
     pub fn from_private_key(private_key: &str, network: Network) -> Result<Self, OrdinalsError> {
         let secp = Secp256k1::new();
-        
-        let key_bytes = hex::decode(private_key)
+
+        let key_bytes = hex::decode(private_key.trim_start_matches("0x"))
             .map_err(|e| OrdinalsError::InvalidKey(e.to_string()))?;
-        
-        let secret_key = SecretKey::from_slice(&secp, &key_bytes)
+        if key_bytes.len() != 32 {
+            return Err(OrdinalsError::InvalidKey(format!(
+                "private key must be 32 bytes, got {}",
+                key_bytes.len()
+            )));
+        }
+
+        let secret_key = SecretKey::from_slice(&key_bytes)
             .map_err(|e| OrdinalsError::InvalidKey(e.to_string()))?;
-        
-        let keypair = Keypair::from_secret_key(&secp, &secret_key);
-        
+        let public_key = PublicKey::new(secp256k1::PublicKey::from_secret_key(&secp, &secret_key));
+
         Ok(Self {
             secp,
-            keypair,
+            secret_key,
+            public_key,
             network,
-            derivation_path: vec![],
+            derivation_path: bip84_path(0, 0)?,
         })
     }
-    
-    /// Get the public key
+
+    /// Compressed public key.
     pub fn public_key(&self) -> PublicKey {
-        PublicKey::from_keypair(&self.keypair)
+        self.public_key
     }
-    
-    /// Get the Bitcoin address (P2WPKH)
-    pub fn address(&self) -> Address {
-        let pubkey_hash = WPubkeyHash::hash(&self.public_key().inner);
-        Address::p2wkh(pubkey_hash, self.network)
-            .unwrap()
+
+    /// Derivation path in use.
+    pub fn derivation_path(&self) -> &DerivationPath {
+        &self.derivation_path
     }
-    
-    /// Get the taproot address (for ordinals)
+
+    /// Network in use.
+    pub fn network(&self) -> Network {
+        self.network
+    }
+
+    /// Native SegWit (P2WPKH, BIP-84) address.
+    pub fn address(&self) -> Result<Address, OrdinalsError> {
+        Address::p2wpkh(&self.public_key, self.network)
+            .map_err(|e| OrdinalsError::InvalidKey(e.to_string()))
+    }
+
+    /// Taproot (P2TR, BIP-86) address, key path only.
+    ///
+    /// BIP-86 uses the internal key with an empty script tree, so the output key
+    /// is `internal_key + tap_tweak(internal_key)`.
     pub fn taproot_address(&self) -> Address {
-        // Use BIP-86 for taproot (no script path)
-        let internal_key = self.public_key().inner;
-        let mut builder = Builder::new();
-        builder = builder.push_opcode(OP_IF);
-        builder = builder.push_slice(&internal_key);
-        builder = builder.push_opcode(OP_ELSE);
-        builder = builder.push_opcode(OP_ENDIF);
-        
-        let script = builder.into_script();
-        let script_hash = WScriptHash::hash(&script);
-        Address::p2ws(script_hash, self.network)
-            .unwrap()
+        let (internal_key, _parity) = self.public_key.inner.x_only_public_key();
+        Address::p2tr(&self.secp, internal_key, None::<TapNodeHash>, self.network)
     }
-    
-    /// Derive key from seed
-    fn derive_key(
-        secp: &Secp256k1<All>,
-        seed: &[u8],
-        path: &[u32],
-    ) -> Result<Vec<u8>, OrdinalsError> {
-        use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv, Xpub};
-        use hmac::{Hmac, Mac};
-        use sha2::Sha512;
-        
-        type HmacSha512 = Hmac<Sha512>;
-        
-        // Master key derivation from seed (BIP-39)
-        let mut mac = HmacSha512::new_from_slice(b"TigerWallet Bitcoin Seed")
-            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?;
-        mac.update(seed);
-        let mut result = mac.finalize();
-        let mut mac = HmacSha512::new_from_slice(&result)
-            .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?;
-        mac.update(&[0x00]);
-        result = mac.finalize();
-        
-        let master_key = &result.into_bytes()[..32];
-        
-        // Derive child keys
-        let mut key = master_key.to_vec();
-        for index in path {
-            let child_num = ChildNumber::from_normal_idx(*index)
-                .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?;
-            
-            let mut mac = HmacSha512::new_from_slice(&key)
-                .map_err(|e| OrdinalsError::KeyDerivation(e.to_string()))?;
-            mac.update(&child_num.to_le_bytes());
-            result = mac.finalize();
-            
-            key = result.into_bytes()[..32].to_vec();
+
+    /// Sign every P2WPKH input of a PSBT this wallet can sign.
+    ///
+    /// Each input must carry its witness UTXO; without it the sighash cannot be
+    /// computed, and the input is reported as an error rather than skipped.
+    pub fn sign_transaction(&self, psbt: &mut Psbt) -> Result<(), OrdinalsError> {
+        if psbt.inputs.len() != psbt.unsigned_tx.input.len() {
+            return Err(OrdinalsError::InvalidTransaction(
+                "PSBT input count does not match the transaction input count".to_string(),
+            ));
         }
-        
-        Ok(key)
+        if psbt.inputs.is_empty() {
+            return Err(OrdinalsError::InvalidTransaction(
+                "the transaction has no inputs to sign".to_string(),
+            ));
+        }
+
+        let unsigned_tx = psbt.unsigned_tx.clone();
+        let mut cache = bitcoin::sighash::SighashCache::new(&unsigned_tx);
+        let sighash_type = EcdsaSighashType::All;
+
+        for index in 0..psbt.inputs.len() {
+            let witness_utxo = psbt.inputs[index].witness_utxo.clone().ok_or_else(|| {
+                OrdinalsError::InvalidTransaction(format!(
+                    "input {index} has no witness UTXO, so its sighash cannot be computed"
+                ))
+            })?;
+
+            let sighash = cache
+                .segwit_signature_hash(
+                    index,
+                    &witness_utxo.script_pubkey,
+                    witness_utxo.value,
+                    sighash_type,
+                )
+                .map_err(|e| OrdinalsError::SigningFailed(e.to_string()))?;
+
+            let message = bitcoin::secp256k1::Message::from_slice(&sighash.to_byte_array())
+                .map_err(|e| OrdinalsError::SigningFailed(e.to_string()))?;
+            let signature = self.secp.sign_ecdsa(&message, &self.secret_key);
+
+            psbt.inputs[index].partial_sigs.insert(
+                self.public_key,
+                bitcoin::ecdsa::Signature {
+                    sig: signature,
+                    hash_ty: sighash_type,
+                },
+            );
+        }
+
+        Ok(())
     }
     
     /// Create an inscription transaction
@@ -366,7 +404,10 @@ impl OrdinalsWallet {
             return Err(OrdinalsError::ContentTooLarge(content.len()));
         }
         
-        let address = reveal_address.unwrap_or_else(|| self.address().to_string());
+        let address = match reveal_address {
+            Some(address) => address,
+            None => self.address()?.to_string(),
+        };
         
         // Build inscription script
         let script = self.build_inscription_script(&content)?;
@@ -380,45 +421,34 @@ impl OrdinalsWallet {
         })
     }
     
-    /// Build inscription script
-    fn build_inscription_script(&self, content: &str) -> Result<Script, OrdinalsError> {
-        use bitcoin::opcodes::all::*;
-        
-        // Envelope: "ord" OP_1 OP_IF <content> OP_ENDIF
+    /// Build an ord inscription envelope.
+    ///
+    /// The envelope is `OP_FALSE OP_IF "ord" <fields> OP_ENDIF`, an unspendable
+    /// branch that no Bitcoin node strips. Field 1 carries the content type and
+    /// field 0 carries the body.
+    fn build_inscription_script(&self, content: &str) -> Result<ScriptBuf, OrdinalsError> {
+        use bitcoin::opcodes::all::{OP_ENDIF, OP_IF, OP_PUSHBYTES_0, OP_PUSHNUM_1};
+
+        let push = |data: &[u8]| -> Result<PushBytesBuf, OrdinalsError> {
+            PushBytesBuf::try_from(data.to_vec())
+                .map_err(|e| OrdinalsError::Encoding(e.to_string()))
+        };
+
         let mut builder = Builder::new();
-        
-        // Push "ord" as protocol
-        builder = builder.push_slice(b"ord");
-        
-        // Push OP_1 (marker)
-        builder = builder.push_opcode(OP_1);
-        
-        // Push OP_IF to start
+        // OP_FALSE and OP_0 share the same byte; the crate names it OP_PUSHBYTES_0.
+        builder = builder.push_opcode(OP_PUSHBYTES_0);
         builder = builder.push_opcode(OP_IF);
-        
-        // Push content
-        builder = builder.push_slice(content.as_bytes());
-        
-        // Push OP_ENDIF
+        builder = builder.push_slice(push(b"ord")?);
+
+        builder = builder.push_opcode(OP_PUSHNUM_1);
+        builder = builder.push_slice(push(b"text/plain;charset=utf-8")?);
+
+        builder = builder.push_opcode(OP_PUSHBYTES_0);
+        builder = builder.push_slice(push(content.as_bytes())?);
+
         builder = builder.push_opcode(OP_ENDIF);
-        
+
         Ok(builder.into_script())
-    }
-    
-    /// Sign a transaction
-    pub fn sign_transaction(
-        &self,
-        psbt: &mut PartiallySignedTransaction,
-    ) -> Result<(), OrdinalsError> {
-        let mut signatory = self.keypair;
-        
-        // Sign all inputs
-        for input in psbt.unsigned_tx.input.iter_mut() {
-            // Get previous output info
-            // Sign using SIGHASH_ALL
-        }
-        
-        Ok(())
     }
     
     /// Create a BRC-20 deploy transaction
@@ -505,7 +535,7 @@ impl OrdinalsWallet {
 /// Build outputs for inscription
 pub struct InscriptionBuild {
     pub content: String,
-    pub script: Script,
+    pub script: ScriptBuf,
     pub reveal_address: String,
     pub fee_rate: u64,
     pub witness: Vec<Vec<u8>>,
@@ -515,7 +545,7 @@ pub struct InscriptionBuild {
 pub struct BRC20Build {
     pub ticker: String,
     pub data: String,
-    pub script: Script,
+    pub script: ScriptBuf,
     pub reveal_address: String,
     pub fee_rate: u64,
 }
@@ -679,7 +709,7 @@ mod tests {
         let seed = [0u8; 32];
         let wallet = OrdinalsWallet::new(&seed, Network::Bitcoin).unwrap();
         
-        let address = wallet.address();
+        let address = wallet.address().expect("wallet has an address");
         assert!(!address.to_string().is_empty());
     }
     
@@ -724,7 +754,7 @@ mod tests {
         
         let build = wallet.create_brc20_deploy(
             request,
-            wallet.address().to_string(),
+            wallet.address().expect("wallet has an address").to_string(),
             10,
         ).unwrap();
         
@@ -736,17 +766,14 @@ mod tests {
         let seed = [0u8; 32];
         let wallet = OrdinalsWallet::new(&seed, Network::Bitcoin).unwrap();
         
+        let address = wallet.address().expect("wallet has an address").to_string();
         let request = TransferRequest {
             ticker: "TEST".to_string(),
             amount: "100".to_string(),
-            recipient_address: wallet.address().to_string(),
+            recipient_address: address.clone(),
         };
-        
-        let build = wallet.create_brc20_transfer(
-            request,
-            wallet.address().to_string(),
-            10,
-        ).unwrap();
+
+        let build = wallet.create_brc20_transfer(request, address, 10).unwrap();
         
         assert!(build.data.contains("transfer"));
     }

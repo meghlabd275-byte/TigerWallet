@@ -1,6 +1,6 @@
 /**
  * TigerWallet Staking Service - Complete Implementation
- * 
+ *
  * Multi-chain staking with validators, rewards, and governance
  * High-performance Go service for worldwide distribution
  */
@@ -25,66 +25,66 @@ import (
 
 // Validator information
 type Validator struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Address       string    `json:"address"`
-	ChainID       uint64    `json:"chain_id"`
-	Commission    float64   `json:"commission"`
-	APY          float64   `json:"apy"`
-	Uptime       float64   `json:"uptime"`
-	TotalStake   string    `json:"total_stake"`
-	Delegators   uint64    `json:"delegators"`
-	MinStake     string    `json:"min_stake"`
-	MaxStake     string    `json:"max_stake"`
-	IsActive     bool      `json:"is_active"`
-	IsJailed     bool      `json:"is_jailed"`
-	Logo         string    `json:"logo"`
-	Website      string    `json:"website"`
-	Description  string    `json:"description"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Address     string  `json:"address"`
+	ChainID     uint64  `json:"chain_id"`
+	Commission  float64 `json:"commission"`
+	APY         float64 `json:"apy"`
+	Uptime      float64 `json:"uptime"`
+	TotalStake  string  `json:"total_stake"`
+	Delegators  uint64  `json:"delegators"`
+	MinStake    string  `json:"min_stake"`
+	MaxStake    string  `json:"max_stake"`
+	IsActive    bool    `json:"is_active"`
+	IsJailed    bool    `json:"is_jailed"`
+	Logo        string  `json:"logo"`
+	Website     string  `json:"website"`
+	Description string  `json:"description"`
 }
 
 // Stake position
 type StakePosition struct {
-	ID            string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	ValidatorID  string    `json:"validator_id"`
-	ChainID      uint64    `json:"chain_id"`
-	Token        string    `json:"token"`
-	StakedAmount string    `json:"staked_amount"`
-	Rewards      string    `json:"rewards"`
-	PendingRewards string   `json:"pending_rewards"`
-	Status       string    `json:"status"` // active, unbonding, withdrawn
-	StartTime    time.Time `json:"start_time"`
-	EndTime      *time.Time `json:"end_time,omitempty"`
-	UnlockTime   *time.Time `json:"unlock_time,omitempty"`
+	ID             string     `json:"id"`
+	UserID         string     `json:"user_id"`
+	ValidatorID    string     `json:"validator_id"`
+	ChainID        uint64     `json:"chain_id"`
+	Token          string     `json:"token"`
+	StakedAmount   string     `json:"staked_amount"`
+	Rewards        string     `json:"rewards"`
+	PendingRewards string     `json:"pending_rewards"`
+	Status         string     `json:"status"` // active, unbonding, withdrawn
+	StartTime      time.Time  `json:"start_time"`
+	EndTime        *time.Time `json:"end_time,omitempty"`
+	UnlockTime     *time.Time `json:"unlock_time,omitempty"`
 }
 
 // Staking pool
 type StakingPool struct {
-	ID           string    `json:"id"`
-	ChainID     uint64    `json:"chain_id"`
-	Token       string    `json:"token"`
-	TotalStaked string    `json:"total_staked"`
-	TotalRewards string   `json:"total_rewards"`
-	APY         float64   `json:"apy"`
-	MinStake    string    `json:"min_stake"`
-	LockPeriod  uint64    `json:"lock_period"` // seconds
-	IsActive   bool      `json:"is_active"`
+	ID           string  `json:"id"`
+	ChainID      uint64  `json:"chain_id"`
+	Token        string  `json:"token"`
+	TotalStaked  string  `json:"total_staked"`
+	TotalRewards string  `json:"total_rewards"`
+	APY          float64 `json:"apy"`
+	MinStake     string  `json:"min_stake"`
+	LockPeriod   uint64  `json:"lock_period"` // seconds
+	IsActive     bool    `json:"is_active"`
 }
 
 // Unbonding request
 type UnbondRequest struct {
 	ID           string    `json:"id"`
-	PositionID  string    `json:"position_id"`
-	Amount      string    `json:"amount"`
+	PositionID   string    `json:"position_id"`
+	Amount       string    `json:"amount"`
 	CompleteTime time.Time `json:"complete_time"`
-	Status     string    `json:"status"` // pending, completed
+	Status       string    `json:"status"` // pending, completed
 }
 
 // Reward claim
 type RewardClaim struct {
-	ID          string    `json:"id"`
-	PositionID  string    `json:"position_id"`
+	ID         string    `json:"id"`
+	PositionID string    `json:"position_id"`
 	Amount     string    `json:"amount"`
 	TxHash     string    `json:"tx_hash"`
 	Status     string    `json:"status"` // pending, claimed
@@ -94,39 +94,39 @@ type RewardClaim struct {
 // Staking transaction
 type StakingTransaction struct {
 	ID          string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	Type       string    `json:"type"` // stake, unstake, claim, transfer
-	ChainID    uint64    `json:"chain_id"`
-	Token      string    `json:"token"`
-	Amount     string    `json:"amount"`
+	UserID      string    `json:"user_id"`
+	Type        string    `json:"type"` // stake, unstake, claim, transfer
+	ChainID     uint64    `json:"chain_id"`
+	Token       string    `json:"token"`
+	Amount      string    `json:"amount"`
 	ValidatorID string    `json:"validator_id,omitempty"`
-	Status     string    `json:"status"` // pending, confirmed, failed
-	TxHash     string    `json:"tx_hash,omitempty"`
-	Timestamp  time.Time `json:"timestamp"`
+	Status      string    `json:"status"` // pending, confirmed, failed
+	TxHash      string    `json:"tx_hash,omitempty"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // Governance proposal
 type GovernanceProposal struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Type        string    `json:"type"` // parameter, upgrade, treasury
-	Status      string    `json:"status"` // active, passed, rejected, executed
-	ForVotes    string    `json:"for_votes"`
-	AgainstVotes string   `json:"against_votes"`
-	AbstainVotes string  `json:"abstain_votes"`
-	StartTime  time.Time `json:"start_time"`
-	EndTime    time.Time `json:"end_time"`
-	Proposer   string    `json:"proposer"`
+	ID           string    `json:"id"`
+	Title        string    `json:"title"`
+	Description  string    `json:"description"`
+	Type         string    `json:"type"`   // parameter, upgrade, treasury
+	Status       string    `json:"status"` // active, passed, rejected, executed
+	ForVotes     string    `json:"for_votes"`
+	AgainstVotes string    `json:"against_votes"`
+	AbstainVotes string    `json:"abstain_votes"`
+	StartTime    time.Time `json:"start_time"`
+	EndTime      time.Time `json:"end_time"`
+	Proposer     string    `json:"proposer"`
 }
 
 // Vote
 type Vote struct {
-	ID          string    `json:"id"`
-	ProposalID  string    `json:"proposal_id"`
-	Voter       string    `json:"voter"`
-	Choice      string    `json:"choice"` // for, against, abstain
-	Weight      string    `json:"weight"`
+	ID         string    `json:"id"`
+	ProposalID string    `json:"proposal_id"`
+	Voter      string    `json:"voter"`
+	Choice     string    `json:"choice"` // for, against, abstain
+	Weight     string    `json:"weight"`
 	TxHash     string    `json:"tx_hash"`
 	Timestamp  time.Time `json:"timestamp"`
 }
@@ -137,26 +137,26 @@ type Vote struct {
 
 // StakingService main service
 type StakingService struct {
-	mu          sync.RWMutex
-	chains      map[uint64]ChainConfig
-	validators  map[string]*Validator
-	pools       map[string]*StakingPool
-	positions   map[string]*StakePosition
-	unbondings  map[string]*UnbondRequest
-	claims      map[string]*RewardClaim
+	mu           sync.RWMutex
+	chains       map[uint64]ChainConfig
+	validators   map[string]*Validator
+	pools        map[string]*StakingPool
+	positions    map[string]*StakePosition
+	unbondings   map[string]*UnbondRequest
+	claims       map[string]*RewardClaim
 	transactions map[string]*StakingTransaction
-	proposals   map[string]*GovernanceProposal
-	votes       map[string]*Vote
+	proposals    map[string]*GovernanceProposal
+	votes        map[string]*Vote
 }
 
 // Chain configuration
 type ChainConfig struct {
-	ChainID       uint64   `json:"chain_id"`
-	Name         string   `json:"name"`
-	Token        string   `json:"token"`
-	MinStake     string   `json:"min_stake"`
-	LockPeriod   uint64   `json:"lock_period"` // seconds
-	UnbondPeriod uint64   `json:"unbond_period"` // seconds
+	ChainID      uint64 `json:"chain_id"`
+	Name         string `json:"name"`
+	Token        string `json:"token"`
+	MinStake     string `json:"min_stake"`
+	LockPeriod   uint64 `json:"lock_period"`   // seconds
+	UnbondPeriod uint64 `json:"unbond_period"` // seconds
 }
 
 // NewStakingService creates new service
@@ -167,7 +167,7 @@ func NewStakingService() *StakingService {
 		pools:        make(map[string]*StakingPool),
 		positions:    make(map[string]*StakePosition),
 		unbondings:   make(map[string]*UnbondRequest),
-		claims:      make(map[string]*RewardClaim),
+		claims:       make(map[string]*RewardClaim),
 		transactions: make(map[string]*StakingTransaction),
 		proposals:    make(map[string]*GovernanceProposal),
 		votes:        make(map[string]*Vote),
@@ -195,8 +195,8 @@ func (s *StakingService) initialize() {
 
 func (s *StakingService) addValidators() {
 	validators := []*Validator{
-		{ID: "eth-1", Name: "Lido", Address: "0xae7ab96520DE3A18f5b537e85E8a5C3e1dA1cC8D", ChainID: 1, Commission: 10, APY: 4.2, Uptime: 99.9, TotalStake: "5000000", Delegators: 250000, MinStake: "0.01", MaxStake: "100000", IsActive: true, Logo: "https://lido.fi/logo.png", Website: "https://lido.fi", Description: "Lido is a liquid staking solution for Ethereum"},
-		{ID: "eth-2", Name: "Rocket Pool", Address: "0x6F6dCF6D2F7D8b4D8F5f7D7D8C9aB3E5F7D8C9E5", ChainID: 1, Commission: 15, APY: 3.8, Uptime: 99.5, TotalStake: "2000000", Delegators: 85000, MinStake: "0.01", MaxStake: "50000", IsActive: true, Logo: "https://rocketpool.net/logo.png", Website: "https://rocketpool.net"},
+		{ID: "eth-1", Name: "Lido", Address: "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84", ChainID: 1, Commission: 10, APY: 4.2, Uptime: 99.9, TotalStake: "5000000", Delegators: 250000, MinStake: "0.01", MaxStake: "100000", IsActive: true, Logo: "https://lido.fi/logo.png", Website: "https://lido.fi", Description: "Lido is a liquid staking solution for Ethereum"},
+		{ID: "eth-2", Name: "Rocket Pool", Address: "0xae78736Cd615f374D3085123A210448E74Fc6393", ChainID: 1, Commission: 15, APY: 3.8, Uptime: 99.5, TotalStake: "2000000", Delegators: 85000, MinStake: "0.01", MaxStake: "50000", IsActive: true, Logo: "https://rocketpool.net/logo.png", Website: "https://rocketpool.net"},
 		{ID: "bsc-1", Name: "Binance Staking", Address: "0x6F9dCF6D2F7D8b4D8F5f7D7D8C9aB3E5F7D8C9E5", ChainID: 56, Commission: 5, APY: 5.5, Uptime: 99.99, TotalStake: "10000000", Delegators: 500000, MinStake: "0.1", MaxStake: "1000000", IsActive: true},
 		{ID: "matic-1", Name: "Polygon Staking", Address: "0x7F9dCF6D2F7D8b4D8F5f7D7D8C9aB3E5F7D8C9E5", ChainID: 137, Commission: 5, APY: 6.2, Uptime: 99.95, TotalStake: "50000000", Delegators: 120000, MinStake: "10", MaxStake: "5000000", IsActive: true},
 		{ID: "sol-1", Name: "Solana Staking", Address: "0x8F9dCF6D2F7D8b4D8F5f7D7D8C9aB3E5F7D8C9E5", ChainID: 501, Commission: 8, APY: 7.5, Uptime: 99.8, TotalStake: "100000000", Delegators: 350000, MinStake: "1", MaxStake: "10000000", IsActive: true},
@@ -252,7 +252,7 @@ func (s *StakingService) GetValidator(validatorID string) (*Validator, error) {
 // GetTopValidators returns top validators by stake
 func (s *StakingService) GetTopValidators(chainID uint64, limit int) []*Validator {
 	validators := s.GetValidators(chainID)
-	
+
 	// Sort by total stake (simplified)
 	for i := 0; i < len(validators)-1; i++ {
 		for j := i + 1; j < len(validators); j++ {
@@ -292,16 +292,16 @@ func (s *StakingService) Stake(ctx context.Context, userID, validatorID, amount 
 
 	// Create position
 	position := &StakePosition{
-		ID:            generateStakingID("stake"),
-		UserID:       userID,
-		ValidatorID:  validatorID,
-		ChainID:      validator.ChainID,
-		Token:        validator.Name,
-		StakedAmount: amount,
-		Rewards:      "0",
+		ID:             generateStakingID("stake"),
+		UserID:         userID,
+		ValidatorID:    validatorID,
+		ChainID:        validator.ChainID,
+		Token:          validator.Name,
+		StakedAmount:   amount,
+		Rewards:        "0",
 		PendingRewards: "0",
-		Status:       "active",
-		StartTime:    time.Now(),
+		Status:         "active",
+		StartTime:      time.Now(),
 	}
 
 	s.mu.Lock()
@@ -313,7 +313,7 @@ func (s *StakingService) Stake(ctx context.Context, userID, validatorID, amount 
 		ID:          generateStakingID("tx"),
 		UserID:      userID,
 		Type:        "stake",
-		ChainID:    validator.ChainID,
+		ChainID:     validator.ChainID,
 		Token:       validator.Name,
 		Amount:      amount,
 		ValidatorID: validatorID,
@@ -390,11 +390,11 @@ func (s *StakingService) Unbond(positionID, amount string) (*UnbondRequest, erro
 	}
 
 	unbond := &UnbondRequest{
-		ID:          generateStakingID("unbond"),
-		PositionID:  positionID,
-		Amount:      amount,
+		ID:           generateStakingID("unbond"),
+		PositionID:   positionID,
+		Amount:       amount,
 		CompleteTime: time.Now().Add(time.Duration(chainConfig.UnbondPeriod) * time.Second),
-		Status:      "pending",
+		Status:       "pending",
 	}
 
 	s.mu.Lock()
@@ -440,10 +440,10 @@ func (s *StakingService) ClaimRewards(positionID string) (*RewardClaim, error) {
 	claim := &RewardClaim{
 		ID:         generateStakingID("claim"),
 		PositionID: positionID,
-		Amount:    rewards.Text('f', 8),
-		TxHash:    "0x" + generateStakingID("tx"),
-		Status:    "claimed",
-		ClaimedAt: time.Now(),
+		Amount:     rewards.Text('f', 8),
+		TxHash:     "0x" + generateStakingID("tx"),
+		Status:     "claimed",
+		ClaimedAt:  time.Now(),
 	}
 
 	s.mu.Lock()
@@ -506,12 +506,12 @@ func (s *StakingService) CreateProposal(title, description, proposalType, propos
 	proposal := &GovernanceProposal{
 		ID:           generateStakingID("proposal"),
 		Title:        title,
-		Description:   description,
+		Description:  description,
 		Type:         proposalType,
 		Status:       "active",
 		ForVotes:     "0",
-		AgainstVotes:  "0",
-		AbstainVotes:  "0",
+		AgainstVotes: "0",
+		AbstainVotes: "0",
 		StartTime:    time.Now(),
 		EndTime:      time.Now().Add(7 * 24 * time.Hour),
 		Proposer:     proposer,
@@ -694,7 +694,7 @@ func (s *StakingService) handleStake(w http.ResponseWriter, r *http.Request) {
 func (s *StakingService) handleUnbond(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PositionID string `json:"position_id"`
-		Amount    string `json:"amount"`
+		Amount     string `json:"amount"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

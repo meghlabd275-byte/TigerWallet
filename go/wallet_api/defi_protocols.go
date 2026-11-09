@@ -64,12 +64,12 @@ var defiProtocolContracts = map[string]string{
 	"curve":    "0xD533a949740bb3306d119CC777fa900bA034cd52",
 	"1inch":    "0x111111111117dC0aa78b770fA6A738034120C302",
 	"sushi":    "0x6B3595068778DD592e39A122f4f5a5cF09C90fE2",
-	"balancer": "0xba100000625a3754423978a60c2b1a3a3cE33c38D78f3E",
+	"balancer": "0xba100000625a3754423978a60c9317c58a424e3DD78f3E",
 	"aave":     "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
 	"compound": "0xc00e94Cb662C3520282E6f5717214004A7f26888",
 	"lido":     "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
 	"yearn":    "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
-	"pancake":  "0x18BF1C73aC38B4e2c60c2b1a3a3cE33c38D78f3E",
+	"pancake":  "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
 }
 
 var defiProtocolCategory = map[string]string{

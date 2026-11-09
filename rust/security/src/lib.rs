@@ -18,9 +18,19 @@ use sha2::{Digest, Sha256, Sha512};
 use subtle::ConstantTimeEq;
 
 pub mod account_abstraction;
+pub mod biometric;
+pub mod crypto;
+pub mod dex_aggregator;
+pub mod digest;
+pub mod evm_chains;
 pub mod gasless;
 pub mod launch_readiness;
+pub mod mpc;
+pub mod ordinals;
+pub mod secure_random;
 pub mod social_recovery;
+pub mod stacks;
+pub mod trading;
 pub mod transaction_preview;
 
 // ============================================================================

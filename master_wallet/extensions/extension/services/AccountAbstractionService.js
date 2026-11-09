@@ -22,7 +22,7 @@ const { authedFetch, getAuthContext } = (typeof require === 'function')
   : ((globalThis.MW_API) || {});
 
 // Known mainnet EntryPoint address (ERC-4337 v0.6). Constant, not a stub.
-const ENTRYPOINT_ADDRESS = '0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3';
+const ENTRYPOINT_ADDRESS = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789';
 
 class MasterAccountAbstractionService {
   constructor(masterWalletId) {

@@ -106,8 +106,8 @@ func LoadConfig() *Config {
 			Decimals: 6,
 			GasUsed:  65000,
 		},
-		"0x6B175474E89094C44Da98b954EadeAC462271d19": { // DAI
-			Address:  common.HexToAddress("0x6B175474E89094C44Da98b954EadeAC462271d19"),
+		"0x6B175474E89094C44Da98b954EedeAC495271d0F": { // DAI
+			Address:  common.HexToAddress("0x6B175474E89094C44Da98b954EedeAC495271d0F"),
 			Symbol:   "DAI",
 			Decimals: 18,
 			GasUsed:  65000,
@@ -126,8 +126,8 @@ func LoadConfig() *Config {
 			GasUsed:  65000,
 		},
 		// BSC
-		"0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd540d": { // USDC BSC
-			Address:  common.HexToAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd540d"),
+		"0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d": { // USDC BSC
+			Address:  common.HexToAddress("0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"),
 			Symbol:   "USDC",
 			Decimals: 18,
 			GasUsed:  65000,

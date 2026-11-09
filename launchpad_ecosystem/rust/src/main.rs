@@ -15,7 +15,6 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -138,7 +137,9 @@ pub struct Contribution {
     pub user_id: String,
     pub amount: String,
     pub token_amount: String,
-    pub tx_hash: String,
+    /// Hash returned by the chain once the contribution payment is broadcast.
+    /// `None` while the contribution is still pending.
+    pub tx_hash: Option<String>,
     pub status: String,
     pub timestamp: DateTime<Utc>,
 }
@@ -319,7 +320,7 @@ impl LaunchpadService {
             user_id: user_id.to_string(),
             amount: amount.to_string(),
             token_amount: format!("{:.8}", token_amount),
-            tx_hash: generate_tx_hash(),
+            tx_hash: None,
             status: "pending".to_string(),
             timestamp: Utc::now(),
         };
@@ -498,7 +499,7 @@ impl LaunchpadService {
             contribs.get(project_id).cloned().unwrap_or_default()
         };
 
-        let mut participants_by_tier: HashMap<u8, u64> = HashMap::new();
+        let participants_by_tier: HashMap<u8, u64> = HashMap::new();
         let mut unique_wallets: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for c in &contributions {
@@ -530,12 +531,6 @@ impl LaunchpadService {
 // Helper Functions
 // ============================================================================
 
-fn generate_tx_hash() -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(Uuid::new_v4().to_string().as_bytes());
-    hasher.update(Utc::now().timestamp_nanos_opt().unwrap_or(0).to_string().as_bytes());
-    format!("0x{:x}", hasher.finalize())
-}
 
 // ============================================================================
 // Main
@@ -602,10 +597,19 @@ async fn main() {
             // Set user tier
             service.set_user_tier("user_001", 2, "5000").unwrap();
             
+            // A project only accepts contributions once it is active.
+            if let Err(e) = service.update_project_status(&created.project_id, LaunchStatus::Active) {
+                eprintln!("failed to activate the project: {e}");
+                return;
+            }
+
             // Contribute
             match service.contribute(&created.project_id, "user_001", "1000") {
                 Ok(contrib) => {
-                    println!("Contribution: {} - {} tokens", contrib.contribution_id, contrib.token_amount);
+                    println!(
+                        "Contribution: {} - {} tokens (status {}, tx hash {:?})",
+                        contrib.contribution_id, contrib.token_amount, contrib.status, contrib.tx_hash
+                    );
                 }
                 Err(e) => println!("Contribution error: {}", e),
             }

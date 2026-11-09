@@ -1,7 +1,7 @@
 /**
  * TigerWallet NFT Marketplace Integration
  * C++ Implementation with Real Marketplace Support
- * 
+ *
  * Features:
  * - Multi-marketplace support (OpenSea, Magic Eden, Blur, etc.)
  * - NFT metadata fetching and caching
@@ -15,6 +15,8 @@
 #ifndef TIGERWALLET_NFT_MARKETPLACE_HPP
 #define TIGERWALLET_NFT_MARKETPLACE_HPP
 
+#include <cstdio>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -32,6 +34,7 @@
 #include <regex>
 
 #include "json.hpp"
+#include "keccak256.hpp"
 
 namespace tigerwallet {
 namespace nft {
@@ -58,7 +61,7 @@ struct NFT {
     std::string standard; // ERC-721, ERC-1155, SPL, etc.
     bool is_frozen;
     bool is_lazy_minted;
-    
+
     NFT() : is_frozen(false), is_lazy_minted(false) {}
 };
 
@@ -89,8 +92,8 @@ struct Collection {
     double volume_total;
     double average_price_24h;
     std::map<std::string, uint64_t> trait_counts;
-    
-    Collection() : royalty_percentage(0), total_supply(0), num_owners(0), 
+
+    Collection() : royalty_percentage(0), total_supply(0), num_owners(0),
                    floor_price(0), volume_24h(0), volume_total(0), average_price_24h(0) {}
 };
 
@@ -105,7 +108,7 @@ struct Listing {
     uint64_t expires_at;
     uint64_t created_at;
     bool is_active;
-    
+
     Listing() : is_active(true) {}
 };
 
@@ -121,7 +124,7 @@ struct Offer {
     uint64_t created_at;
     bool is_active;
     bool is_accepted;
-    
+
     Offer() : is_active(true), is_accepted(false) {}
 };
 
@@ -164,11 +167,106 @@ struct MarketplaceConfig {
     bool supports_erc1155;
     bool supports_offers;
     bool supports_offers_to_collection;
-    
-    MarketplaceConfig() : fee_percentage(0.025), royalty_percentage(0.0), 
-                        supports_erc1155(false), supports_offers(false), 
+
+    MarketplaceConfig() : fee_percentage(0.025), royalty_percentage(0.0),
+                        supports_erc1155(false), supports_offers(false),
                         supports_offers_to_collection(false) {}
 };
+
+
+// ============================================================================
+// ABI Encoding
+//
+// The marketplace calldata below is built with the real ABI rules. The former
+// implementation concatenated the function name and the arguments, which is
+// not calldata any contract can decode.
+// ============================================================================
+
+namespace nft_abi {
+
+// Left pad a hex string (without the 0x prefix) to a full 32 byte word.
+inline std::string pad_word(const std::string& hex) {
+    if (hex.size() >= 64) {
+        return hex.substr(hex.size() - 64);
+    }
+    return std::string(64 - hex.size(), '0') + hex;
+}
+
+// Encode an address as one 32 byte word.
+inline std::string address_word(const std::string& address) {
+    std::string body = address;
+    if (body.rfind("0x", 0) == 0 || body.rfind("0X", 0) == 0) {
+        body = body.substr(2);
+    }
+    if (body.size() > 40) {
+        body = body.substr(body.size() - 40);
+    }
+    return pad_word(body);
+}
+
+// Encode a decimal or 0x-prefixed integer as one 32 byte word.
+inline std::string uint_word(const std::string& value) {
+    std::string body = value;
+    if (body.empty()) {
+        body = "0";
+    }
+
+    if (body.rfind("0x", 0) == 0 || body.rfind("0X", 0) == 0) {
+        return pad_word(body.substr(2));
+    }
+
+    // Convert decimal to hex with repeated division by 16, so arbitrarily
+    // large amounts stay exact. Each remainder is one hex nibble.
+    static const char* kHex = "0123456789abcdef";
+    std::vector<char> nibbles;
+    std::string decimal = body;
+    while (!decimal.empty()) {
+        int carry = 0;
+        std::string quotient;
+        for (char digit : decimal) {
+            int current = carry * 10 + (digit - '0');
+            int next = current / 16;
+            carry = current % 16;
+            if (!quotient.empty() || next != 0) {
+                quotient.push_back(static_cast<char>('0' + next));
+            }
+        }
+        nibbles.push_back(kHex[carry]);
+        decimal = quotient;
+    }
+
+    std::string hex(nibbles.rbegin(), nibbles.rend());
+    if (hex.size() % 2 != 0) {
+        hex = "0" + hex;
+    }
+
+    return pad_word(hex);
+}
+
+// Encode a bool as one 32 byte word.
+inline std::string bool_word(bool value) {
+    return pad_word(value ? "1" : "0");
+}
+
+// A transaction value is an unpadded hex quantity, not a 32 byte word.
+inline std::string quantity(const std::string& value) {
+    std::string word = uint_word(value);
+    size_t first = word.find_first_not_of('0');
+    if (first == std::string::npos) {
+        return "0x0";
+    }
+    return "0x" + word.substr(first);
+}
+
+// The four byte selector for a function signature.
+inline std::string selector(const std::string& signature) {
+    char buffer[9];
+    std::snprintf(buffer, sizeof(buffer), "%08x",
+                  tigerwallet::crypto::Keccak256::selector(signature));
+    return std::string(buffer);
+}
+
+}  // namespace nft_abi
 
 // ============================================================================
 // NFT Metadata Fetcher
@@ -181,16 +279,16 @@ private:
     std::mutex cache_mutex_;
     size_t max_cache_size_ = 10000;
     std::chrono::seconds cache_ttl_{3600}; // 1 hour
-    
+
 public:
     MetadataFetcher() {}
-    
+
     // Fetch metadata from URI (IPFS, HTTP, etc.)
     std::optional<json> fetch_metadata(const std::string& uri) {
         if (uri.empty()) {
             return std::nullopt;
         }
-        
+
         // Check cache first
         {
             std::lock_guard<std::mutex> lock(cache_mutex_);
@@ -207,38 +305,38 @@ public:
                 }
             }
         }
-        
+
         // Fail-closed: real metadata fetching requires an HTTP client to resolve
         // the token URI (IPFS gateway, Arweave gateway, or HTTP endpoint). None
         // is wired into this header-only library, so we cannot fabricate metadata.
         return std::nullopt;
     }
-    
+
     // Parse metadata into NFT struct
     NFT parse_metadata(const json& metadata, const std::string& contract, const std::string& token_id) {
         NFT nft;
         nft.contract_address = contract;
         nft.token_id = token_id;
-        
+
         // Parse standard fields
         nft.name = metadata.value("name", "");
         nft.description = metadata.value("description", "");
-        
+
         // Image
         if (metadata.contains("image")) {
             nft.image_url = metadata["image"].get<std::string>();
         }
-        
+
         // Animation
         if (metadata.contains("animation_url")) {
             nft.animation_url = metadata["animation_url"].get<std::string>();
         }
-        
+
         // External URL
         if (metadata.contains("external_url")) {
             nft.external_url = metadata["external_url"].get<std::string>();
         }
-        
+
         // Attributes
         if (metadata.contains("attributes")) {
             for (const auto& attr : metadata["attributes"]) {
@@ -246,18 +344,18 @@ public:
                 attribute.trait_type = attr.value("trait_type", attr.value("traitType", ""));
                 attribute.value = attr.value("value", "");
                 attribute.display_type = attr.value("display_type", attr.value("displayType", ""));
-                
+
                 // Numeric value if present
                 if (attr.contains("value")) {
                     if (attr["value"].is_number()) {
                         attribute.numeric_value = attr["value"].get<double>();
                     }
                 }
-                
+
                 nft.attributes.push_back(attribute);
             }
         }
-        
+
         // Additional metadata
         if (metadata.contains("properties")) {
             for (auto& [key, value] : metadata["properties"].items()) {
@@ -266,12 +364,12 @@ public:
                 }
             }
         }
-        
+
         return nft;
     }
-    
+
 private:
-    json create_mock_metadata(const std::string& /*uri*/) {
+    json unavailable_metadata(const std::string& /*uri*/) {
         // Fail-closed: real metadata must be fetched from the token URI HTTP/IPFS
         // endpoint via an HTTP client. No fake names/descriptions/images are generated.
         return json::object();
@@ -287,26 +385,26 @@ private:
     std::string chain_id_;
     MarketplaceConfig config_;
     MetadataFetcher metadata_fetcher_;
-    
+
     // Collection cache
     std::map<std::string, Collection> collections_;
     std::mutex collections_mutex_;
-    
+
     // Listings cache
     std::map<std::string, std::vector<Listing>> listings_;
     std::mutex listings_mutex_;
-    
+
     // Recent trades
     std::vector<Trade> recent_trades_;
     std::mutex trades_mutex_;
     size_t max_trades_ = 1000;
-    
+
 public:
     NFTMarketplace(const std::string& chain_id, Marketplace marketplace)
         : chain_id_(chain_id) {
         initialize_marketplace(marketplace);
     }
-    
+
     void initialize_marketplace(Marketplace marketplace) {
         switch (marketplace) {
             case Marketplace::OpenSea:
@@ -323,14 +421,14 @@ public:
                     false
                 };
                 break;
-                
+
             case Marketplace::MagicEden:
                 config_ = {
                     Marketplace::MagicEden,
                     "Magic Eden",
                     "https://api-mainnet.magiceden.io/v2",
                     "https://magiceden.io",
-                    "0xE5BFAB7db2B8e5e52A5D5e6D8F4A3F2E1D0C9B8A",
+                    "",
                     0.02, // 2% fee
                     0,
                     false, // Solana only
@@ -338,7 +436,7 @@ public:
                     true
                 };
                 break;
-                
+
             case Marketplace::Blur:
                 config_ = {
                     Marketplace::Blur,
@@ -353,7 +451,7 @@ public:
                     true
                 };
                 break;
-                
+
             case Marketplace::LooksRare:
                 config_ = {
                     Marketplace::LooksRare,
@@ -368,56 +466,56 @@ public:
                     false
                 };
                 break;
-                
+
             default:
                 break;
         }
     }
-    
+
     // Get collection info
     std::optional<Collection> get_collection(const std::string& address) {
         std::lock_guard<std::mutex> lock(collections_mutex_);
-        
+
         auto it = collections_.find(address);
         if (it != collections_.end()) {
             return it->second;
         }
-        
+
         // Fetch from API in production
         // For now, try to create from address
         return fetch_collection(address);
     }
-    
+
     // Fetch collection data
     std::optional<Collection> fetch_collection(const std::string& /*address*/) {
         // Fail-closed: real collection data must come from the marketplace API or
         // on-chain query. Do not fabricate names, supply, owners, or prices.
         return std::nullopt;
     }
-    
+
     // Get NFT
     std::optional<NFT> get_nft(const std::string& contract, const std::string& token_id) {
         // Fetch NFT metadata
         // In production, would call marketplace API
-        
+
         NFT nft;
         nft.contract_address = contract;
         nft.token_id = token_id;
         nft.blockchain = chain_id_;
-        
+
         // Fetch metadata URI from contract
         std::string metadata_uri = get_metadata_uri(contract, token_id);
-        
+
         if (!metadata_uri.empty()) {
             auto metadata = metadata_fetcher_.fetch_metadata(metadata_uri);
             if (metadata) {
                 nft = metadata_fetcher_.parse_metadata(*metadata, contract, token_id);
             }
         }
-        
+
         return nft;
     }
-    
+
     // Get listings for collection
     std::vector<Listing> get_listings(
         const std::string& contract,
@@ -425,9 +523,9 @@ public:
         int limit = 50
     ) {
         std::lock_guard<std::mutex> lock(listings_mutex_);
-        
+
         std::vector<Listing> result;
-        
+
         auto it = listings_.find(contract);
         if (it != listings_.end()) {
             for (const auto& listing : it->second) {
@@ -436,17 +534,17 @@ public:
                         result.push_back(listing);
                     }
                 }
-                
+
                 if ((int)result.size() >= limit) break;
             }
         }
-        
+
         // Fail-closed: real listings must come from the marketplace contract or an
         // on-chain query. Cached listings above remain intact; nothing is fabricated.
-        
+
         return result;
     }
-    
+
     // Get floor price
     double get_floor_price(const std::string& contract) {
         auto collection = get_collection(contract);
@@ -455,15 +553,15 @@ public:
         }
         return 0.0;
     }
-    
+
     // Get collection stats
     json get_collection_stats(const std::string& contract) {
         auto collection = get_collection(contract);
-        
+
         if (!collection) {
             return {{"error", "Collection not found"}};
         }
-        
+
         return {
             {"address", collection->address},
             {"name", collection->name},
@@ -475,26 +573,26 @@ public:
             {"average_price_24h", collection->average_price_24h}
         };
     }
-    
+
     // Get recent trades
     std::vector<Trade> get_recent_trades(
         const std::string& contract,
         int limit = 50
     ) {
         std::lock_guard<std::mutex> lock(trades_mutex_);
-        
+
         std::vector<Trade> result;
-        
+
         for (auto it = recent_trades_.rbegin(); it != recent_trades_.rend(); ++it) {
             if (it->nft_contract == contract) {
                 result.push_back(*it);
                 if ((int)result.size() >= limit) break;
             }
         }
-        
+
         return result;
     }
-    
+
     // Get offers for NFT
     std::vector<Offer> get_offers(
         const std::string& /*contract*/,
@@ -504,7 +602,7 @@ public:
         // an on-chain query. Do not fabricate offerers or prices.
         return {};
     }
-    
+
     // Create listing (returns transaction data)
     json create_listing(
         const std::string& contract,
@@ -514,16 +612,16 @@ public:
         uint64_t duration_seconds = 86400 // 24 hours default
     ) {
         // In production, would interact with marketplace contract
-        
+
         json listing_tx = {
             {"to", config_.contract_address},
             {"value", "0x0"},
             {"data", create_listing_data(contract, token_id, price_token, price_amount, duration_seconds)}
         };
-        
+
         return listing_tx;
     }
-    
+
     // Cancel listing
     json cancel_listing(const std::string& listing_id) {
         json cancel_tx = {
@@ -531,10 +629,10 @@ public:
             {"value", "0x0"},
             {"data", create_cancel_data(listing_id)}
         };
-        
+
         return cancel_tx;
     }
-    
+
     // Make offer
     json make_offer(
         const std::string& contract,
@@ -548,10 +646,10 @@ public:
             {"value", "0x0"},
             {"data", create_offer_data(contract, token_id, price_token, price_amount, duration_seconds)}
         };
-        
+
         return offer_tx;
     }
-    
+
     // Accept offer
     json accept_offer(const std::string& offer_id) {
         json accept_tx = {
@@ -559,25 +657,28 @@ public:
             {"value", "0x0"},
             {"data", create_accept_data(offer_id)}
         };
-        
+
         return accept_tx;
     }
-    
+
     // Buy NFT
+    // `native_value_wei` is the listing price when it is denominated in the
+    // chain's own coin; it is zero for an ERC-20 priced listing.
     json buy_nft(
         const std::string& contract,
         const std::string& token_id,
-        const std::string& listing_id
+        const std::string& listing_id,
+        const std::string& native_value_wei = "0"
     ) {
         json buy_tx = {
             {"to", config_.contract_address},
-            {"value", "0x0"}, // In production, set value for native token purchases
+            {"value", nft_abi::quantity(native_value_wei)},
             {"data", create_buy_data(contract, token_id, listing_id)}
         };
-        
+
         return buy_tx;
     }
-    
+
     // Get user's NFTs
     std::vector<NFT> get_user_nfts(
         const std::string& /*owner_address*/,
@@ -588,13 +689,13 @@ public:
         // via the backend. Do not fabricate token IDs or ownership.
         return {};
     }
-    
+
     // Get user's listings
     std::vector<Listing> get_user_listings(const std::string& seller_address) {
         std::lock_guard<std::mutex> lock(listings_mutex_);
-        
+
         std::vector<Listing> result;
-        
+
         for (auto& [contract, contract_listings] : listings_) {
             for (const auto& listing : contract_listings) {
                 if (listing.seller == seller_address && listing.is_active) {
@@ -602,10 +703,10 @@ public:
                 }
             }
         }
-        
+
         return result;
     }
-    
+
     // Search collections
     std::vector<Collection> search_collections(
         const std::string& query,
@@ -613,9 +714,9 @@ public:
     ) {
         // In production, would call marketplace API search
         std::vector<Collection> results;
-        
+
         std::lock_guard<std::mutex> lock(collections_mutex_);
-        
+
         for (const auto& [addr, collection] : collections_) {
             if (collection.name.find(query) != std::string::npos ||
                 collection.description.find(query) != std::string::npos) {
@@ -623,34 +724,34 @@ public:
                 if ((int)results.size() >= limit) break;
             }
         }
-        
+
         return results;
     }
-    
+
     // Get trending collections
     std::vector<Collection> get_trending_collections(int limit = 10) {
         std::vector<Collection> trending;
-        
+
         std::lock_guard<std::mutex> lock(collections_mutex_);
-        
+
         // Sort by volume
         std::vector<std::pair<std::string, Collection>> sorted;
         for (const auto& [addr, collection] : collections_) {
             sorted.push_back({addr, collection});
         }
-        
+
         std::sort(sorted.begin(), sorted.end(),
             [](const auto& a, const auto& b) {
                 return a.second.volume_24h > b.second.volume_24h;
             });
-        
+
         for (size_t i = 0; i < sorted.size() && i < (size_t)limit; i++) {
             trending.push_back(sorted[i].second);
         }
-        
+
         return trending;
     }
-    
+
 private:
     std::string get_metadata_uri(const std::string& /*contract*/, const std::string& /*token_id*/) {
         // Fail-closed: the real token URI must be obtained by calling the NFT
@@ -658,8 +759,8 @@ private:
         // Do not fabricate IPFS/HTTP URIs from the contract address.
         return "";
     }
-    
-    std::vector<Listing> generate_mock_listings(
+
+    std::vector<Listing> unavailable_listings(
         const std::string& /*contract*/,
         const std::string& /*token_id*/,
         int /*limit*/
@@ -668,8 +769,8 @@ private:
         // on-chain query. Do not fabricate prices, sellers, or listing IDs.
         return {};
     }
-    
-    std::vector<Offer> generate_mock_offers(
+
+    std::vector<Offer> unavailable_offers(
         const std::string& /*contract*/,
         const std::string& /*token_id*/
     ) {
@@ -677,8 +778,8 @@ private:
         // on-chain query. Do not fabricate offerers or prices.
         return {};
     }
-    
-    std::vector<NFT> generate_mock_user_nfts(
+
+    std::vector<NFT> unavailable_user_nfts(
         const std::string& /*owner*/,
         const std::string& /*contract*/,
         int /*limit*/
@@ -687,8 +788,9 @@ private:
         // via the backend. Do not fabricate token IDs or ownership.
         return {};
     }
-    
-    // Transaction data builders
+
+    // Transaction data builders. Each one returns ABI encoded calldata:
+    // a four byte selector followed by the arguments, one 32 byte word each.
     std::string create_listing_data(
         const std::string& contract,
         const std::string& token_id,
@@ -696,14 +798,21 @@ private:
         const std::string& price_amount,
         uint64_t duration
     ) {
-        // In production, would use actual marketplace ABI
-        return "0xcreateListing" + contract + token_id + price_token + price_amount;
+        return "0x" +
+               nft_abi::selector("createListing(address,uint256,address,uint256,uint256)") +
+               nft_abi::address_word(contract) +
+               nft_abi::uint_word(token_id) +
+               nft_abi::address_word(price_token) +
+               nft_abi::uint_word(price_amount) +
+               nft_abi::uint_word(std::to_string(duration));
     }
-    
+
     std::string create_cancel_data(const std::string& listing_id) {
-        return "0xcancelListing" + listing_id;
+        return "0x" +
+               nft_abi::selector("cancelListing(uint256)") +
+               nft_abi::uint_word(listing_id);
     }
-    
+
     std::string create_offer_data(
         const std::string& contract,
         const std::string& token_id,
@@ -711,19 +820,31 @@ private:
         const std::string& price_amount,
         uint64_t duration
     ) {
-        return "0xmakeOffer" + contract + token_id + price_token + price_amount;
+        return "0x" +
+               nft_abi::selector("makeOffer(address,uint256,address,uint256,uint256)") +
+               nft_abi::address_word(contract) +
+               nft_abi::uint_word(token_id) +
+               nft_abi::address_word(price_token) +
+               nft_abi::uint_word(price_amount) +
+               nft_abi::uint_word(std::to_string(duration));
     }
-    
+
     std::string create_accept_data(const std::string& offer_id) {
-        return "0xacceptOffer" + offer_id;
+        return "0x" +
+               nft_abi::selector("acceptOffer(uint256)") +
+               nft_abi::uint_word(offer_id);
     }
-    
+
     std::string create_buy_data(
         const std::string& contract,
         const std::string& token_id,
         const std::string& listing_id
     ) {
-        return "0xbuyNFT" + contract + token_id + listing_id;
+        return "0x" +
+               nft_abi::selector("buyNFT(address,uint256,uint256)") +
+               nft_abi::address_word(contract) +
+               nft_abi::uint_word(token_id) +
+               nft_abi::uint_word(listing_id);
     }
 };
 
@@ -735,28 +856,28 @@ class NFTMultiMarketplace {
 private:
     std::map<std::string, std::unique_ptr<NFTMarketplace>> chain_marketplaces_;
     std::mutex mutex_;
-    
+
 public:
     NFTMultiMarketplace() {
         // Initialize for major chains
         // Ethereum
         chain_marketplaces_["1"] = std::make_unique<NFTMarketplace>("1", Marketplace::OpenSea);
-        
+
         // Solana
         chain_marketplaces_["101"] = std::make_unique<NFTMarketplace>("101", Marketplace::MagicEden);
     }
-    
+
     NFTMarketplace* get_marketplace(const std::string& chain_id) {
         std::lock_guard<std::mutex> lock(mutex_);
-        
+
         auto it = chain_marketplaces_.find(chain_id);
         if (it != chain_marketplaces_.end()) {
             return it->second.get();
         }
-        
+
         return nullptr;
     }
-    
+
     // Get best price across marketplaces
     std::optional<double> get_best_price(
         const std::string& chain_id,
@@ -765,11 +886,11 @@ public:
     ) {
         auto marketplace = get_marketplace(chain_id);
         if (!marketplace) return std::nullopt;
-        
+
         auto listings = marketplace->get_listings(contract, token_id, 10);
-        
+
         if (listings.empty()) return std::nullopt;
-        
+
         // Find lowest price
         double best_price = 0;
         for (const auto& listing : listings) {
@@ -778,10 +899,10 @@ public:
                 best_price = price;
             }
         }
-        
+
         return best_price;
     }
-    
+
     // Get floor price across marketplaces
     std::optional<double> get_floor_price(
         const std::string& chain_id,
@@ -789,7 +910,7 @@ public:
     ) {
         auto marketplace = get_marketplace(chain_id);
         if (!marketplace) return std::nullopt;
-        
+
         return marketplace->get_floor_price(contract);
     }
 };
@@ -799,7 +920,7 @@ public:
 // ============================================================================
 
 inline std::unique_ptr<NFTMarketplace> create_nft_marketplace(
-    const std::string& chain_id, 
+    const std::string& chain_id,
     Marketplace marketplace
 ) {
     return std::make_unique<NFTMarketplace>(chain_id, marketplace);

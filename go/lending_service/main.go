@@ -58,7 +58,7 @@ func getEnv(key, def string) string {
 // ============================================================================
 
 // Aave V3 Pool contract (supply/borrow entry point) on Ethereum mainnet.
-const AAVE_V3_POOL = "0x87870Bca3F3fD6335C3F4ce839f24ee0c278C5A2"
+const AAVE_V3_POOL = "0x87870Bca3F3fD6335C3F4ce8392d69350B4fA4E2"
 
 // Aave V3 PoolDataProvider (reserve read entry point) on Ethereum mainnet.
 const AAVE_V3_POOL_DATA_PROVIDER = "0x2d8A1d62eFG4bE39218C2cdfa3fDb2D827055a54"
@@ -144,18 +144,18 @@ type cachedMarkets struct {
 // still constructed and returned to wallet_api for signing/broadcast; this
 // record tracks the wallet-side view of what was supplied/borrowed.
 type LendingPosition struct {
-	ID             string  `json:"id"`
-	UserID         string  `json:"user_id"`
-	UserAddress    string  `json:"user_address"`
-	Asset          string  `json:"asset"`
-	AssetSymbol    string  `json:"asset_symbol"`
-	ChainID        int     `json:"chain_id"`
-	PositionType   string  `json:"position_type"` // "supply" or "borrow"
-	Amount         string  `json:"amount"`        // human-readable decimal string
+	ID              string  `json:"id"`
+	UserID          string  `json:"user_id"`
+	UserAddress     string  `json:"user_address"`
+	Asset           string  `json:"asset"`
+	AssetSymbol     string  `json:"asset_symbol"`
+	ChainID         int     `json:"chain_id"`
+	PositionType    string  `json:"position_type"` // "supply" or "borrow"
+	Amount          string  `json:"amount"`        // human-readable decimal string
 	InterestAccrued float64 `json:"interest_accrued"`
-	APY            float64 `json:"apy"`
-	CreatedAt      int64   `json:"created_at"`
-	UpdatedAt      int64   `json:"updated_at"`
+	APY             float64 `json:"apy"`
+	CreatedAt       int64   `json:"created_at"`
+	UpdatedAt       int64   `json:"updated_at"`
 }
 
 func NewLendingService() *LendingService {
@@ -280,8 +280,8 @@ var selectors = map[string]string{
 	"getUserAccountData(address)":                    "bf92857c",
 	"supply(address,uint256,address,uint16)":         "617ba037",
 	"borrow(address,uint256,uint256,uint16,address)": "a415bcad",
-	"withdraw(address,uint256,address)":             "69328dec",
-	"repay(address,uint256,uint256,address)":        "573ade81",
+	"withdraw(address,uint256,address)":              "69328dec",
+	"repay(address,uint256,uint256,address)":         "573ade81",
 }
 
 func ethCallSelector(sig string) string {
@@ -608,15 +608,15 @@ func (ls *LendingService) Supply(c *gin.Context) {
 	// survives restarts. On-chain state is still owned by Aave V3; this record
 	// tracks what the wallet submitted for signing/broadcast.
 	pos := &LendingPosition{
-		UserID:         req.UserAddress,
-		UserAddress:    req.UserAddress,
-		Asset:          asset,
-		AssetSymbol:    assetSymbolFor(asset),
-		ChainID:        chainID,
-		PositionType:   "supply",
-		Amount:         req.Amount,
+		UserID:          req.UserAddress,
+		UserAddress:     req.UserAddress,
+		Asset:           asset,
+		AssetSymbol:     assetSymbolFor(asset),
+		ChainID:         chainID,
+		PositionType:    "supply",
+		Amount:          req.Amount,
 		InterestAccrued: 0,
-		APY:            supplyAPY,
+		APY:             supplyAPY,
 	}
 	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
 		log.Printf("persist supply position failed: %v", err)
@@ -683,15 +683,15 @@ func (ls *LendingService) Borrow(c *gin.Context) {
 
 	// Persist the wallet-side view of this borrow position to PostgreSQL.
 	pos := &LendingPosition{
-		UserID:         req.UserAddress,
-		UserAddress:    req.UserAddress,
-		Asset:          asset,
-		AssetSymbol:    assetSymbolFor(asset),
-		ChainID:        chainID,
-		PositionType:   "borrow",
-		Amount:         req.Amount,
+		UserID:          req.UserAddress,
+		UserAddress:     req.UserAddress,
+		Asset:           asset,
+		AssetSymbol:     assetSymbolFor(asset),
+		ChainID:         chainID,
+		PositionType:    "borrow",
+		Amount:          req.Amount,
 		InterestAccrued: 0,
-		APY:            borrowAPY,
+		APY:             borrowAPY,
 	}
 	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
 		log.Printf("persist borrow position failed: %v", err)
@@ -823,15 +823,15 @@ func (ls *LendingService) Withdraw(c *gin.Context) {
 	}
 
 	pos := &LendingPosition{
-		UserID:         req.UserAddress,
-		UserAddress:    req.UserAddress,
-		Asset:          asset,
-		AssetSymbol:    assetSymbolFor(asset),
-		ChainID:        chainID,
-		PositionType:   "withdraw",
-		Amount:         req.Amount,
+		UserID:          req.UserAddress,
+		UserAddress:     req.UserAddress,
+		Asset:           asset,
+		AssetSymbol:     assetSymbolFor(asset),
+		ChainID:         chainID,
+		PositionType:    "withdraw",
+		Amount:          req.Amount,
 		InterestAccrued: 0,
-		APY:            supplyAPY,
+		APY:             supplyAPY,
 	}
 	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
 		log.Printf("persist withdraw position failed: %v", err)
@@ -900,15 +900,15 @@ func (ls *LendingService) Repay(c *gin.Context) {
 	}
 
 	pos := &LendingPosition{
-		UserID:         req.UserAddress,
-		UserAddress:    req.UserAddress,
-		Asset:          asset,
-		AssetSymbol:    assetSymbolFor(asset),
-		ChainID:        chainID,
-		PositionType:   "repay",
-		Amount:         req.Amount,
+		UserID:          req.UserAddress,
+		UserAddress:     req.UserAddress,
+		Asset:           asset,
+		AssetSymbol:     assetSymbolFor(asset),
+		ChainID:         chainID,
+		PositionType:    "repay",
+		Amount:          req.Amount,
 		InterestAccrued: 0,
-		APY:            borrowAPY,
+		APY:             borrowAPY,
 	}
 	if err := ls.persistPosition(c.Request.Context(), pos); err != nil {
 		log.Printf("persist repay position failed: %v", err)

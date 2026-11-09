@@ -32,7 +32,7 @@ class PaymasterService(private val context: Context) {
     companion object {
         private const val BASE_URL = "http://localhost:8450"
         private const val PREFS_NAME = "paymaster_prefs"
-        private const val DEFAULT_ENTRY_POINT = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
+        private const val DEFAULT_ENTRY_POINT = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
     }
 
     private var authToken: String? = null

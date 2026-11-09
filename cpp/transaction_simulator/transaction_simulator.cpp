@@ -1140,7 +1140,7 @@ int main() {
 
     // Create test transaction
     TigerWallet::Transaction tx;
-    tx.from = TigerWallet::Address::fromString("0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E");
+    tx.from = TigerWallet::Address::fromString("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789");
     tx.to = TigerWallet::Address::fromString("0xdAC17F958D2ee523a2206206994597C13D831ec7");
     tx.value = {1000000000000000000ULL, 0, 0, 0}; // 1 ETH
     tx.gasLimit = 21000;

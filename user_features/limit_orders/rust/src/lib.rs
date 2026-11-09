@@ -107,7 +107,10 @@ pub struct OrderBook {
     pub last_update_time: u64,
 }
 
-/// Trade result
+/// A match produced by the order book.
+///
+/// Matching happens off chain, so there is no transaction hash yet: `tx_hash`
+/// is filled in only after a settlement transaction is broadcast.
 #[derive(Debug, Clone)]
 pub struct OrderBookTrade {
     pub id: String,
@@ -115,7 +118,7 @@ pub struct OrderBookTrade {
     pub quantity: f64,
     pub side: OrderSide,
     pub timestamp: u64,
-    pub tx_hash: String,
+    pub tx_hash: Option<String>,
 }
 
 /// Limit Orders Service
@@ -337,7 +340,7 @@ impl LimitOrdersService {
                     quantity: match_quantity,
                     side: OrderSide::Buy,
                     timestamp: current_timestamp(),
-                    tx_hash: generate_tx_hash(),
+                    tx_hash: None,
                 });
             }
         }
@@ -402,18 +405,15 @@ fn current_timestamp() -> u64 {
         .as_millis() as u64
 }
 
+/// Monotonic sequence so identifiers stay unique when several are minted
+/// inside the same millisecond.
+static ID_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn generate_id(prefix: &str) -> String {
-    format!("{}_{}", prefix, current_timestamp())
+    let sequence = ID_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("{}_{}_{}", prefix, current_timestamp(), sequence)
 }
 
-fn generate_tx_hash() -> String {
-    use std::time::SystemTime;
-    let nanos = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    format!("0x{:064x}", nanos)
-}
 
 #[cfg(test)]
 mod tests {
@@ -470,5 +470,26 @@ mod tests {
         let book = service.get_order_book("ETH/USDT");
         assert_eq!(book.bids.len(), 1);
         assert_eq!(book.asks.len(), 1);
+        assert_eq!(book.bids[0].price, 2400.0);
+        assert_eq!(book.asks[0].price, 2500.0);
+        assert_eq!(book.spread, 100.0);
+
+        // Orders created in the same millisecond must still get distinct ids,
+        // otherwise the second one silently replaces the first.
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..50 {
+            let order = service.create_order(CreateOrderParams {
+                user_address: "0x789".to_string(),
+                pair: "ETH/USDT".to_string(),
+                side: OrderSide::Buy,
+                order_type: OrderType::Limit,
+                price: 2300.0,
+                quantity: 1.0,
+                trigger_price: None,
+                slippage_bps: None,
+            }).unwrap();
+            assert!(ids.insert(order.id.clone()), "duplicate id {}", order.id);
+        }
+        assert_eq!(service.get_order_book("ETH/USDT").bids.len(), 2);
     }
 }

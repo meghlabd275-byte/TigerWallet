@@ -25,10 +25,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   let wethAddress: string;
   const WETH_ADDRESSES: Record<string, string> = {
     "1": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // mainnet
-    "5": "0xfFf9976782d46CC05630D1f6eB18b0f4982AcB37", // goerli
-    "11155111": "0xfFf9976782d46CC05630D1f6eB18b0f4982AcB37", // sepolia
+    "5": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", // goerli
+    "11155111": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", // sepolia
     "42161": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", // arbitrum
-    "421614": "0xfFf9976782d46CC05630D1f6eB18b0f4982AcB37", // arbitrum sepolia
+    "421614": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", // arbitrum sepolia
     "137": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", // polygon
     "80001": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", // mumbai
     "56": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", // bsc
@@ -37,7 +37,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     "8453": "0x4200000000000000000000000000000000000006", // base
     "84532": "0x4200000000000000000000000000000000000006", // base sepolia
     "43114": "0x49D5c2BdFad6D5e00bD4d3bEa6B2C8D2cF5c3E7", // avalanche
-    "250": "0x21be370D5310f44e6424c257B0D2C0f0D42b3D47", // fantom
+    "250": "0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83", // fantom
   };
 
   if (WETH_ADDRESSES[chainId] && !isLocal) {

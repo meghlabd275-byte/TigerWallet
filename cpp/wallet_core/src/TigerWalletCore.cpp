@@ -8,6 +8,7 @@
  */
 
 #include "TigerWalletCore.h"
+#include "keccak256.hpp"
 #include "Crypto.h"
 #include "Chains.h"
 #include "Signing.h"
@@ -1092,15 +1093,13 @@ public:
         return result == 1;
     }
     
-    // Keccak-256 hash
+    // Keccak-256, the hash Ethereum uses for addresses and transaction ids.
+    // This is not SHA-256: the two produce different digests, so an Ethereum
+    // address derived with SHA-256 would never match the network.
     static std::vector<uint8_t> keccak256(const uint8_t* data, size_t len) {
-        std::vector<uint8_t> hash(32);
-        // Simplified - use OpenSSL SHA256 for now
-        SHA256_CTX ctx;
-        SHA256_Init(&ctx);
-        SHA256_Update(&ctx, data, len);
-        SHA256_Final(hash.data(), &ctx);
-        return hash;
+        tigerwallet::crypto::Keccak256::Digest digest =
+            tigerwallet::crypto::Keccak256::hash(data, len);
+        return std::vector<uint8_t>(digest.begin(), digest.end());
     }
     
     // SHA-256
@@ -2097,7 +2096,7 @@ char* tw_account_abstraction_sign_user_op(const TWAccountAbstraction* aa, const 
 }
 
 char* tw_account_abstraction_get_entry_point(const TWAccountAbstraction* aa) {
-    return strdup("0x5FF137D4b0FD9D6A97D6E892eAAd8e3fF5D5c4e8");
+    return strdup("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789");
 }
 
 char* tw_account_abstraction_get_counterfactual_address(const TWAccountAbstraction* aa,

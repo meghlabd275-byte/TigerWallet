@@ -2,8 +2,9 @@
 
 // Standalone reference/demo service. Run individually with: go run <file>
 // (Tagged "ignore" so the services/go directory is not a broken package —
-//  these files are not part of any deployed build; deployed services live
-//  under their own modules, e.g. go/*, */go.)
+//
+//	these files are not part of any deployed build; deployed services live
+//	under their own modules, e.g. go/*, */go.)
 package main
 
 import (
@@ -28,53 +29,53 @@ import (
 
 // dAppBrowserConfig holds dApp browser configuration
 type dAppBrowserConfig struct {
-	RPCURLs        map[string]string `json:"rpc_urls"`        // chain_id -> RPC URL
-	SimulatorURL   string          `json:"simulator_url"`   // Transaction simulator
-	PhishingDB   string          `json:"phishing_db"`   // Phishing database URL
-	MevGuardURL string          `json:"mev_guard_url"` // MEV guard service
+	RPCURLs      map[string]string `json:"rpc_urls"`      // chain_id -> RPC URL
+	SimulatorURL string            `json:"simulator_url"` // Transaction simulator
+	PhishingDB   string            `json:"phishing_db"`   // Phishing database URL
+	MevGuardURL  string            `json:"mev_guard_url"` // MEV guard service
 }
 
 // dAppRequest represents a dApp interaction request
 type dAppRequest struct {
-	ChainID    int64             `json:"chain_id"`
-	To        string            `json:"to"`
-	From      string            `json:"from"`
-	Value     string            `json:"value"`
-	Data      string            `json:"data"`
-	GasLimit  uint64           `json:"gas_limit"`
-	DAppURL   string            `json:"dapp_url"`
+	ChainID  int64  `json:"chain_id"`
+	To       string `json:"to"`
+	From     string `json:"from"`
+	Value    string `json:"value"`
+	Data     string `json:"data"`
+	GasLimit uint64 `json:"gas_limit"`
+	DAppURL  string `json:"dapp_url"`
 }
 
 // SimulationResult represents transaction simulation result
 type SimulationResult struct {
-	GasUsed         uint64            `json:"gas_used"`
-	GasLimit       uint64            `json:"gas_limit"`
-	Success        bool              `json:"success"`
-	RevertReason   string           `json:"revert_reason"`
-	TokenTransfers []TokenTransfer  `json:"token_transfers"`
+	GasUsed        uint64          `json:"gas_used"`
+	GasLimit       uint64          `json:"gas_limit"`
+	Success        bool            `json:"success"`
+	RevertReason   string          `json:"revert_reason"`
+	TokenTransfers []TokenTransfer `json:"token_transfers"`
 	BalanceChanges []BalanceChange `json:"balance_changes"`
-	RiskScore     float64          `json:"risk_score"`
-	RiskFactors   []string        `json:"risk_factor"`
-	Warnings     []string        `json:"warnings"`
-	Warnings     []string        `json:"warnings"`
+	RiskScore      float64         `json:"risk_score"`
+	RiskFactors    []string        `json:"risk_factor"`
+	Warnings       []string        `json:"warnings"`
+	Warnings       []string        `json:"warnings"`
 }
 
 // TokenTransfer represents a token transfer in the transaction
 type TokenTransfer struct {
-	From    string  `json:"from"`
-	To      string  `json:"to"`
-	Token   string  `json:"token"`
-	Amount  string  `json:"amount"`
+	From     string  `json:"from"`
+	To       string  `json:"to"`
+	Token    string  `json:"token"`
+	Amount   string  `json:"amount"`
 	USDValue float64 `json:"usd_value"`
 }
 
 // BalanceChange represents a balance change
 type BalanceChange struct {
-	Address string  `json:"address"`
-	Token   string  `json:"token"`
-	Before string  `json:"before"`
-	After  string  `json:"after"`
-	Delta  string  `json:"delta"`
+	Address string `json:"address"`
+	Token   string `json:"token"`
+	Before  string `json:"before"`
+	After   string `json:"after"`
+	Delta   string `json:"delta"`
 }
 
 // dAppBrowserService handles dApp browser operations
@@ -87,14 +88,14 @@ type dAppBrowserService struct {
 
 // RPCClient is an Ethereum RPC client
 type RPCClient struct {
-	url    string
+	url   string
 	chain int64
 }
 
 // NewRPCClient creates a new RPC client
 func NewRPCClient(url string, chain int64) *RPCClient {
 	return &RPCClient{
-		url:  url,
+		url:   url,
 		chain: chain,
 	}
 }
@@ -105,7 +106,7 @@ func (r *RPCClient) Call(method string, params ...interface{}) (json.RawMessage,
 		"jsonrpc": "2.0",
 		"method":  method,
 		"params":  params,
-		"id":     1,
+		"id":      1,
 	}
 
 	body, _ := json.Marshal(reqBody)
@@ -164,7 +165,7 @@ func NewDAppBrowserService(config dAppBrowserConfig) *dAppBrowserService {
 // SimulateTransaction simulates a transaction before execution
 func (d *dAppBrowserService) SimulateTransaction(req *dAppRequest) (*SimulationResult, error) {
 	result := &SimulationResult{
-		GasLimit:  req.GasLimit,
+		GasLimit: req.GasLimit,
 	}
 
 	// Get RPC client
@@ -319,11 +320,11 @@ func (d *dAppBrowserService) isKnownContract(address string) bool {
 	knownContracts := map[string]bool{
 		"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48": true, // USDC
 		"0xdac17f958d2ee523a2206206994597c13d831ec7": true, // USDT
-		"0x7a250d5630b4cf539739df2c5eb51968b17c5b91": true, // Uniswap Router
-		"0xe592427a0aece92de3edf1c0fe96518b3b0e2959": true, // Uniswap V3
-		"0x68b3465833fb72a70ecdf485e0e4c7bd8663fc44": true, // Uniswap V3 Router
-		"0x7d1afa7b7fb6100cf9ef8d29b60501d5e8d9452b": true, // AAVE
-		"0x514910771af9ca656af840bdff5e25e621c5170e8": true, // LINK
+		"0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D": true, // Uniswap Router
+		"0xE592427A0AEce92De3Edee1F18E0157C05861564": true, // Uniswap V3
+		"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45": true, // Uniswap V3 Router
+		"0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9": true, // AAVE
+		"0x514910771AF9Ca656af840dff83E8264EcF986CA": true, // LINK
 	}
 
 	return knownContracts[address]
@@ -399,9 +400,9 @@ func (d *dAppBrowserService) GetGasPrice(chainID int64) (float64, error) {
 
 // ComplianceConfig holds compliance configuration
 type ComplianceConfig struct {
-	Provider     string `json:"provider"`     // chainalysis, ellipsis
-	APIKey       string `json:"api_key"`
-	APIBase      string `json:"api_base"`
+	Provider     string  `json:"provider"` // chainalysis, ellipsis
+	APIKey       string  `json:"api_key"`
+	APIBase      string  `json:"api_base"`
 	MinRiskScore float64 `json:"min_risk_score"`
 }
 
@@ -409,9 +410,9 @@ type ComplianceConfig struct {
 type RiskLevel string
 
 const (
-	RiskLow     RiskLevel = "low"
-	RiskMedium  RiskLevel = "medium"
-	RiskHigh    RiskLevel = "high"
+	RiskLow      RiskLevel = "low"
+	RiskMedium   RiskLevel = "medium"
+	RiskHigh     RiskLevel = "high"
 	RiskCensored RiskLevel = "censored"
 )
 
@@ -446,7 +447,7 @@ func (c *ComplianceService) CheckAddress(address string) (*ComplianceResult, err
 	result := &ComplianceResult{
 		Address:   address,
 		RiskLevel: RiskLow,
-		RiskScore:  0.0,
+		RiskScore: 0.0,
 	}
 
 	// In production, call Chainalysis or Ellipsis API
@@ -495,24 +496,24 @@ type PaymentLink struct {
 	URL         string  `json:"url"`
 	Amount      float64 `json:"amount"`
 	Currency    string  `json:"currency"`
-	Description string `json:"description"`
-	Status     string  `json:"status"`
-	ExpiresAt  int64   `json:"expires_at"`
-	CreatedAt  int64   `json:"created_at"`
+	Description string  `json:"description"`
+	Status      string  `json:"status"`
+	ExpiresAt   int64   `json:"expires_at"`
+	CreatedAt   int64   `json:"created_at"`
 }
 
 // Invoice represents an invoice
 type Invoice struct {
-	ID           string        `json:"id"`
-	Number       string        `json:"number"`
-	Customer     string        `json:"customer"`
-	Items        []InvoiceItem `json:"items"`
-	Subtotal     float64       `json:"subtotal"`
-	Tax          float64       `json:"tax"`
-	Total        float64       `json:"total"`
-	Status      string        `json:"status"`
-	DueDate     int64         `json:"due_date"`
-	CreatedAt   int64         `json:"created_at"`
+	ID        string        `json:"id"`
+	Number    string        `json:"number"`
+	Customer  string        `json:"customer"`
+	Items     []InvoiceItem `json:"items"`
+	Subtotal  float64       `json:"subtotal"`
+	Tax       float64       `json:"tax"`
+	Total     float64       `json:"total"`
+	Status    string        `json:"status"`
+	DueDate   int64         `json:"due_date"`
+	CreatedAt int64         `json:"created_at"`
 }
 
 // InvoiceItem represents an invoice item
@@ -544,12 +545,12 @@ func (p *PaymentService) CreatePaymentLink(amount float64, currency, description
 	link := &PaymentLink{
 		ID:          fmt.Sprintf("pl_%d", time.Now().UnixNano()),
 		URL:         fmt.Sprintf("https://pay.tigerwallet.com/%d", time.Now().UnixNano()),
-		Amount:     amount,
-		Currency:   currency,
+		Amount:      amount,
+		Currency:    currency,
 		Description: description,
-		Status:     "pending",
-		ExpiresAt:  time.Now().Add(24 * time.Hour).Unix(),
-		CreatedAt:  time.Now().Unix(),
+		Status:      "pending",
+		ExpiresAt:   time.Now().Add(24 * time.Hour).Unix(),
+		CreatedAt:   time.Now().Unix(),
 	}
 
 	return link, nil
@@ -558,7 +559,7 @@ func (p *PaymentService) CreatePaymentLink(amount float64, currency, description
 // GetPaymentLink gets payment link status
 func (p *PaymentService) GetPaymentLink(id string) (*PaymentLink, error) {
 	return &PaymentLink{
-		ID:        id,
+		ID:       id,
 		Status:   "completed",
 		Amount:   100,
 		Currency: "USD",
@@ -579,11 +580,11 @@ func (p *PaymentService) CreateInvoice(invoice *Invoice) (*Invoice, error) {
 func (p *PaymentService) GetInvoice(id string) (*Invoice, error) {
 	return &Invoice{
 		ID:       id,
-		Number:  "INV-001",
-		Status:  "paid",
+		Number:   "INV-001",
+		Status:   "paid",
 		Subtotal: 100,
-		Tax:     10,
-		Total:   110,
+		Tax:      10,
+		Total:    110,
 	}, nil
 }
 
@@ -607,9 +608,9 @@ func main() {
 
 	// Simulate a transaction
 	req := &dAppRequest{
-		ChainID:   1,
-		To:       "0x7a250d5630b4cf539739df2c5eb51968b17c5b91",
-		From:     "0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E",
+		ChainID:  1,
+		To:       "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+		From:     "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
 		Value:    "0x0",
 		Data:     "0xa9059cbb2000000000000000000000000dAC17F958D2ee523a2206206994597C13D831ec70000000000000000000000000000000000000000000000000000000000000000640000",
 		GasLimit: 100000,
@@ -635,7 +636,7 @@ func main() {
 	}
 
 	compliance := NewComplianceService(complianceConfig)
-	check, _ := compliance.CheckAddress("0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E")
+	check, _ := compliance.CheckAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
 	fmt.Printf("Compliance: %s - %.2f\n", check.RiskLevel, check.RiskScore)
 
 	// Example: Payment service

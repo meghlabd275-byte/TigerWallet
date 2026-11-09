@@ -97,7 +97,7 @@ var ChainConfigs = map[string]ChainConfig{
 		Decimals: 18,
 		RPCEndpoints: []string{
 			"https://eth.llamarpc.com",
-			"https://eth-mainnet.g.alchemy.com/v2/demo",
+			"https://ethereum-rpc.publicnode.com",
 			"https://rpc.ankr.com/eth",
 			"https://1rpc.io/eth",
 		},

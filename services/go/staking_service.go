@@ -2,8 +2,9 @@
 
 // Standalone reference/demo service. Run individually with: go run <file>
 // (Tagged "ignore" so the services/go directory is not a broken package —
-//  these files are not part of any deployed build; deployed services live
-//  under their own modules, e.g. go/*, */go.)
+//
+//	these files are not part of any deployed build; deployed services live
+//	under their own modules, e.g. go/*, */go.)
 package main
 
 import (
@@ -30,63 +31,63 @@ import (
 type StakingProvider string
 
 const (
-	ProviderLido      StakingProvider = "lido"
+	ProviderLido       StakingProvider = "lido"
 	ProviderRocketPool StakingProvider = "rocketpool"
 	ProviderEigenLayer StakingProvider = "eigenlayer"
-	ProviderStaked   StakingProvider = "staked"
+	ProviderStaked     StakingProvider = "staked"
 )
 
 // StakingConfig holds configuration for staking providers
 type StakingConfig struct {
-	Provider       StakingProvider `json:"provider"`
-	RPCURL         string          `json:"rpc_url"`
-	APIBase       string          `json:"api_base"`
-	ContractAddr  string          `json:"contract_address"`
-	StETHAddr     string          `json:"steth_token_address"`
-	rETHAddr      string          `json:"reth_token_address"`
-	LSETHAddr     string          `json:"lseth_token_address"`
+	Provider     StakingProvider `json:"provider"`
+	RPCURL       string          `json:"rpc_url"`
+	APIBase      string          `json:"api_base"`
+	ContractAddr string          `json:"contract_address"`
+	StETHAddr    string          `json:"steth_token_address"`
+	rETHAddr     string          `json:"reth_token_address"`
+	LSETHAddr    string          `json:"lseth_token_address"`
 }
 
 // StakingToken represents staking token info
 type StakingToken struct {
-	Symbol            string  `json:"symbol"`
+	Symbol           string  `json:"symbol"`
 	Name             string  `json:"name"`
 	Address          string  `json:"address"`
 	UnderlyingSymbol string  `json:"underlying_symbol"`
 	APY              float64 `json:"apy"`
-	TotalStaked     float64 `json:"total_staked"`
-	ExchangeRate    float64 `json:"exchange_rate"`
+	TotalStaked      float64 `json:"total_staked"`
+	ExchangeRate     float64 `json:"exchange_rate"`
 }
 
 // StakingPosition represents a user's staking position
 type StakingPosition struct {
-	ID             string    `json:"id"`
-	Provider       StakingProvider `json:"provider"`
-	TokenSymbol   string    `json:"token_symbol"`
-	Amount        float64   `json:"amount"`
-	Shares        float64   `json:"shares"`
-	PendingReward float64   `json:"pending_reward"`
-	APY           float64   `json:"apy"`
-	StartTime     int64     `json:"start_time"`
-	Status       string    `json:"status"`
+	ID            string          `json:"id"`
+	Provider      StakingProvider `json:"provider"`
+	TokenSymbol   string          `json:"token_symbol"`
+	Amount        float64         `json:"amount"`
+	Shares        float64         `json:"shares"`
+	PendingReward float64         `json:"pending_reward"`
+	APY           float64         `json:"apy"`
+	StartTime     int64           `json:"start_time"`
+	Status        string          `json:"status"`
 }
 
 // StakingRequest represents a staking request
 type StakingRequest struct {
-	Provider    StakingProvider `json:"provider"`
-	Amount      float64        `json:"amount"`
-	Recipient   string        `json:"recipient"`
+	Provider  StakingProvider `json:"provider"`
+	Amount    float64         `json:"amount"`
+	Recipient string          `json:"recipient"`
 }
 
 // StakingTransaction represents a staking transaction
 type StakingTransaction struct {
-	ID          string    `json:"id"`
-	Hash        string    `json:"hash"`
-	Provider    StakingProvider `json:"provider"`
-	Type        string    `json:"type"` // deposit, withdraw, claim
-	Amount      float64   `json:"amount"`
-	Status      string    `json:"status"`
-	Timestamp   int64     `json:"timestamp"`
+	ID        string          `json:"id"`
+	Hash      string          `json:"hash"`
+	Provider  StakingProvider `json:"provider"`
+	Type      string          `json:"type"` // deposit, withdraw, claim
+	Amount    float64         `json:"amount"`
+	Status    string          `json:"status"`
+	Timestamp int64           `json:"timestamp"`
 }
 
 // ============================================================================
@@ -105,7 +106,7 @@ type LidoService struct {
 type StakingCache struct {
 	tokens     map[string]*StakingToken
 	lastUpdate int64
-	mu        sync.RWMutex
+	mu         sync.RWMutex
 }
 
 func NewStakingCache() *StakingCache {
@@ -146,9 +147,9 @@ func (l *LidoService) GetTokenInfo() (*StakingToken, error) {
 	defer resp.Body.Close()
 
 	var data struct {
-		APY            float64 `json:"apy"`
-		TotalStaked    float64 `json:"totalStakedEthers"`
-		ExchangeRate  float64 `json:"stethPerEth"`
+		APY          float64 `json:"apy"`
+		TotalStaked  float64 `json:"totalStakedEthers"`
+		ExchangeRate float64 `json:"stethPerEth"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
@@ -157,12 +158,12 @@ func (l *LidoService) GetTokenInfo() (*StakingToken, error) {
 
 	token := &StakingToken{
 		Symbol:           "stETH",
-		Name:            "Lido Staked Ether",
-		Address:         l.config.StETHAddr,
+		Name:             "Lido Staked Ether",
+		Address:          l.config.StETHAddr,
 		UnderlyingSymbol: "ETH",
-		APY:             data.APY,
-		TotalStaked:     data.TotalStaked,
-		ExchangeRate:    data.ExchangeRate,
+		APY:              data.APY,
+		TotalStaked:      data.TotalStaked,
+		ExchangeRate:     data.ExchangeRate,
 	}
 
 	// Update cache
@@ -186,7 +187,7 @@ func (l *LidoService) Deposit(amount float64, recipient string) (*StakingTransac
 		Provider:  ProviderLido,
 		Type:      "deposit",
 		Amount:    amount,
-		Status:   "pending",
+		Status:    "pending",
 		Timestamp: time.Now().Unix(),
 	}
 
@@ -206,7 +207,7 @@ func (l *LidoService) Withdraw(amount float64, recipient string) (*StakingTransa
 		Provider:  ProviderLido,
 		Type:      "withdraw",
 		Amount:    amount,
-		Status:   "pending",
+		Status:    "pending",
 		Timestamp: time.Now().Unix(),
 	}
 
@@ -222,12 +223,12 @@ func (l *LidoService) GetReward(staker string) (float64, error) {
 // ClaimClaim claims staking rewards
 func (l *LidoService) Claim(staker string) (*StakingTransaction, error) {
 	tx := &StakingTransaction{
-		ID:         generateTxID(),
-		Hash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
-		Provider:   ProviderLido,
-		Type:       "claim",
-		Amount:     0,
-		Status:     "pending",
+		ID:        generateTxID(),
+		Hash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
+		Provider:  ProviderLido,
+		Type:      "claim",
+		Amount:    0,
+		Status:    "pending",
 		Timestamp: time.Now().Unix(),
 	}
 
@@ -264,22 +265,22 @@ func (r *RocketPoolService) GetTokenInfo() (*StakingToken, error) {
 
 	return &StakingToken{
 		Symbol:           "rETH",
-		Name:            "Rocket Pool ETH",
-		Address:         r.config.rETHAddr,
+		Name:             "Rocket Pool ETH",
+		Address:          r.config.rETHAddr,
 		UnderlyingSymbol: "ETH",
-		APY:             0.045, // ~4.5% APY
-		TotalStaked:     150000,
-		ExchangeRate:    1.05,
+		APY:              0.045, // ~4.5% APY
+		TotalStaked:      150000,
+		ExchangeRate:     1.05,
 	}, nil
 }
 
 // Deposit deposits ETH to Rocket Pool
 func (r *RocketPoolService) Deposit(amount float64, provider string) (*StakingTransaction, error) {
 	tx := &StakingTransaction{
-		ID:         generateTxID(),
-		Hash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
-		Provider:   ProviderRocketPool,
-		Type:       "deposit",
+		ID:        generateTxID(),
+		Hash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
+		Provider:  ProviderRocketPool,
+		Type:      "deposit",
 		Amount:    amount,
 		Status:    "pending",
 		Timestamp: time.Now().Unix(),
@@ -312,22 +313,22 @@ func NewEigenLayerService(config StakingConfig) *EigenLayerService {
 func (e *EigenLayerService) GetTokenInfo() (*StakingToken, error) {
 	return &StakingToken{
 		Symbol:           "lsETH",
-		Name:            "LST EigenLayer",
-		Address:         e.config.LSETHAddr,
+		Name:             "LST EigenLayer",
+		Address:          e.config.LSETHAddr,
 		UnderlyingSymbol: "ETH",
-		APY:             0.08, // ~8% APY with restaking
-		TotalStaked:     500000,
-		ExchangeRate:    1.08,
+		APY:              0.08, // ~8% APY with restaking
+		TotalStaked:      500000,
+		ExchangeRate:     1.08,
 	}, nil
 }
 
 // Deposit deposits ETH to EigenLayer
 func (e *EigenLayerService) Deposit(amount float64, operator string) (*StakingTransaction, error) {
 	tx := &StakingTransaction{
-		ID:         generateTxID(),
-		Hash:       "", // not broadcast via RPC; real hash requires on-chain broadcast
-		Provider:   ProviderEigenLayer,
-		Type:       "deposit",
+		ID:        generateTxID(),
+		Hash:      "", // not broadcast via RPC; real hash requires on-chain broadcast
+		Provider:  ProviderEigenLayer,
+		Type:      "deposit",
 		Amount:    amount,
 		Status:    "pending",
 		Timestamp: time.Now().Unix(),
@@ -349,37 +350,37 @@ func (e *EigenLayerService) Delegate(operator string) error {
 type NFTConfig struct {
 	OpenSeaAPIKey   string `json:"opensea_api_key"`
 	InfuraProjectID string `json:"infura_project_id"`
-	AlchemyAPIKey string `json:"alchemy_api_key"`
+	AlchemyAPIKey   string `json:"alchemy_api_key"`
 }
 
 // NFTCollection represents an NFT collection
 type NFTCollection struct {
-	Address      string  `json:"address"`
-	Name         string  `json:"name"`
-	Symbol       string  `json:"symbol"`
-	TotalSupply  int     `json:"total_supply"`
-	FloorPrice   float64 `json:"floor_price"`
+	Address     string  `json:"address"`
+	Name        string  `json:"name"`
+	Symbol      string  `json:"symbol"`
+	TotalSupply int     `json:"total_supply"`
+	FloorPrice  float64 `json:"floor_price"`
 	MarketCap   float64 `json:"market_cap"`
 }
 
 // NFT represents an NFT
 type NFT struct {
-	TokenID       string       `json:"token_id"`
-	ContractAddr string      `json:"contract_address"`
-	Owner        string      `json:"owner"`
-	Name         string      `json:"name"`
-	Description  string      `json:"description"`
-	ImageURL     string      `json:"image_url"`
-	AnimationURL string    `json:"animation_url"`
+	TokenID      string         `json:"token_id"`
+	ContractAddr string         `json:"contract_address"`
+	Owner        string         `json:"owner"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	ImageURL     string         `json:"image_url"`
+	AnimationURL string         `json:"animation_url"`
 	Attributes   []NFTAttribute `json:"attributes"`
-	Collection   string      `json:"collection"`
+	Collection   string         `json:"collection"`
 }
 
 // NFTAttribute represents NFT metadata attributes
 type NFTAttribute struct {
 	TraitType   string      `json:"trait_type"`
-	Value      interface{}  `json:"value"`
-	DisplayType string    `json:"display_type"`
+	Value       interface{} `json:"value"`
+	DisplayType string      `json:"display_type"`
 }
 
 // NFTService handles NFT operations
@@ -416,8 +417,8 @@ func (n *NFTService) GetNFT(contractAddr, tokenID string) (*NFT, error) {
 	var data struct {
 		NFT struct {
 			Identifier string `json:"identifier"`
-			Title     string `json:"title"`
-			Media    []struct {
+			Title      string `json:"title"`
+			Media      []struct {
 				URL string `json:"url"`
 			} `json:"media"`
 			Metadata string `json:"metadata_url"`
@@ -429,8 +430,8 @@ func (n *NFTService) GetNFT(contractAddr, tokenID string) (*NFT, error) {
 	}
 
 	nft := &NFT{
-		TokenID:       tokenID,
-		ContractAddr:  contractAddr,
+		TokenID:      tokenID,
+		ContractAddr: contractAddr,
 		Name:         data.NFT.Title,
 		ImageURL:     data.NFT.Media[0].URL,
 		Collection:   contractAddr,
@@ -464,7 +465,7 @@ func (n *NFTService) GetUserNFTs(owner, chain string) ([]NFT, error) {
 	url := fmt.Sprintf("https://eth-%s.g.alchemy.com/nft/v3/%s/getNFTs", chain, n.config.AlchemyAPIKey)
 
 	body := map[string]interface{}{
-		"owner": owner,
+		"owner":             owner,
 		"contractAddresses": []string{},
 	}
 
@@ -497,7 +498,7 @@ func (n *NFTService) GetUserNFTs(owner, chain string) ([]NFT, error) {
 	nfts := make([]NFT, len(data.NFTs))
 	for i, n := range data.NFTs {
 		nfts[i] = NFT{
-			TokenID:       n.ID.TokenID,
+			TokenID:      n.ID.TokenID,
 			ContractAddr: n.Contract.Address,
 			Name:         n.Title,
 		}
@@ -516,29 +517,29 @@ type BridgeProvider string
 const (
 	BridgeStargate  BridgeProvider = "stargate"
 	BridgeAcross    BridgeProvider = "across"
-	BridgeHop      BridgeProvider = "hop"
+	BridgeHop       BridgeProvider = "hop"
 	BridgeLayerZero BridgeProvider = "layerzero"
 )
 
 // BridgeConfig holds bridge configuration
 type BridgeConfig struct {
-	Provider    BridgeProvider `json:"provider"`
-	APIBase    string      `json:"api_base"`
-	RouterAddr string     `json:"router_address"`
+	Provider   BridgeProvider `json:"provider"`
+	APIBase    string         `json:"api_base"`
+	RouterAddr string         `json:"router_address"`
 }
 
 // BridgeQuote represents a bridge quote
 type BridgeQuote struct {
-	Provider       BridgeProvider `json:"provider"`
-	SrcChain       string       `json:"src_chain"`
-	DstChain       string       `json:"dst_chain"`
-	TokenIn       string       `json:"token_in"`
-	TokenOut      string       `json:"token_out"`
-	AmountIn      float64     `json:"amount_in"`
-	AmountOut     float64     `json:"amount_out"`
-	EstimatedTime int64       `json:"estimated_time"` // seconds
-	Slippage      float64     `json:"slippage"`
-	Fee           float64     `json:"fee"`
+	Provider      BridgeProvider `json:"provider"`
+	SrcChain      string         `json:"src_chain"`
+	DstChain      string         `json:"dst_chain"`
+	TokenIn       string         `json:"token_in"`
+	TokenOut      string         `json:"token_out"`
+	AmountIn      float64        `json:"amount_in"`
+	AmountOut     float64        `json:"amount_out"`
+	EstimatedTime int64          `json:"estimated_time"` // seconds
+	Slippage      float64        `json:"slippage"`
+	Fee           float64        `json:"fee"`
 }
 
 // BridgeService handles cross-chain bridging
@@ -562,12 +563,12 @@ func (b *BridgeService) GetQuote(srcChain, dstChain, tokenIn, tokenOut string, a
 	url := b.config.APIBase + "/quote"
 
 	reqBody := map[string]interface{}{
-		"sourceChain":  srcChain,
+		"sourceChain": srcChain,
 		"destChain":   dstChain,
-		"tokenIn":    tokenIn,
-		"tokenOut":   tokenOut,
-		"amountIn":   amount,
-		"slippage":   0.003, // 0.3% slippage
+		"tokenIn":     tokenIn,
+		"tokenOut":    tokenOut,
+		"amountIn":    amount,
+		"slippage":    0.003, // 0.3% slippage
 	}
 
 	body, _ := json.Marshal(reqBody)
@@ -578,16 +579,16 @@ func (b *BridgeService) GetQuote(srcChain, dstChain, tokenIn, tokenOut string, a
 	defer resp.Body.Close()
 
 	quote := &BridgeQuote{
-		Provider:       b.config.Provider,
-		SrcChain:       srcChain,
+		Provider:      b.config.Provider,
+		SrcChain:      srcChain,
 		DstChain:      dstChain,
-		TokenIn:      tokenIn,
-		TokenOut:     tokenOut,
-		AmountIn:     amount,
-		AmountOut:    amount * 0.997, // Simplified
-		EstimatedTime: 300,              // 5 minutes
-		Slippage:    0.003,
-		Fee:         amount * 0.001, // 0.1% fee
+		TokenIn:       tokenIn,
+		TokenOut:      tokenOut,
+		AmountIn:      amount,
+		AmountOut:     amount * 0.997, // Simplified
+		EstimatedTime: 300,            // 5 minutes
+		Slippage:      0.003,
+		Fee:           amount * 0.001, // 0.1% fee
 	}
 
 	return quote, nil
@@ -605,25 +606,25 @@ func (b *BridgeService) Execute(quote *BridgeQuote, recipient string) (string, e
 // PortfolioConfig holds portfolio service configuration
 type PortfolioConfig struct {
 	CoingeckoAPIKey string `json:"coingecko_api_key"`
-	CMCAPIKey    string `json:"cmc_api_key"`
+	CMCAPIKey       string `json:"cmc_api_key"`
 }
 
 // Portfolio holds portfolio data
 type Portfolio struct {
-	TotalValue      float64        `json:"total_value"`
-	TotalCostBasis  float64        `json:"total_cost_basis"`
-	TotalPnL       float64        `json:"total_pnl"`
-	TotalPnLPercent float64        `json:"total_pnl_percent"`
-	Assets         []PortfolioAsset `json:"assets"`
+	TotalValue      float64          `json:"total_value"`
+	TotalCostBasis  float64          `json:"total_cost_basis"`
+	TotalPnL        float64          `json:"total_pnl"`
+	TotalPnLPercent float64          `json:"total_pnl_percent"`
+	Assets          []PortfolioAsset `json:"assets"`
 }
 
 // PortfolioAsset represents an asset in portfolio
 type PortfolioAsset struct {
-	Symbol      string  `json:"symbol"`
-	Chain       string  `json:"chain"`
-	Balance     float64 `json:"balance"`
-	Value       float64 `json:"value"`
-	CostBasis   float64 `json:"cost_basis"`
+	Symbol     string  `json:"symbol"`
+	Chain      string  `json:"chain"`
+	Balance    float64 `json:"balance"`
+	Value      float64 `json:"value"`
+	CostBasis  float64 `json:"cost_basis"`
 	PnL        float64 `json:"pnl"`
 	PnLPercent float64 `json:"pnl_percent"`
 }
@@ -654,25 +655,25 @@ func (p *PortfolioService) GetPortfolio(address string) (*Portfolio, error) {
 	portfolio := &Portfolio{
 		TotalValue:      100000,
 		TotalCostBasis:  80000,
-		TotalPnL:     20000,
+		TotalPnL:        20000,
 		TotalPnLPercent: 25,
 		Assets: []PortfolioAsset{
 			{
-				Symbol:      "ETH",
+				Symbol:     "ETH",
 				Chain:      "ethereum",
 				Balance:    10,
 				Value:      25000,
 				CostBasis:  20000,
-				PnL:       5000,
+				PnL:        5000,
 				PnLPercent: 25,
 			},
 			{
-				Symbol:      "stETH",
+				Symbol:     "stETH",
 				Chain:      "ethereum",
 				Balance:    5,
 				Value:      12500,
 				CostBasis:  10000,
-				PnL:       2500,
+				PnL:        2500,
 				PnLPercent: 25,
 			},
 		},
@@ -684,13 +685,13 @@ func (p *PortfolioService) GetPortfolio(address string) (*Portfolio, error) {
 // GetPnLHistory gets PnL history
 func (p *PortfolioService) GetPnLHistory(address string, period string) ([]struct {
 	Timestamp int64   `json:"timestamp"`
-	Value    float64 `json:"value"`
+	Value     float64 `json:"value"`
 }, error) {
 	// Return historical data
 	now := time.Now().Unix()
 	history := make([]struct {
 		Timestamp int64   `json:"timestamp"`
-		Value    float64 `json:"value"`
+		Value     float64 `json:"value"`
 	}, 30)
 
 	for i := 0; i < 30; i++ {
@@ -703,32 +704,32 @@ func (p *PortfolioService) GetPnLHistory(address string, period string) ([]struc
 
 // ExportTaxReport exports tax report
 func (p *PortfolioService) ExportTaxReport(address string, year int) ([]struct {
-	Date       int64   `json:"date"`
-	Type       string  `json:"type"`
-	Symbol     string  `json:"symbol"`
-	Amount     float64 `json:"amount"`
-	Value      float64 `json:"value"`
-	CostBasis  float64 `json:"cost_basis"`
-	GainLoss   float64 `json:"gain_loss"`
+	Date      int64   `json:"date"`
+	Type      string  `json:"type"`
+	Symbol    string  `json:"symbol"`
+	Amount    float64 `json:"amount"`
+	Value     float64 `json:"value"`
+	CostBasis float64 `json:"cost_basis"`
+	GainLoss  float64 `json:"gain_loss"`
 }, error) {
 	// Return tax lots
 	report := []struct {
-		Date       int64   `json:"date"`
-		Type       string  `json:"type"`
-		Symbol     string  `json:"symbol"`
-		Amount     float64 `json:"amount"`
-		Value      float64 `json:"value"`
-		CostBasis  float64 `json:"cost_basis"`
-		GainLoss   float64 `json:"gain_loss"`
+		Date      int64   `json:"date"`
+		Type      string  `json:"type"`
+		Symbol    string  `json:"symbol"`
+		Amount    float64 `json:"amount"`
+		Value     float64 `json:"value"`
+		CostBasis float64 `json:"cost_basis"`
+		GainLoss  float64 `json:"gain_loss"`
 	}{
 		{
 			Date:      time.Now().Unix(),
 			Type:      "sell",
 			Symbol:    "ETH",
 			Amount:    1,
-			Value:    2500,
+			Value:     2500,
 			CostBasis: 2000,
-			GainLoss: 500,
+			GainLoss:  500,
 		},
 	}
 
@@ -790,25 +791,25 @@ func (h *HardwareWalletService) GetPublicKey(path string) ([]byte, error) {
 
 // WalletConnectConfig holds WalletConnect configuration
 type WalletConnectConfig struct {
-	ProjectID  string `json:"project_id"`
-	APIBase    string `json:"api_base"`
-	RelayURL   string `json:"relay_url"`
+	ProjectID string `json:"project_id"`
+	APIBase   string `json:"api_base"`
+	RelayURL  string `json:"relay_url"`
 }
 
 // WalletConnectSession represents a WalletConnect session
 type WalletConnectSession struct {
-	Topic    string `json:"topic"`
+	Topic    string       `json:"topic"`
 	PeerMeta PeerMetadata `json:"peer_meta"`
-	Accounts []string `json:"accounts"`
-	ChainID  int64  `json:"chain_id"`
+	Accounts []string     `json:"accounts"`
+	ChainID  int64        `json:"chain_id"`
 }
 
 // PeerMetadata represents peer metadata
 type PeerMetadata struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	URL        string `json:"url"`
-	Icons      []string `json:"icons"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	URL         string   `json:"url"`
+	Icons       []string `json:"icons"`
 }
 
 // WalletConnectService handles WalletConnect v2 operations
@@ -844,7 +845,7 @@ func (w *WalletConnectService) CreateSession() (*WalletConnectSession, error) {
 	}
 
 	return &WalletConnectSession{
-		Topic: data.Topic,
+		Topic:   data.Topic,
 		ChainID: 1,
 	}, nil
 }
@@ -882,9 +883,9 @@ func main() {
 
 	// Example: Lido staking
 	lidoConfig := StakingConfig{
-		Provider:      ProviderLido,
-		APIBase:       "https://steth.lido.fi/api",
-		StETHAddr:     "0xae7ab96520de3a876e95128164a04d8079a2d53e",
+		Provider:  ProviderLido,
+		APIBase:   "https://steth.lido.fi/api",
+		StETHAddr: "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84",
 	}
 
 	lido := NewLidoService(lidoConfig)

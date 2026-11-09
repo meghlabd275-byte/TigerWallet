@@ -27,9 +27,9 @@ import (
 // ============================================================================
 
 type BlockchainConfig struct {
-	ServerPort  string `json:"server_port"`
-	RedisHost   string `json:"redis_host"`
-	RedisPort   string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 func LoadConfig() *BlockchainConfig {
@@ -52,16 +52,16 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Chain struct {
-	ChainID       uint   `json:"chain_id"`
-	Name          string `json:"name"`
-	Symbol        string `json:"symbol"`
-	Type          string `json:"type"` // evm, bitcoin, solana, ton
+	ChainID       uint     `json:"chain_id"`
+	Name          string   `json:"name"`
+	Symbol        string   `json:"symbol"`
+	Type          string   `json:"type"` // evm, bitcoin, solana, ton
 	RPCURLs       []string `json:"rpc_urls"`
 	ExplorerURLs  []string `json:"explorer_urls"`
-	NativeToken   string `json:"native_token"`
-	Confirmations int    `json:"confirmations"`
-	BlockTime     int    `json:"block_time"` // seconds
-	IsTestnet    bool   `json:"is_testnet"`
+	NativeToken   string   `json:"native_token"`
+	Confirmations int      `json:"confirmations"`
+	BlockTime     int      `json:"block_time"` // seconds
+	IsTestnet     bool     `json:"is_testnet"`
 }
 
 // Complete chain list with real RPC endpoints
@@ -71,11 +71,11 @@ var CHAINS = map[string]Chain{
 		ChainID: 1, Name: "Ethereum", Symbol: "ETH", Type: "evm",
 		RPCURLs: []string{
 			"https://eth.llamarpc.com",
-			"https://eth-mainnet.g.alchemy.com/v2/demo",
+			"https://ethereum-rpc.publicnode.com",
 			"https://cloudflare-eth.com",
 		},
 		ExplorerURLs: []string{"https://etherscan.io"},
-		NativeToken: "ETH", Confirmations: 12, BlockTime: 12,
+		NativeToken:  "ETH", Confirmations: 12, BlockTime: 12,
 	},
 	"polygon": {
 		ChainID: 137, Name: "Polygon", Symbol: "MATIC", Type: "evm",
@@ -84,7 +84,7 @@ var CHAINS = map[string]Chain{
 			"https://polygon.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://polygonscan.com"},
-		NativeToken: "MATIC", Confirmations: 128, BlockTime: 2,
+		NativeToken:  "MATIC", Confirmations: 128, BlockTime: 2,
 	},
 	"bsc": {
 		ChainID: 56, Name: "BNB Smart Chain", Symbol: "BNB", Type: "evm",
@@ -93,7 +93,7 @@ var CHAINS = map[string]Chain{
 			"https://bsc.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://bscscan.com"},
-		NativeToken: "BNB", Confirmations: 15, BlockTime: 3,
+		NativeToken:  "BNB", Confirmations: 15, BlockTime: 3,
 	},
 	"arbitrum": {
 		ChainID: 42161, Name: "Arbitrum One", Symbol: "ETH", Type: "evm",
@@ -102,7 +102,7 @@ var CHAINS = map[string]Chain{
 			"https://arbitrum.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://arbiscan.io"},
-		NativeToken: "ETH", Confirmations: 12, BlockTime: 1,
+		NativeToken:  "ETH", Confirmations: 12, BlockTime: 1,
 	},
 	"optimism": {
 		ChainID: 10, Name: "Optimism", Symbol: "ETH", Type: "evm",
@@ -111,7 +111,7 @@ var CHAINS = map[string]Chain{
 			"https://optimism.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://optimistic.etherscan.io"},
-		NativeToken: "ETH", Confirmations: 12, BlockTime: 2,
+		NativeToken:  "ETH", Confirmations: 12, BlockTime: 2,
 	},
 	"avalanche": {
 		ChainID: 43114, Name: "Avalanche", Symbol: "AVAX", Type: "evm",
@@ -120,7 +120,7 @@ var CHAINS = map[string]Chain{
 			"https://avalanche.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://snowtrace.io"},
-		NativeToken: "AVAX", Confirmations: 12, BlockTime: 1,
+		NativeToken:  "AVAX", Confirmations: 12, BlockTime: 1,
 	},
 	"base": {
 		ChainID: 8453, Name: "Base", Symbol: "ETH", Type: "evm",
@@ -129,7 +129,7 @@ var CHAINS = map[string]Chain{
 			"https://base.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://basescan.org"},
-		NativeToken: "ETH", Confirmations: 12, BlockTime: 2,
+		NativeToken:  "ETH", Confirmations: 12, BlockTime: 2,
 	},
 	"fantom": {
 		ChainID: 250, Name: "Fantom", Symbol: "FTM", Type: "evm",
@@ -138,7 +138,7 @@ var CHAINS = map[string]Chain{
 			"https://fantom.llamarpc.com",
 		},
 		ExplorerURLs: []string{"https://ftmscan.com"},
-		NativeToken: "FTM", Confirmations: 1, BlockTime: 1,
+		NativeToken:  "FTM", Confirmations: 1, BlockTime: 1,
 	},
 	"cronos": {
 		ChainID: 25, Name: "Cronos", Symbol: "CRO", Type: "evm",
@@ -146,7 +146,7 @@ var CHAINS = map[string]Chain{
 			"https://evm.cronos.org",
 		},
 		ExplorerURLs: []string{"https://cronoscan.com"},
-		NativeToken: "CRO", Confirmations: 50, BlockTime: 6,
+		NativeToken:  "CRO", Confirmations: 50, BlockTime: 6,
 	},
 	"celo": {
 		ChainID: 42220, Name: "Celo", Symbol: "CELO", Type: "evm",
@@ -154,7 +154,7 @@ var CHAINS = map[string]Chain{
 			"https://forno.celo.org",
 		},
 		ExplorerURLs: []string{"https://explorer.celo.org"},
-		NativeToken: "CELO", Confirmations: 1, BlockTime: 5,
+		NativeToken:  "CELO", Confirmations: 1, BlockTime: 5,
 	},
 	// Additional chains
 	"polygon_zkevm": {
@@ -163,7 +163,7 @@ var CHAINS = map[string]Chain{
 			"https://zkevm-rpc.com",
 		},
 		ExplorerURLs: []string{"https://zkevm.polygonscan.com"},
-		NativeToken: "ETH", Confirmations: 1, BlockTime: 1,
+		NativeToken:  "ETH", Confirmations: 1, BlockTime: 1,
 	},
 	"linea": {
 		ChainID: 59144, Name: "Linea", Symbol: "ETH", Type: "evm",
@@ -171,7 +171,7 @@ var CHAINS = map[string]Chain{
 			"https://rpc.linea.build",
 		},
 		ExplorerURLs: []string{"https://lineascan.build"},
-		NativeToken: "ETH", Confirmations: 1, BlockTime: 1,
+		NativeToken:  "ETH", Confirmations: 1, BlockTime: 1,
 	},
 	"scroll": {
 		ChainID: 534352, Name: "Scroll", Symbol: "ETH", Type: "evm",
@@ -179,7 +179,7 @@ var CHAINS = map[string]Chain{
 			"https://rpc.scroll.io",
 		},
 		ExplorerURLs: []string{"https://scrollscan.com"},
-		NativeToken: "ETH", Confirmations: 1, BlockTime: 1,
+		NativeToken:  "ETH", Confirmations: 1, BlockTime: 1,
 	},
 	"zksync": {
 		ChainID: 324, Name: "zkSync Era", Symbol: "ETH", Type: "evm",
@@ -187,7 +187,7 @@ var CHAINS = map[string]Chain{
 			"https://mainnet.era.zksync.io",
 		},
 		ExplorerURLs: []string{"https://explorer.zksync.io"},
-		NativeToken: "ETH", Confirmations: 1, BlockTime: 1,
+		NativeToken:  "ETH", Confirmations: 1, BlockTime: 1,
 	},
 	"mantle": {
 		ChainID: 5000, Name: "Mantle", Symbol: "MNT", Type: "evm",
@@ -195,7 +195,7 @@ var CHAINS = map[string]Chain{
 			"https://rpc.mantle.xyz",
 		},
 		ExplorerURLs: []string{"https://explorer.mantle.xyz"},
-		NativeToken: "MNT", Confirmations: 1, BlockTime: 1,
+		NativeToken:  "MNT", Confirmations: 1, BlockTime: 1,
 	},
 }
 
@@ -221,15 +221,15 @@ func NewRPCClient(url string) *RPCClient {
 type JSONRPCRequest struct {
 	JSONRPC string        `json:"jsonrpc"`
 	Method  string        `json:"method"`
-	Params []interface{} `json:"params"`
-	ID     int          `json:"id"`
+	Params  []interface{} `json:"params"`
+	ID      int           `json:"id"`
 }
 
 type JSONRPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID     int             `json:"id"`
-	Result json.RawMessage `json:"result"`
-	Error  *RPCError       `json:"error,omitempty"`
+	ID      int             `json:"id"`
+	Result  json.RawMessage `json:"result"`
+	Error   *RPCError       `json:"error,omitempty"`
 }
 
 type RPCError struct {
@@ -287,7 +287,7 @@ type ChainManager struct {
 func NewChainManager(redisHost, redisPort string) (*ChainManager, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", redisHost, redisPort),
-		DB: 8,
+		DB:   8,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -662,9 +662,9 @@ func main() {
 	// Health
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status": "healthy",
+			"status":  "healthy",
 			"service": "blockchain-connectivity",
-			"chains": len(manager.ListChains()),
+			"chains":  len(manager.ListChains()),
 		})
 	})
 

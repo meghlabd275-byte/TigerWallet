@@ -2,8 +2,9 @@
 
 // Standalone reference/demo service. Run individually with: go run <file>
 // (Tagged "ignore" so the services/go directory is not a broken package —
-//  these files are not part of any deployed build; deployed services live
-//  under their own modules, e.g. go/*, */go.)
+//
+//	these files are not part of any deployed build; deployed services live
+//	under their own modules, e.g. go/*, */go.)
 package main
 
 import (
@@ -29,9 +30,9 @@ import (
 // DeFiConfig holds DeFi configuration
 type DeFiConfig struct {
 	Protocol    string `json:"protocol"` // aave, compound, uniswap
-	RPCURL     string `json:"rpc_url"`
-	APIBase    string `json:"api_base"`
-	RouterAddr string `json:"router_address"`
+	RPCURL      string `json:"rpc_url"`
+	APIBase     string `json:"api_base"`
+	RouterAddr  string `json:"router_address"`
 	LendingPool string `json:"lending_pool"`
 }
 
@@ -47,33 +48,33 @@ type AaveService struct {
 
 // AavePoolReserve represents a pool reserve
 type AavePoolReserve struct {
-	Asset               string  `json:"underlying_asset"`
-	TotalSupply         float64 `json:"total_supply"`
-	TotalBorrows       float64 `json:"total_borrows"`
-	LiquidityRate      float64 `json:"liquidity_rate"`
-	BorrowRateStable  float64 `json:"borrow_rate_stable"`
-	BorrowRateVariable float64 `json:"borrow_rate_variable"`
-	UtilizationRate   float64 `json:"utilization_rate"`
-	EModeCategory    uint8   `json:"e_mode_category"`
-	LTV            uint16  `json:"ltv"`
-	LiquidationThreshold uint16 `json:"liquidation_threshold"`
-	LiquidationBonus  uint16  `json:"liquidation_bonus"`
+	Asset                string  `json:"underlying_asset"`
+	TotalSupply          float64 `json:"total_supply"`
+	TotalBorrows         float64 `json:"total_borrows"`
+	LiquidityRate        float64 `json:"liquidity_rate"`
+	BorrowRateStable     float64 `json:"borrow_rate_stable"`
+	BorrowRateVariable   float64 `json:"borrow_rate_variable"`
+	UtilizationRate      float64 `json:"utilization_rate"`
+	EModeCategory        uint8   `json:"e_mode_category"`
+	LTV                  uint16  `json:"ltv"`
+	LiquidationThreshold uint16  `json:"liquidation_threshold"`
+	LiquidationBonus     uint16  `json:"liquidation_bonus"`
 }
 
 // AaveUserReserve represents user's reserve data
 type AaveUserReserve struct {
-	Asset             string  `json:"underlying_asset"`
-	ATokenBalance    float64 `json:"a_token_balance"`
-	StableDebt       float64 `json:"stable_debt"`
-	VariableDebt    float64 `json:"variable_debt"`
-	EModeCategory   uint8   `json:"e_mode_category"`
+	Asset         string  `json:"underlying_asset"`
+	ATokenBalance float64 `json:"a_token_balance"`
+	StableDebt    float64 `json:"stable_debt"`
+	VariableDebt  float64 `json:"variable_debt"`
+	EModeCategory uint8   `json:"e_mode_category"`
 }
 
 // AaveHealthFactor represents user's health factor
 type AaveHealthFactor struct {
-	HealthFactor    float64 `json:"health_factor"`
-	TotalCollateralUSD float64 `json:"total_collateral_usd"`
-	TotalBorrowsUSD float64 `json:"total_borrows_usd"`
+	HealthFactor                float64 `json:"health_factor"`
+	TotalCollateralUSD          float64 `json:"total_collateral_usd"`
+	TotalBorrowsUSD             float64 `json:"total_borrows_usd"`
 	CurrentLiquidationThreshold float64 `json:"current_liquidation_threshold"`
 }
 
@@ -90,32 +91,32 @@ func NewAaveService(config DeFiConfig) *AaveService {
 // GetReserveData gets reserve data for an asset
 func (a *AaveService) GetReserveData(asset string) (*AavePoolReserve, error) {
 	url := fmt.Sprintf("%s/reserves?asset=%s", a.config.APIBase, asset)
-	
+
 	resp, err := a.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	var reserve AavePoolReserve
 	reserve.Asset = asset
-	
+
 	return &reserve, nil
 }
 
 // GetUserReserveData gets user's reserve data
 func (a *AaveService) GetUserReserveData(user, asset string) (*AaveUserReserve, error) {
 	url := fmt.Sprintf("%s/user-reserves?user=%s&asset=%s", a.config.APIBase, user, asset)
-	
+
 	resp, err := a.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	var userReserve AaveUserReserve
 	userReserve.Asset = asset
-	
+
 	return &userReserve, nil
 }
 
@@ -148,17 +149,17 @@ func (a *AaveService) SetEMode(category uint8) (string, error) {
 // GetUserAccountData gets user's account data
 func (a *AaveService) GetUserAccountData(user string) (*AaveHealthFactor, error) {
 	url := fmt.Sprintf("%s/user-account-data?user=%s", a.config.APIBase, user)
-	
+
 	resp, err := a.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	return &AaveHealthFactor{
-		HealthFactor: 1.5,
-		TotalCollateralUSD: 10000,
-		TotalBorrowsUSD: 5000,
+		HealthFactor:                1.5,
+		TotalCollateralUSD:          10000,
+		TotalBorrowsUSD:             5000,
 		CurrentLiquidationThreshold: 8000,
 	}, nil
 }
@@ -177,18 +178,18 @@ type CompoundService struct {
 type CompoundMarket struct {
 	Asset            string  `json:"underlying_asset"`
 	SupplyRate       float64 `json:"supply_rate"`
-	BorrowRate      float64 `json:"borrow_rate"`
-	TotalSupply    float64 `json:"total_supply"`
-	TotalBorrows   float64 `json:"total_borrows"`
+	BorrowRate       float64 `json:"borrow_rate"`
+	TotalSupply      float64 `json:"total_supply"`
+	TotalBorrows     float64 `json:"total_borrows"`
 	CollateralFactor float64 `json:"collateral_factor"`
-	Liquidity    float64 `json:"liquidity"`
-	ReserveFactor float64 `json:"reserve_factor"`
+	Liquidity        float64 `json:"liquidity"`
+	ReserveFactor    float64 `json:"reserve_factor"`
 }
 
 // CompoundUser represents user's position
 type CompoundUser struct {
-	Asset            string  `json:"underlying_asset"`
-	CTokenBalance  float64 `json:"c_token_balance"`
+	Asset         string  `json:"underlying_asset"`
+	CTokenBalance float64 `json:"c_token_balance"`
 	BorrowBalance float64 `json:"borrow_balance"`
 }
 
@@ -205,17 +206,17 @@ func NewCompoundService(config DeFiConfig) *CompoundService {
 // GetMarket gets market data
 func (c *CompoundService) GetMarket(asset string) (*CompoundMarket, error) {
 	url := fmt.Sprintf("%s/v2/token?asset=%s", c.config.APIBase, asset)
-	
+
 	resp, err := c.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	return &CompoundMarket{
-		Asset:         asset,
-		SupplyRate:   0.05,
-		BorrowRate:   0.08,
+		Asset:            asset,
+		SupplyRate:       0.05,
+		BorrowRate:       0.08,
 		CollateralFactor: 0.8,
 	}, nil
 }
@@ -262,23 +263,23 @@ type UniswapService struct {
 
 // Pool represents a Uniswap V3 pool
 type Pool struct {
-	Token0         string  `json:"token0"`
-	Token1         string  `json:"token1"`
-	Fee            uint32  `json:"fee"`
-	Liquidity       float64 `json:"liquidity"`
-	sqrtPriceX96  string `json:"sqrt_price_x96"`
-	TickCurrent    int32  `json:"tick_current"`
-	Token0Price   float64 `json:"token0_price"`
-	Token1Price   float64 `json:"token1_price"`
+	Token0       string  `json:"token0"`
+	Token1       string  `json:"token1"`
+	Fee          uint32  `json:"fee"`
+	Liquidity    float64 `json:"liquidity"`
+	sqrtPriceX96 string  `json:"sqrt_price_x96"`
+	TickCurrent  int32   `json:"tick_current"`
+	Token0Price  float64 `json:"token0_price"`
+	Token1Price  float64 `json:"token1_price"`
 }
 
 // Quote represents a swap quote
 type Quote struct {
-	AmountIn       float64 `json:"amount_in"`
-	AmountOut     float64 `json:"amount_out"`
-	AmountOutMin  float64 `json:"amount_out_min"`
-	Fee          float64 `json:"fee"`
-	GasEstimate  uint64 `json:"gas_estimate"`
+	AmountIn     float64  `json:"amount_in"`
+	AmountOut    float64  `json:"amount_out"`
+	AmountOutMin float64  `json:"amount_out_min"`
+	Fee          float64  `json:"fee"`
+	GasEstimate  uint64   `json:"gas_estimate"`
 	Route        []string `json:"route"`
 }
 
@@ -294,34 +295,34 @@ func NewUniswapService(config DeFiConfig) *UniswapService {
 
 // GetQuote gets swap quote
 func (u *UniswapService) GetQuote(tokenIn, tokenOut string, amount float64, fee uint32) (*Quote, error) {
-	url := fmt.Sprintf("%s/quote?tokenIn=%s&tokenOut=%s&amount=%f&fee=%d", 
+	url := fmt.Sprintf("%s/quote?tokenIn=%s&tokenOut=%s&amount=%f&fee=%d",
 		u.config.APIBase, tokenIn, tokenOut, amount, fee)
-	
+
 	resp, err := u.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	return &Quote{
-		AmountIn:    amount,
-		AmountOut:  amount * 0.998,
+		AmountIn:     amount,
+		AmountOut:    amount * 0.998,
 		AmountOutMin: amount * 0.995,
-		Fee:       float64(fee) / 1e6,
-		GasEstimate: 150000,
+		Fee:          float64(fee) / 1e6,
+		GasEstimate:  150000,
 	}, nil
 }
 
 // GetPool gets pool data
 func (u *UniswapService) GetPool(token0, token1 string, fee uint32) (*Pool, error) {
 	url := fmt.Sprintf("%s/pool?token0=%s&token1=%s&fee=%d", u.config.APIBase, token0, token1, fee)
-	
+
 	resp, err := u.client.Get(url)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	return &Pool{
 		Token0: token0,
 		Token1: token1,
@@ -381,25 +382,25 @@ type CurveService struct {
 
 // CurvePool represents a Curve pool
 type CurvePool struct {
-	Address      string   `json:"address"`
-	Name         string   `json:"name"`
-	Tokens       []string `json:"tokens"`
-	Coins        uint8    `json:"coins"`
-	TotalSupply  float64 `json:"total_supply"`
-	TotalBorrowed float64 `json:"total_borrowed"`
-	VirtualPrice float64 `json:"virtual_price"`
-	Amplification uint64  `json:"amplification"`
-	A            float64 `json:"A"`
-	Fee          float64 `json:"fee"`
+	Address       string   `json:"address"`
+	Name          string   `json:"name"`
+	Tokens        []string `json:"tokens"`
+	Coins         uint8    `json:"coins"`
+	TotalSupply   float64  `json:"total_supply"`
+	TotalBorrowed float64  `json:"total_borrowed"`
+	VirtualPrice  float64  `json:"virtual_price"`
+	Amplification uint64   `json:"amplification"`
+	A             float64  `json:"A"`
+	Fee           float64  `json:"fee"`
 }
 
 // CurveGauge represents a liquidity gauge
 type CurveGauge struct {
-	Address      string  `json:"address"`
-	PoolAddress string  `json:"pool_address"`
+	Address       string  `json:"address"`
+	PoolAddress   string  `json:"pool_address"`
 	WorkingSupply float64 `json:"working_supply"`
-	TotalSupply float64 `json:"total_supply"`
-	Rate        float64 `json:"rate"`
+	TotalSupply   float64 `json:"total_supply"`
+	Rate          float64 `json:"rate"`
 }
 
 // NewCurveService creates a new Curve service
@@ -481,15 +482,15 @@ type YearnService struct {
 
 // YearnVault represents a Yearn vault
 type YearnVault struct {
-	Address      string  `json:"address"`
-	Name         string  `json:"name"`
-	Symbol       string  `json:"symbol"`
-	Underlying   string  `json:"underlying"`
-	APY          float64 `json:"apy"`
-	TVL          float64 `json:"tvl"`
-	SharePrice  float64 `json:"share_price"`
-	Deposits    float64 `json:"deposits"`
-	Withdraws   float64 `json:"withdraws"`
+	Address    string  `json:"address"`
+	Name       string  `json:"name"`
+	Symbol     string  `json:"symbol"`
+	Underlying string  `json:"underlying"`
+	APY        float64 `json:"apy"`
+	TVL        float64 `json:"tvl"`
+	SharePrice float64 `json:"share_price"`
+	Deposits   float64 `json:"deposits"`
+	Withdraws  float64 `json:"withdraws"`
 }
 
 // NewYearnService creates a new Yearn service
@@ -505,7 +506,7 @@ func NewYearnService(config DeFiConfig) *YearnService {
 // GetVault gets vault info
 func (y *YearnService) GetVault(symbol string) (*YearnVault, error) {
 	return &YearnVault{
-		Name:    "y" + symbol,
+		Name:   "y" + symbol,
 		Symbol: "y" + symbol,
 		APY:    0.05,
 	}, nil
@@ -538,10 +539,10 @@ type LidoService struct {
 
 // LidoStats represents Lido statistics
 type LidoStats struct {
-	TotalStETH     float64 `json:"total_steth"`
-	TotalValidators uint64 `json:"total_validators"`
-	APY           float64 `json:"apy"`
-	Fee           float64 `json:"fee"`
+	TotalStETH      float64 `json:"total_steth"`
+	TotalValidators uint64  `json:"total_validators"`
+	APY             float64 `json:"apy"`
+	Fee             float64 `json:"fee"`
 }
 
 // NewLidoService creates a new Lido service
@@ -557,10 +558,10 @@ func NewLidoService(config DeFiConfig) *LidoService {
 // GetStats gets Lido statistics
 func (l *LidoService) GetStats() (*LidoStats, error) {
 	return &LidoStats{
-		TotalStETH: 5000000,
+		TotalStETH:      5000000,
 		TotalValidators: 150000,
-		APY: 0.04,
-		Fee: 0.10,
+		APY:             0.04,
+		Fee:             0.10,
 	}, nil
 }
 
@@ -589,9 +590,9 @@ func main() {
 
 	// Example: Aave
 	aaveConfig := DeFiConfig{
-		Protocol: "aave",
-		APIBase: "https://api.aave.com/v3",
-		RouterAddr: "0x87870Bfa3F56D0592365205c6Ae48e80E4C74f5b",
+		Protocol:   "aave",
+		APIBase:    "https://api.aave.com/v3",
+		RouterAddr: "0x87870Bca3F3fD6335C3F4ce8392d69350B4fA4E2",
 	}
 	aave := NewAaveService(aaveConfig)
 	reserve, _ := aave.GetReserveData("0x...")
@@ -600,7 +601,7 @@ func main() {
 	// Example: Compound
 	compoundConfig := DeFiConfig{
 		Protocol: "compound",
-		APIBase: "https://api.compound.finance/v2",
+		APIBase:  "https://api.compound.finance/v2",
 	}
 	compound := NewCompoundService(compoundConfig)
 	market, _ := compound.GetMarket("0x...")
@@ -608,9 +609,9 @@ func main() {
 
 	// Example: Uniswap
 	uniswapConfig := DeFiConfig{
-		Protocol: "uniswap",
-		APIBase: "https://api.uniswap.org/v3",
-		RouterAddr: "0xE592427A0AEcE92DE3eDF1c0fe96518B3B0e2959",
+		Protocol:   "uniswap",
+		APIBase:    "https://api.uniswap.org/v3",
+		RouterAddr: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
 	}
 	uniswap := NewUniswapService(uniswapConfig)
 	quote, _ := uniswap.GetQuote("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "0xdAC17F958D2ee523a2206206994597C13D831ec7", 1000, 500)
@@ -619,7 +620,7 @@ func main() {
 	// Example: Curve
 	curveConfig := DeFiConfig{
 		Protocol: "curve",
-		APIBase: "https://api.curve.fi",
+		APIBase:  "https://api.curve.fi",
 	}
 	curve := NewCurveService(curveConfig)
 	pool, _ := curve.GetPool("0x...")
@@ -628,7 +629,7 @@ func main() {
 	// Example: Yearn
 	yearnConfig := DeFiConfig{
 		Protocol: "yearn",
-		APIBase: "https://api.yearn.finance/v1",
+		APIBase:  "https://api.yearn.finance/v1",
 	}
 	yearn := NewYearnService(yearnConfig)
 	vault, _ := yearn.GetVault("ETH")
@@ -637,7 +638,7 @@ func main() {
 	// Example: Lido
 	lidoConfig := DeFiConfig{
 		Protocol: "lido",
-		APIBase: "https://steth.lido.fi/api",
+		APIBase:  "https://steth.lido.fi/api",
 	}
 	lido := NewLidoService(lidoConfig)
 	stats, _ := lido.GetStats()

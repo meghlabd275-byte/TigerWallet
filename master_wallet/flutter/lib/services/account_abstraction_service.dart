@@ -23,7 +23,7 @@ class AccountAbstractionService {
 
   // Canonical EIP-4337 EntryPoint address (mainnet, shared by all chains).
   static const String entryPointAddress =
-      '0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3';
+      '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789';
 
   String? _token;
   void setToken(String? token) => _token = token;

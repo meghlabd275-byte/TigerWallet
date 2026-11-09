@@ -375,7 +375,7 @@ func NewRBACAdminService() *RBACAdminService {
 func (s *RBACAdminService) initDemoData() {
 	// Initialize blockchains
 	blockchains := []Blockchain{
-		{ID: "eth", Name: "Ethereum", Symbol: "ETH", ChainID: 1, IsEVM: true, RPCURL: "https://eth-mainnet.alchemyapi.io", ExplorerURL: "https://etherscan.io", NativeToken: "ETH", Decimals: 18, IsActive: true, AvgGasPriceGwei: 20},
+		{ID: "eth", Name: "Ethereum", Symbol: "ETH", ChainID: 1, IsEVM: true, RPCURL: "https://ethereum-rpc.publicnode.com", ExplorerURL: "https://etherscan.io", NativeToken: "ETH", Decimals: 18, IsActive: true, AvgGasPriceGwei: 20},
 		{ID: "bsc", Name: "BNB Smart Chain", Symbol: "BNB", ChainID: 56, IsEVM: true, RPCURL: "https://bsc-dataseed.binance.org", ExplorerURL: "https://bscscan.com", NativeToken: "BNB", Decimals: 18, IsActive: true, AvgGasPriceGwei: 3},
 		{ID: "polygon", Name: "Polygon", Symbol: "MATIC", ChainID: 137, IsEVM: true, RPCURL: "https://polygon-rpc.com", ExplorerURL: "https://polygonscan.com", NativeToken: "MATIC", Decimals: 18, IsActive: true, AvgGasPriceGwei: 50},
 		{ID: "arbitrum", Name: "Arbitrum One", Symbol: "ETH", ChainID: 42161, IsEVM: true, RPCURL: "https://arb1.arbitrum.io/rpc", ExplorerURL: "https://arbiscan.io", NativeToken: "ETH", Decimals: 18, IsActive: true, AvgGasPriceGwei: 0.1},

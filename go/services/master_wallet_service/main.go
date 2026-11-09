@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -35,31 +36,31 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort       string `json:"server_port"`
-	DBHost          string `json:"db_host"`
-	DBPort          string `json:"db_port"`
-	DBUser          string `json:"db_user"`
-	DBPassword      string `json:"db_password"`
-	DBName          string `json:"db_name"`
-	RedisHost       string `json:"redis_host"`
-	RedisPort       string `json:"redis_port"`
-	EncryptionKey   string `json:"encryption_key"`
-	FeeWalletAddress string `json:"fee_wallet_address"`
+	ServerPort         string  `json:"server_port"`
+	DBHost             string  `json:"db_host"`
+	DBPort             string  `json:"db_port"`
+	DBUser             string  `json:"db_user"`
+	DBPassword         string  `json:"db_password"`
+	DBName             string  `json:"db_name"`
+	RedisHost          string  `json:"redis_host"`
+	RedisPort          string  `json:"redis_port"`
+	EncryptionKey      string  `json:"encryption_key"`
+	FeeWalletAddress   string  `json:"fee_wallet_address"`
 	PlatformFeePercent float64 `json:"platform_fee_percent"`
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:       getEnv("MASTER_WALLET_PORT", "9095"),
-		DBHost:          getEnv("DB_HOST", "localhost"),
-		DBPort:          getEnv("DB_PORT", "5432"),
-		DBUser:          getEnv("DB_USER", "tigerwallet"),
-		DBPassword:      mustEnv("DB_PASSWORD"),
-		DBName:          getEnv("DB_NAME", "tigerwallet_master"),
-		RedisHost:       getEnv("REDIS_HOST", "localhost"),
-		RedisPort:       getEnv("REDIS_PORT", "6379"),
-		EncryptionKey:   mustEnv("ENCRYPTION_KEY"),
-		FeeWalletAddress: getEnv("FEE_WALLET", ""),
+		ServerPort:         getEnv("MASTER_WALLET_PORT", "9095"),
+		DBHost:             getEnv("DB_HOST", "localhost"),
+		DBPort:             getEnv("DB_PORT", "5432"),
+		DBUser:             getEnv("DB_USER", "tigerwallet"),
+		DBPassword:         mustEnv("DB_PASSWORD"),
+		DBName:             getEnv("DB_NAME", "tigerwallet_master"),
+		RedisHost:          getEnv("REDIS_HOST", "localhost"),
+		RedisPort:          getEnv("REDIS_PORT", "6379"),
+		EncryptionKey:      mustEnv("ENCRYPTION_KEY"),
+		FeeWalletAddress:   getEnv("FEE_WALLET", ""),
 		PlatformFeePercent: 0.3, // 0.3% default
 	}
 }
@@ -88,52 +89,52 @@ func getEnv(key, defaultValue string) string {
 
 // MasterWallet represents the platform master wallet
 type MasterWallet struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	WalletID          string    `gorm:"uniqueIndex" json:"wallet_id"`
-	Address           string    `gorm:"uniqueIndex" json:"address"`
-	ChainType         string    `json:"chain_type"`
-	ChainID           int64     `json:"chain_id"`
-	PrivateKeyEncrypted string  `json:"-"`
-	SeedEncrypted     string    `json:"-"`
-	Status            string    `json:"status"` // active, suspended
-	TotalRevenue      string    `json:"total_revenue"`
-	TotalFeesCollected string  `json:"total_fees_collected"`
+	ID                  uint      `gorm:"primarykey" json:"id"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+	WalletID            string    `gorm:"uniqueIndex" json:"wallet_id"`
+	Address             string    `gorm:"uniqueIndex" json:"address"`
+	ChainType           string    `json:"chain_type"`
+	ChainID             int64     `json:"chain_id"`
+	PrivateKeyEncrypted string    `json:"-"`
+	SeedEncrypted       string    `json:"-"`
+	Status              string    `json:"status"` // active, suspended
+	TotalRevenue        string    `json:"total_revenue"`
+	TotalFeesCollected  string    `json:"total_fees_collected"`
 }
 
 // FeeConfig represents platform fee configuration
 type FeeConfig struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	ChainID           int64     `gorm:"index" json:"chain_id"`
-	ChainType         string    `json:"chain_type"`
-	FeeType           string    `json:"fee_type"` // withdraw, swap, transfer, deposit
-	FeePercent        float64   `json:"fee_percent"`
-	FeeFixed          string    `json:"fee_fixed"`
-	MinFee            string    `json:"min_fee"`
-	MaxFee            string    `json:"max_fee"`
-	IsEnabled         bool      `json:"is_enabled"`
-	WhiteLabelID      *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	ChainID      int64     `gorm:"index" json:"chain_id"`
+	ChainType    string    `json:"chain_type"`
+	FeeType      string    `json:"fee_type"` // withdraw, swap, transfer, deposit
+	FeePercent   float64   `json:"fee_percent"`
+	FeeFixed     string    `json:"fee_fixed"`
+	MinFee       string    `json:"min_fee"`
+	MaxFee       string    `json:"max_fee"`
+	IsEnabled    bool      `json:"is_enabled"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // BlockchainConfig represents blockchain configuration
 type BlockchainConfig struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ChainID         int64     `gorm:"uniqueIndex" json:"chain_id"`
-	Name            string    `json:"name"`
-	Symbol          string    `json:"symbol"`
-	Type            string    `json:"type"` // evm, solana, tron
-	RPCURL          string    `json:"rpc_url"`
-	ExplorerURL     string    `json:"explorer_url"`
-	IsEnabled       bool      `json:"is_enabled"`
-	NativeTokenAddr string    `json:"native_token_addr"`
-	MinWithdraw     string    `json:"min_withdraw"`
-	MaxDailyWithdraw string   `json:"max_daily_withdraw"`
-	AddedBy         string    `json:"added_by"`
+	ID               uint      `gorm:"primarykey" json:"id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	ChainID          int64     `gorm:"uniqueIndex" json:"chain_id"`
+	Name             string    `json:"name"`
+	Symbol           string    `json:"symbol"`
+	Type             string    `json:"type"` // evm, solana, tron
+	RPCURL           string    `json:"rpc_url"`
+	ExplorerURL      string    `json:"explorer_url"`
+	IsEnabled        bool      `json:"is_enabled"`
+	NativeTokenAddr  string    `json:"native_token_addr"`
+	MinWithdraw      string    `json:"min_withdraw"`
+	MaxDailyWithdraw string    `json:"max_daily_withdraw"`
+	AddedBy          string    `json:"added_by"`
 }
 
 // SupportedTokenConfig represents supported tokens
@@ -154,34 +155,34 @@ type SupportedTokenConfig struct {
 
 // RevenueRecord represents collected fees
 type RevenueRecord struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	WalletID      uint      `gorm:"index" json:"wallet_id"`
-	ChainID       int64     `json:"chain_id"`
-	TokenAddress  string    `json:"token_address"`
-	Amount        string    `json:"amount"`
-	FeeAmount     string    `json:"fee_amount"`
-	FeePercent    float64   `json:"fee_percent"`
-	TxHash        string    `json:"tx_hash"`
-	Type          string    `json:"type"` // swap, withdraw, transfer
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	WalletID     uint      `gorm:"index" json:"wallet_id"`
+	ChainID      int64     `json:"chain_id"`
+	TokenAddress string    `json:"token_address"`
+	Amount       string    `json:"amount"`
+	FeeAmount    string    `json:"fee_amount"`
+	FeePercent   float64   `json:"fee_percent"`
+	TxHash       string    `json:"tx_hash"`
+	Type         string    `json:"type"` // swap, withdraw, transfer
 	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // WhiteLabelConfig represents white label configuration
 type WhiteLabelConfig struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ClientID        string    `gorm:"uniqueIndex" json:"client_id"`
-	CompanyName     string    `json:"company_name"`
-	Domain          string    `json:"domain"`
-	DomainVerified  bool      `json:"domain_verified"`
-	AdminWalletAddr string   `json:"admin_wallet_addr"`
-	Status          string    `json:"status"` // active, suspended, pending
-	CustomFeePercent float64  `json:"custom_fee_percent"`
-	MaxDailyVolume  float64   `json:"max_daily_volume"`
-	MaxUsers        int       `json:"max_users"`
-	Features        string    `json:"features"` // JSON
+	ID               uint      `gorm:"primarykey" json:"id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	ClientID         string    `gorm:"uniqueIndex" json:"client_id"`
+	CompanyName      string    `json:"company_name"`
+	Domain           string    `json:"domain"`
+	DomainVerified   bool      `json:"domain_verified"`
+	AdminWalletAddr  string    `json:"admin_wallet_addr"`
+	Status           string    `json:"status"` // active, suspended, pending
+	CustomFeePercent float64   `json:"custom_fee_percent"`
+	MaxDailyVolume   float64   `json:"max_daily_volume"`
+	MaxUsers         int       `json:"max_users"`
+	Features         string    `json:"features"` // JSON
 }
 
 // ============================================================================
@@ -189,11 +190,11 @@ type WhiteLabelConfig struct {
 // ============================================================================
 
 type MasterWalletService struct {
-	db           *gorm.DB
-	redis        *redis.Client
-	config       *Config
-	mu           sync.RWMutex
-	feeCache    map[int64]map[string]*FeeConfig
+	db       *gorm.DB
+	redis    *redis.Client
+	config   *Config
+	mu       sync.RWMutex
+	feeCache map[int64]map[string]*FeeConfig
 }
 
 func NewMasterWalletService(config *Config) (*MasterWalletService, error) {
@@ -225,9 +226,9 @@ func NewMasterWalletService(config *Config) (*MasterWalletService, error) {
 	})
 
 	service := &MasterWalletService{
-		db:        db,
-		redis:     rdb,
-		config:    config,
+		db:       db,
+		redis:    rdb,
+		config:   config,
 		feeCache: make(map[int64]map[string]*FeeConfig),
 	}
 
@@ -290,7 +291,7 @@ func (s *MasterWalletService) initDefaultTokens() {
 		{ChainID: 1, TokenAddress: "0x0000000000000000000000000000000000000000", Symbol: "ETH", Name: "Ethereum", Decimals: 18, IsNative: true, IsEnabled: true, MinDeposit: "0.01", MinWithdraw: "0.01", WithdrawalFee: "0.001"},
 		{ChainID: 1, TokenAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7", Symbol: "USDT", Name: "Tether USD", Decimals: 6, IsNative: false, IsEnabled: true, MinDeposit: "10", MinWithdraw: "10", WithdrawalFee: "1"},
 		{ChainID: 1, TokenAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Symbol: "USDC", Name: "USD Coin", Decimals: 6, IsNative: false, IsEnabled: true, MinDeposit: "10", MinWithdraw: "10", WithdrawalFee: "1"},
-		{ChainID: 1, TokenAddress: "0x2260FAC5E5542a773Aa44fCF2df52aDCEb44661f", Symbol: "WBTC", Name: "Wrapped Bitcoin", Decimals: 8, IsNative: false, IsEnabled: true, MinDeposit: "0.001", MinWithdraw: "0.001", WithdrawalFee: "0.0001"},
+		{ChainID: 1, TokenAddress: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", Symbol: "WBTC", Name: "Wrapped Bitcoin", Decimals: 8, IsNative: false, IsEnabled: true, MinDeposit: "0.001", MinWithdraw: "0.001", WithdrawalFee: "0.0001"},
 		// BNB Chain tokens
 		{ChainID: 56, TokenAddress: "0x0000000000000000000000000000000000000000", Symbol: "BNB", Name: "BNB", Decimals: 18, IsNative: true, IsEnabled: true, MinDeposit: "0.01", MinWithdraw: "0.01", WithdrawalFee: "0.001"},
 		{ChainID: 56, TokenAddress: "0x0E09FaBB73Bd3ade0a17ECC321fD13a19e81cE82", Symbol: "CAKE", Name: "PancakeSwap Token", Decimals: 18, IsNative: false, IsEnabled: true, MinDeposit: "1", MinWithdraw: "1", WithdrawalFee: "0.1"},
@@ -332,15 +333,15 @@ func (s *MasterWalletService) SetFee(ctx *gin.Context) {
 	}
 
 	feeConfig := &FeeConfig{
-		ChainID:       req.ChainID,
-		ChainType:     req.ChainType,
-		FeeType:       req.FeeType,
-		FeePercent:    req.FeePercent,
-		FeeFixed:      req.FeeFixed,
-		MinFee:        req.MinFee,
-		MaxFee:        req.MaxFee,
-		IsEnabled:     true,
-		WhiteLabelID:  req.WhiteLabelID,
+		ChainID:      req.ChainID,
+		ChainType:    req.ChainType,
+		FeeType:      req.FeeType,
+		FeePercent:   req.FeePercent,
+		FeeFixed:     req.FeeFixed,
+		MinFee:       req.MinFee,
+		MaxFee:       req.MaxFee,
+		IsEnabled:    true,
+		WhiteLabelID: req.WhiteLabelID,
 	}
 
 	// Check if exists
@@ -422,14 +423,14 @@ func (s *MasterWalletService) CalculateFee(chainID int64, feeType, amount string
 // ============================================================================
 
 type AddBlockchainRequest struct {
-	ChainID         int64  `json:"chain_id" binding:"required"`
-	Name            string `json:"name" binding:"required"`
-	Symbol          string `json:"symbol" binding:"required"`
-	Type            string `json:"type" binding:"required"`
-	RPCURL          string `json:"rpc_url"`
-	ExplorerURL     string `json:"explorer_url"`
-	NativeTokenAddr string `json:"native_token_addr"`
-	MinWithdraw     string `json:"min_withdraw"`
+	ChainID          int64  `json:"chain_id" binding:"required"`
+	Name             string `json:"name" binding:"required"`
+	Symbol           string `json:"symbol" binding:"required"`
+	Type             string `json:"type" binding:"required"`
+	RPCURL           string `json:"rpc_url"`
+	ExplorerURL      string `json:"explorer_url"`
+	NativeTokenAddr  string `json:"native_token_addr"`
+	MinWithdraw      string `json:"min_withdraw"`
 	MaxDailyWithdraw string `json:"max_daily_withdraw"`
 }
 
@@ -512,14 +513,14 @@ func (s *MasterWalletService) DeleteBlockchain(ctx *gin.Context) {
 // ============================================================================
 
 type AddTokenRequest struct {
-	ChainID      int64  `json:"chain_id" binding:"required"`
-	TokenAddress string `json:"token_address"`
-	Symbol       string `json:"symbol" binding:"required"`
-	Name         string `json:"name" binding:"required"`
-	Decimals     int    `json:"decimals" binding:"required"`
-	IsNative     bool   `json:"is_native"`
-	MinDeposit   string `json:"min_deposit"`
-	MinWithdraw  string `json:"min_withdraw"`
+	ChainID       int64  `json:"chain_id" binding:"required"`
+	TokenAddress  string `json:"token_address"`
+	Symbol        string `json:"symbol" binding:"required"`
+	Name          string `json:"name" binding:"required"`
+	Decimals      int    `json:"decimals" binding:"required"`
+	IsNative      bool   `json:"is_native"`
+	MinDeposit    string `json:"min_deposit"`
+	MinWithdraw   string `json:"min_withdraw"`
 	WithdrawalFee string `json:"withdrawal_fee"`
 }
 
@@ -644,9 +645,9 @@ func (s *MasterWalletService) GetRevenueStats(ctx *gin.Context) {
 
 	// Revenue by chain
 	type chainRevenue struct {
-		ChainID  int64   `json:"chain_id"`
-		Revenue  float64 `json:"revenue"`
-		TxCount  int64   `json:"tx_count"`
+		ChainID int64   `json:"chain_id"`
+		Revenue float64 `json:"revenue"`
+		TxCount int64   `json:"tx_count"`
 	}
 
 	var chainRevenues []chainRevenue
@@ -656,9 +657,9 @@ func (s *MasterWalletService) GetRevenueStats(ctx *gin.Context) {
 		Scan(&chainRevenues)
 
 	ctx.JSON(200, gin.H{
-		"total_revenue":  totalRevenue,
-		"total_fees":     totalFees,
-		"by_chain":       chainRevenues,
+		"total_revenue": totalRevenue,
+		"total_fees":    totalFees,
+		"by_chain":      chainRevenues,
 	})
 }
 
@@ -668,12 +669,12 @@ func (s *MasterWalletService) GetRevenueStats(ctx *gin.Context) {
 
 func (s *MasterWalletService) CreateWhiteLabel(ctx *gin.Context) {
 	var req struct {
-		CompanyName     string  `json:"company_name" binding:"required"`
-		Domain          string  `json:"domain" binding:"required"`
-		AdminWalletAddr string  `json:"admin_wallet_addr" binding:"required"`
+		CompanyName      string  `json:"company_name" binding:"required"`
+		Domain           string  `json:"domain" binding:"required"`
+		AdminWalletAddr  string  `json:"admin_wallet_addr" binding:"required"`
 		CustomFeePercent float64 `json:"custom_fee_percent"`
-		MaxUsers        int     `json:"max_users"`
-		MaxDailyVolume  float64 `json:"max_daily_volume"`
+		MaxUsers         int     `json:"max_users"`
+		MaxDailyVolume   float64 `json:"max_daily_volume"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(400, gin.H{"success": false, "error": err.Error()})
@@ -745,11 +746,11 @@ func (s *MasterWalletService) GetDashboardStats(ctx *gin.Context) {
 	s.db.Model(&RevenueRecord{}).Select("COALESCE(SUM(CAST(fee_amount AS DECIMAL(20,8))), 0)").Row().Scan(&totalRevenue)
 
 	ctx.JSON(200, gin.H{
-		"blockchains":     totalBlockchains,
-		"tokens":          totalTokens,
-		"white_labels":    totalWhiteLabels,
-		"total_revenue":   totalRevenue,
-		"platform_fee":    s.config.PlatformFeePercent,
+		"blockchains":   totalBlockchains,
+		"tokens":        totalTokens,
+		"white_labels":  totalWhiteLabels,
+		"total_revenue": totalRevenue,
+		"platform_fee":  s.config.PlatformFeePercent,
 	})
 }
 
@@ -758,8 +759,8 @@ func (s *MasterWalletService) GetDashboardStats(ctx *gin.Context) {
 // ============================================================================
 
 type TreasuryOverview struct {
-	TotalValue       float64 `json:"totalValue"`
-	HotWalletValue   float64 `json:"hotWalletValue"`
+	TotalValue      float64 `json:"totalValue"`
+	HotWalletValue  float64 `json:"hotWalletValue"`
 	ColdWalletValue float64 `json:"coldWalletValue"`
 	PendingValue    float64 `json:"pendingValue"`
 	TodayTxs        int64   `json:"todayTransactions"`
@@ -779,8 +780,8 @@ func (s *MasterWalletService) GetTreasuryOverview(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"data": TreasuryOverview{
-			TotalValue:       totalValue,
-			HotWalletValue:   hotValue,
+			TotalValue:      totalValue,
+			HotWalletValue:  hotValue,
 			ColdWalletValue: coldValue,
 			PendingValue:    pendingValue,
 			TodayTxs:        todayTxs,
@@ -793,9 +794,9 @@ func (s *MasterWalletService) GetTreasuryBalances(ctx *gin.Context) {
 	masterWalletID := ctx.Query("master_wallet_id")
 
 	type Balance struct {
-		Token  string  `json:"token"`
-		Name   string  `json:"name"`
-		Value  float64 `json:"value"`
+		Token string  `json:"token"`
+		Name  string  `json:"name"`
+		Value float64 `json:"value"`
 	}
 	var balances []Balance
 
@@ -807,11 +808,11 @@ func (s *MasterWalletService) GetTreasuryTransactions(ctx *gin.Context) {
 	limit := ctx.DefaultQuery("limit", "50")
 
 	type TreasuryTx struct {
-		ID        string  `json:"id"`
-		Type     string  `json:"type"`
-		Amount   float64 `json:"amount"`
-		Status   string  `json:"status"`
-		Time    int64   `json:"timestamp"`
+		ID     string  `json:"id"`
+		Type   string  `json:"type"`
+		Amount float64 `json:"amount"`
+		Status string  `json:"status"`
+		Time   int64   `json:"timestamp"`
 	}
 	var txs []TreasuryTx
 
@@ -819,11 +820,11 @@ func (s *MasterWalletService) GetTreasuryTransactions(ctx *gin.Context) {
 }
 
 type Allocation struct {
-	ID          string  `json:"id"`
-	Name       string  `json:"name"`
-	Token      string  `json:"token"`
-	Amount     float64 `json:"amount"`
-	Purpose    string  `json:"purpose"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Token     string  `json:"token"`
+	Amount    float64 `json:"amount"`
+	Purpose   string  `json:"purpose"`
 	Status    string  `json:"status"`
 	CreatedAt int64   `json:"createdAt"`
 }
@@ -831,10 +832,10 @@ type Allocation struct {
 func (s *MasterWalletService) CreateAllocation(ctx *gin.Context) {
 	var req struct {
 		MasterWalletID string  `json:"master_wallet_id"`
-		Name          string  `json:"name"`
-		Token         string  `json:"token"`
-		Amount        float64 `json:"amount"`
-		Purpose       string  `json:"purpose"`
+		Name           string  `json:"name"`
+		Token          string  `json:"token"`
+		Amount         float64 `json:"amount"`
+		Purpose        string  `json:"purpose"`
 	}
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -843,13 +844,13 @@ func (s *MasterWalletService) CreateAllocation(ctx *gin.Context) {
 	}
 
 	allocation := Allocation{
-		ID:          "alloc_" + uuid.New().String()[:8],
-		Name:        req.Name,
-		Token:       req.Token,
-		Amount:      req.Amount,
-		Purpose:     req.Purpose,
-		Status:      "active",
-		CreatedAt:   time.Now().Unix(),
+		ID:        "alloc_" + uuid.New().String()[:8],
+		Name:      req.Name,
+		Token:     req.Token,
+		Amount:    req.Amount,
+		Purpose:   req.Purpose,
+		Status:    "active",
+		CreatedAt: time.Now().Unix(),
 	}
 
 	ctx.JSON(201, gin.H{"data": allocation})
@@ -878,9 +879,9 @@ func (s *MasterWalletService) DeleteAllocation(ctx *gin.Context) {
 func (s *MasterWalletService) TreasuryTransfer(ctx *gin.Context) {
 	var req struct {
 		FromAccount string  `json:"fromAccount"`
-		ToAccount  string  `json:"toAccount"`
-		Token      string  `json:"token"`
-		Amount     float64 `json:"amount"`
+		ToAccount   string  `json:"toAccount"`
+		Token       string  `json:"token"`
+		Amount      float64 `json:"amount"`
 	}
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -922,8 +923,8 @@ func (s *MasterWalletService) GetTreasuryReport(ctx *gin.Context) {
 	report := gin.H{
 		"startDate": startDate,
 		"endDate":   endDate,
-		"totalIn":  0.0,
-		"totalOut": 0.0,
+		"totalIn":   0.0,
+		"totalOut":  0.0,
 		"netChange": 0.0,
 	}
 
@@ -939,9 +940,9 @@ type Policy struct {
 	Name       string                 `json:"name"`
 	Type       string                 `json:"type"`
 	Conditions map[string]interface{} `json:"conditions"`
-	Action    string                 `json:"action"`
-	Status    string                 `json:"status"`
-	CreatedAt int64                 `json:"createdAt"`
+	Action     string                 `json:"action"`
+	Status     string                 `json:"status"`
+	CreatedAt  int64                  `json:"createdAt"`
 }
 
 func (s *MasterWalletService) CreatePolicy(ctx *gin.Context) {
@@ -949,8 +950,8 @@ func (s *MasterWalletService) CreatePolicy(ctx *gin.Context) {
 		MasterWalletID string                 `json:"master_wallet_id"`
 		Name           string                 `json:"name"`
 		Type           string                 `json:"type"`
-		Conditions    map[string]interface{} `json:"conditions"`
-		Action        string                 `json:"action"`
+		Conditions     map[string]interface{} `json:"conditions"`
+		Action         string                 `json:"action"`
 	}
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -963,9 +964,9 @@ func (s *MasterWalletService) CreatePolicy(ctx *gin.Context) {
 		Name:       req.Name,
 		Type:       req.Type,
 		Conditions: req.Conditions,
-		Action:    req.Action,
-		Status:    "active",
-		CreatedAt: time.Now().Unix(),
+		Action:     req.Action,
+		Status:     "active",
+		CreatedAt:  time.Now().Unix(),
 	}
 
 	ctx.JSON(201, gin.H{"data": policy})
@@ -999,17 +1000,17 @@ func (s *MasterWalletService) TestPolicy(ctx *gin.Context) {
 	ctx.ShouldBindJSON(&transaction)
 
 	result := gin.H{
-		"policyId":    policyID,
-		"passed":       true,
-		"conditions":   []string{},
-		"action":       "allow",
+		"policyId":   policyID,
+		"passed":     true,
+		"conditions": []string{},
+		"action":     "allow",
 	}
 
 	ctx.JSON(200, gin.H{"data": result})
 }
 
 type PolicyLog struct {
-	ID         string `json:"id"`
+	ID        string `json:"id"`
 	PolicyID  string `json:"policyId"`
 	Action    string `json:"action"`
 	Result    string `json:"result"`
@@ -1029,14 +1030,14 @@ func (s *MasterWalletService) GetPolicyLogs(ctx *gin.Context) {
 // ============================================================================
 
 type AuditLog struct {
-	ID            string                 `json:"id"`
-	UserID       string                 `json:"userId"`
-	Action       string                 `json:"action"`
-	EntityType   string                 `json:"entityType"`
-	EntityID     string                 `json:"entityId"`
-	Details      map[string]interface{} `json:"details"`
-	IPAddress    string                 `json:"ipAddress"`
-	Timestamp    int64                  `json:"timestamp"`
+	ID         string                 `json:"id"`
+	UserID     string                 `json:"userId"`
+	Action     string                 `json:"action"`
+	EntityType string                 `json:"entityType"`
+	EntityID   string                 `json:"entityId"`
+	Details    map[string]interface{} `json:"details"`
+	IPAddress  string                 `json:"ipAddress"`
+	Timestamp  int64                  `json:"timestamp"`
 }
 
 func (s *MasterWalletService) GetAuditLogs(ctx *gin.Context) {
@@ -1049,17 +1050,17 @@ func (s *MasterWalletService) GetAuditLogs(ctx *gin.Context) {
 	var logs []AuditLog
 
 	ctx.JSON(200, gin.H{
-		"data":  logs,
-		"limit": limit,
+		"data":   logs,
+		"limit":  limit,
 		"offset": offset,
 	})
 }
 
 type AuditSummary struct {
 	TotalActions  int64   `json:"totalActions"`
-	UniqueUsers  int64   `json:"uniqueUsers"`
+	UniqueUsers   int64   `json:"uniqueUsers"`
 	FailedActions int64   `json:"failedActions"`
-	SuccessRate  float64 `json:"successRate"`
+	SuccessRate   float64 `json:"successRate"`
 }
 
 func (s *MasterWalletService) GetAuditSummary(ctx *gin.Context) {
@@ -1068,9 +1069,9 @@ func (s *MasterWalletService) GetAuditSummary(ctx *gin.Context) {
 
 	summary := AuditSummary{
 		TotalActions:  0,
-		UniqueUsers:  0,
+		UniqueUsers:   0,
 		FailedActions: 0,
-		SuccessRate:  100.0,
+		SuccessRate:   100.0,
 	}
 
 	ctx.JSON(200, gin.H{"data": summary})
@@ -1109,7 +1110,7 @@ func (s *MasterWalletService) ExportAuditLogs(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{
 		"data": gin.H{
-			"url":  exportURL,
+			"url":    exportURL,
 			"format": req.Format,
 		},
 	})
@@ -1254,6 +1255,3 @@ func main() {
 
 	fmt.Println("Shutting down master wallet service...")
 }
-
-// Need to add strconv import
-import "strconv"

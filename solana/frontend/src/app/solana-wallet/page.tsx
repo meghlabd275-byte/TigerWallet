@@ -102,7 +102,7 @@ export default function SolanaWalletPage() {
     toAmount: "",
   });
   const SOL_MINT = "So11111111111111111111111111111111111111112";
-  const USDC_MINT = "EPjFWdd5AufqSSQhM9oFLXtgwL9r5Z6KGZ1MVkJXN9n";
+  const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
   const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KConKyYfVjdkMA76dt8u";
   const SOLANA_TOKEN_MINTS: Record<string, string> = {
     SOL: SOL_MINT,
@@ -299,7 +299,7 @@ export default function SolanaWalletPage() {
   // Token symbol/name helpers (would use token list in production)
   const getTokenSymbol = (mint: string): string => {
     const tokens: Record<string, string> = {
-      "EPjFWdd5AufqSSQhM9oFLXtgwL9r5Z6KGZ1MVkJXN9n": "USDC",
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
       "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "USDT",
       "mSoLzYCxHdYgdzU16g5QSh3i5K3z3ozZKk3GzDbtqX": "mSOL",
       "jupSoLaHXQiZZTSfEWMNXq5W1EUGP3TYYKqR1kfrbeK": "JUP",
@@ -310,7 +310,7 @@ export default function SolanaWalletPage() {
 
   const getTokenName = (mint: string): string => {
     const names: Record<string, string> = {
-      "EPjFWdd5AufqSSQhM9oFLXtgwL9r5Z6KGZ1MVkJXN9n": "USD Coin",
+      "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USD Coin",
       "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "Tether USD",
       "mSoLzYCxHdYgdzU16g5QSh3i5K3z3ozZKk3GzDbtqX": "Marinade Staked SOL",
     };

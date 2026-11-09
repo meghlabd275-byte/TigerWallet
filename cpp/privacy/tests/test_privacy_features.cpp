@@ -330,6 +330,98 @@ int main() {
         }
     }
 
+    // --- Pedersen commitments ------------------------------------------------
+
+    // A commitment is a point on the curve: 33 bytes, a parity prefix
+    // followed by an x coordinate. The old implementation returned a 32 byte
+    // SHA3 digest, which is not a curve point and cannot be added or
+    // multiplied.
+    {
+        const Bytes blinding = secureRandomBytes(32);
+        const Bytes commitment = CryptoHash::pedersenCommit(
+            Bytes{'a', 'm', 'o', 'u', 'n', 't'}, blinding);
+
+        assert(commitment.size() == 33);
+        assert(commitment[0] == 2 || commitment[0] == 3);
+
+        // The same message and blinding factor give the same commitment.
+        assert(CryptoHash::pedersenCommit(Bytes{'a', 'm', 'o', 'u', 'n', 't'},
+                                          blinding) == commitment);
+
+        // A different blinding factor gives a different commitment, which is
+        // the hiding property.
+        assert(CryptoHash::pedersenCommit(Bytes{'a', 'm', 'o', 'u', 'n', 't'},
+                                          secureRandomBytes(32)) != commitment);
+
+        // A different message gives a different commitment, which is the
+        // binding property.
+        assert(CryptoHash::pedersenCommit(Bytes{'o', 't', 'h', 'e', 'r'},
+                                          blinding) != commitment);
+
+        // pedersenHash is the unblinded form.
+        assert(CryptoHash::pedersenHash(Bytes{'x'}).size() == 33);
+    }
+
+    // --- MiMC ----------------------------------------------------------------
+
+    {
+        const Bytes left = secureRandomBytes(32);
+        const Bytes right = secureRandomBytes(32);
+
+        const Bytes digest = CryptoHash::mimcHash(left, right);
+        assert(digest.size() == 32);
+        assert(CryptoHash::mimcHash(left, right) == digest);
+        assert(CryptoHash::mimcHash(right, left) != digest);
+        assert(CryptoHash::mimcHash(left, secureRandomBytes(32)) != digest);
+
+        // Both operands must be 32 bytes.
+        assert(CryptoHash::mimcHash(Bytes(31, 1), right).empty());
+        assert(CryptoHash::mimcHash(left, Bytes(33, 1)).empty());
+    }
+
+    // --- Confidential amounts ------------------------------------------------
+
+    // The amount is encrypted to a recipient key and is only recoverable with
+    // the matching private key. The old implementation returned an
+    // irreversible hash, so no amount could ever be read back.
+    {
+        ConfidentialTransfer transfer;
+
+        const Bytes private_key = secureRandomBytes(32);
+        const Bytes public_key = ZKProver::publicKeyFor(private_key);
+        assert(public_key.size() == 33);
+
+        uint256_t amount{};
+        amount.word[0] = 123456789ULL;
+        amount.word[1] = 7ULL;
+
+        const Bytes ciphertext = transfer.encryptAmount(amount, public_key);
+        assert(!ciphertext.empty());
+
+        const auto recovered = transfer.decryptAmount(ciphertext, private_key);
+        assert(recovered.has_value());
+        assert(recovered->word[0] == amount.word[0]);
+        assert(recovered->word[1] == amount.word[1]);
+        assert(recovered->word[2] == 0 && recovered->word[3] == 0);
+
+        // A fresh ephemeral key per call means two encryptions of the same
+        // amount differ.
+        const Bytes again = transfer.encryptAmount(amount, public_key);
+        assert(again != ciphertext);
+
+        // A wrong private key must not decrypt, and must not report zero.
+        const auto wrong = transfer.decryptAmount(ciphertext, secureRandomBytes(32));
+        assert(!wrong.has_value());
+
+        // A tampered ciphertext must fail its authentication tag.
+        Bytes tampered = ciphertext;
+        tampered[tampered.size() - 1] ^= 0x01;
+        assert(!transfer.decryptAmount(tampered, private_key).has_value());
+
+        // Truncated input is rejected rather than read out of bounds.
+        assert(!transfer.decryptAmount(Bytes(10, 0), private_key).has_value());
+    }
+
     std::printf("privacy_features: all checks passed\n");
     return 0;
 }

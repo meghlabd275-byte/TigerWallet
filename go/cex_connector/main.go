@@ -380,17 +380,40 @@ var cryptoNetworks = map[string][]string{
 	"SOL":  {"SOLANA"},
 }
 
-// Master wallet addresses (these would be real addresses in production)
-var masterWalletAddresses = map[string]string{
-	"ETH":      "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"BSC":      "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"ARB":      "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"AVAX":     "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"POLYGON":  "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"OPTIMISM": "0x742d35Cc6634C0532925a3b844Bc9e7595f5eD5B",
-	"TRON":     "TJhqY7GMz6iM7sCqYqN3pF2xMqE7Kdm2rW",
-	"SOLANA":   "7Eqpo6gnY9xq5uM1WqE3K2tX5rY8xPzA3vB6wD9kLm",
-	"BTC":      "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+// Deposit addresses are operator configuration, never defaults: a hardcoded
+// address here would silently route customer deposits to an address nobody
+// controls. Configure with CEX_DEPOSIT_ADDRESSES="ETH=0x...,BSC=0x,...".
+var depositAddresses = loadDepositAddresses()
+
+func loadDepositAddresses() map[string]string {
+	addresses := make(map[string]string)
+	for _, pair := range strings.Split(os.Getenv("CEX_DEPOSIT_ADDRESSES"), ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		network, address, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		network = strings.ToUpper(strings.TrimSpace(network))
+		address = strings.TrimSpace(address)
+		if network == "" || address == "" {
+			continue
+		}
+		addresses[network] = address
+	}
+	return addresses
+}
+
+// depositAddressFor resolves the deposit address for a network, falling back to
+// the currency key (several currencies map one-to-one onto a network).
+func depositAddressFor(currency, network string) (string, bool) {
+	if address, ok := depositAddresses[network]; ok {
+		return address, true
+	}
+	address, ok := depositAddresses[currency]
+	return address, ok
 }
 
 var masterWalletCounter = 0
@@ -427,10 +450,13 @@ func CreateCryptoPayment(c *gin.Context) {
 		return
 	}
 
-	// Get master wallet address
-	address, ok := masterWalletAddresses[network]
+	// Resolve the operator-configured deposit address for this network.
+	address, ok := depositAddressFor(req.Currency, network)
 	if !ok {
-		address = masterWalletAddresses[req.Currency] // Fallback
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": fmt.Sprintf("no deposit address configured for %s; set CEX_DEPOSIT_ADDRESSES", network),
+		})
+		return
 	}
 
 	// Generate unique payment address (in production, would generate unique address per user)
@@ -1164,13 +1190,11 @@ func GetMasterWalletAddress(c *gin.Context) {
 	currency := strings.ToUpper(c.Query("currency"))
 	network := strings.ToUpper(c.Query("network"))
 
-	address, ok := masterWalletAddresses[network]
+	address, ok := depositAddressFor(currency, network)
 	if !ok {
-		address = masterWalletAddresses[currency]
-	}
-
-	if address == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Network not supported"})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": fmt.Sprintf("no deposit address configured for %s", network),
+		})
 		return
 	}
 

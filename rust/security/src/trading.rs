@@ -15,9 +15,8 @@
 //! - MEV protection
 //! - Fee optimization
 
-use std::collections::{BinaryHeap, HashMap};
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use std::collections::HashMap;
+use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -60,7 +59,7 @@ pub enum TradingError {
 }
 
 /// Order types
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderType {
     #[serde(rename = "limit")]
     Limit,
@@ -75,7 +74,7 @@ pub enum OrderType {
 }
 
 /// Order side
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderSide {
     #[serde(rename = "buy")]
     Buy,
@@ -84,7 +83,7 @@ pub enum OrderSide {
 }
 
 /// Order status
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderStatus {
     #[serde(rename = "pending")]
     Pending,
@@ -414,6 +413,16 @@ pub struct TradingEngine {
 }
 
 impl TradingEngine {
+    /// Chain this engine settles on.
+    pub fn chain_id(&self) -> u64 {
+        self.chain_id
+    }
+
+    /// Largest notional this engine will accept, in quote units.
+    pub fn max_position_size(&self) -> f64 {
+        self.max_position_size
+    }
+
     pub fn new(chain_id: u64) -> Self {
         Self {
             chain_id,
@@ -487,7 +496,6 @@ impl TradingEngine {
         }
         
         // Check balance
-        let pair_key = format!("{}_{}", request.pair.base, request.pair.quote);
         let balance = self.get_balance(user_id);
         
         // For market orders, require balance upfront
@@ -932,14 +940,12 @@ mod tests {
             },
         );
         
-        // Price below limit - should not fill
-        assert!(!order.can_fill(49000.0));
-        
-        // Price at limit - should fill
+        // A buy limit fills when the market is at or below the limit.
+        assert!(order.can_fill(49000.0));
         assert!(order.can_fill(50000.0));
-        
-        // Price above limit - should fill
-        assert!(order.can_fill(51000.0));
+
+        // Above the limit there is no fill.
+        assert!(!order.can_fill(51000.0));
     }
     
     #[test]

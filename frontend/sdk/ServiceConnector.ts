@@ -4,16 +4,6 @@
  */
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { 
-  WalletService, 
-  SwapService, 
-  BridgeService, 
-  StakingService, 
-  NFTService,
-  TokenService,
-  UserService,
-  AdminService 
-} from './services';
 
 // ==================== API Configuration ====================
 

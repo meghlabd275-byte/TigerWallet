@@ -31,14 +31,14 @@ import (
 // Configuration
 type Config struct {
 	ServerPort string
-	RedisAddr string
+	RedisAddr  string
 }
 
 // Chain Category
 type ChainCategory string
 
 const (
-	CategoryEVM        ChainCategory = "EVM"
+	CategoryEVM       ChainCategory = "EVM"
 	CategorySolana    ChainCategory = "SOLANA"
 	CategoryCosmos    ChainCategory = "COSMOS"
 	CategoryBitcoin   ChainCategory = "BITCOIN"
@@ -62,9 +62,9 @@ const (
 type ChainStatus string
 
 const (
-	ChainStatusActive   ChainStatus = "ACTIVE"
-	ChainStatusInactive ChainStatus = "INACTIVE"
-	ChainStatusPending  ChainStatus = "PENDING"
+	ChainStatusActive     ChainStatus = "ACTIVE"
+	ChainStatusInactive   ChainStatus = "INACTIVE"
+	ChainStatusPending    ChainStatus = "PENDING"
 	ChainStatusDeprecated ChainStatus = "DEPRECATED"
 )
 
@@ -96,20 +96,20 @@ type BlockchainConfig struct {
 
 // Token Configuration
 type TokenConfig struct {
-	TokenID         string   `json:"token_id"`
-	ContractAddress string   `json:"contract_address"`
-	Name            string   `json:"name"`
-	Symbol          string   `json:"symbol"`
-	Decimals        int      `json:"decimals"`
-	ChainID         int      `json:"chain_id"`
-	Chain           string   `json:"chain"`
-	Type            string   `json:"type"` // ERC20, SPL, etc
-	Status          string   `json:"status"`
-	TotalSupply     string   `json:"total_supply"`
-	PriceSource     string   `json:"price_source"`
-	CoinGeckoID     string   `json:"coingecko_id"`
-	LogoURL         string   `json:"logo_url"`
-	IsVerified      bool     `json:"is_verified"`
+	TokenID         string    `json:"token_id"`
+	ContractAddress string    `json:"contract_address"`
+	Name            string    `json:"name"`
+	Symbol          string    `json:"symbol"`
+	Decimals        int       `json:"decimals"`
+	ChainID         int       `json:"chain_id"`
+	Chain           string    `json:"chain"`
+	Type            string    `json:"type"` // ERC20, SPL, etc
+	Status          string    `json:"status"`
+	TotalSupply     string    `json:"total_supply"`
+	PriceSource     string    `json:"price_source"`
+	CoinGeckoID     string    `json:"coingecko_id"`
+	LogoURL         string    `json:"logo_url"`
+	IsVerified      bool      `json:"is_verified"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -126,41 +126,41 @@ type NodeConfig struct {
 	SuccessRate float64   `json:"success_rate"`
 	Requests    int64     `json:"requests"`
 	IsActive    bool      `json:"is_active"`
-	AddedAt    time.Time `json:"added_at"`
+	AddedAt     time.Time `json:"added_at"`
 	LastCheckAt time.Time `json:"last_check_at"`
 }
 
 // Block Information
 type BlockInfo struct {
-	BlockNumber    uint64   `json:"block_number"`
-	BlockHash      string   `json:"block_hash"`
-	ParentHash     string   `json:"parent_hash"`
-	Timestamp      uint64   `json:"timestamp"`
-	Transactions   int      `json:"transactions"`
-	GasUsed        uint64   `json:"gas_used"`
-	GasLimit       uint64   `json:"gas_limit"`
-	Miner          string   `json:"miner"`
-	Size           uint64   `json:"size"`
-	ChainID        int      `json:"chain_id"`
+	BlockNumber  uint64 `json:"block_number"`
+	BlockHash    string `json:"block_hash"`
+	ParentHash   string `json:"parent_hash"`
+	Timestamp    uint64 `json:"timestamp"`
+	Transactions int    `json:"transactions"`
+	GasUsed      uint64 `json:"gas_used"`
+	GasLimit     uint64 `json:"gas_limit"`
+	Miner        string `json:"miner"`
+	Size         uint64 `json:"size"`
+	ChainID      int    `json:"chain_id"`
 }
 
 // Transaction Information
 type TransactionInfo struct {
-	TxHash         string   `json:"tx_hash"`
-	BlockNumber    uint64   `json:"block_number"`
-	BlockHash      string   `json:"block_hash"`
-	Timestamp      uint64   `json:"timestamp"`
-	From           string   `json:"from"`
-	To             string   `json:"to"`
-	Value          string   `json:"value"`
-	GasPrice       string   `json:"gas_price"`
-	GasUsed        uint64   `json:"gas_used"`
-	GasLimit       uint64   `json:"gas_limit"`
-	Nonce          uint64   `json:"nonce"`
-	InputData      string   `json:"input_data"`
-	Status         string   `json:"status"`
-	ChainID        int      `json:"chain_id"`
-	Logs           []LogInfo `json:"logs"`
+	TxHash      string    `json:"tx_hash"`
+	BlockNumber uint64    `json:"block_number"`
+	BlockHash   string    `json:"block_hash"`
+	Timestamp   uint64    `json:"timestamp"`
+	From        string    `json:"from"`
+	To          string    `json:"to"`
+	Value       string    `json:"value"`
+	GasPrice    string    `json:"gas_price"`
+	GasUsed     uint64    `json:"gas_used"`
+	GasLimit    uint64    `json:"gas_limit"`
+	Nonce       uint64    `json:"nonce"`
+	InputData   string    `json:"input_data"`
+	Status      string    `json:"status"`
+	ChainID     int       `json:"chain_id"`
+	Logs        []LogInfo `json:"logs"`
 }
 
 type LogInfo struct {
@@ -181,12 +181,12 @@ type TokenBalance struct {
 
 // RPC Health
 type RPCHealth struct {
-	NodeID      string    `json:"node_id"`
-	URL         string    `json:"url"`
-	Status      string    `json:"status"`
-	Latency     int       `json:"latency"`
-	ErrorMsg    string    `json:"error_msg"`
-	CheckAt     time.Time `json:"check_at"`
+	NodeID   string    `json:"node_id"`
+	URL      string    `json:"url"`
+	Status   string    `json:"status"`
+	Latency  int       `json:"latency"`
+	ErrorMsg string    `json:"error_msg"`
+	CheckAt  time.Time `json:"check_at"`
 }
 
 // Explorer Service
@@ -229,121 +229,121 @@ func (s *ExplorerService) initializeBlockchains() {
 		{ChainID: 1, ChainIDHex: "0x1", Name: "Ethereum", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 12, BlockTime: 12, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 5, ChainIDHex: "0x5", Name: "Ethereum Goerli", Symbol: "ETH", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 12, BlockTime: 12, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 11155111, ChainIDHex: "0xaa36a7", Name: "Ethereum Sepolia", Symbol: "ETH", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 12, BlockTime: 12, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// BNB Chain
 		{ChainID: 56, ChainIDHex: "0x38", Name: "BNB Smart Chain", Symbol: "BNB", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 3, Decimals: 18, GasToken: "BNB", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 97, ChainIDHex: "0x61", Name: "BNB Smart Chain Testnet", Symbol: "BNB", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 3, Decimals: 18, GasToken: "BNB", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Polygon
 		{ChainID: 137, ChainIDHex: "0x89", Name: "Polygon", Symbol: "MATIC", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "MATIC", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 80001, ChainIDHex: "0x13881", Name: "Mumbai", Symbol: "MATIC", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "MATIC", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Arbitrum
 		{ChainID: 42161, ChainIDHex: "0xa4b1", Name: "Arbitrum One", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 421613, ChainIDHex: "0x66eed", Name: "Arbitrum Goerli", Symbol: "ETH", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Optimism
 		{ChainID: 10, ChainIDHex: "0xa", Name: "Optimism", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 420, ChainIDHex: "0x1a4", Name: "Optimism Goerli", Symbol: "ETH", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Avalanche
 		{ChainID: 43114, ChainIDHex: "0xa86a", Name: "Avalanche C-Chain", Symbol: "AVAX", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "AVAX", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 43113, ChainIDHex: "0xa869", Name: "Avalanche Fuji", Symbol: "AVAX", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "AVAX", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Fantom
 		{ChainID: 250, ChainIDHex: "0xfa", Name: "Fantom Opera", Symbol: "FTM", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "FTM", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Base
 		{ChainID: 8453, ChainIDHex: "0x2105", Name: "Base", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
 		{ChainID: 84531, ChainIDHex: "0x14a33", Name: "Base Goerli", Symbol: "ETH", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Celo
 		{ChainID: 42220, ChainIDHex: "0xa4ec", Name: "Celo", Symbol: "CELO", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 5, Decimals: 18, GasToken: "CELO", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Gnosis
 		{ChainID: 100, ChainIDHex: "0x64", Name: "Gnosis Chain", Symbol: "XDAI", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 5, Decimals: 18, GasToken: "XDAI", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Cronos
 		{ChainID: 25, ChainIDHex: "0x19", Name: "Cronos", Symbol: "CRO", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 18, GasToken: "CRO", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Moonbeam
 		{ChainID: 1284, ChainIDHex: "0x504", Name: "Moonbeam", Symbol: "GLMR", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 12, Decimals: 18, GasToken: "GLMR", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Moonriver
 		{ChainID: 1285, ChainIDHex: "0x505", Name: "Moonriver", Symbol: "MOVR", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 12, Decimals: 18, GasToken: "MOVR", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Kava
 		{ChainID: 2222, ChainIDHex: "0x8ae", Name: "Kava", Symbol: "KAVA", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 18, GasToken: "KAVA", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Linea
 		{ChainID: 59144, ChainIDHex: "0xe708", Name: "Linea", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// zkEVM
 		{ChainID: 1101, ChainIDHex: "0x44d", Name: "Polygon zkEVM", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Scroll
 		{ChainID: 534352, ChainIDHex: "0x82750", Name: "Scroll", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 3, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Mantle
 		{ChainID: 5000, ChainIDHex: "0x1388", Name: "Mantle", Symbol: "MNT", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "MNT", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// opBNB
 		{ChainID: 204, ChainIDHex: "0xcc", Name: "opBNB", Symbol: "BNB", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "BNB", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Core
 		{ChainID: 1116, ChainIDHex: "0x45c", Name: "Core DAO", Symbol: "CORE", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "CORE", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Astar
 		{ChainID: 592, ChainIDHex: "0x250", Name: "Astar", Symbol: "ASTR", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 12, Decimals: 18, GasToken: "ASTR", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Shiden
 		{ChainID: 336, ChainIDHex: "0x150", Name: "Shiden", Symbol: "SDN", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 12, Decimals: 18, GasToken: "SDN", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Canto
 		{ChainID: 7700, ChainIDHex: "0x1e14", Name: "Canto", Symbol: "CANTO", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 18, GasToken: "CANTO", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Ronin
 		{ChainID: 2020, ChainIDHex: "0x7e4", Name: "Ronin", Symbol: "RON", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 3, Decimals: 18, GasToken: "RON", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// SKALE
 		{ChainID: 2046399126, ChainIDHex: "0x79fdb96", Name: "SKALE Europa", Symbol: "SKL", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "SKL", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// PulseChain
 		{ChainID: 369, ChainIDHex: "0x171", Name: "PulseChain", Symbol: "PLS", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 10, Decimals: 18, GasToken: "PLS", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Fraxtal
 		{ChainID: 252, ChainIDHex: "0xfc", Name: "Fraxtal", Symbol: "FRAX", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "FRAX", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Mode
 		{ChainID: 34443, ChainIDHex: "0x8643", Name: "Mode", Symbol: "MOD", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Zora
 		{ChainID: 7777777, ChainIDHex: "0x76bcd", Name: "Zora", Symbol: "ETH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Rootstock
 		{ChainID: 30, ChainIDHex: "0x1e", Name: "Rootstock", Symbol: "RBTC", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 30, Decimals: 18, GasToken: "RBTC", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Horizen
 		{ChainID: 721, ChainIDHex: "0x2d1", Name: "Horizen EON", Symbol: "ZEN", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 10, Decimals: 18, GasToken: "ZEN", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Tenet
 		{ChainID: 15551, ChainIDHex: "0x3cbf", Name: "Tenet", Symbol: "TEN", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "TEN", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Metis
 		{ChainID: 1088, ChainIDHex: "0x440", Name: "Metis", Symbol: "METIS", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "METIS", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Binance
 		{ChainID: 1012, ChainIDHex: "0x3f4", Name: "Neon EVM", Symbol: "NEON", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "NEON", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Oasys
 		{ChainID: 248, ChainIDHex: "0xf8", Name: "Oasys", Symbol: "OAS", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "OAS", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Mythos
 		{ChainID: 19011, ChainIDHex: "0x4a43", Name: "Mythos", Symbol: "MYTH", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "MYTH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Redstone
 		{ChainID: 690, ChainIDHex: "0x2b2", Name: "Redstone", Symbol: "RED", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "ETH", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// LayerZero
 		{ChainID: 101, ChainIDHex: "0x65", Name: "LayerZero", Symbol: "L2", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "L2", SupportsEIP1559: true, SupportsWebSocket: true},
 	}
@@ -386,18 +386,18 @@ func (s *ExplorerService) initializeBlockchains() {
 
 	// Combine all EVM chains
 	allEVMSChains := append(evmChains, moreEVChains...)
-	
+
 	// Non-EVM Chains
 	nonEVChains := []BlockchainConfig{
 		// Solana
 		{ChainID: -101, Name: "Solana", Symbol: "SOL", Network: NetworkMainnet, Category: CategorySolana, Status: ChainStatusActive, ConfirmBlocks: 32, BlockTime: 0.4, Decimals: 9, GasToken: "SOL", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -102, Name: "Solana Devnet", Symbol: "SOL", Network: NetworkDevnet, Category: CategorySolana, Status: ChainStatusActive, ConfirmBlocks: 32, BlockTime: 0.4, Decimals: 9, GasToken: "SOL", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -103, Name: "Solana Testnet", Symbol: "SOL", Network: NetworkTestnet, Category: CategorySolana, Status: ChainStatusActive, ConfirmBlocks: 32, BlockTime: 0.4, Decimals: 9, GasToken: "SOL", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Bitcoin
 		{ChainID: -201, Name: "Bitcoin", Symbol: "BTC", Network: NetworkMainnet, Category: CategoryBitcoin, Status: ChainStatusActive, ConfirmBlocks: 6, BlockTime: 600, Decimals: 8, GasToken: "BTC", SupportsEIP1559: false, SupportsWebSocket: false},
 		{ChainID: -202, Name: "Bitcoin Testnet", Symbol: "BTC", Network: NetworkTestnet, Category: CategoryBitcoin, Status: ChainStatusActive, ConfirmBlocks: 6, BlockTime: 600, Decimals: 8, GasToken: "BTC", SupportsEIP1559: false, SupportsWebSocket: false},
-		
+
 		// Cosmos
 		{ChainID: -301, Name: "Cosmos Hub", Symbol: "ATOM", Network: NetworkMainnet, Category: CategoryCosmos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 7, Decimals: 6, GasToken: "ATOM", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -302, Name: "Osmosis", Symbol: "OSMO", Network: NetworkMainnet, Category: CategoryCosmos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 6, GasToken: "OSMO", SupportsEIP1559: false, SupportsWebSocket: true},
@@ -405,69 +405,69 @@ func (s *ExplorerService) initializeBlockchains() {
 		{ChainID: -304, Name: "Celestia", Symbol: "TIA", Network: NetworkMainnet, Category: CategoryCosmos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 12, Decimals: 6, GasToken: "TIA", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -305, Name: "Sei", Symbol: "SEI", Network: NetworkMainnet, Category: CategoryCosmos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 6, GasToken: "SEI", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -306, Name: "Dymension", Symbol: "DYM", Network: NetworkMainnet, Category: CategoryCosmos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 18, GasToken: "DYM", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Aptos
 		{ChainID: -401, Name: "Aptos", Symbol: "APT", Network: NetworkMainnet, Category: CategoryAptos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 8, GasToken: "APT", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -402, Name: "Aptos Devnet", Symbol: "APT", Network: NetworkDevnet, Category: CategoryAptos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 8, GasToken: "APT", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Sui
 		{ChainID: -501, Name: "Sui", Symbol: "SUI", Network: NetworkMainnet, Category: CategorySui, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 3, Decimals: 9, GasToken: "SUI", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -502, Name: "Sui Testnet", Symbol: "SUI", Network: NetworkTestnet, Category: CategorySui, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 3, Decimals: 9, GasToken: "SUI", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// TON
 		{ChainID: -601, Name: "TON", Symbol: "TON", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 5, Decimals: 9, GasToken: "TON", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// TRON
 		{ChainID: -701, Name: "TRON", Symbol: "TRX", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 19, BlockTime: 3, Decimals: 6, GasToken: "TRX", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -702, Name: "TRON Nile", Symbol: "TRX", Network: NetworkTestnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 19, BlockTime: 3, Decimals: 6, GasToken: "TRX", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// NEAR
 		{ChainID: -801, Name: "NEAR", Symbol: "NEAR", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 5, BlockTime: 1, Decimals: 24, GasToken: "NEAR", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -802, Name: "NEAR Testnet", Symbol: "NEAR", Network: NetworkTestnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 5, BlockTime: 1, Decimals: 24, GasToken: "NEAR", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Algorand
 		{ChainID: -901, Name: "Algorand", Symbol: "ALGO", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 10, BlockTime: 3, Decimals: 6, GasToken: "ALGO", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Hedera
 		{ChainID: -1001, Name: "Hedera", Symbol: "HBAR", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 8, GasToken: "HBAR", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Polkadot
 		{ChainID: -1101, Name: "Polkadot", Symbol: "DOT", Network: NetworkMainnet, Category: CategorySubstrate, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 10, GasToken: "DOT", SupportsEIP1559: false, SupportsWebSocket: true},
 		{ChainID: -1102, Name: "Kusama", Symbol: "KSM", Network: NetworkMainnet, Category: CategorySubstrate, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 12, GasToken: "KSM", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// MultiversX
 		{ChainID: -1201, Name: "MultiversX", Symbol: "EGLD", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 6, Decimals: 18, GasToken: "EGLD", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// VeChain
 		{ChainID: -1301, Name: "VeChain", Symbol: "VET", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "VET", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// ICP
 		{ChainID: -1401, Name: "Internet Computer", Symbol: "ICP", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 8, GasToken: "ICP", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Chia
 		{ChainID: -1501, Name: "Chia", Symbol: "XCH", Network: NetworkMainnet, Category: CategoryUTXO, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 18, Decimals: 8, GasToken: "XCH", SupportsEIP1559: false, SupportsWebSocket: false},
-		
+
 		// Filecoin
 		{ChainID: -1601, Name: "Filecoin", Symbol: "FIL", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 30, Decimals: 18, GasToken: "FIL", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Stacks
 		{ChainID: -1701, Name: "Stacks", Symbol: "STX", Network: NetworkMainnet, Category: CategoryOther, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 10, Decimals: 6, GasToken: "STX", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Aptos Move
 		{ChainID: -1801, Name: "Movement", Symbol: "MOVE", Network: NetworkMainnet, Category: CategoryAptos, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 8, GasToken: "MOVE", SupportsEIP1559: false, SupportsWebSocket: true},
-		
+
 		// Monad
 		{ChainID: -1901, Name: "Monad", Symbol: "MON", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "MON", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Berachain
 		{ChainID: -2001, Name: "Berachain", Symbol: "BERA", Network: NetworkTestnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "BERA", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Sonic
 		{ChainID: -2101, Name: "Sonic", Symbol: "S", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 1, Decimals: 18, GasToken: "S", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// Merlin
 		{ChainID: -2201, Name: "Merlin", Symbol: "BTC", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "BTC", SupportsEIP1559: true, SupportsWebSocket: true},
-		
+
 		// BounceBit
 		{ChainID: -2301, Name: "BounceBit", Symbol: "BB", Network: NetworkMainnet, Category: CategoryEVM, Status: ChainStatusActive, ConfirmBlocks: 15, BlockTime: 2, Decimals: 18, GasToken: "BB", SupportsEIP1559: true, SupportsWebSocket: true},
 	}
@@ -478,7 +478,7 @@ func (s *ExplorerService) initializeBlockchains() {
 		chain.UpdatedAt = time.Now()
 		s.blockchains[chain.ChainID] = &chain
 	}
-	
+
 	for _, chain := range nonEVChains {
 		chain.CreatedAt = time.Now()
 		chain.UpdatedAt = time.Now()
@@ -495,31 +495,31 @@ func (s *ExplorerService) initializeTokens() {
 		{TokenID: "eth_0x0000000000000000000000000000000000000000", ContractAddress: "0x0000000000000000000000000000000000000000", Name: "Ethereum", Symbol: "ETH", ChainID: 1, Chain: "ETHEREUM", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 18},
 		{TokenID: "eth_0xdAC17F958D2ee523a2206206994597C13D831ec7", ContractAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7", Name: "Tether USD", Symbol: "USDT", ChainID: 1, Chain: "ETHEREUM", Type: "ERC20", Status: "ACTIVE", IsVerified: true, Decimals: 6},
 		{TokenID: "eth_0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", ContractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Name: "USD Coin", Symbol: "USDC", ChainID: 1, Chain: "ETHEREUM", Type: "ERC20", Status: "ACTIVE", IsVerified: true, Decimals: 6},
-		
+
 		// BSC
 		{TokenID: "bsc_0x0000000000000000000000000000000000000000", ContractAddress: "0x0000000000000000000000000000000000000000", Name: "BNB", Symbol: "BNB", ChainID: 56, Chain: "BSC", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 18},
 		{TokenID: "bsc_0x55d398326f99059fF775485246999027B3197955", ContractAddress: "0x55d398326f99059fF775485246999027B3197955", Name: "Tether USD", Symbol: "USDT", ChainID: 56, Chain: "BSC", Type: "BEP20", Status: "ACTIVE", IsVerified: true, Decimals: 18},
 		{TokenID: "bsc_0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", ContractAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", Name: "USD Coin", Symbol: "USDC", ChainID: 56, Chain: "BSC", Type: "BEP20", Status: "ACTIVE", IsVerified: true, Decimals: 18},
-		
+
 		// Polygon
 		{TokenID: "polygon_0x0000000000000000000000000000000000000000", ContractAddress: "0x0000000000000000000000000000000000000000", Name: "Polygon", Symbol: "MATIC", ChainID: 137, Chain: "POLYGON", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 18},
-		
+
 		// Solana
 		{TokenID: "sol_Solana", Name: "Solana", Symbol: "SOL", ChainID: -101, Chain: "SOLANA", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 9},
-		{TokenID: "sol_EPjFWdd5AufqSSVqM4qN2cU3CWJVMdL8SE8UWl1Sp9", ContractAddress: "EPjFWdd5AufqSSVqM4qN2cU3CWJVMdL8SE8UWl1Sp9", Name: "USD Coin", Symbol: "USDC", ChainID: -101, Chain: "SOLANA", Type: "SPL", Status: "ACTIVE", IsVerified: true, Decimals: 6},
-		
+		{TokenID: "sol_EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", ContractAddress: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", Name: "USD Coin", Symbol: "USDC", ChainID: -101, Chain: "SOLANA", Type: "SPL", Status: "ACTIVE", IsVerified: true, Decimals: 6},
+
 		// Bitcoin
 		{TokenID: "bitcoin_Bitcoin", Name: "Bitcoin", Symbol: "BTC", ChainID: -201, Chain: "BITCOIN", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 8},
-		
+
 		// Cosmos
 		{TokenID: "cosmos_Cosmos", Name: "Cosmos", Symbol: "ATOM", ChainID: -301, Chain: "COSMOS", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 6},
-		
+
 		// Aptos
 		{TokenID: "aptos_Aptos", Name: "Aptos", Symbol: "APT", ChainID: -401, Chain: "APTOS", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 8},
-		
+
 		// Sui
 		{TokenID: "sui_Sui", Name: "Sui", Symbol: "SUI", ChainID: -501, Chain: "SUI", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 9},
-		
+
 		// TRON
 		{TokenID: "tron_Tron", Name: "TRON", Symbol: "TRX", ChainID: -701, Chain: "TRON", Type: "NATIVE", Status: "ACTIVE", IsVerified: true, Decimals: 6},
 	}
@@ -534,13 +534,13 @@ func (s *ExplorerService) initializeNodes() {
 	// Add sample nodes
 	nodes := []NodeConfig{
 		{NodeID: "node_eth_1", ChainID: 1, URL: "https://eth.llamarpc.com", Type: "full", Provider: "LlamaNodes", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
-		{NodeID: "node_eth_2", ChainID: 1, URL: "https://eth-mainnet.g.alchemy.com/v2/demo", Type: "full", Provider: "Alchemy", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
+		{NodeID: "node_eth_2", ChainID: 1, URL: "https://ethereum-rpc.publicnode.com", Type: "full", Provider: "Alchemy", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_bsc_1", ChainID: 56, URL: "https://bsc-dataseed.binance.org", Type: "full", Provider: "Binance", Region: "SG", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_polygon_1", ChainID: 137, URL: "https://polygon-rpc.com", Type: "full", Provider: "Polygon", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_arbitrum_1", ChainID: 42161, URL: "https://arb1.arbitrum.io/rpc", Type: "full", Provider: "Arbitrum", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_optimism_1", ChainID: 10, URL: "https://mainnet.optimism.io", Type: "full", Provider: "Optimism", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_avalanche_1", ChainID: 43114, URL: "https://api.avax.network/ext/bc/C/rpc", Type: "full", Provider: "Avalanche", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
-		{NodeID: "node_base_1", ChainID: 8453, URL: "https://base-mainnet.g.alchemy.com/v2/demo", Type: "full", Provider: "Alchemy", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
+		{NodeID: "node_base_1", ChainID: 8453, URL: "https://base-rpc.publicnode.com", Type: "full", Provider: "Alchemy", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_solana_1", ChainID: -101, URL: "https://api.mainnet-beta.solana.com", Type: "full", Provider: "Solana", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 		{NodeID: "node_cosmos_1", ChainID: -301, URL: "https://cosmos-rpc.polkachu.com", Type: "full", Provider: "Polkachu", Region: "US", Status: "active", IsActive: true, AddedAt: time.Now()},
 	}
@@ -679,8 +679,8 @@ func (s *ExplorerService) GetStats() map[string]interface{} {
 
 	stats := map[string]interface{}{
 		"total_blockchains": len(s.blockchains),
-		"total_tokens":     len(s.tokens),
-		"total_nodes":      len(s.nodes),
+		"total_tokens":      len(s.tokens),
+		"total_nodes":       len(s.nodes),
 	}
 
 	// Count by category
@@ -764,7 +764,7 @@ func (s *ExplorerService) SetupRoutes(r *gin.Engine) {
 func main() {
 	cfg := Config{
 		ServerPort: getEnv("EXPLORER_PORT", "8090"),
-		RedisAddr: getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisAddr:  getEnv("REDIS_ADDR", "localhost:6379"),
 	}
 
 	service := NewExplorerService(cfg)

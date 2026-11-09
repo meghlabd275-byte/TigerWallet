@@ -252,3 +252,6 @@ hardware_wallet/go/backend/hardware-wallet-backend
 /user_features/wallet_management/go/wallet_management
 /services/go/secrets_service/secrets_service
 /white_label/marketplace/go/white_label_marketplace
+
+# Compiled service binaries
+gasless-tx-service

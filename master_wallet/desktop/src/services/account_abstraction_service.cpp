@@ -27,7 +27,7 @@ namespace master {
 namespace account_abstraction {
 
 // Constants
-constexpr const char* DEFAULT_ENTRY_POINT = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3";
+constexpr const char* DEFAULT_ENTRY_POINT = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
 constexpr uint64_t DEFAULT_CALL_GAS_LIMIT = 100000;
 constexpr uint64_t DEFAULT_VERIFICATION_GAS_LIMIT = 150000;
 constexpr uint64_t DEFAULT_PRE_VERIFICATION_GAS = 21000;

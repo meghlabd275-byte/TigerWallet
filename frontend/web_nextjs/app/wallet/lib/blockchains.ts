@@ -609,30 +609,30 @@ export const POPULAR_TOKENS: Token[] = [
   { address: '0x0000000000000000000000000000000000000000', chainId: 1, symbol: 'ETH', name: 'Ethereum', decimals: 18, type: 'native' },
   { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', chainId: 1, symbol: 'USDT', name: 'Tether USD', decimals: 6, type: 'erc20' },
   { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', chainId: 1, symbol: 'USDC', name: 'USD Coin', decimals: 6, type: 'erc20' },
-  { address: '0x2260FAC5E5542a773Da44eDfe21D1eB5E7d158B2D', chainId: 1, symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, type: 'erc20' },
-  { address: '0x6B175474E89094C44Da98b954EesadcdEF9ce2CC', chainId: 1, symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18, type: 'erc20' },
-  { address: '0x7Fc66500c84C76e479bB4dB548F8c0060956C9b1', chainId: 1, symbol: 'AAVE', name: 'Aave', decimals: 18, type: 'erc20' },
-  { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201E984', chainId: 1, symbol: 'UNI', name: 'Uniswap', decimals: 18, type: 'erc20' },
-  { address: '0x514910771AF9Ca656af840bdff5E25e621C5170e8', chainId: 1, symbol: 'LINK', name: 'Chainlink', decimals: 18, type: 'erc20' },
-  { address: '0x7D1AfA7B7fb6100cf9EF8d29B60501D5E8d9452b', chainId: 1, symbol: 'CRV', name: 'Curve DAO', decimals: 18, type: 'erc20' },
-  { address: '0x4EED0fa8dE12D5a86517f214C2d115A8a9c47D0A', chainId: 1, symbol: 'LDO', name: 'Lido DAO', decimals: 18, type: 'erc20' },
+  { address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', chainId: 1, symbol: 'WBTC', name: 'Wrapped Bitcoin', decimals: 8, type: 'erc20' },
+  { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', chainId: 1, symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18, type: 'erc20' },
+  { address: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', chainId: 1, symbol: 'AAVE', name: 'Aave', decimals: 18, type: 'erc20' },
+  { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', chainId: 1, symbol: 'UNI', name: 'Uniswap', decimals: 18, type: 'erc20' },
+  { address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', chainId: 1, symbol: 'LINK', name: 'Chainlink', decimals: 18, type: 'erc20' },
+  { address: '0xD533a949740bb3306d119CC777fa900bA034cd52', chainId: 1, symbol: 'CRV', name: 'Curve DAO', decimals: 18, type: 'erc20' },
+  { address: '0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32', chainId: 1, symbol: 'LDO', name: 'Lido DAO', decimals: 18, type: 'erc20' },
   
   // BNB Chain tokens
   { address: '0x0000000000000000000000000000000000000000', chainId: 56, symbol: 'BNB', name: 'BNB', decimals: 18, type: 'native' },
-  { address: '0x55d398326f99059fF7754852467DAd2FBd1B2B0', chainId: 56, symbol: 'USDT', name: 'Tether USD', decimals: 18, type: 'erc20' },
-  { address: '0x8AC76a51CC950d5792b3B1fE2d3F73E3C4dB4b9a3', chainId: 56, symbol: 'USDC', name: 'USD Coin', decimals: 18, type: 'erc20' },
-  { address: '0xe9e7CEA3DedcA5984780Bafc599bD69A dD287dCD', chainId: 56, symbol: 'BUSD', name: 'Binance USD', decimals: 18, type: 'erc20' },
-  { address: '0x0E09FaBB73B3c8B8f9D4d6b549dD4b7F2e6f5C8F', chainId: 56, symbol: 'CAKE', name: 'PancakeSwap', decimals: 18, type: 'erc20' },
+  { address: '0x55d398326f99059fF775485246999027B3197955', chainId: 56, symbol: 'USDT', name: 'Tether USD', decimals: 18, type: 'erc20' },
+  { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', chainId: 56, symbol: 'USDC', name: 'USD Coin', decimals: 18, type: 'erc20' },
+  { address: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', chainId: 56, symbol: 'BUSD', name: 'Binance USD', decimals: 18, type: 'erc20' },
+  { address: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', chainId: 56, symbol: 'CAKE', name: 'PancakeSwap', decimals: 18, type: 'erc20' },
   
   // Polygon tokens
   { address: '0x0000000000000000000000000000000000000000', chainId: 137, symbol: 'MATIC', name: 'Polygon', decimals: 18, type: 'native' },
   { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', chainId: 137, symbol: 'USDT', name: 'Tether USD', decimals: 6, type: 'erc20' },
-  { address: '0x2791Bca1f2de4661ED8A30C264d31155D80A1C9D2', chainId: 137, symbol: 'USDC', name: 'USD Coin', decimals: 6, type: 'erc20' },
+  { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', chainId: 137, symbol: 'USDC', name: 'USD Coin', decimals: 6, type: 'erc20' },
   
   // Solana tokens (via wrapped)
-  { address: 'So111111111111111111111111111111111111111', chainId: 'solana', symbol: 'SOL', name: 'Solana', decimals: 9, type: 'native' },
-  { address: 'EPjFWdd5AufqSSBc8Asdr3C6MRcT4deZrMnwdYv4U6b', chainId: 'solana', symbol: 'USDC', name: 'USD Coin', decimals: 6, type: 'spl' },
-  { address: 'Es9vMFrzaCER2Y6k21e42d8jd3p5bXx2Kqm1S188bB2D', chainId: 'solana', symbol: 'USDT', name: 'Tether USD', decimals: 6, type: 'spl' },
+  { address: 'So11111111111111111111111111111111111111112', chainId: 'solana', symbol: 'SOL', name: 'Solana', decimals: 9, type: 'native' },
+  { address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', chainId: 'solana', symbol: 'USDC', name: 'USD Coin', decimals: 6, type: 'spl' },
+  { address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', chainId: 'solana', symbol: 'USDT', name: 'Tether USD', decimals: 6, type: 'spl' },
   
   // More popular tokens
   { address: '0x0000000000000000000000000000000000000000', chainId: 43114, symbol: 'AVAX', name: 'Avalanche', decimals: 18, type: 'native' },

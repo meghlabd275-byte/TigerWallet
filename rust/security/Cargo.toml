@@ -8,9 +8,27 @@ description = "TigerWallet Security Engine - Critical security functions"
 aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"
+sha3 = "0.10"
+ripemd = "0.1"
+hmac = "0.12"
 subtle = "2.5"
 rand = "0.8"
 hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+getrandom = "0.2"
+
+# Bitcoin protocol primitives (script, PSBT, BIP-32/86, secp256k1 bindings).
+# This is a protocol library, not a wallet SDK: key derivation and signing stay
+# in this crate.
+bitcoin = { version = "0.30", default-features = false, features = ["std", "secp-recovery", "rand-std", "serde"] }
+secp256k1 = { version = "0.27", features = ["recovery", "global-context"] }
+base58 = "0.2"
+
+# JSON-RPC / indexer HTTP client. rustls avoids an OpenSSL build dependency.
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 [dev-dependencies]
 

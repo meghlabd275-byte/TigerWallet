@@ -7,8 +7,8 @@
 //! - Fee optimization
 //! - Transaction tracking
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::collections::HashMap;
+use std::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -74,6 +74,10 @@ pub struct BridgeQuoteRequest {
     pub token: String,
     pub amount: u64,
     pub slippage_bps: u64,
+    /// Address the funds leave from, on `from_chain`.
+    pub sender: String,
+    /// Address the funds arrive at, on `to_chain`.
+    pub recipient: String,
 }
 
 /// Bridge quote result
@@ -81,6 +85,8 @@ pub struct BridgeQuoteRequest {
 pub struct BridgeQuote {
     pub protocol: BridgeProtocol,
     pub estimated_output: u64,
+    /// Worst-case output the user accepts, derived from `slippage_bps`.
+    pub min_output: u64,
     pub fee: u64,
     pub fee_token: String,
     pub estimated_time_seconds: u64,
@@ -99,7 +105,11 @@ pub struct BridgeTransfer {
     pub output_amount: u64,
     pub protocol: BridgeProtocol,
     pub status: TransferStatus,
-    pub tx_hash: String,
+    pub sender: String,
+    pub recipient: String,
+    /// Source-chain transaction hash. `None` until a transfer is actually
+    /// broadcast and `update_transfer` records the real hash.
+    pub tx_hash: Option<String>,
     pub dst_tx_hash: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
@@ -167,40 +177,78 @@ impl BridgeEngine {
         routes.entry(key).or_insert_with(Vec::new).push(route);
     }
 
-    /// Get quote for bridge
-    pub fn get_quote(&self, request: &BridgeQuoteRequest) -> Option<BridgeQuote> {
+    /// Get a quote for a bridge request.
+    ///
+    /// Fails when the pair has no route, when the token has no pool on the
+    /// source chain, when the amount falls outside the pool's limits, or when
+    /// the pool cannot cover it. Every value is derived from the configured
+    /// pool and route; nothing is estimated or invented.
+    pub fn get_quote(&self, request: &BridgeQuoteRequest) -> Result<BridgeQuote, String> {
+        if request.amount == 0 {
+            return Err("amount must be greater than zero".to_string());
+        }
+        if request.sender.is_empty() || request.recipient.is_empty() {
+            return Err("sender and recipient are required".to_string());
+        }
+
         let pools = self.pools.read().unwrap();
         let routes = self.routes.read().unwrap();
-        
-        // Find route
-        let key = (request.from_chain, request.to_chain);
-        let route_list = routes.get(&key)?;
-        
-        // Find pool
-        let pool_key = (request.from_chain, request.token.clone());
-        let pool = pools.get(&pool_key)?;
-        
-        // Calculate output
-        let fee = (request.amount as f64 * pool.fee_bps as f64 / 10000.0) as u64;
-        let output = request.amount - fee;
-        
-        // Find best route
-        let mut best_route = route_list.first()?;
-        
-        Some(BridgeQuote {
+
+        let route_list = routes
+            .get(&(request.from_chain, request.to_chain))
+            .ok_or_else(|| "no route available between these chains".to_string())?;
+
+        let pool = pools
+            .get(&(request.from_chain, request.token.clone()))
+            .ok_or_else(|| "no liquidity pool for this token on the source chain".to_string())?;
+
+        if request.amount < pool.min_amount {
+            return Err("amount is below the pool minimum".to_string());
+        }
+        if request.amount > pool.max_amount {
+            return Err("amount is above the pool maximum".to_string());
+        }
+        if request.amount > pool.liquidity {
+            return Err("amount exceeds the available pool liquidity".to_string());
+        }
+
+        // Highest reliability route wins; ties keep the earliest registered.
+        let best_route = route_list
+            .iter()
+            .max_by(|a, b| {
+                a.reliability_score
+                    .partial_cmp(&b.reliability_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .ok_or_else(|| "no route available between these chains".to_string())?;
+
+        let fee = request.amount.saturating_mul(pool.fee_bps) / 10_000;
+        let output = request
+            .amount
+            .checked_sub(fee)
+            .ok_or_else(|| "fee exceeds the bridged amount".to_string())?;
+        if output == 0 {
+            return Err("bridged amount is too small to cover the fee".to_string());
+        }
+
+        let slippage = request.slippage_bps.min(10_000);
+        let min_output = output.saturating_mul(10_000 - slippage) / 10_000;
+
+        Ok(BridgeQuote {
             protocol: best_route.protocol,
             estimated_output: output,
+            min_output,
             fee,
             fee_token: request.token.clone(),
             estimated_time_seconds: best_route.estimated_time,
             gas_cost_on_dest: 0,
-            price_impact_bps: 0,
+            price_impact_bps: pool.fee_bps,
         })
     }
 
     /// Create bridge transfer
     pub fn create_transfer(&mut self, request: &BridgeQuoteRequest) -> Result<BridgeTransfer, String> {
-        let quote = self.get_quote(request).ok_or("No route available")?;
+        let quote = self.get_quote(request)?;
         
         let transfer = BridgeTransfer {
             id: self.next_transfer_id,
@@ -211,7 +259,9 @@ impl BridgeEngine {
             output_amount: quote.estimated_output,
             protocol: quote.protocol,
             status: TransferStatus::Pending,
-            tx_hash: format!("0x{:064x}", self.next_transfer_id),
+            sender: request.sender.clone(),
+            recipient: request.recipient.clone(),
+            tx_hash: None,
             dst_tx_hash: None,
             created_at: now(),
             updated_at: now(),
@@ -231,10 +281,10 @@ impl BridgeEngine {
             transfer.status = status;
             transfer.updated_at = now();
             if let Some(h) = tx_hash {
-                if transfer.dst_tx_hash.is_none() {
-                    transfer.dst_tx_hash = Some(h);
+                if transfer.tx_hash.is_none() {
+                    transfer.tx_hash = Some(h);
                 } else {
-                    transfer.tx_hash = h;
+                    transfer.dst_tx_hash = Some(h);
                 }
             }
         }
@@ -245,11 +295,11 @@ impl BridgeEngine {
         self.transfers.read().unwrap().get(&id).cloned()
     }
 
-    /// Get all transfers for address
+    /// Get all transfers an address sent or received
     pub fn get_transfers_for_address(&self, address: &str) -> Vec<BridgeTransfer> {
         self.transfers.read().unwrap()
             .values()
-            .filter(|t| t.tx_hash.contains(address))
+            .filter(|t| t.sender == address || t.recipient == address)
             .cloned()
             .collect()
     }
@@ -259,9 +309,14 @@ impl BridgeEngine {
         let routes = self.routes.read().unwrap();
         let key = (from, to);
         
-        routes.get(&key)?
+        routes
+            .get(&key)?
             .iter()
-            .max_by(|a, b| a.reliability_score.partial_cmp(&b.reliability_score).unwrap())
+            .max_by(|a, b| {
+                a.reliability_score
+                    .partial_cmp(&b.reliability_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .cloned()
     }
 }
@@ -306,15 +361,125 @@ mod tests {
             reliability_score: 0.95,
         });
         
-        let quote = engine.get_quote(&BridgeQuoteRequest {
+        let quote = engine
+            .get_quote(&BridgeQuoteRequest {
+                from_chain: ChainId::Ethereum,
+                to_chain: ChainId::BSC,
+                token: "USDC".to_string(),
+                amount: 1_000_000,
+                slippage_bps: 50,
+                sender: "0xsender".to_string(),
+                recipient: "0xrecipient".to_string(),
+            })
+            .expect("quote should be available");
+
+        // fee_bps = 5 -> fee = amount * 5 / 10000 = 500
+        assert_eq!(quote.fee, 500);
+        assert_eq!(quote.estimated_output, 999_500);
+        // 50 bps slippage -> min_output = 999_500 * 9950 / 10000
+        assert_eq!(quote.min_output, 994_502);
+        assert_eq!(quote.protocol, BridgeProtocol::LayerZero);
+        assert_eq!(quote.estimated_time_seconds, 300);
+    }
+
+    #[test]
+    fn test_quote_rejects_invalid_requests() {
+        let engine = BridgeEngine::new();
+        engine.add_pool(BridgePool {
+            chain: ChainId::Ethereum,
+            token: "USDC".to_string(),
+            liquidity: 1_000_000,
+            protocol: BridgeProtocol::LayerZero,
+            fee_bps: 5,
+            min_amount: 1_000,
+            max_amount: 500_000,
+        });
+        engine.add_route(BridgeRoute {
+            protocol: BridgeProtocol::LayerZero,
+            from_chain: ChainId::Ethereum,
+            to_chain: ChainId::BSC,
+            estimated_fee: 10_000,
+            estimated_time: 300,
+            reliability_score: 0.95,
+        });
+
+        let request = |amount: u64| BridgeQuoteRequest {
             from_chain: ChainId::Ethereum,
             to_chain: ChainId::BSC,
             token: "USDC".to_string(),
-            amount: 1_000_000,
+            amount,
             slippage_bps: 50,
+            sender: "0xsender".to_string(),
+            recipient: "0xrecipient".to_string(),
+        };
+
+        assert!(engine.get_quote(&request(0)).is_err(), "zero amount");
+        assert!(engine.get_quote(&request(999)).is_err(), "below minimum");
+        assert!(engine.get_quote(&request(500_001)).is_err(), "above maximum");
+        assert!(
+            engine.get_quote(&request(2_000_000)).is_err(),
+            "above available liquidity"
+        );
+        assert!(engine.get_quote(&request(10_000)).is_ok());
+
+        // Unknown destination chain, unknown token, and a blank sender must all
+        // fail rather than return an invented quote.
+        let mut unknown_chain = request(10_000);
+        unknown_chain.to_chain = ChainId::Solana;
+        assert!(engine.get_quote(&unknown_chain).is_err(), "no route");
+
+        let mut unknown_token = request(10_000);
+        unknown_token.token = "DAI".to_string();
+        assert!(engine.get_quote(&unknown_token).is_err(), "no pool");
+
+        let mut blank_sender = request(10_000);
+        blank_sender.sender = String::new();
+        assert!(engine.get_quote(&blank_sender).is_err(), "blank sender");
+    }
+
+    #[test]
+    fn test_quote_prefers_the_most_reliable_route() {
+        let engine = BridgeEngine::new();
+        engine.add_pool(BridgePool {
+            chain: ChainId::Ethereum,
+            token: "USDC".to_string(),
+            liquidity: 10_000_000,
+            protocol: BridgeProtocol::LayerZero,
+            fee_bps: 5,
+            min_amount: 100,
+            max_amount: 1_000_000_000,
         });
-        
-        assert!(quote.is_some());
+        engine.add_route(BridgeRoute {
+            protocol: BridgeProtocol::LayerZero,
+            from_chain: ChainId::Ethereum,
+            to_chain: ChainId::BSC,
+            estimated_fee: 10_000,
+            estimated_time: 300,
+            reliability_score: 0.60,
+        });
+        engine.add_route(BridgeRoute {
+            protocol: BridgeProtocol::Wormhole,
+            from_chain: ChainId::Ethereum,
+            to_chain: ChainId::BSC,
+            estimated_fee: 12_000,
+            estimated_time: 420,
+            reliability_score: 0.99,
+        });
+
+        let quote = engine
+            .get_quote(&BridgeQuoteRequest {
+                from_chain: ChainId::Ethereum,
+                to_chain: ChainId::BSC,
+                token: "USDC".to_string(),
+                amount: 1_000_000,
+                slippage_bps: 50,
+                sender: "0xsender".to_string(),
+                recipient: "0xrecipient".to_string(),
+            })
+            .expect("quote should be available");
+
+        assert_eq!(quote.protocol, BridgeProtocol::Wormhole);
+        assert_eq!(quote.estimated_time_seconds, 420);
     }
 
     #[test]
@@ -346,8 +511,25 @@ mod tests {
             token: "ETH".to_string(),
             amount: 1_000_000_000,
             slippage_bps: 50,
+            sender: "0xsender".to_string(),
+            recipient: "0xrecipient".to_string(),
         });
-        
-        assert!(transfer.is_ok());
+
+        let transfer = transfer.expect("transfer should be created");
+        // No transaction has been broadcast, so no hash may be reported.
+        assert_eq!(transfer.tx_hash, None);
+        assert_eq!(transfer.status, TransferStatus::Pending);
+
+        // Recording the real broadcast hash fills the source hash, then the
+        // destination hash, and never overwrites an existing value.
+        engine.update_transfer(transfer.id, TransferStatus::Sent, Some("0xaaa".to_string()));
+        engine.update_transfer(transfer.id, TransferStatus::Confirmed, Some("0xbbb".to_string()));
+        let stored = engine.get_transfer(transfer.id).unwrap();
+        assert_eq!(stored.tx_hash.as_deref(), Some("0xaaa"));
+        assert_eq!(stored.dst_tx_hash.as_deref(), Some("0xbbb"));
+
+        assert_eq!(engine.get_transfers_for_address("0xsender").len(), 1);
+        assert_eq!(engine.get_transfers_for_address("0xrecipient").len(), 1);
+        assert!(engine.get_transfers_for_address("0xstranger").is_empty());
     }
 }

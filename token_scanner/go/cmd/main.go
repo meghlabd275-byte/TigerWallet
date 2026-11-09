@@ -204,7 +204,7 @@ func (s *TokenScannerService) Initialize() {
 	})
 
 	s.AddToken(&Token{
-		Address:   "0x7Fc66500c84A76Ad7e9e934DC149D2C5bD80b7d1",
+		Address:   "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
 		Name:      "Aave Token",
 		Symbol:    "AAVE",
 		Decimals:  18,

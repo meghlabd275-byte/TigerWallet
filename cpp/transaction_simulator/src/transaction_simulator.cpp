@@ -6,6 +6,7 @@
  */
 
 #include "transaction_simulator.h"
+#include "keccak256.hpp"
 #include <algorithm>
 #include <cstring>
 #include <sstream>
@@ -83,38 +84,15 @@ uint64_t word256_to_uint64(const Word256& word) {
     return result;
 }
 
-// Keccak-256 hash implementation
+// Keccak-256, the hash Ethereum uses. This delegates to the shared, self-built
+// implementation so a simulated transaction hash matches what the network
+// computes.
 Word256 keccak256(const std::vector<uint8_t>& data) {
+    crypto::Keccak256::Digest digest = crypto::Keccak256::hash(data);
     Word256 hash = {};
-    
-    // Use SHA-3/Keccak via simple implementation
-    // For production, use a proper Keccak library
-    // This implements a simplified version for compatibility
-    std::vector<uint8_t> padded = data;
-    padded.push_back(0x01); // Padding
-    while ((padded.size() % 136) != 136 - 8) {
-        padded.push_back(0x00);
+    for (size_t i = 0; i < hash.size(); ++i) {
+        hash[i] = digest[i];
     }
-    padded.push_back(0x80);
-    
-    // Simple deterministic hash using multiple rounds of mixing
-    std::vector<uint8_t> state(200, 0);
-    
-    // Absorb
-    for (size_t i = 0; i < padded.size(); i++) {
-        state[i % 200] ^= padded[i];
-    }
-    
-    // Squeeze first 32 bytes
-    for (size_t i = 0; i < 32; i++) {
-        hash[i] = state[i];
-        // Additional mixing for better distribution
-        for (size_t j = 1; j < 5; j++) {
-            state[i] ^= (state[(i + j * 40) % 200] + j * 0x9E3779B9);
-        }
-        hash[i] = state[i];
-    }
-    
     return hash;
 }
 

@@ -1,7 +1,7 @@
 /**
  * TigerWallet High-Frequency Market Data Processor
  * Ultra-Low Latency C++ Implementation
- * 
+ *
  * Features:
  * - Real-time market data ingestion
  * - Order book management
@@ -44,20 +44,20 @@ struct MarketDataConfig {
     int max_order_book_depth = 100;
     int price_precision = 8;
     int volume_precision = 8;
-    
+
     // Aggregation
     int aggregation_window_ms = 1000;
     int vwap_window_seconds = 300;
-    
+
     // Buffering
     int max_tick_buffer = 10000;
     int max_trade_buffer = 10000;
     int max_order_book_history = 1000;
-    
+
     // Performance
     bool enable_lock_free = true;
     int worker_threads = 4;
-    
+
     // Data retention
     int tick_retention_minutes = 60;
     int trade_retention_minutes = 1440;
@@ -245,44 +245,44 @@ class MarketDataProcessor {
 public:
     explicit MarketDataProcessor(const MarketDataConfig& config);
     ~MarketDataProcessor() = default;
-    
+
     // Disable copying
     MarketDataProcessor(const MarketDataProcessor&) = delete;
     MarketDataProcessor& operator=(const MarketDataProcessor&) = delete;
-    
+
     // Configuration
     void update_config(const MarketDataConfig& config);
     MarketDataConfig get_config() const;
-    
+
     // Symbol management
     void register_symbol(const std::string& symbol);
     void unregister_symbol(const std::string& symbol);
     bool is_symbol_registered(const std::string& symbol) const;
-    
+
     // Data ingestion
     void process_tick(const Tick& tick);
     void process_trade(const Trade& trade);
     void process_order_book(const OrderBook& order_book);
     void process_candle(const Candle& candle);
-    
+
     // Batch processing
     void process_tick_batch(const std::vector<Tick>& ticks);
     void process_trade_batch(const std::vector<Trade>& trades);
-    
+
     // Order book access
     std::optional<OrderBook> get_order_book(const std::string& symbol) const;
     std::vector<OrderBook> get_all_order_books() const;
-    
+
     // Aggregated data
     AggregatedPrice get_aggregated_price(const std::string& symbol) const;
-    
+
     // Statistics
     MarketStatistics get_market_statistics(
         const std::string& symbol,
         uint64_t start_time,
         uint64_t end_time
     );
-    
+
     // Historical data
     std::vector<Tick> get_ticks(
         const std::string& symbol,
@@ -290,54 +290,54 @@ public:
         uint64_t end_time,
         int limit = 1000
     );
-    
+
     std::vector<Trade> get_trades(
         const std::string& symbol,
         uint64_t start_time,
         uint64_t end_time,
         int limit = 1000
     );
-    
+
     std::vector<Candle> get_candles(
         const std::string& symbol,
         uint64_t start_time,
         uint64_t end_time,
         const std::string& interval = "1m"
     );
-    
+
     // Callbacks
     void set_tick_callback(TickCallback callback);
     void set_trade_callback(TradeCallback callback);
     void set_order_book_callback(OrderBookCallback callback);
     void set_candle_callback(CandleCallback callback);
     void set_statistics_callback(StatisticsCallback callback);
-    
+
     // Indicators
     BollingerBands calculate_bollinger_bands(
         const std::string& symbol,
         int period = 20,
         double std_dev = 2.0
     );
-    
+
     RSI calculate_rsi(const std::string& symbol, int period = 14);
     MACD calculate_macd(const std::string& symbol, int fast = 12, int slow = 26, int signal = 9);
     MovingAverage calculate_moving_averages(const std::string& symbol, int period = 20);
-    
+
     // Market analysis
     double calculate_vwap(const std::string& symbol, int window_seconds = 300);
     double calculate_slippage(const std::string& symbol, double order_size);
     double calculate_market_impact(const std::string& symbol, double order_size);
     double calculate_liquidity(const std::string& symbol, double price_range_percent = 1.0);
-    
+
     // Statistics
     size_t get_tick_count(const std::string& symbol) const;
     size_t get_trade_count(const std::string& symbol) const;
     size_t get_order_book_count() const;
-    
+
     // Cleanup
     void clear_symbol_data(const std::string& symbol);
     void clear_all_data();
-    
+
     // Performance metrics
     struct PerformanceMetrics {
         uint64_t total_ticks_processed = 0;
@@ -348,59 +348,66 @@ public:
         double avg_order_book_processing_time_us = 0.0;
         uint64_t last_processing_timestamp = 0;
     };
-    
+
     PerformanceMetrics get_performance_metrics() const;
     void reset_performance_metrics();
 
 private:
     // Configuration
     MarketDataConfig config_;
-    
+
     // Symbol data
     struct SymbolData {
         // Order book
         std::map<double, PriceLevel, std::greater<double>> bid_levels;
         std::map<double, PriceLevel> ask_levels;
         OrderBook current_order_book;
-        
+
         // Ticks
         std::deque<Tick> tick_buffer;
         std::deque<Tick> tick_history;
-        
+
         // Trades
         std::deque<Trade> trade_buffer;
         std::deque<Trade> trade_history;
-        
+
         // Candles
         std::map<uint64_t, Candle> candles;
-        
+
         // Aggregated data
         AggregatedPrice aggregated_price;
-        
+
         // Statistics
         MarketStatistics statistics;
-        
+
         // Performance
         uint64_t ticks_processed = 0;
         uint64_t trades_processed = 0;
         uint64_t order_books_processed = 0;
     };
-    
+
     std::unordered_map<std::string, std::shared_ptr<SymbolData>> symbol_data_;
     mutable std::shared_mutex mutex_;
-    
+
     // Callbacks
     TickCallback tick_callback_;
     TradeCallback trade_callback_;
     OrderBookCallback order_book_callback_;
     CandleCallback candle_callback_;
     StatisticsCallback statistics_callback_;
-    
+
     // Performance tracking
     std::atomic<uint64_t> total_ticks_processed_{0};
     std::atomic<uint64_t> total_trades_processed_{0};
     std::atomic<uint64_t> total_order_books_processed_{0};
-    
+
+    // Cumulative processing time per operation, in microseconds. The average
+    // reported by get_performance_metrics() is the total divided by the count,
+    // which needs no separate synchronisation.
+    std::atomic<uint64_t> tick_processing_time_us_{0};
+    std::atomic<uint64_t> trade_processing_time_us_{0};
+    std::atomic<uint64_t> order_book_processing_time_us_{0};
+
     // Helper methods
     std::shared_ptr<SymbolData> get_or_create_symbol(const std::string& symbol);
     void update_order_book(std::shared_ptr<SymbolData>& data, const OrderBook& order_book);
@@ -415,7 +422,7 @@ private:
 // Inline Implementations
 // ============================================================================
 
-inline MarketDataProcessor::MarketDataProcessor(const MarketDataConfig& config) 
+inline MarketDataProcessor::MarketDataProcessor(const MarketDataConfig& config)
     : config_(config) {}
 
 inline void MarketDataProcessor::update_config(const MarketDataConfig& config) {
@@ -423,7 +430,7 @@ inline void MarketDataProcessor::update_config(const MarketDataConfig& config) {
     config_ = config;
 }
 
-inline MarketDataProcessor::MarketDataConfig MarketDataProcessor::get_config() const {
+inline MarketDataConfig MarketDataProcessor::get_config() const {
     std::shared_lock lock(mutex_);
     return config_;
 }
@@ -498,6 +505,23 @@ inline MarketDataProcessor::PerformanceMetrics MarketDataProcessor::get_performa
     metrics.total_ticks_processed = total_ticks_processed_.load();
     metrics.total_trades_processed = total_trades_processed_.load();
     metrics.total_order_books_processed = total_order_books_processed_.load();
+
+    const auto mean = [](uint64_t total_us, uint64_t count) -> double {
+        return count == 0 ? 0.0
+                          : static_cast<double>(total_us) / static_cast<double>(count);
+    };
+    metrics.avg_tick_processing_time_us =
+        mean(tick_processing_time_us_.load(), metrics.total_ticks_processed);
+    metrics.avg_trade_processing_time_us =
+        mean(trade_processing_time_us_.load(), metrics.total_trades_processed);
+    metrics.avg_order_book_processing_time_us =
+        mean(order_book_processing_time_us_.load(),
+             metrics.total_order_books_processed);
+
+    const auto now = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    metrics.last_processing_timestamp = static_cast<uint64_t>(now);
     return metrics;
 }
 
@@ -505,6 +529,9 @@ inline void MarketDataProcessor::reset_performance_metrics() {
     total_ticks_processed_ = 0;
     total_trades_processed_ = 0;
     total_order_books_processed_ = 0;
+    tick_processing_time_us_ = 0;
+    trade_processing_time_us_ = 0;
+    order_book_processing_time_us_ = 0;
 }
 
 } // namespace market_data

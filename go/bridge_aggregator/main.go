@@ -17,10 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 )
 
 // ============================================================================
@@ -307,7 +307,7 @@ func NewBridgeAggregator(config *Config) *BridgeAggregator {
 		},
 		"USDC": {
 			{Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 1},
-			{Address: "0x3c499c542cEF5E38b10E58F3601C6e3C4ec3C4dA", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 137},
+			{Address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 137},
 		},
 		"MATIC": {
 			{Address: "0x0000000000000000000000000000000000000000", Symbol: "MATIC", Name: "Polygon", Decimals: 18, ChainID: 137},
@@ -406,16 +406,16 @@ func (s *BridgeAggregator) getAcrossQuote(req RouteRequest) *BridgeQuote {
 
 // lifiQuoteResponse maps the subset of Li.Fi's /v1/quote response we use.
 type lifiQuoteResponse struct {
-	ToAmount         string `json:"toAmount"`
-	ToAmountMin      string `json:"toAmountMin"`
-	ExecutionDuration int64 `json:"executionDuration"` // seconds
-	GasCosts         []struct {
-		AmountUSD  float64 `json:"amountUSD"`
-		Estimate   string  `json:"estimate"` // gas units
+	ToAmount          string `json:"toAmount"`
+	ToAmountMin       string `json:"toAmountMin"`
+	ExecutionDuration int64  `json:"executionDuration"` // seconds
+	GasCosts          []struct {
+		AmountUSD float64 `json:"amountUSD"`
+		Estimate  string  `json:"estimate"` // gas units
 	} `json:"gasCosts"`
-	Tool             string `json:"tool"`
-	ToolDetails      struct {
-		Key    string `json:"key"`
+	Tool        string `json:"tool"`
+	ToolDetails struct {
+		Key string `json:"key"`
 	} `json:"toolDetails"`
 }
 
@@ -480,12 +480,12 @@ func (s *BridgeAggregator) getLiFiQuote(req RouteRequest) *BridgeQuote {
 		Duration:       duration,
 		Steps: []BridgeStep{
 			{
-				Type:     "bridge",
-				ChainID:  req.FromChain,
-				Token:    req.FromToken,
-				Amount:   req.FromAmount,
-				Action:   "Bridge via " + lr.Tool,
-				Tool:     lr.Tool,
+				Type:    "bridge",
+				ChainID: req.FromChain,
+				Token:   req.FromToken,
+				Amount:  req.FromAmount,
+				Action:  "Bridge via " + lr.Tool,
+				Tool:    lr.Tool,
 			},
 		},
 	}

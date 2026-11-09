@@ -37,7 +37,7 @@ enum AAError: Error, LocalizedError {
 class AccountAbstractionService {
 
     private let baseURL = "http://localhost:8450"
-    private let defaultEntryPoint = "0x5FF137D4a0ADd64d12757d1f85d2dC51Bf7d7fE3"
+    private let defaultEntryPoint = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
     private var entryPoint: String
     private var factoryAddress: String = ""
     private var bundlerEndpoint: String?

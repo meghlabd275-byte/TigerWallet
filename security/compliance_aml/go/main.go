@@ -47,7 +47,7 @@ type Config struct {
 var cfg = Config{
 	ServerPort:          "8087",
 	DatabaseURL:         "postgresql://localhost:5432/tigerwallet",
-	BlockchainNodeURL:   "https://eth-mainnet.alchemyapi.io",
+	BlockchainNodeURL:   "https://ethereum-rpc.publicnode.com",
 	SanctionsAPIURL:     "https://api.sanctionscreen.com/v1",
 	TravelRuleAPIURL:    "https://travelrule.ey.com/v2",
 	ReportAPIURL:        "https://fincen.gov/api/reports",
