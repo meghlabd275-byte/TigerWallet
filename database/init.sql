@@ -128,3 +128,4 @@ CREATE DATABASE tigerwallet_insurance;
 CREATE DATABASE tigerwallet_perpetual;
 CREATE DATABASE tigerwallet_leaderboard;
 CREATE DATABASE tigerwallet_fiat;
+CREATE DATABASE tigerwallet_notifications;

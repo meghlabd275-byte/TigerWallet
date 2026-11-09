@@ -1012,8 +1012,20 @@ services:
       - "8011:8011"
     environment:
       - PORT=8011
+      - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_notifications?sslmode=disable
+      # Delivery providers. A channel with no provider configured reports
+      # "unavailable" instead of claiming the message was sent.
+      - EMAIL_WEBHOOK_URL=${EMAIL_WEBHOOK_URL:-}
+      - EMAIL_WEBHOOK_TOKEN=${EMAIL_WEBHOOK_TOKEN:-}
+      - SMS_WEBHOOK_URL=${SMS_WEBHOOK_URL:-}
+      - SMS_WEBHOOK_TOKEN=${SMS_WEBHOOK_TOKEN:-}
+      - PUSH_WEBHOOK_URL=${PUSH_WEBHOOK_URL:-}
+      - PUSH_WEBHOOK_TOKEN=${PUSH_WEBHOOK_TOKEN:-}
       # Browser-origin allowlist for this API. Empty = same-origin only.
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   launchpad-service:
