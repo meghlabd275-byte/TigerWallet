@@ -247,12 +247,19 @@ func handleSign(w http.ResponseWriter, r *http.Request, c caller) {
 
 // currentTimestamp is provided by enterprise.go (UnixMilli).
 
-// WithCORS adds permissive CORS for browser frontends in development.
+// WithCORS adds CORS headers for an explicitly allowlisted set of browser
+// origins (MPC_ALLOWED_ORIGINS). A key-custody API must not answer every site,
+// so an unset or empty allowlist emits no CORS headers and the browser falls
+// back to the same-origin policy.
 func WithCORS(h http.HandlerFunc) http.HandlerFunc {
+	origins := allowedOrigins()
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if origin := r.Header.Get("Origin"); origin != "" && origins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Vary", "Origin")
+		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

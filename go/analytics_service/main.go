@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,28 +121,34 @@ func (as *AnalyticsService) GetOverview(c *gin.Context) {
 	var feeSum float64
 
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&totalUsers); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM wallets`).Scan(&totalWallets); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM transaction_log`).Scan(&totalTx); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx,
 		`SELECT COUNT(DISTINCT user_id) FROM transaction_log WHERE created_at >= NOW() - INTERVAL '24 hours'`,
 	).Scan(&activeUsers24h); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx,
 		`SELECT COALESCE(SUM(value::numeric), 0)::float8 FROM transaction_log WHERE created_at >= NOW() - INTERVAL '24 hours'`,
 	).Scan(&volumeSum); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx,
 		`SELECT COALESCE(SUM(amount::numeric), 0)::float8 FROM fee_transaction WHERE created_at >= NOW() - INTERVAL '24 hours' AND status='settled'`,
 	).Scan(&feeSum); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 
 	// Real top chains by 24h volume, aggregated from transaction_log.
@@ -150,7 +157,8 @@ func (as *AnalyticsService) GetOverview(c *gin.Context) {
 		 FROM transaction_log WHERE created_at >= NOW() - INTERVAL '24 hours'
 		 GROUP BY chain_id ORDER BY SUM(value::numeric) DESC LIMIT 10`)
 	if err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	defer rows.Close()
 	topChains := []map[string]interface{}{}
@@ -174,7 +182,8 @@ func (as *AnalyticsService) GetOverview(c *gin.Context) {
 		 FROM transaction_log WHERE created_at >= NOW() - INTERVAL '24 hours'
 		 GROUP BY to_addr ORDER BY vol DESC LIMIT 10`)
 	if err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	defer tRows.Close()
 	topTokens := []map[string]interface{}{}
@@ -196,7 +205,8 @@ func (as *AnalyticsService) GetOverview(c *gin.Context) {
 		 WHERE created_at >= NOW() - INTERVAL '24 hours' GROUP BY chain_id
 		 ORDER BY txs DESC LIMIT 10`)
 	if err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	defer pRows.Close()
 	topPairs := []map[string]interface{}{}
@@ -226,18 +236,18 @@ func (as *AnalyticsService) GetOverview(c *gin.Context) {
 	// totalVolume24h / volume24h / fees24h / tvl / activeUsers) maps cleanly
 	// without a transform layer.
 	resp := gin.H{
-		"success":          true,
-		"analytics":        analytics,
-		"totalVolume24h":   strconv.FormatFloat(volumeSum, 'f', 2, 64),
-		"volume24h":        strconv.FormatFloat(volumeSum, 'f', 2, 64),
-		"totalFees24h":     strconv.FormatFloat(feeSum, 'f', 2, 64),
-		"fees24h":          strconv.FormatFloat(feeSum, 'f', 2, 64),
-		"totalUsers":       totalUsers,
-		"activeUsers":      activeUsers24h,
+		"success":           true,
+		"analytics":         analytics,
+		"totalVolume24h":    strconv.FormatFloat(volumeSum, 'f', 2, 64),
+		"volume24h":         strconv.FormatFloat(volumeSum, 'f', 2, 64),
+		"totalFees24h":      strconv.FormatFloat(feeSum, 'f', 2, 64),
+		"fees24h":           strconv.FormatFloat(feeSum, 'f', 2, 64),
+		"totalUsers":        totalUsers,
+		"activeUsers":       activeUsers24h,
 		"totalTransactions": totalTx,
-		"chains":           topChains,
-		"tokens":           topTokens,
-		"pools":            topPairs,
+		"chains":            topChains,
+		"tokens":            topTokens,
+		"pools":             topPairs,
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -246,22 +256,28 @@ func (as *AnalyticsService) GetUserStats(c *gin.Context) {
 	ctx := as.ctx
 	var totalUsers, verifiedUsers, kycPending, newUsers24h, activeUsers7d, activeUsers30d int64
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&totalUsers); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE kyc_status='verified'`).Scan(&verifiedUsers); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE kyc_status='pending'`).Scan(&kycPending); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '24 hours'`).Scan(&newUsers24h); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(DISTINCT user_id) FROM transaction_log WHERE created_at >= NOW() - INTERVAL '7 days'`).Scan(&activeUsers7d); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	if err := as.db.QueryRow(ctx, `SELECT COUNT(DISTINCT user_id) FROM transaction_log WHERE created_at >= NOW() - INTERVAL '30 days'`).Scan(&activeUsers30d); err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -313,7 +329,8 @@ func (as *AnalyticsService) GetChainStats(c *gin.Context) {
 		`SELECT chain_id, COUNT(*) as txs, COALESCE(SUM(value::numeric),0)::float8 as vol
 		 FROM transaction_log GROUP BY chain_id ORDER BY vol DESC`)
 	if err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	defer rows.Close()
 	chains := []map[string]interface{}{}
@@ -344,7 +361,8 @@ func (as *AnalyticsService) GetRevenueStats(c *gin.Context) {
 		`SELECT fee_type, COALESCE(SUM(amount::numeric),0)::float8 FROM fee_transaction
 		 WHERE status='settled' GROUP BY fee_type`)
 	if err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	defer rows.Close()
 	breakdown := map[string]interface{}{}
@@ -360,11 +378,11 @@ func (as *AnalyticsService) GetRevenueStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"revenue": map[string]interface{}{
-			"total_revenue":   strconv.FormatFloat(total, 'f', 2, 64),
-			"revenue_24h":     strconv.FormatFloat(rev24h, 'f', 2, 64),
-			"revenue_7d":      strconv.FormatFloat(rev7d, 'f', 2, 64),
-			"revenue_30d":     strconv.FormatFloat(rev30d, 'f', 2, 64),
-			"breakdown":       breakdown,
+			"total_revenue": strconv.FormatFloat(total, 'f', 2, 64),
+			"revenue_24h":   strconv.FormatFloat(rev24h, 'f', 2, 64),
+			"revenue_7d":    strconv.FormatFloat(rev7d, 'f', 2, 64),
+			"revenue_30d":   strconv.FormatFloat(rev30d, 'f', 2, 64),
+			"breakdown":     breakdown,
 		},
 	})
 }
@@ -378,7 +396,8 @@ func (as *AnalyticsService) GetTokenStats(c *gin.Context) {
 		`SELECT to_addr, COUNT(*) as txs, COALESCE(SUM(value::numeric),0)::float8 as vol
 		 FROM transaction_log GROUP BY to_addr ORDER BY vol DESC LIMIT 20`)
 	if err != nil {
-		failDB(c, err); return
+		failDB(c, err)
+		return
 	}
 	defer rows.Close()
 	tokens := []map[string]interface{}{}
@@ -394,6 +413,20 @@ func (as *AnalyticsService) GetTokenStats(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "tokens": tokens})
+}
+
+// corsOrigins parses the browser-origin allowlist from ALLOWED_ORIGINS (comma
+// separated). An empty allowlist emits no CORS headers, which keeps browsers on
+// the same origin by default instead of exposing the API to every site.
+func corsOrigins() map[string]bool {
+	origins := make(map[string]bool)
+	for _, origin := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			origins[origin] = true
+		}
+	}
+	return origins
 }
 
 func main() {
@@ -414,7 +447,12 @@ func main() {
 	r.Use(gin.Recovery())
 
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		// CORS: explicit origin allowlist. A wildcard would let any site
+		// read this API with the visitor's credentials attached.
+		if origin := c.Request.Header.Get("Origin"); origin != "" && corsOrigins()[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return

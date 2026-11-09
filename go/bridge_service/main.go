@@ -9,12 +9,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -314,6 +315,20 @@ FROM bridge_transactions WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 100
 	c.JSON(http.StatusOK, gin.H{"success": true, "transactions": result, "count": len(result)})
 }
 
+// corsOrigins parses the browser-origin allowlist from ALLOWED_ORIGINS (comma
+// separated). An empty allowlist emits no CORS headers, which keeps browsers on
+// the same origin by default instead of exposing the API to every site.
+func corsOrigins() map[string]bool {
+	origins := make(map[string]bool)
+	for _, origin := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			origins[origin] = true
+		}
+	}
+	return origins
+}
+
 func main() {
 	if os.Getenv("JWT_SECRET") == "" {
 		log.Fatal("JWT_SECRET must be set: the bridge service authenticates callers with it")
@@ -358,7 +373,12 @@ func main() {
 	r.Use(gin.Recovery())
 
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		// CORS: explicit origin allowlist. A wildcard would let any site
+		// read this API with the visitor's credentials attached.
+		if origin := c.Request.Header.Get("Origin"); origin != "" && corsOrigins()[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return

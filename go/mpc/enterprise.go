@@ -26,8 +26,8 @@ import (
 	"sync"
 	"time"
 
-	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	dsecp "github.com/decred/dcrd/dcrec/secp256k1/v4"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
 // =============================================================================
@@ -974,8 +974,8 @@ type PolicyEngine struct {
 	// dailySpent tracks cumulative wei spent per wallet in the current UTC day.
 	dailySpent map[Address]uint64
 	// dailyDay is the UTC date (YYYYMMDD) the dailySpent counter applies to.
-	dailyDay   map[Address]string
-	mu         sync.RWMutex
+	dailyDay map[Address]string
+	mu       sync.RWMutex
 }
 
 func NewPolicyEngine() *PolicyEngine {

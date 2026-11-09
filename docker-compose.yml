@@ -172,6 +172,8 @@ services:
     ports:
       - "8007:8007"
     environment:
+      # Browser-origin allowlist for this API. Empty = same-origin only.
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-}"
       DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_bridge?sslmode=disable"
     depends_on:
       postgres:
@@ -952,6 +954,8 @@ services:
       - "8004:8004"
     environment:
       - NFT_PORT=8004
+      # Browser-origin allowlist for this API. Empty = same-origin only.
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet?sslmode=disable
       - REDIS_ADDR=redis:6379
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set to a strong value}
@@ -991,6 +995,8 @@ services:
       - "8010:8010"
     environment:
       - ANALYTICS_PORT=8010
+      # Browser-origin allowlist for this API. Empty = same-origin only.
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - DATABASE_URL=postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_analytics?sslmode=disable
     depends_on:
       postgres:
@@ -1006,6 +1012,8 @@ services:
       - "8011:8011"
     environment:
       - PORT=8011
+      # Browser-origin allowlist for this API. Empty = same-origin only.
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
     restart: unless-stopped
 
   launchpad-service:
@@ -1107,6 +1115,8 @@ services:
       - "8097:8097"
     environment:
       - PORT=8097
+      # Browser-origin allowlist for this API. Empty = same-origin only.
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - REDIS_ADDR=redis:6379
       - PAYMENT_SERVICE_URL=http://payment-service:8096
       - ETH_RPC_URL=${ETH_RPC_URL:-}
@@ -1270,6 +1280,8 @@ services:
       - "8482:8005"
     environment:
       - PORT=8005
+      # Browser-origin allowlist for this API. Empty = same-origin only.
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - REDIS_ADDR=redis:6379
       - COINGECKO_BASE_URL=${COINGECKO_BASE_URL:-https://api.coingecko.com/api/v3}
     depends_on:

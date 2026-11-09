@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"os"
@@ -266,6 +267,20 @@ func (ns *NotificationService) GetTemplates(c *gin.Context) {
 	})
 }
 
+// corsOrigins parses the browser-origin allowlist from ALLOWED_ORIGINS (comma
+// separated). An empty allowlist emits no CORS headers, which keeps browsers on
+// the same origin by default instead of exposing the API to every site.
+func corsOrigins() map[string]bool {
+	origins := make(map[string]bool)
+	for _, origin := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			origins[origin] = true
+		}
+	}
+	return origins
+}
+
 func main() {
 	log.Println("TigerWallet Notification Service")
 	log.Printf("Starting on port %d", cfg.Port)
@@ -277,7 +292,12 @@ func main() {
 	r.Use(gin.Recovery())
 
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		// CORS: explicit origin allowlist. A wildcard would let any site
+		// read this API with the visitor's credentials attached.
+		if origin := c.Request.Header.Get("Origin"); origin != "" && corsOrigins()[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return
