@@ -7,7 +7,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -180,22 +179,40 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 	recipient := pick("recipient", "user_id")
 	fromChain := pick("from_chain", "srcChain")
 	toChain := pick("to_chain", "dstChain")
-	// Bridge execution requires an on-chain transaction signed and broadcast
-	// by the user via wallet_api /send. We return action_required with the
-	// quote details so the client can construct and broadcast the tx. We never
-	// fabricate a tx hash -- the client signs + broadcasts the real on-chain tx.
-	txID := fmt.Sprintf("bridge-%s-%s-%s", fromChain, toChain, strconv.FormatInt(time.Now().UnixNano(), 36))
+	token := pick("token", "asset")
+	amount := pick("amount", "value")
+
+	if fromChain == "" || toChain == "" || recipient == "" || amount == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "from_chain, to_chain, recipient and amount are required",
+		})
+		return
+	}
+
+	// A bridge transfer is an on-chain action: the source-chain deposit has to
+	// be signed and broadcast by the user through wallet_api /send, and the
+	// destination leg exists only once a relayer observes that deposit. This
+	// endpoint returns the unsigned deposit call the client must sign. No
+	// transfer id is issued, because nothing has happened on chain yet and an
+	// id here would imply a transfer that does not exist.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":    true,
-		"status":     "action_required",
-		"tx_id":      txID,
-		"message":    "Bridge transfer requires client to sign and broadcast via wallet_api /send",
-		"bridge":     bridge,
-		"from_chain": fromChain,
-		"to_chain":   toChain,
-		"recipient":  recipient,
+		"success": true,
+		"status":  "action_required",
+		"action":  "sign_and_broadcast_deposit",
+		"message": "Sign the deposit transaction with wallet_api /send. The transfer exists only after that transaction is confirmed on " + fromChain + ".",
+		"bridge":  bridge,
+		"deposit": map[string]interface{}{
+			"from_chain": fromChain,
+			"to_chain":   toChain,
+			"token":      token,
+			"amount":     amount,
+			"recipient":  recipient,
+		},
 	})
 }
 

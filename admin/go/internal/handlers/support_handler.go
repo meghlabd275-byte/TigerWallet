@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strconv"
 	"time"
@@ -400,12 +402,31 @@ func (h *SupportHandler) GetSLAViolations(c *gin.Context) {
 	})
 }
 
-// helper function
+// generateRandomString returns n characters drawn from the system CSPRNG.
+//
+// The previous implementation indexed the alphabet with time.Now().UnixNano()
+// on every iteration. The loop runs in well under a nanosecond, so every
+// character in a generated id was identical and ticket references were
+// predictable.
 func generateRandomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	if n <= 0 {
+		return ""
+	}
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+		v, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			// crypto/rand is effectively infallible; if it does fail, retry with
+			// a fresh read rather than emitting a predictable character.
+			var raw [1]byte
+			if _, rerr := rand.Read(raw[:]); rerr != nil {
+				panic("crypto/rand unavailable: " + rerr.Error())
+			}
+			b[i] = letters[int(raw[0])%len(letters)]
+			continue
+		}
+		b[i] = letters[v.Int64()]
 	}
 	return string(b)
 }

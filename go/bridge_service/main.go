@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,12 +24,43 @@ type Config struct {
 	Port        int
 	DatabaseURL string
 	RedisURL    string
+	// FeeBps is the bridge fee in basis points (1 bp = 0.01%). It is a
+	// deployment decision, so it is configured rather than hardcoded; an
+	// unset value means no fee is quoted.
+	FeeBps int
 }
 
 var cfg = Config{
 	Port:        8007,
 	DatabaseURL: getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_bridge?sslmode=disable"),
 	RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379/0"),
+	FeeBps:      feeBpsFromEnv(),
+}
+
+// feeBpsFromEnv reads BRIDGE_FEE_BPS. An unset or malformed value yields 0 so
+// the service quotes no fee rather than inventing one.
+func feeBpsFromEnv() int {
+	v := strings.TrimSpace(os.Getenv("BRIDGE_FEE_BPS"))
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 || n > 10000 {
+		return 0
+	}
+	return n
+}
+
+// quoteFeeBps returns the fee that applies to a transfer between two chains.
+// Chains are treated independently, so a route with no configured fee quotes
+// zero rather than an assumed percentage.
+func (bs *BridgeService) quoteFeeBps(fromChain, toChain string) int {
+	return cfg.FeeBps
+}
+
+// formatFee renders a basis-point fee as a percentage string.
+func formatFee(bps int) string {
+	return strconv.FormatFloat(float64(bps)/100.0, 'f', -1, 64) + "%"
 }
 
 func getEnv(key, def string) string {
@@ -199,7 +231,7 @@ func (bs *BridgeService) InitiateTransfer(c *gin.Context) {
 
 	txID := uuid.New().String()
 	status := "pending"
-	fee := "0.3%"
+	fee := formatFee(bs.quoteFeeBps(req.FromChain, req.ToChain))
 	estimatedTime := 600
 
 	if bs.pg == nil {
@@ -224,6 +256,10 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
 		"amount":     req.Amount,
 		"fee":        fee,
 		"status":     status,
+		// The record is created before any on-chain action, so the caller must
+		// broadcast the deposit through wallet_api /send; the transfer advances
+		// only when a relayer observes that deposit.
+		"next_action": "sign_and_broadcast_deposit",
 	})
 }
 

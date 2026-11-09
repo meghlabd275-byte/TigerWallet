@@ -365,8 +365,16 @@ export default function BridgePage() {
       });
 
       const data = await response.json();
-      if (data.success && data.tx_id) {
-        setSnackbar({ open: true, message: `Bridge initiated! ID: ${data.tx_id}`, severity: 'success' });
+      // The backend returns the unsigned deposit to sign; the transfer only
+      // exists once that transaction is broadcast and confirmed on chain.
+      if (data.success && data.status === 'action_required') {
+        setSnackbar({
+          open: true,
+          message: data.message || 'Sign and broadcast the deposit transaction to complete the bridge transfer.',
+          severity: 'info',
+        });
+      } else if (data.success) {
+        setSnackbar({ open: true, message: 'Bridge request accepted.', severity: 'success' });
         setAmount('');
         setQuote(null);
       } else {
