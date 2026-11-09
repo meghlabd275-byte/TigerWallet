@@ -478,81 +478,43 @@ type AddLiquidityRequest struct {
 	Chain    string `json:"chain" binding:"required"`
 }
 
+// AddLiquidity previously minted LP tokens into an in-memory map and adjusted
+// in-memory reserves without touching a chain, so the reported position and
+// share existed only inside this process and vanished on restart. Providing
+// liquidity is an on-chain action signed by the provider, so the endpoint now
+// returns the instruction the caller must execute instead of a fabricated
+// position. LP token amounts are decided by the pool contract from the actual
+// reserves at execution time and cannot be known here.
 func (ss *SwapService) AddLiquidity(c *gin.Context) {
 	var req AddLiquidityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	// Find or create pair
-	pairID := req.TokenA + "-" + req.TokenB
-	pair, exists := ss.pairs[pairID]
-	if !exists {
-		pair = &TradingPair{
-			ID:          pairID,
-			BaseToken:   req.TokenA,
-			QuoteToken:  req.TokenB,
-			PairAddress: "", // pair address requires on-chain contract deployment
-			Chain:       req.Chain,
-			DEX:         "tigerswap",
-			ReserveA:    req.AmountA,
-			ReserveB:    req.AmountB,
-			Liquidity:   req.AmountA,
-			IsActive:    true,
-		}
-		ss.pairs[pairID] = pair
+	if _, ok := new(big.Float).SetString(req.AmountA); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount_a"})
+		return
+	}
+	if _, ok := new(big.Float).SetString(req.AmountB); !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount_b"})
+		return
 	}
 
-	// Calculate LP tokens (simplified)
-	amountA := new(big.Float)
-	amountA.SetString(req.AmountA)
-	amountB := new(big.Float)
-	amountB.SetString(req.AmountB)
-
-	reserveA := new(big.Float)
-	reserveA.SetString(pair.ReserveA)
-	reserveB := new(big.Float)
-	reserveB.SetString(pair.ReserveB)
-
-	lpTokens := new(big.Float).Mul(
-		new(big.Float).Mul(amountA, amountB),
-		big.NewFloat(0.5),
-	)
-
-	// Create liquidity position
-	poolID := uuid.New().String()
-	pool := &LiquidityPool{
-		ID:           poolID,
-		PairID:       pairID,
-		Provider:     req.Provider,
-		TokenA:       req.TokenA,
-		TokenB:       req.TokenB,
-		AmountA:      req.AmountA,
-		AmountB:      req.AmountB,
-		LpTokens:     fmt.Sprintf("%.6f", lpTokens),
-		Share:        "1.0",
-		Chain:        req.Chain,
-		Staked:       false,
-		RewardEarned: "0",
-		CreatedAt:    time.Now(),
-	}
-
-	ss.pools[poolID] = pool
-
-	// Update pair reserves
-	pair.ReserveA = addStrings(pair.ReserveA, req.AmountA)
-	pair.ReserveB = addStrings(pair.ReserveB, req.AmountB)
-	pair.Liquidity = addStrings(pair.Liquidity, fmt.Sprintf("%.6f", lpTokens))
-
-	c.JSON(http.StatusOK, gin.H{
-		"success":   true,
-		"pool_id":   poolID,
-		"lp_tokens": pool.LpTokens,
-		"token_a":   req.TokenA,
-		"token_b":   req.TokenB,
-		"amount_a":  req.AmountA,
-		"amount_b":  req.AmountB,
+	c.JSON(http.StatusAccepted, gin.H{
+		"success":  true,
+		"status":   "action_required",
+		"message":  "Providing liquidity is an on-chain transaction. Approve both tokens and call the pool contract's addLiquidity; the contract determines the LP amount minted from live reserves.",
+		"token_a":  req.TokenA,
+		"token_b":  req.TokenB,
+		"amount_a": req.AmountA,
+		"amount_b": req.AmountB,
+		"chain":    req.Chain,
+		"action_required": gin.H{
+			"endpoint":               "POST /api/v1/send (wallet_api)",
+			"description":            "Submit approve(tokenA), approve(tokenB) then addLiquidity through the signing backend.",
+			"chain":                  req.Chain,
+			"requires_erc20_approve": true,
+		},
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -86,7 +87,7 @@ type ENSService struct {
 var ENSRegistry = common.HexToAddress("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e")
 
 // ============================================================================
-// ENS Contract ABIs (Simplified)
+// ENS Contract ABIs
 // ============================================================================
 
 var (
@@ -294,59 +295,32 @@ func (s *ENSService) ReverseResolve(address string) (*ReverseRecord, error) {
 	return record, nil
 }
 
+// errENSWriteUnsupported is returned by the record-mutating helpers.
+//
+// Writing an ENS record is an on-chain transaction signed by the name's owner.
+// This service holds no signing key and cannot broadcast one, so it must not
+// pretend the record changed: previously these helpers mutated a Redis cache
+// entry and reported success, which served a name that resolved to an address
+// the chain did not agree with. Writes are delegated to the wallet that owns
+// the name, which submits setAddr/setText/setContenthash itself.
+var errENSWriteUnsupported = errors.New("ENS records are written on-chain by the name owner; submit setAddr/setText/setContenthash from the owning wallet")
+
 func (s *ENSService) SetAddress(name, address string) error {
-	record, err := s.Resolve(name)
-	if err != nil {
-		return err
-	}
-
-	record.Address = address
-	record.ResolvedAt = time.Now().Unix()
-
-	// Update cache
-	if data, err := json.Marshal(record); err == nil {
-		s.redis.Set(context.Background(), "ens:"+name, string(data), 24*time.Hour)
-	}
-
-	return nil
+	return errENSWriteUnsupported
 }
 
 func (s *ENSService) SetTextRecord(name, key, value string) error {
-	record, err := s.Resolve(name)
-	if err != nil {
-		return err
-	}
-
-	if record.TextRecords == nil {
-		record.TextRecords = make(map[string]string)
-	}
-
-	record.TextRecords[key] = value
-	record.ResolvedAt = time.Now().Unix()
-
-	// Update cache
-	if data, err := json.Marshal(record); err == nil {
-		s.redis.Set(context.Background(), "ens:"+name, string(data), 24*time.Hour)
-	}
-
-	return nil
+	return errENSWriteUnsupported
 }
 
 func (s *ENSService) SetContentHash(name, contentHash string) error {
-	record, err := s.Resolve(name)
-	if err != nil {
-		return err
-	}
+	return errENSWriteUnsupported
+}
 
-	record.ContentHash = contentHash
-	record.ResolvedAt = time.Now().Unix()
-
-	// Update cache
-	if data, err := json.Marshal(record); err == nil {
-		s.redis.Set(context.Background(), "ens:"+name, string(data), 24*time.Hour)
-	}
-
-	return nil
+// invalidateCache drops a name's cached record so the next read re-resolves it
+// from the chain. It is called after an external write is confirmed.
+func (s *ENSService) invalidateCache(name string) error {
+	return s.redis.Del(context.Background(), "ens:"+name).Err()
 }
 
 func (s *ENSService) GetTextRecord(name, key string) (string, error) {
@@ -405,7 +379,7 @@ func (s *ENSService) BatchResolve(names []string) ([]*ENSRecord, error) {
 }
 
 // ============================================================================
-// Subgraph Query (Simplified)
+// Domain listing
 // ============================================================================
 
 func (s *ENSService) GetDomains(owner string) ([]*ENSRecord, error) {
@@ -538,16 +512,24 @@ func (s *ENSService) handleSetAddress(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		if errors.Is(err, errENSWriteUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	if err := s.SetAddress(req.Name, req.Address); err != nil {
+		if errors.Is(err, errENSWriteUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "address set"})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": errENSWriteUnsupported.Error()})
 }
 
 func (s *ENSService) handleSetTextRecord(c *gin.Context) {
@@ -558,16 +540,24 @@ func (s *ENSService) handleSetTextRecord(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		if errors.Is(err, errENSWriteUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	if err := s.SetTextRecord(req.Name, req.Key, req.Value); err != nil {
+		if errors.Is(err, errENSWriteUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "text record set"})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": errENSWriteUnsupported.Error()})
 }
 
 func (s *ENSService) handleSetContentHash(c *gin.Context) {
@@ -577,16 +567,24 @@ func (s *ENSService) handleSetContentHash(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		if errors.Is(err, errENSWriteUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	if err := s.SetContentHash(req.Name, req.ContentHash); err != nil {
+		if errors.Is(err, errENSWriteUnsupported) {
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "content hash set"})
+	c.JSON(http.StatusNotImplemented, gin.H{"error": errENSWriteUnsupported.Error()})
 }
 
 func (s *ENSService) handleBatchResolve(c *gin.Context) {

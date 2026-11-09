@@ -151,10 +151,15 @@ CREATE TABLE IF NOT EXISTS perpetual_pairs (
     index_price     NUMERIC(36,18) NOT NULL DEFAULT 0,
     funding_rate    NUMERIC(36,18) NOT NULL DEFAULT 0,
     max_leverage    NUMERIC(10,2) NOT NULL DEFAULT 25,
+    -- maintenance_margin_bps is the exchange's liquidation threshold for this
+    -- market, in basis points of notional. It is per-market policy, so it is
+    -- stored with the market rather than assumed by the liquidation formula.
+    maintenance_margin_bps INTEGER NOT NULL DEFAULT 500,
     status          TEXT NOT NULL DEFAULT 'active',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(symbol)
 );
+ALTER TABLE perpetual_pairs ADD COLUMN IF NOT EXISTS maintenance_margin_bps INTEGER NOT NULL DEFAULT 500;
 CREATE TABLE IF NOT EXISTS perpetual_positions (
     id              TEXT PRIMARY KEY,
     pair_id         TEXT NOT NULL REFERENCES perpetual_pairs(id),
@@ -285,7 +290,8 @@ func (s *service) openPosition(c *gin.Context) {
 	}
 	// notional = size * mark_price ; margin must be >= notional / leverage
 	var markStr, maxLevStr string
-	err := s.pg.QueryRow(c, `SELECT mark_price::text,max_leverage::text FROM perpetual_pairs WHERE id=$1 AND status='active'`, req.PairID).Scan(&markStr, &maxLevStr)
+	var maintenanceMarginBps int
+	err := s.pg.QueryRow(c, `SELECT mark_price::text,max_leverage::text,maintenance_margin_bps FROM perpetual_pairs WHERE id=$1 AND status='active'`, req.PairID).Scan(&markStr, &maxLevStr, &maintenanceMarginBps)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "pair not found"})
 		return
@@ -306,15 +312,32 @@ func (s *service) openPosition(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient margin for leverage", "required": requiredMargin.Text('f', 18)})
 		return
 	}
-	// liquidation price (simplified): entry * (1 - 1/leverage * 0.9) for long,
-	// entry * (1 + 1/leverage * 0.9) for short.
-	factor := new(big.Float).Quo(big.NewFloat(1), lev)
-	factor.Mul(factor, big.NewFloat(0.9))
-	liq := new(big.Float).Set(mark)
+	// Liquidation price for an isolated-margin position.
+	//
+	// A long is liquidated once the loss consumes the margin down to the
+	// maintenance requirement:
+	//     (mark - liq) / liq = margin/notional - maintenanceMargin
+	// which rearranges to liq = mark * (1 - margin/notional) / (1 - mmr).
+	// A short mirrors it: liq = mark * (1 + margin/notional) / (1 + mmr).
+	// mmr is the market's configured maintenance margin, so a market with a
+	// different risk setting liquidates at the correct price.
+	mmr := new(big.Float).Quo(big.NewFloat(float64(maintenanceMarginBps)), big.NewFloat(10000))
+	marginRatio := new(big.Float).Quo(margin, notional)
+	one := big.NewFloat(1)
+	liq := new(big.Float)
 	if req.Side == 1 {
-		liq.Sub(liq, new(big.Float).Mul(mark, factor))
+		den := new(big.Float).Sub(one, mmr)
+		if den.Sign() <= 0 {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "market maintenance margin is misconfigured"})
+			return
+		}
+		liq.Mul(mark, new(big.Float).Quo(new(big.Float).Sub(one, marginRatio), den))
+		if liq.Sign() < 0 {
+			liq.Set(big.NewFloat(0))
+		}
 	} else {
-		liq.Add(liq, new(big.Float).Mul(mark, factor))
+		den := new(big.Float).Add(one, mmr)
+		liq.Mul(mark, new(big.Float).Quo(new(big.Float).Add(one, marginRatio), den))
 	}
 	id := newID()
 	_, err = s.pg.Exec(c, `INSERT INTO perpetual_positions (id,pair_id,user_id,side,size,entry_price,leverage,margin,liq_price) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
