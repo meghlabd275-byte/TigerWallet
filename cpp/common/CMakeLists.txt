@@ -29,3 +29,7 @@ add_test(NAME uint256 COMMAND test_uint256)
 add_executable(test_secp256k1 tests/test_secp256k1.cpp)
 target_link_libraries(test_secp256k1 PRIVATE tigerwallet_common)
 add_test(NAME secp256k1 COMMAND test_secp256k1)
+
+add_executable(test_abi_encode tests/test_abi_encode.cpp)
+target_link_libraries(test_abi_encode PRIVATE tigerwallet_common)
+add_test(NAME abi_encode COMMAND test_abi_encode)

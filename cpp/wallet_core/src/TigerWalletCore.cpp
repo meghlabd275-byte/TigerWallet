@@ -9,6 +9,7 @@
 
 #include "TigerWalletCore.h"
 #include "keccak256.hpp"
+#include "abi_encode.hpp"
 #include "Crypto.h"
 #include "Chains.h"
 #include "Signing.h"
@@ -1938,76 +1939,146 @@ void tw_evm_transaction_delete(TWEVMTransaction* tx) {
     delete tx;
 }
 
+// Builds calldata for the ERC standards.
+//
+// Each entry point validates its arguments and returns nullptr with a zero
+// length when they are malformed. Returning a buffer of zeroed words instead
+// would produce calldata that dispatches successfully and moves the wrong
+// amount to the wrong address, so a failure has to be visible to the caller.
+
+namespace {
+
+// Copies encoder output into the caller-owned buffer the public API promises.
+uint8_t* copy_calldata(const std::optional<std::vector<uint8_t>>& data, size_t* outputLen) {
+    if (outputLen != nullptr) {
+        *outputLen = 0;
+    }
+    if (!data.has_value()) {
+        return nullptr;
+    }
+
+    uint8_t* out = static_cast<uint8_t*>(malloc(data->size()));
+    if (out == nullptr) {
+        return nullptr;
+    }
+    std::memcpy(out, data->data(), data->size());
+    if (outputLen != nullptr) {
+        *outputLen = data->size();
+    }
+    return out;
+}
+
+}  // namespace
+
 uint8_t* tw_erc20_transfer_data(const char* to, const char* amount, size_t* outputLen) {
-    // ERC-20 transfer function selector: 0xa9059cbb
-    static const uint8_t selector[] = {0xa9059cbb, 0x00, 0x00};
-    
-    // Parse address and amount (simplified)
-    *outputLen = 4 + 32 + 32;
-    uint8_t* data = (uint8_t*)malloc(*outputLen);
-    
-    memcpy(data, selector, 4);
-    // Pad address (skip 0x prefix in real impl)
-    memset(data + 4, 0, 12);
-    // Add address bytes here
-    memset(data + 16, 0, 16);
-    // Add amount here
-    
-    return data;
+    if (to == nullptr || amount == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    return copy_calldata(abi::erc20_transfer(to, amount), outputLen);
 }
 
 uint8_t* tw_erc20_approve_data(const char* spender, const char* amount, size_t* outputLen) {
-    // ERC-20 approve function selector: 0x095ea7b3
-    *outputLen = 68;
-    uint8_t* data = (uint8_t*)malloc(*outputLen);
-    data[0] = 0x09; data[1] = 0x5e; data[2] = 0xa7; data[3] = 0xb3;
-    return data;
+    if (spender == nullptr || amount == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    return copy_calldata(abi::erc20_approve(spender, amount), outputLen);
 }
 
-uint8_t* tw_erc20_transfer_from_data(const char* from, const char* to, const char* amount, size_t* outputLen) {
-    *outputLen = 96;
-    uint8_t* data = (uint8_t*)malloc(*outputLen);
-    return data;
+uint8_t* tw_erc20_transfer_from_data(const char* from, const char* to, const char* amount,
+                                     size_t* outputLen) {
+    if (from == nullptr || to == nullptr || amount == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    return copy_calldata(abi::erc20_transfer_from(from, to, amount), outputLen);
 }
 
-uint8_t* tw_erc721_safe_transfer_from_data(const char* from, const char* to, const char* tokenId, size_t* outputLen) {
-    *outputLen = 132;
-    uint8_t* data = (uint8_t*)malloc(*outputLen);
-    return data;
+uint8_t* tw_erc721_safe_transfer_from_data(const char* from, const char* to,
+                                           const char* tokenId, size_t* outputLen) {
+    if (from == nullptr || to == nullptr || tokenId == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    return copy_calldata(abi::erc721_safe_transfer_from(from, to, tokenId), outputLen);
 }
 
-uint8_t* tw_erc721_set_approval_for_all_data(const char* operator, bool approved, size_t* outputLen) {
-    *outputLen = 68;
-    uint8_t* data = (uint8_t*)malloc(*outputLen);
-    return data;
+uint8_t* tw_erc721_set_approval_for_all_data(const char* operatorAddress, bool approved,
+                                             size_t* outputLen) {
+    if (operatorAddress == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    return copy_calldata(abi::erc721_set_approval_for_all(operatorAddress, approved), outputLen);
 }
 
-uint8_t* tw_erc721_safe_transfer_from_with_data(const char* from, const char* to, 
-                                                  const char* tokenId,
-                                                  const uint8_t* data, size_t dataLen,
-                                                  size_t* outputLen) {
-    *outputLen = 132 + dataLen;
-    uint8_t* result = (uint8_t*)malloc(*outputLen);
-    return result;
+uint8_t* tw_erc721_safe_transfer_from_with_data(const char* from, const char* to,
+                                                const char* tokenId,
+                                                const uint8_t* data, size_t dataLen,
+                                                size_t* outputLen) {
+    if (from == nullptr || to == nullptr || tokenId == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    if (data == nullptr && dataLen != 0) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+
+    const std::vector<uint8_t> payload(data, data + dataLen);
+    return copy_calldata(abi::erc721_safe_transfer_from_with_data(from, to, tokenId, payload),
+                         outputLen);
 }
 
 uint8_t* tw_erc1155_safe_transfer_from_data(const char* from, const char* to,
-                                                const char* tokenId, const char* amount,
-                                                const uint8_t* data, size_t dataLen,
-                                                size_t* outputLen) {
-    *outputLen = 132 + dataLen;
-    uint8_t* result = (uint8_t*)malloc(*outputLen);
-    return result;
+                                            const char* tokenId, const char* amount,
+                                            const uint8_t* data, size_t dataLen,
+                                            size_t* outputLen) {
+    if (from == nullptr || to == nullptr || tokenId == nullptr || amount == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    if (data == nullptr && dataLen != 0) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+
+    const std::vector<uint8_t> payload(data, data + dataLen);
+    return copy_calldata(
+        abi::erc1155_safe_transfer_from(from, to, tokenId, amount, payload), outputLen);
 }
 
 uint8_t* tw_erc1155_safe_batch_transfer_from_data(const char* from, const char* to,
-                                                    const char** tokenIds, const char** amounts,
-                                                    size_t count,
-                                                    const uint8_t* data, size_t dataLen,
-                                                    size_t* outputLen) {
-    *outputLen = 132 + (count * 64) + dataLen;
-    uint8_t* result = (uint8_t*)malloc(*outputLen);
-    return result;
+                                                  const char** tokenIds, const char** amounts,
+                                                  size_t count,
+                                                  const uint8_t* data, size_t dataLen,
+                                                  size_t* outputLen) {
+    if (from == nullptr || to == nullptr || tokenIds == nullptr || amounts == nullptr) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+    if (data == nullptr && dataLen != 0) {
+        if (outputLen != nullptr) *outputLen = 0;
+        return nullptr;
+    }
+
+    std::vector<std::string> ids;
+    std::vector<std::string> values;
+    ids.reserve(count);
+    values.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        if (tokenIds[i] == nullptr || amounts[i] == nullptr) {
+            if (outputLen != nullptr) *outputLen = 0;
+            return nullptr;
+        }
+        ids.emplace_back(tokenIds[i]);
+        values.emplace_back(amounts[i]);
+    }
+
+    const std::vector<uint8_t> payload(data, data + dataLen);
+    return copy_calldata(
+        abi::erc1155_safe_batch_transfer_from(from, to, ids, values, payload), outputLen);
 }
 
 struct TWCosmosTransaction {};
