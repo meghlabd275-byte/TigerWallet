@@ -37,6 +37,9 @@ pub enum TransactionError {
     
     #[error("Network error: {0}")]
     NetworkError(String),
+
+    #[error("No base fee has been supplied for chain {0}")]
+    MissingBaseFee(u64),
 }
 
 pub type Result<T> = std::result::Result<T, TransactionError>;
@@ -239,7 +242,33 @@ impl Default for TransactionPool {
 // Gas Optimizer
 // ============================================================================
 
-/// Gas optimization strategies
+/// Maximum number of gas price samples retained per chain.
+const MAX_GAS_HISTORY: usize = 4096;
+
+/// Minimum samples an hour needs before find_optimal_time will consider it.
+const MIN_SAMPLES_PER_HOUR: usize = 4;
+
+/// Recommended priority fee per urgency level, in wei.
+///
+/// This is a floor rather than a measurement: a tip is a policy choice, and
+/// there is no canonical on-chain value for it. The base fee is the part that
+/// has to come from the chain, and that is supplied by the caller.
+fn recommended_priority_fee(urgency: GasUrgency) -> u64 {
+    match urgency {
+        GasUrgency::Low => 1_000_000_000,    // 1 gwei
+        GasUrgency::Medium => 2_000_000_000, // 2 gwei
+        GasUrgency::High => 5_000_000_000,   // 5 gwei
+        GasUrgency::Urgent => 10_000_000_000, // 10 gwei
+    }
+}
+
+/// Gas optimization strategies.
+///
+/// The optimizer holds no market data of its own. A caller supplies the base
+/// fee it has read from the chain, so estimation fails closed with
+/// MissingBaseFee rather than substituting an invented default. A guessed base
+/// fee is not a harmless placeholder: too low and every transaction is
+/// rejected by the node, too high and the user is overcharged.
 pub struct GasOptimizer {
     base_fees: HashMap<u64, BaseFeeTracker>,
     historical_prices: HashMap<u64, Vec<GasPricePoint>>,
@@ -252,7 +281,8 @@ struct BaseFeeTracker {
 
 struct GasPricePoint {
     price: u64,
-    timestamp: Instant,
+    /// Seconds since the Unix epoch at which the sample was observed.
+    timestamp: u64,
 }
 
 impl GasOptimizer {
@@ -262,60 +292,93 @@ impl GasOptimizer {
             historical_prices: HashMap::new(),
         }
     }
-    
-    /// Estimate optimal gas price
-    pub fn estimate_gas(&mut self, chain_id: u64, urgency: GasUrgency) -> GasEstimate {
-        let base_fee = self.get_base_fee(chain_id);
-        let priority_fee = self.get_priority_fee(urgency);
-        
-        let max_priority = priority_fee;
-        let max_fee = base_fee + max_priority;
-        
-        let gas_limit = 21000; // Default gas limit
-        
-        GasEstimate {
+
+    /// Records the base fee most recently read from `chain_id`.
+    pub fn update_base_fee(&mut self, chain_id: u64, base_fee: u64) {
+        self.base_fees.insert(
+            chain_id,
+            BaseFeeTracker {
+                current: base_fee,
+                last_update: Instant::now(),
+            },
+        );
+    }
+
+    /// Records a gas price sample, used by find_optimal_time. Older samples
+    /// are dropped once MAX_GAS_HISTORY is reached.
+    pub fn record_gas_price(&mut self, chain_id: u64, price: u64, timestamp: u64) {
+        let points = self.historical_prices.entry(chain_id).or_default();
+        points.push(GasPricePoint { price, timestamp });
+        if points.len() > MAX_GAS_HISTORY {
+            let excess = points.len() - MAX_GAS_HISTORY;
+            points.drain(..excess);
+        }
+    }
+
+    /// The base fee last supplied for a chain, if any.
+    pub fn base_fee(&self, chain_id: u64) -> Option<u64> {
+        self.base_fees.get(&chain_id).map(|tracker| tracker.current)
+    }
+
+    /// Estimate a gas price for a chain.
+    ///
+    /// Fails when no base fee has been supplied for the chain. The total cost
+    /// is computed in wei as a u128 because max_fee * gas_limit overflows u64
+    /// for realistic values.
+    pub fn estimate_gas(
+        &mut self,
+        chain_id: u64,
+        urgency: GasUrgency,
+    ) -> Result<GasEstimate> {
+        let base_fee = self
+            .base_fee(chain_id)
+            .ok_or(TransactionError::MissingBaseFee(chain_id))?;
+
+        let max_priority = recommended_priority_fee(urgency);
+        let max_fee = base_fee.saturating_add(max_priority);
+
+        let gas_limit: u64 = 21_000;
+
+        let total_cost = (max_fee as u128) * (gas_limit as u128);
+
+        Ok(GasEstimate {
             gas_limit,
             gas_price: format!("0x{:x}", max_fee),
             max_fee_per_gas: format!("0x{:x}", max_fee),
             max_priority_fee_per_gas: format!("0x{:x}", max_priority),
-            total_cost: format!("0x{:x}", max_fee * gas_limit),
-        }
+            total_cost: format!("0x{:x}", total_cost),
+        })
     }
-    
-    /// Get current base fee
-    fn get_base_fee(&mut self, chain_id: u64) -> u64 {
-        if let Some(tracker) = self.base_fees.get_mut(&chain_id) {
-            // In production, would fetch from RPC
-            // Return cached or default
-            return tracker.current.max(20000000000); // 20 gwei minimum
-        }
-        
-        // Initialize with default
-        self.base_fees.insert(chain_id, BaseFeeTracker {
-            current: 20000000000,
-            last_update: Instant::now(),
-        });
-        
-        20000000000
-    }
-    
-    /// Get priority fee based on urgency
-    fn get_priority_fee(&self, urgency: GasUrgency) -> u64 {
-        match urgency {
-            GasUrgency::Low => 1000000000,      // 1 gwei
-            GasUrgency::Medium => 2000000000,   // 2 gwei
-            GasUrgency::High => 5000000000,      // 5 gwei
-            GasUrgency::Urgent => 10000000000,   // 10 gwei
-        }
-    }
-    
-    /// Optimize for lowest cost
+
+    /// The hour of the day (UTC) whose recorded gas prices have the lowest
+    /// mean, expressed as a Duration since midnight.
+    ///
+    /// Returns None when no hour has at least MIN_SAMPLES_PER_HOUR samples,
+    /// because a single observation is not evidence of a cheaper window.
     pub fn find_optimal_time(&self, chain_id: u64) -> Option<Duration> {
-        // Analyze historical data to find optimal times
-        // Typically lower during weekends and late night
-        
-        // Simplified: return 1 hour
-        Some(Duration::from_secs(3600))
+        let points = self.historical_prices.get(&chain_id)?;
+
+        let mut total = [0u128; 24];
+        let mut count = [0u64; 24];
+
+        for point in points {
+            let hour = ((point.timestamp / 3600) % 24) as usize;
+            total[hour] += point.price as u128;
+            count[hour] += 1;
+        }
+
+        let mut best: Option<(u64, u128)> = None;
+        for hour in 0..24 {
+            if count[hour] < MIN_SAMPLES_PER_HOUR as u64 {
+                continue;
+            }
+            let mean = total[hour] / count[hour] as u128;
+            if best.map_or(true, |(_, best_mean)| mean < best_mean) {
+                best = Some((hour as u64, mean));
+            }
+        }
+
+        best.map(|(hour, _)| Duration::from_secs(hour * 3600))
     }
 }
 
@@ -620,11 +683,11 @@ impl RateLimiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_transaction_pool() {
         let mut pool = TransactionPool::new();
-        
+
         let tx = EvmTransaction {
             chain_id: 1,
             nonce: 0,
@@ -636,36 +699,109 @@ mod tests {
             max_priority_fee_per_gas: Some("0x4".to_string()),
             max_fee_per_gas: Some("0x4".to_string()),
         };
-        
+
         let from = "0xabcd1234567890123456789012345678901234567";
         pool.add(from, tx.clone()).unwrap();
-        
+
         assert_eq!(pool.get_next_nonce(from), 1);
     }
-    
+
     #[test]
-    fn test_gas_estimator() {
+    fn test_gas_estimator_uses_the_supplied_base_fee() {
         let mut optimizer = GasOptimizer::new();
-        let estimate = optimizer.estimate_gas(1, GasUrgency::Medium);
-        
-        assert!(estimate.gas_limit > 0);
-        assert!(!estimate.gas_price.is_empty());
+
+        // Without any observed base fee the estimate must fail closed rather
+        // than invent one.
+        assert!(matches!(
+            optimizer.estimate_gas(1, GasUrgency::Medium),
+            Err(TransactionError::MissingBaseFee(1))
+        ));
+
+        optimizer.update_base_fee(1, 30_000_000_000);
+        let estimate = optimizer
+            .estimate_gas(1, GasUrgency::Medium)
+            .expect("estimate must succeed once a base fee is known");
+
+        // 30 gwei base + 2 gwei medium tip.
+        assert_eq!(estimate.gas_limit, 21_000);
+        assert_eq!(estimate.max_fee_per_gas, format!("0x{:x}", 32_000_000_000u64));
+        assert_eq!(
+            estimate.max_priority_fee_per_gas,
+            format!("0x{:x}", 2_000_000_000u64)
+        );
+        assert_eq!(
+            estimate.total_cost,
+            format!("0x{:x}", 32_000_000_000u128 * 21_000u128)
+        );
     }
-    
+
+    #[test]
+    fn test_gas_estimator_orders_urgency_levels() {
+        let mut optimizer = GasOptimizer::new();
+        optimizer.update_base_fee(1, 20_000_000_000);
+
+        let low = optimizer.estimate_gas(1, GasUrgency::Low).unwrap();
+        let urgent = optimizer.estimate_gas(1, GasUrgency::Urgent).unwrap();
+
+        assert!(low.max_fee_per_gas != urgent.max_fee_per_gas);
+        assert_eq!(low.gas_price, format!("0x{:x}", 21_000_000_000u64));
+        assert_eq!(urgent.gas_price, format!("0x{:x}", 30_000_000_000u64));
+    }
+
+    #[test]
+    fn test_find_optimal_time_requires_history() {
+        let mut optimizer = GasOptimizer::new();
+        assert!(optimizer.find_optimal_time(1).is_none());
+
+        // A single sample is not enough evidence for an hourly window.
+        optimizer.record_gas_price(1, 1_000, 0);
+        assert!(optimizer.find_optimal_time(1).is_none());
+    }
+
+    #[test]
+    fn test_find_optimal_time_picks_the_cheapest_hour() {
+        let mut optimizer = GasOptimizer::new();
+
+        // Hour 3 of the epoch day is cheap, hour 12 is expensive. Four samples
+        // each clears the minimum.
+        for _ in 0..4 {
+            optimizer.record_gas_price(1, 5_000, 3 * 3600);
+            optimizer.record_gas_price(1, 90_000, 12 * 3600);
+        }
+
+        assert_eq!(
+            optimizer.find_optimal_time(1),
+            Some(Duration::from_secs(3 * 3600))
+        );
+    }
+
+    #[test]
+    fn test_record_gas_price_bounds_history() {
+        let mut optimizer = GasOptimizer::new();
+        for i in 0..(MAX_GAS_HISTORY + 100) {
+            optimizer.record_gas_price(1, 1_000, i as u64);
+        }
+
+        assert_eq!(
+            optimizer.historical_prices.get(&1).map(Vec::len),
+            Some(MAX_GAS_HISTORY)
+        );
+    }
+
     #[test]
     fn test_rate_limiter() {
         let mut limiter = RateLimiter::new(10);
-        
+
         assert!(limiter.allow());
         assert!(limiter.allow());
-        
+
         for _ in 0..8 {
             limiter.allow();
         }
-        
+
         assert!(!limiter.allow());
     }
-    
+
     #[test]
     fn test_transaction_builder() {
         let tx = TransactionBuilder::new(
@@ -676,7 +812,7 @@ mod tests {
         .value("0x1000".to_string())
         .gas_limit(21000)
         .build();
-        
+
         assert_eq!(tx.chain_id, 1);
         assert_eq!(tx.gas_limit, 21000);
     }
