@@ -3,6 +3,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,11 +42,18 @@ type SLAReport struct {
 	AvgResponseTime   float64   `json:"avg_response_time"`
 	AvgResolutionTime float64   `json:"avg_resolution_time"`
 	Uptime            float64   `json:"uptime"`
-	CreatedAt         time.Time `json:"created_at"`
+	// UptimeMeasured is false when no health checks were recorded for the
+	// period, so a consumer can tell "0% uptime" from "never measured".
+	UptimeMeasured bool      `json:"uptime_measured"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
+// slaPolicyColumns coalesces the nullable columns so a policy row always scans
+// into plain Go values.
+const slaPolicyColumns = `id, name, COALESCE(description, ''), priority, response_time_sla, resolution_time_sla, COALESCE(uptime_sla, 0), COALESCE(is_active, FALSE), COALESCE(created_by, '00000000-0000-0000-0000-000000000000'::uuid), created_at, updated_at`
+
 func (s *SLAService) ListPolicies(ctx context.Context) ([]SLAPolicy, error) {
-	rows, err := database.Pool.Query(ctx, "SELECT id, name, description, priority, response_time_sla, resolution_time_sla, uptime_sla, is_active, created_by, created_at, updated_at FROM sla_policies ORDER BY priority, created_at DESC")
+	rows, err := database.Pool.Query(ctx, "SELECT "+slaPolicyColumns+" FROM sla_policies ORDER BY priority, created_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -59,13 +67,13 @@ func (s *SLAService) ListPolicies(ctx context.Context) ([]SLAPolicy, error) {
 		}
 		policies = append(policies, p)
 	}
-	return policies, nil
+	return policies, rows.Err()
 }
 
 func (s *SLAService) GetPolicy(ctx context.Context, id uuid.UUID) (*SLAPolicy, error) {
 	var p SLAPolicy
 	err := database.Pool.QueryRow(ctx, `
-		SELECT id, name, description, priority, response_time_sla, resolution_time_sla, uptime_sla, is_active, created_by, created_at, updated_at 
+		SELECT `+slaPolicyColumns+`
 		FROM sla_policies WHERE id = $1
 	`, id).Scan(&p.ID, &p.Name, &p.Description, &p.Priority, &p.ResponseTimeSLA, &p.ResolutionTimeSLA, &p.UptimeSLA, &p.IsActive, &p.CreatedBy, &p.CreatedAt, &p.UpdatedAt)
 	if err == pgx.ErrNoRows {
@@ -131,16 +139,38 @@ func (s *SLAService) ListReports(ctx context.Context, policyID *uuid.UUID, limit
 }
 
 func (s *SLAService) GenerateReport(ctx context.Context, policyID uuid.UUID, periodStart, periodEnd time.Time) (*SLAReport, error) {
-	// Calculate SLA metrics from tickets
+	policy, err := s.GetPolicy(ctx, policyID)
+	if err != nil {
+		return nil, err
+	}
+	if policy == nil {
+		return nil, errors.New("sla policy not found")
+	}
+
 	var report SLAReport
-	err := database.Pool.QueryRow(ctx, `
-		SELECT 
-			COUNT(*) as total_tickets,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))), 0) as avg_response_time,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))), 0) as avg_resolution_time
-		FROM tickets 
+	// Each metric is aggregated from the tickets raised in the period. A ticket
+	// breaches when it was answered late, resolved late, or is still unanswered
+	// past the response SLA.
+	err = database.Pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE NOT (
+				(first_response_at IS NOT NULL AND first_response_at > created_at + make_interval(secs => $4))
+				OR (resolved_at IS NOT NULL AND resolved_at > created_at + make_interval(secs => $5))
+				OR (first_response_at IS NULL AND NOW() > created_at + make_interval(secs => $4))
+			)),
+			COUNT(*) FILTER (WHERE
+				(first_response_at IS NOT NULL AND first_response_at > created_at + make_interval(secs => $4))
+				OR (resolved_at IS NOT NULL AND resolved_at > created_at + make_interval(secs => $5))
+				OR (first_response_at IS NULL AND NOW() > created_at + make_interval(secs => $4))
+			),
+			COALESCE(AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))), 0),
+			COALESCE(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))), 0)
+		FROM tickets
 		WHERE sla_policy_id = $1 AND created_at >= $2 AND created_at <= $3
-	`, policyID, periodStart, periodEnd).Scan(&report.TotalTickets, &report.AvgResponseTime, &report.AvgResolutionTime)
+	`, policyID, periodStart, periodEnd, policy.ResponseTimeSLA, policy.ResolutionTimeSLA).
+		Scan(&report.TotalTickets, &report.MetSLA, &report.BreachedSLA,
+			&report.AvgResponseTime, &report.AvgResolutionTime)
 
 	if err != nil {
 		return nil, err
@@ -150,17 +180,51 @@ func (s *SLAService) GenerateReport(ctx context.Context, policyID uuid.UUID, per
 	report.PolicyID = policyID
 	report.PeriodStart = periodStart
 	report.PeriodEnd = periodEnd
-	report.MetSLA = report.TotalTickets // Simplified - would need actual SLA check
-	report.BreachedSLA = 0
-	report.Uptime = 99.9 // Simplified
+
+	// Uptime is the share of recorded health checks that passed. When nothing has
+	// been recorded the value stays unset rather than reporting a number that was
+	// never measured.
+	uptime, measured, err := serviceUptime(ctx, periodStart, periodEnd)
+	if err != nil {
+		return nil, err
+	}
+	if measured {
+		report.Uptime = uptime
+		report.UptimeMeasured = true
+	}
+
 	report.CreatedAt = time.Now()
 
 	_, err = database.Pool.Exec(ctx, `
-		INSERT INTO sla_reports (id, policy_id, period_start, period_end, total_tickets, met_sla, breached_sla, avg_response_time, avg_resolution_time, uptime, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, report.ID, report.PolicyID, report.PeriodStart, report.PeriodEnd, report.TotalTickets, report.MetSLA, report.BreachedSLA, report.AvgResponseTime, report.AvgResolutionTime, report.Uptime, report.CreatedAt)
+		INSERT INTO sla_reports (id, policy_id, period_start, period_end, total_tickets, met_sla, breached_sla, avg_response_time, avg_resolution_time, uptime, uptime_measured, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`, report.ID, report.PolicyID, report.PeriodStart, report.PeriodEnd, report.TotalTickets,
+		report.MetSLA, report.BreachedSLA, report.AvgResponseTime, report.AvgResolutionTime,
+		report.Uptime, report.UptimeMeasured, report.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
 
-	return &report, err
+	return &report, nil
+}
+
+// serviceUptime derives uptime from recorded health checks. The second return
+// value reports whether any check was recorded, so a caller can tell a genuine
+// 0% apart from "never measured".
+func serviceUptime(ctx context.Context, periodStart, periodEnd time.Time) (float64, bool, error) {
+	var total, healthy int
+	err := database.Pool.QueryRow(ctx, `
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE healthy)
+		FROM service_health_checks
+		WHERE checked_at >= $1 AND checked_at <= $2
+	`, periodStart, periodEnd).Scan(&total, &healthy)
+	if err != nil {
+		return 0, false, err
+	}
+	if total == 0 {
+		return 0, false, nil
+	}
+	return float64(healthy) / float64(total) * 100, true, nil
 }
 
 func (s *SLAService) CheckSLACompliance(ctx context.Context, ticketID uuid.UUID) (bool, string, error) {

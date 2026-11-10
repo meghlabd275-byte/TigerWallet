@@ -1760,6 +1760,12 @@ func handleAddTicketMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// First agent reply is what the response-time SLA is measured against, so
+	// stamp it once and never overwrite it.
+	if _, err := dbExec(c, `UPDATE tickets SET first_response_at = NOW() WHERE id = $1 AND first_response_at IS NULL`, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"message": "message added"})
 }
 
@@ -2337,7 +2343,7 @@ func handleDeleteSLAPolicy(c *gin.Context) {
 }
 
 func handleGetSLAReports(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, policy_id, period_start, period_end, total_tickets, met_sla, breached_sla, avg_response_time, avg_resolution_time FROM sla_reports ORDER BY created_at DESC LIMIT 100`)
+	rows, err := dbQuery(c, `SELECT id, policy_id, period_start, period_end, total_tickets, met_sla, breached_sla, avg_response_time, avg_resolution_time, uptime, uptime_measured FROM sla_reports ORDER BY created_at DESC LIMIT 100`)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -2347,7 +2353,44 @@ func handleGetSLAReports(c *gin.Context) {
 }
 
 func handleGenerateSLAReport(c *gin.Context) {
-	c.JSON(http.StatusAccepted, gin.H{"message": "SLA report generation started"})
+	var req struct {
+		PolicyID    string `json:"policy_id" binding:"required"`
+		PeriodStart string `json:"period_start" binding:"required"`
+		PeriodEnd   string `json:"period_end" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	policyID, err := uuid.Parse(req.PolicyID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid policy_id"})
+		return
+	}
+
+	periodStart, err := time.Parse(time.RFC3339, req.PeriodStart)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "period_start must be RFC3339"})
+		return
+	}
+	periodEnd, err := time.Parse(time.RFC3339, req.PeriodEnd)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "period_end must be RFC3339"})
+		return
+	}
+	if !periodEnd.After(periodStart) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "period_end must be after period_start"})
+		return
+	}
+
+	svc := services.NewSLAService()
+	report, err := svc.GenerateReport(c.Request.Context(), policyID, periodStart, periodEnd)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"report": report})
 }
 
 // ---- Integrations ----

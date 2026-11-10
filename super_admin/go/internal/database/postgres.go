@@ -83,6 +83,14 @@ func runMigrations(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS reports (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), config_id UUID REFERENCES report_configs(id), name VARCHAR(255) NOT NULL, file_path TEXT, file_size BIGINT, status VARCHAR(50) DEFAULT 'pending', created_by UUID REFERENCES admin_users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), completed_at TIMESTAMP WITH TIME ZONE)`,
 		`CREATE TABLE IF NOT EXISTS sla_policies (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, description TEXT, priority VARCHAR(20) NOT NULL, response_time_sla INTEGER NOT NULL, resolution_time_sla INTEGER NOT NULL, uptime_sla DECIMAL(5,2), is_active BOOLEAN DEFAULT TRUE, created_by UUID REFERENCES admin_users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE TABLE IF NOT EXISTS sla_reports (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), policy_id UUID REFERENCES sla_policies(id), period_start TIMESTAMP WITH TIME ZONE NOT NULL, period_end TIMESTAMP WITH TIME ZONE NOT NULL, total_tickets INTEGER DEFAULT 0, met_sla INTEGER DEFAULT 0, breached_sla INTEGER DEFAULT 0, avg_response_time DECIMAL(10,2), avg_resolution_time DECIMAL(10,2), uptime DECIMAL(5,2), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
+		// SLA columns on tickets. The report queries group on sla_policy_id and
+		// measure first_response_at, so both must exist.
+		`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS sla_policy_id UUID REFERENCES sla_policies(id)`,
+		`ALTER TABLE tickets ADD COLUMN IF NOT EXISTS first_response_at TIMESTAMP WITH TIME ZONE`,
+		`ALTER TABLE sla_reports ADD COLUMN IF NOT EXISTS uptime_measured BOOLEAN DEFAULT FALSE`,
+		// Health-check history backing the uptime figure in an SLA report.
+		`CREATE TABLE IF NOT EXISTS service_health_checks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), service VARCHAR(100) NOT NULL, healthy BOOLEAN NOT NULL, latency_ms INTEGER, detail TEXT, checked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW())`,
+		`CREATE INDEX IF NOT EXISTS idx_service_health_checks_checked_at ON service_health_checks(checked_at)`,
 		`CREATE TABLE IF NOT EXISTS integration_configs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), integration VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL, api_key TEXT, api_secret TEXT, webhook_url TEXT, is_active BOOLEAN DEFAULT TRUE, settings JSONB, created_by UUID REFERENCES admin_users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
