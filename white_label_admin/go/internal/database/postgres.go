@@ -97,7 +97,7 @@ func runMigrations(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS integration_configs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), integration VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL, api_key TEXT, api_secret TEXT, webhook_url TEXT, is_active BOOLEAN DEFAULT TRUE, settings JSONB, created_by UUID REFERENCES admin_users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON sessions(admin_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON admin_sessions(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_notifications_admin_id ON notifications(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)`,
@@ -407,10 +407,25 @@ func runMigrations(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_wl_user_wallets_white_label ON wl_user_wallets(white_label_id)`,
 	}
 
-	for _, migration := range migrations {
-		if _, err := Pool.Exec(ctx, migration); err != nil {
-			return fmt.Errorf("migration failed: %w", err)
+	// The list is not ordered by dependency: tenant-scoped ALTERs and their
+	// indexes appear before the CREATE TABLE statements that define those
+	// tables, which fails on a fresh database. Retry in passes so each
+	// statement runs as soon as its dependencies exist. Only the last pass's
+	// errors are reported, and a pass that makes no progress ends the loop.
+	pending := migrations
+	for len(pending) > 0 {
+		var remaining []string
+		var lastErr error
+		for _, migration := range pending {
+			if _, err := Pool.Exec(ctx, migration); err != nil {
+				remaining = append(remaining, migration)
+				lastErr = err
+			}
 		}
+		if len(remaining) == len(pending) {
+			return fmt.Errorf("migration failed: %w", lastErr)
+		}
+		pending = remaining
 	}
 
 	return nil

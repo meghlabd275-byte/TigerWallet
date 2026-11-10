@@ -94,7 +94,7 @@ func runMigrations(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS admin_role_assignments (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), admin_id BIGINT NOT NULL, role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE, granted_by BIGINT, granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(admin_id, role_id))`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON sessions(admin_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_admin_id ON admin_sessions(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_notifications_admin_id ON notifications(admin_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)`,

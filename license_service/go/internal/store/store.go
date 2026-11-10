@@ -650,7 +650,7 @@ func (s *Store) RecordFingerprint(ctx context.Context, wlClientID uuid.UUID, pro
 	}
 	_, writeErr := s.db.Exec(ctx,
 		`INSERT INTO wl_fingerprint_violations (id, wl_client_id, product, instance_id, expected_fingerprint, seen_fingerprint, hostname, first_seen_at, last_seen_at)
-		 VALUES ($1,$2,$3,$4, COALESCE((SELECT metadata->>'machine_fingerprint' FROM wl_product_state WHERE wl_client_id=$2 AND product=$3 AND instance_id=$4),''), $5, $6, NOW(), NOW())
+		 VALUES ($1,$2,$3::varchar,$4::varchar, COALESCE((SELECT metadata->>'machine_fingerprint' FROM wl_product_state WHERE wl_client_id=$2 AND product=$3 AND instance_id=$4),''), $5, $6, NOW(), NOW())
 		 ON CONFLICT (wl_client_id, product, instance_id) DO UPDATE SET seen_fingerprint=$5, hostname=$6, last_seen_at=NOW()`,
 		uuid.New(), wlClientID, product, instanceID, fingerprint, hostname)
 	if isUndefinedTable(writeErr) {

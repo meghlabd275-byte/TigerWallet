@@ -193,6 +193,23 @@ CREATE TABLE IF NOT EXISTS launchpool_stakes (
 CREATE INDEX IF NOT EXISTS idx_lp_stakes_user ON launchpool_stakes(user_id);
 `
 
+// sqlInsertMarginPosition opens a margin position. The column list and the
+// placeholder list must stay the same length; a mismatch is a runtime 42601.
+const sqlInsertMarginPosition = `INSERT INTO margin_positions
+	 (id, user_id, pair_id, pair_symbol, side, borrowed, collateral, leverage, entry_price, liq_price, chain_id, opened_at)
+	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
+
+// sqlUpsertLaunchpoolStake records a stake. The numeric cast on $4 is required:
+// `numeric + text` has no operator, and the CASE resets the position when the
+// user is re-staking after a previous unstake (otherwise the old amount would
+// be carried into the new stake).
+const sqlUpsertLaunchpoolStake = `INSERT INTO launchpool_stakes (id, project_id, user_id, amount, start_time)
+	 VALUES ($1,$2,$3,$4,$5) ON CONFLICT (project_id, user_id) DO UPDATE
+	 SET amount = CASE WHEN launchpool_stakes.unstaked
+	                   THEN $4::numeric
+	                   ELSE CAST(launchpool_stakes.amount AS NUMERIC) + $4::numeric END,
+	     unstaked = FALSE`
+
 // ---- Token Approvals ----
 
 type TokenApproval struct {
@@ -510,10 +527,7 @@ func handleCreateMarginPosition(c *gin.Context) {
 	}
 	id := uuid.New()
 	now := time.Now().Unix()
-	if _, err := store.PG.Exec(c.Request.Context(),
-		`INSERT INTO margin_positions
-		 (id, user_id, pair_id, pair_symbol, side, borrowed, collateral, leverage, entry_price, liq_price, chain_id, opened_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+	if _, err := store.PG.Exec(c.Request.Context(), sqlInsertMarginPosition,
 		id, userUUID, req.PairID, req.PairSymbol, req.Side, req.Borrowed, req.Collateral,
 		req.Leverage, req.EntryPrice, req.LiqPrice, req.ChainID, now); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "create failed"})
@@ -911,17 +925,12 @@ func handleLaunchpoolStake(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := uuid.New()
 	now := time.Now().Unix()
-	_, err = store.PG.Exec(ctx,
-		`INSERT INTO launchpool_stakes (id, project_id, user_id, amount, start_time)
-		 VALUES ($1,$2,$3,$4,$5) ON CONFLICT (project_id, user_id) DO UPDATE SET amount = (CAST(launchpool_stakes.amount AS NUMERIC) + $4)::TEXT, unstaked=FALSE`,
+	_, err = store.PG.Exec(ctx, sqlUpsertLaunchpoolStake,
 		id, projectID, userUUID, req.Amount, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stake failed"})
 		return
 	}
-	_, _ = store.PG.Exec(ctx,
-		`UPDATE launchpool_projects SET distributed_rewards = (CAST(distributed_rewards AS NUMERIC) + $1)::TEXT WHERE id=$2`,
-		req.Amount, projectID)
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"success": true}})
 }
 

@@ -2885,7 +2885,7 @@ CREATE TABLE IF NOT EXISTS token_listings (
 	liquidity_usd TEXT DEFAULT '0',
 	market_cap TEXT DEFAULT '0',
 	price_change_24h NUMERIC DEFAULT 0,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_listings_status ON token_listings(status);
@@ -2906,7 +2906,7 @@ CREATE TABLE IF NOT EXISTS launchpads (
 	accepted_payment TEXT,
 	total_raised TEXT DEFAULT '0',
 	status TEXT NOT NULL DEFAULT 'upcoming',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_launchpads_status ON launchpads(status);
@@ -2987,7 +2987,7 @@ CREATE TABLE IF NOT EXISTS favorites (
 	id UUID PRIMARY KEY,
 	user_id TEXT NOT NULL,
 	token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	UNIQUE(user_id, token_id)
 );
 CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
@@ -3049,11 +3049,43 @@ func initDatabase(cfg *Config) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Apply schema migrations (idempotent)
-	if _, err := pool.Exec(context.Background(), schemaSQL); err != nil {
+	// Apply schema migrations (idempotent). The script is not ordered by
+	// dependency — several ALTER TABLE statements precede the CREATE TABLE that
+	// defines their target — so it is applied statement by statement, retrying
+	// in passes until every statement succeeds. Only the final pass's error is
+	// reported, and a pass that makes no progress ends the loop.
+	if err := applySchema(context.Background(), pool); err != nil {
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
 
 	log.Println("ProjectParty database initialized with schema migrations applied")
 	return pool, nil
+}
+
+// applySchema runs schemaSQL to completion. Statements are separated by a
+// newline-terminated semicolon; that is sufficient because the script contains
+// no procedural bodies and no literal semicolons.
+func applySchema(ctx context.Context, pool *pgxpool.Pool) error {
+	parts := strings.Split(schemaSQL, ";\n")
+	pending := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			pending = append(pending, p)
+		}
+	}
+	for len(pending) > 0 {
+		var remaining []string
+		var lastErr error
+		for _, stmt := range pending {
+			if _, err := pool.Exec(ctx, stmt); err != nil {
+				remaining = append(remaining, stmt)
+				lastErr = err
+			}
+		}
+		if len(remaining) == len(pending) {
+			return lastErr
+		}
+		pending = remaining
+	}
+	return nil
 }
