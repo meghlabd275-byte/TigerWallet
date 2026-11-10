@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/net/http2"
 	"gorm.io/driver/postgres"
@@ -36,156 +36,156 @@ type PushConfig struct {
 	// FCM Settings
 	FCMProjectID   string `json:"fcm_project_id"`
 	FCMCredentials string `json:"fcm_credentials"` // Base64 encoded JSON
-	
+
 	// APNS Settings
-	APNSKeyPath    string `json:"apns_key_path"`
+	APNSKeyPath   string `json:"apns_key_path"`
 	APNSKeyID     string `json:"apns_key_id"`
 	APNSTeamID    string `json:"apns_team_id"`
 	APNSBundleID  string `json:"apns_bundle_id"`
 	UseProduction bool   `json:"use_production"`
-	
+
 	// Queue Settings
 	MaxRetries      int           `json:"max_retries"`
 	RetryDelay      time.Duration `json:"retry_delay"`
 	WorkerCount     int           `json:"worker_count"`
 	QueueBufferSize int           `json:"queue_buffer_size"`
-	
+
 	// Rate Limiting
 	RateLimitPerMinute int `json:"rate_limit_per_minute"`
-	
+
 	// Database Settings
 	DBHost     string `json:"db_host"`
 	DBPort     string `json:"db_port"`
 	DBUser     string `json:"db_user"`
 	DBPassword string `json:"db_password"`
 	DBName     string `json:"db_name"`
-	
+
 	// Redis Settings
 	RedisHost string `json:"redis_host"`
 	RedisPort string `json:"redis_port"`
-	
+
 	// Server
 	ServerPort string `json:"server_port"`
 }
 
 // DeviceToken - Device token for push notifications
 type DeviceToken struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      string    `gorm:"index" json:"user_id"`
-	Token       string    `gorm:"uniqueIndex" json:"token"`
-	Platform    string    `json:"platform"` // ios, android, web
-	AppVersion  string    `json:"app_version"`
-	Language    string    `json:"language"`
-	Timezone    string    `json:"timezone"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	LastUsedAt  *time.Time `json:"last_used_at"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uint       `gorm:"primaryKey" json:"id"`
+	UserID     string     `gorm:"index" json:"user_id"`
+	Token      string     `gorm:"uniqueIndex" json:"token"`
+	Platform   string     `json:"platform"` // ios, android, web
+	AppVersion string     `json:"app_version"`
+	Language   string     `json:"language"`
+	Timezone   string     `json:"timezone"`
+	IsActive   bool       `gorm:"default:true" json:"is_active"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // PushTemplate - Push notification template
 type PushTemplate struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	TemplateID  string    `gorm:"uniqueIndex" json:"template_id"`
-	Name        string    `json:"name"`
-	Title       string    `json:"title"`
-	Body        string    `gorm:"type:text" json:"body"`
-	Data        string    `gorm:"type:jsonb" json:"data"`
-	Platform    string    `json:"platform"` // all, ios, android
-	Sound       string    `json:"sound"`
-	Badge       int       `json:"badge"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	TemplateID string    `gorm:"uniqueIndex" json:"template_id"`
+	Name       string    `json:"name"`
+	Title      string    `json:"title"`
+	Body       string    `gorm:"type:text" json:"body"`
+	Data       string    `gorm:"type:jsonb" json:"data"`
+	Platform   string    `json:"platform"` // all, ios, android
+	Sound      string    `json:"sound"`
+	Badge      int       `json:"badge"`
+	IsActive   bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // PushNotification - Push notification
 type PushNotification struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	MessageID   string    `gorm:"uniqueIndex" json:"message_id"`
-	UserID      string    `gorm:"index" json:"user_id"`
-	Token       string    `gorm:"index" json:"token"`
-	Platform    string    `json:"platform"`
-	Title       string    `json:"title"`
-	Body        string    `gorm:"type:text" json:"body"`
-	Data        string    `gorm:"type:jsonb" json:"data"`
-	Sound       string    `json:"sound"`
-	Badge       int       `json:"badge"`
-	Priority    string    `json:"priority"` // high, normal
-	Status      string    `gorm:"index" json:"status"` // queued, sending, sent, failed
-	RetryCount  int       `gorm:"default:0" json:"retry_count"`
-	LastError   string    `gorm:"type:text" json:"last_error"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	MessageID   string     `gorm:"uniqueIndex" json:"message_id"`
+	UserID      string     `gorm:"index" json:"user_id"`
+	Token       string     `gorm:"index" json:"token"`
+	Platform    string     `json:"platform"`
+	Title       string     `json:"title"`
+	Body        string     `gorm:"type:text" json:"body"`
+	Data        string     `gorm:"type:jsonb" json:"data"`
+	Sound       string     `json:"sound"`
+	Badge       int        `json:"badge"`
+	Priority    string     `json:"priority"`            // high, normal
+	Status      string     `gorm:"index" json:"status"` // queued, sending, sent, failed
+	RetryCount  int        `gorm:"default:0" json:"retry_count"`
+	LastError   string     `gorm:"type:text" json:"last_error"`
 	SentAt      *time.Time `json:"sent_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 	ScheduledAt *time.Time `json:"scheduled_at"`
 }
 
 // PushLog - Push notification log
 type PushLog struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	MessageID   string    `gorm:"uniqueIndex;index" json:"message_id"`
-	UserID      string    `gorm:"index" json:"user_id"`
-	Token       string    `gorm:"index" json:"token"`
-	Platform    string    `json:"platform"`
-	Title       string    `json:"title"`
-	Status      string    `json:"status"` // sent, delivered, opened, failed
-	SentAt      time.Time `json:"sent_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	MessageID   string     `gorm:"uniqueIndex;index" json:"message_id"`
+	UserID      string     `gorm:"index" json:"user_id"`
+	Token       string     `gorm:"index" json:"token"`
+	Platform    string     `json:"platform"`
+	Title       string     `json:"title"`
+	Status      string     `json:"status"` // sent, delivered, opened, failed
+	SentAt      time.Time  `json:"sent_at"`
 	DeliveredAt *time.Time `json:"delivered_at"`
 	OpenedAt    *time.Time `json:"opened_at"`
-	Error       string    `gorm:"type:text" json:"error"`
-	Provider    string    `json:"provider"`
-	CreatedAt   time.Time `json:"created_at"`
+	Error       string     `gorm:"type:text" json:"error"`
+	Provider    string     `json:"provider"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // FCMToken - Firebase Cloud Messaging token
 type FCMToken struct {
-	Token         string `json:"token"`
-	CollapseKey   string `json:"collapse_key,omitempty"`
-	Data          map[string]string `json:"data,omitempty"`
-	Notification  *FCMNotification `json:"notification,omitempty"`
-	Android       *FCMAndroidConfig `json:"android,omitempty"`
-	APNS         *FCMAPNSConfig `json:"apns,omitempty"`
+	Token        string            `json:"token"`
+	CollapseKey  string            `json:"collapse_key,omitempty"`
+	Data         map[string]string `json:"data,omitempty"`
+	Notification *FCMNotification  `json:"notification,omitempty"`
+	Android      *FCMAndroidConfig `json:"android,omitempty"`
+	APNS         *FCMAPNSConfig    `json:"apns,omitempty"`
 	Webpush      *FCMWebpushConfig `json:"webpush,omitempty"`
-	Priority     string `json:"priority,omitempty"`
-	TimeToLive   int64  `json:"time_to_live,omitempty"`
+	Priority     string            `json:"priority,omitempty"`
+	TimeToLive   int64             `json:"time_to_live,omitempty"`
 }
 
 // FCMNotification - FCM notification payload
 type FCMNotification struct {
-	Title        string `json:"title"`
-	Body         string `json:"body,omitempty"`
-	Icon         string `json:"icon,omitempty"`
-	Sound        string `json:"sound,omitempty"`
-	Badge        string `json:"badge,omitempty"`
-	Tag          string `json:"tag,omitempty"`
-	ClickAction  string `json:"click_action,omitempty"`
+	Title       string `json:"title"`
+	Body        string `json:"body,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Sound       string `json:"sound,omitempty"`
+	Badge       string `json:"badge,omitempty"`
+	Tag         string `json:"tag,omitempty"`
+	ClickAction string `json:"click_action,omitempty"`
 }
 
 // FCMAndroidConfig - FCM Android configuration
 type FCMAndroidConfig struct {
-	CollapseKey      string            `json:"collapse_key,omitempty"`
-	Priority        string            `json:"priority,omitempty"`
-	TimeToLive      int64             `json:"time_to_live,omitempty"`
-	RestrictedPackageName string       `json:"restricted_package_name,omitempty"`
-	Data            map[string]string `json:"data,omitempty"`
-	Notification    *FCMAndroidNotification `json:"notification,omitempty"`
+	CollapseKey           string                  `json:"collapse_key,omitempty"`
+	Priority              string                  `json:"priority,omitempty"`
+	TimeToLive            int64                   `json:"time_to_live,omitempty"`
+	RestrictedPackageName string                  `json:"restricted_package_name,omitempty"`
+	Data                  map[string]string       `json:"data,omitempty"`
+	Notification          *FCMAndroidNotification `json:"notification,omitempty"`
 }
 
 // FCMAndroidNotification - FCM Android notification
 type FCMAndroidNotification struct {
-	Title        string `json:"title"`
-	Body         string `json:"body,omitempty"`
-	Icon         string `json:"icon,omitempty"`
-	Sound        string `json:"sound,omitempty"`
-	Tag          string `json:"tag,omitempty"`
-	ClickAction  string `json:"click_action,omitempty"`
-	Color        string `json:"color,omitempty"`
+	Title       string `json:"title"`
+	Body        string `json:"body,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+	Sound       string `json:"sound,omitempty"`
+	Tag         string `json:"tag,omitempty"`
+	ClickAction string `json:"click_action,omitempty"`
+	Color       string `json:"color,omitempty"`
 }
 
 // FCMAPNSConfig - FCM APNS configuration
 type FCMAPNSConfig struct {
-	Headers    map[string]string `json:"headers,omitempty"`
-	Payload    *FCMAPNSPayload `json:"payload,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Payload *FCMAPNSPayload   `json:"payload,omitempty"`
 }
 
 // FCMAPNSPayload - FCM APNS payload
@@ -195,107 +195,107 @@ type FCMAPNSPayload struct {
 
 // FCMAPSAps - APNS payload
 type FCMAPSAps struct {
-	Alert       interface{} `json:"alert,omitempty"` // string or map
-	Badge       int         `json:"badge,omitempty"`
-	Sound       string      `json:"sound,omitempty"`
-	Category    string      `json:"category,omitempty"`
-	ThreadID    string      `json:"thread-id,omitempty"`
-	MutableContent int      `json:"mutable-content,omitempty"`
+	Alert          interface{} `json:"alert,omitempty"` // string or map
+	Badge          int         `json:"badge,omitempty"`
+	Sound          string      `json:"sound,omitempty"`
+	Category       string      `json:"category,omitempty"`
+	ThreadID       string      `json:"thread-id,omitempty"`
+	MutableContent int         `json:"mutable-content,omitempty"`
 }
 
 // FCMWebpushConfig - FCM WebPush configuration
 type FCMWebpushConfig struct {
-	Headers map[string]string `json:"headers,omitempty"`
-	Data   map[string]string `json:"data,omitempty"`
+	Headers      map[string]string       `json:"headers,omitempty"`
+	Data         map[string]string       `json:"data,omitempty"`
 	Notification *FCMWebpushNotification `json:"notification,omitempty"`
 }
 
 // FCMWebpushNotification - WebPush notification
 type FCMWebpushNotification struct {
-	Title    string `json:"title"`
-	Body     string `json:"body,omitempty"`
-	Icon     string `json:"icon,omitempty"`
-	Badge    string `json:"badge,omitempty"`
-	Tag      string `json:"tag,omitempty"`
-	Data     interface{} `json:"data,omitempty"`
-	Actions  interface{} `json:"actions,omitempty"`
-	Dir      string `json:"dir,omitempty"`
-	Lang     string `json:"lang,omitempty"`
-	Renotify bool   `json:"renotify,omitempty"`
-	RequireInteraction bool `json:"require_interaction,omitempty"`
+	Title              string      `json:"title"`
+	Body               string      `json:"body,omitempty"`
+	Icon               string      `json:"icon,omitempty"`
+	Badge              string      `json:"badge,omitempty"`
+	Tag                string      `json:"tag,omitempty"`
+	Data               interface{} `json:"data,omitempty"`
+	Actions            interface{} `json:"actions,omitempty"`
+	Dir                string      `json:"dir,omitempty"`
+	Lang               string      `json:"lang,omitempty"`
+	Renotify           bool        `json:"renotify,omitempty"`
+	RequireInteraction bool        `json:"require_interaction,omitempty"`
 }
 
 // FCMResponse - FCM response
 type FCMResponse struct {
-	MessageID      string              `json:"message_id"`
-	MulticastID    int64               `json:"multicast_id"`
-	Success        int                 `json:"success"`
-	Failure        int                 `json:"failure"`
-	CanonicalIDs   int                 `json:"canonical_ids"`
-	Results       []FCMResult         `json:"results"`
-	Error          string              `json:"error,omitempty"`
+	MessageID    string      `json:"message_id"`
+	MulticastID  int64       `json:"multicast_id"`
+	Success      int         `json:"success"`
+	Failure      int         `json:"failure"`
+	CanonicalIDs int         `json:"canonical_ids"`
+	Results      []FCMResult `json:"results"`
+	Error        string      `json:"error,omitempty"`
 }
 
 // FCMResult - FCM single message result
 type FCMResult struct {
-	MessageID       string `json:"message_id,omitempty"`
-	Error           string `json:"error,omitempty"`
-	CanonicalToken  string `json:"canonical_token_id,omitempty"`
+	MessageID      string `json:"message_id,omitempty"`
+	Error          string `json:"error,omitempty"`
+	CanonicalToken string `json:"canonical_token_id,omitempty"`
 }
 
 // APNSNotification - APNS notification
 type APNSNotification struct {
-	Aps          *APNSAps          `json:"aps"`
-	CustomData   map[string]interface{} `json:"-"`
+	Aps        *APNSAps               `json:"aps"`
+	CustomData map[string]interface{} `json:"-"`
 }
 
 // APNSAps - APNS payload
 type APNSAps struct {
-	Alert            *APNSAlert       `json:"alert,omitempty"`
-	Badge            int              `json:"badge,omitempty"`
-	Sound            string           `json:"sound,omitempty"`
-	Category         string           `json:"category,omitempty"`
-	ThreadID         string           `json:"thread-id,omitempty"`
-	MutableContent   int              `json:"mutable-content,omitempty"`
-	ContentAvailable int              `json:"content-available,omitempty"`
+	Alert            *APNSAlert `json:"alert,omitempty"`
+	Badge            int        `json:"badge,omitempty"`
+	Sound            string     `json:"sound,omitempty"`
+	Category         string     `json:"category,omitempty"`
+	ThreadID         string     `json:"thread-id,omitempty"`
+	MutableContent   int        `json:"mutable-content,omitempty"`
+	ContentAvailable int        `json:"content-available,omitempty"`
 }
 
 // APNSAlert - APNS alert
 type APNSAlert struct {
-	Title           string   `json:"title,omitempty"`
-	TitleLocKey    string   `json:"title-loc-key,omitempty"`
-	TitleLocArgs   []string `json:"title-loc-args,omitempty"`
-	Body           string   `json:"body,omitempty"`
-	LocKey         string   `json:"loc-key,omitempty"`
-	LocArgs        []string `json:"loc-args,omitempty"`
-	LaunchImage    string   `json:"launch-image,omitempty"`
-	Action         string   `json:"action,omitempty"`
-	ActionLocKey   string   `json:"action-loc-key,omitempty"`
+	Title        string   `json:"title,omitempty"`
+	TitleLocKey  string   `json:"title-loc-key,omitempty"`
+	TitleLocArgs []string `json:"title-loc-args,omitempty"`
+	Body         string   `json:"body,omitempty"`
+	LocKey       string   `json:"loc-key,omitempty"`
+	LocArgs      []string `json:"loc-args,omitempty"`
+	LaunchImage  string   `json:"launch-image,omitempty"`
+	Action       string   `json:"action,omitempty"`
+	ActionLocKey string   `json:"action-loc-key,omitempty"`
 }
 
 // PushService - Main push notification service
 type PushService struct {
-	config     PushConfig
-	db         *gorm.DB
-	redis      *redis.Client
-	fcmClient  *http.Client
-	apnsClient *http.Client
-	queue      chan *PushNotification
-	workers    sync.WaitGroup
-	stopCh     chan struct{}
+	config      PushConfig
+	db          *gorm.DB
+	redis       *redis.Client
+	fcmClient   *http.Client
+	apnsClient  *http.Client
+	queue       chan *PushNotification
+	workers     sync.WaitGroup
+	stopCh      chan struct{}
 	rateLimiter *RateLimiter
 
 	// Provider credentials parsed once at start-up. Empty means the provider is
 	// unconfigured, and delivery for that provider fails closed.
 	fcmServiceAccount map[string]interface{}
-	apnsPrivateKey     *ecdsa.PrivateKey
+	apnsPrivateKey    *ecdsa.PrivateKey
 
 	// tokenMu guards the cached provider access tokens and their expiries.
-	tokenMu       sync.Mutex
-	fcmToken      string
-	fcmTokenExp   time.Time
-	apnsToken     string
-	apnsTokenExp  time.Time
+	tokenMu      sync.Mutex
+	fcmToken     string
+	fcmTokenExp  time.Time
+	apnsToken    string
+	apnsTokenExp time.Time
 }
 
 // NewPushService - Create new push notification service
@@ -303,40 +303,40 @@ func NewPushService(cfg PushConfig) (*PushService, error) {
 	// Connect to database
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
-	
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	
+
 	// Auto migrate
 	err = db.AutoMigrate(&DeviceToken{}, &PushTemplate{}, &PushNotification{}, &PushLog{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-	
+
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 	})
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
-	
+
 	// Create FCM client
 	fcmClient := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-	
+
 	// Create APNS client. The APNs provider API requires HTTP/2.
 	apnsClient := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: &http2.Transport{},
 	}
-	
+
 	// Parse provider credentials once. A provider whose credentials are absent
 	// or malformed stays unconfigured so its sends fail closed rather than
 	// silently reporting success.
@@ -359,23 +359,23 @@ func NewPushService(cfg PushConfig) (*PushService, error) {
 			apnsPrivateKey = nil
 		}
 	}
-	
+
 	// Queue buffer
 	queueSize := cfg.QueueBufferSize
 	if queueSize == 0 {
 		queueSize = 1000
 	}
-	
+
 	workerCount := cfg.WorkerCount
 	if workerCount == 0 {
 		workerCount = 5
 	}
-	
+
 	rateLimit := cfg.RateLimitPerMinute
 	if rateLimit == 0 {
 		rateLimit = 1000
 	}
-	
+
 	service := &PushService{
 		config:            cfg,
 		db:                db,
@@ -388,10 +388,10 @@ func NewPushService(cfg PushConfig) (*PushService, error) {
 		fcmServiceAccount: fcmServiceAccount,
 		apnsPrivateKey:    apnsPrivateKey,
 	}
-	
+
 	// Seed default templates
 	service.seedDefaultTemplates()
-	
+
 	return service, nil
 }
 
@@ -464,7 +464,7 @@ func (s *PushService) seedDefaultTemplates() {
 			IsActive:   true,
 		},
 	}
-	
+
 	for _, tmpl := range defaultTemplates {
 		var existing PushTemplate
 		result := s.db.Where("template_id = ?", tmpl.TemplateID).First(&existing)
@@ -633,12 +633,12 @@ func (s *PushService) SendPush(userID, token, platform, title, body, data string
 	if !s.rateLimiter.Acquire() {
 		return "", fmt.Errorf("rate limit exceeded")
 	}
-	
+
 	messageID := s.GenerateMessageID()
-	
+
 	var err error
 	var provider string
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -656,17 +656,17 @@ func (s *PushService) SendPush(userID, token, platform, title, body, data string
 		err = s.sendFCM(ctx, token, title, body, data, sound, badge)
 		provider = "fcm"
 	}
-	
+
 	// Log
 	s.logPush(messageID, userID, token, platform, title, provider, err)
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Update device last used
 	s.db.Model(&DeviceToken{}).Where("token = ?", token).Update("last_used_at", time.Now())
-	
+
 	return messageID, nil
 }
 
@@ -807,12 +807,12 @@ func (s *PushService) sendWebPush(ctx context.Context, token, title, body, data,
 func (s *PushService) logPush(messageID, userID, token, platform, title, provider string, err error) {
 	status := "sent"
 	var errorMsg string
-	
+
 	if err != nil {
 		status = "failed"
 		errorMsg = err.Error()
 	}
-	
+
 	logEntry := &PushLog{
 		MessageID: messageID,
 		UserID:    userID,
@@ -825,12 +825,12 @@ func (s *PushService) logPush(messageID, userID, token, platform, title, provide
 		Provider:  provider,
 		CreatedAt: time.Now(),
 	}
-	
+
 	if status == "sent" {
 		now := time.Now()
 		logEntry.SentAt = now
 	}
-	
+
 	s.db.Create(logEntry)
 }
 
@@ -841,7 +841,7 @@ func (s *PushService) SendTemplatePush(userID, token, platform, templateID strin
 	if result.Error != nil {
 		return "", fmt.Errorf("template not found: %s", templateID)
 	}
-	
+
 	// Parse template
 	title := parseTemplateSimple(template.Title, variables)
 	body := parseTemplateSimple(template.Body, variables)
@@ -849,7 +849,7 @@ func (s *PushService) SendTemplatePush(userID, token, platform, templateID strin
 	if data != "" {
 		data = parseTemplateSimple(data, variables)
 	}
-	
+
 	return s.SendPush(userID, token, platform, title, body, data, template.Sound, template.Badge)
 }
 
@@ -867,7 +867,7 @@ func parseTemplateSimple(template string, vars map[string]interface{}) string {
 func (s *PushService) RegisterDevice(userID, token, platform, appVersion, language, timezone string) error {
 	var device DeviceToken
 	result := s.db.Where("token = ?", token).First(&device)
-	
+
 	if result.Error == gorm.ErrRecordNotFound {
 		device = DeviceToken{
 			UserID:     userID,
@@ -891,7 +891,7 @@ func (s *PushService) RegisterDevice(userID, token, platform, appVersion, langua
 			"updated_at":  time.Now(),
 		})
 	}
-	
+
 	return nil
 }
 
@@ -927,13 +927,13 @@ func (s *PushService) ProcessQueue() {
 // processPush - Process single push
 func (s *PushService) processPush(push *PushNotification) {
 	s.db.Model(push).Update("status", "sending")
-	
+
 	_, err := s.SendPush(push.UserID, push.Token, push.Platform, push.Title, push.Body, push.Data, push.Sound, push.Badge)
-	
+
 	if err != nil {
 		push.RetryCount++
 		push.LastError = err.Error()
-		
+
 		if push.RetryCount >= s.config.MaxRetries {
 			s.db.Model(push).Updates(map[string]interface{}{
 				"status":     "failed",
@@ -946,7 +946,7 @@ func (s *PushService) processPush(push *PushNotification) {
 		}
 		return
 	}
-	
+
 	// Success
 	now := time.Now()
 	s.db.Model(push).Updates(map[string]interface{}{
@@ -975,12 +975,12 @@ func (s *PushService) StopWorkers() {
 // Stats - Get push stats
 func (s *PushService) Stats() (map[string]interface{}, error) {
 	var total, sent, failed, queued int64
-	
+
 	s.db.Model(&PushLog{}).Count(&total)
 	s.db.Model(&PushLog{}).Where("status = ?", "sent").Count(&sent)
 	s.db.Model(&PushLog{}).Where("status = ?", "failed").Count(&failed)
 	s.db.Model(&PushNotification{}).Where("status = ?", "queued").Count(&queued)
-	
+
 	return map[string]interface{}{
 		"total":  total,
 		"sent":   sent,
@@ -1008,18 +1008,18 @@ func (s *PushService) SendPushHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	sound := req.Sound
 	if sound == "" {
 		sound = "default"
 	}
-	
+
 	messageID, err := s.SendPush(req.UserID, req.Token, req.Platform, req.Title, req.Body, req.Data, sound, req.Badge)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "sent", "message_id": messageID})
 }
 
@@ -1037,23 +1037,23 @@ func (s *PushService) SendTemplateHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	messageID, err := s.SendTemplatePush(req.UserID, req.Token, req.Platform, req.TemplateID, req.Variables)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "sent", "message_id": messageID})
 }
 
 type RegisterDeviceRequest struct {
-	UserID    string `json:"user_id" binding:"required"`
-	Token     string `json:"token" binding:"required"`
-	Platform  string `json:"platform" binding:"required"`
+	UserID     string `json:"user_id" binding:"required"`
+	Token      string `json:"token" binding:"required"`
+	Platform   string `json:"platform" binding:"required"`
 	AppVersion string `json:"app_version"`
-	Language  string `json:"language"`
-	Timezone  string `json:"timezone"`
+	Language   string `json:"language"`
+	Timezone   string `json:"timezone"`
 }
 
 func (s *PushService) RegisterDeviceHandler(c *gin.Context) {
@@ -1062,25 +1062,25 @@ func (s *PushService) RegisterDeviceHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	err := s.RegisterDevice(req.UserID, req.Token, req.Platform, req.AppVersion, req.Language, req.Timezone)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "registered"})
 }
 
 func (s *PushService) UnregisterDeviceHandler(c *gin.Context) {
 	token := c.Param("token")
-	
+
 	err := s.UnregisterDevice(token)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "unregistered"})
 }
 
@@ -1128,14 +1128,14 @@ func NewRateLimiter(tokensPerMinute int) *RateLimiter {
 func (r *RateLimiter) Acquire() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	now := time.Now()
 	elapsed := now.Sub(r.lastRefill)
 	if elapsed >= r.refillRate {
 		r.tokens = r.maxTokens
 		r.lastRefill = now
 	}
-	
+
 	if r.tokens > 0 {
 		r.tokens--
 		return true
@@ -1147,60 +1147,60 @@ func (r *RateLimiter) Acquire() bool {
 
 func main() {
 	cfg := PushConfig{
-		FCMProjectID:  getEnv("FCM_PROJECT_ID", ""),
-		FCMCredentials: getEnv("FCM_CREDENTIALS", ""),
-		APNSKeyPath:   getEnv("APNS_KEY_PATH", ""),
-		APNSKeyID:     getEnv("APNS_KEY_ID", ""),
-		APNSTeamID:    getEnv("APNS_TEAM_ID", ""),
-		APNSBundleID:  getEnv("APNS_BUNDLE_ID", "com.tigerwallet.app"),
-		UseProduction:  getEnvBool("APNS_PRODUCTION", false),
-		MaxRetries:    getEnvInt("PUSH_MAX_RETRIES", 3),
-		RetryDelay:    getEnvDuration("PUSH_RETRY_DELAY", 5*time.Second),
-		WorkerCount:   getEnvInt("PUSH_WORKERS", 5),
-		QueueBufferSize: getEnvInt("PUSH_QUEUE_SIZE", 1000),
+		FCMProjectID:       getEnv("FCM_PROJECT_ID", ""),
+		FCMCredentials:     getEnv("FCM_CREDENTIALS", ""),
+		APNSKeyPath:        getEnv("APNS_KEY_PATH", ""),
+		APNSKeyID:          getEnv("APNS_KEY_ID", ""),
+		APNSTeamID:         getEnv("APNS_TEAM_ID", ""),
+		APNSBundleID:       getEnv("APNS_BUNDLE_ID", "com.tigerwallet.app"),
+		UseProduction:      getEnvBool("APNS_PRODUCTION", false),
+		MaxRetries:         getEnvInt("PUSH_MAX_RETRIES", 3),
+		RetryDelay:         getEnvDuration("PUSH_RETRY_DELAY", 5*time.Second),
+		WorkerCount:        getEnvInt("PUSH_WORKERS", 5),
+		QueueBufferSize:    getEnvInt("PUSH_QUEUE_SIZE", 1000),
 		RateLimitPerMinute: getEnvInt("PUSH_RATE_LIMIT", 1000),
-		DBHost:       getEnv("DB_HOST", "localhost"),
-		DBPort:       getEnv("DB_PORT", "5432"),
-		DBUser:       getEnv("DB_USER", "postgres"),
-		DBPassword:   mustEnv("DB_PASSWORD"),
-		DBName:       getEnv("DB_NAME", "push_db"),
-		RedisHost:    getEnv("REDIS_HOST", "localhost"),
-		RedisPort:    getEnv("REDIS_PORT", "6379"),
-		ServerPort:   getEnv("PUSH_SERVER_PORT", "8089"),
+		DBHost:             getEnv("DB_HOST", "localhost"),
+		DBPort:             getEnv("DB_PORT", "5432"),
+		DBUser:             getEnv("DB_USER", "postgres"),
+		DBPassword:         mustEnv("DB_PASSWORD"),
+		DBName:             getEnv("DB_NAME", "push_db"),
+		RedisHost:          getEnv("REDIS_HOST", "localhost"),
+		RedisPort:          getEnv("REDIS_PORT", "6379"),
+		ServerPort:         getEnv("PUSH_SERVER_PORT", "8089"),
 	}
-	
+
 	service, err := NewPushService(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize push service: %v", err)
 	}
-	
+
 	// Start workers
 	service.StartWorkers()
-	
+
 	// Setup HTTP routes
 	r := gin.Default()
-	
+
 	r.POST("/push", service.SendPushHandler)
 	r.POST("/push/template", service.SendTemplateHandler)
 	r.POST("/devices", service.RegisterDeviceHandler)
 	r.DELETE("/devices/:token", service.UnregisterDeviceHandler)
 	r.GET("/stats", service.StatsHandler)
-	
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "healthy", "service": "push"})
 	})
-	
+
 	go func() {
 		log.Printf("Push Service starting on port %s", cfg.ServerPort)
 		if err := r.Run(":" + cfg.ServerPort); err != nil {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
-	
+
 	// Wait for shutdown
 	quit := make(chan os.Signal, 1)
 	<-quit
-	
+
 	log.Println("Shutting down push service...")
 	service.StopWorkers()
 }

@@ -28,150 +28,150 @@ import (
 // EmailConfig - SMTP Configuration
 type EmailConfig struct {
 	// SMTP Server Settings
-	SMTPHost          string `json:"smtp_host"`
-	SMTPPort          int    `json:"smtp_port"`
-	SMTPUsername      string `json:"smtp_username"`
-	SMTPPassword      string `json:"smtp_password"`
+	SMTPHost         string `json:"smtp_host"`
+	SMTPPort         int    `json:"smtp_port"`
+	SMTPUsername     string `json:"smtp_username"`
+	SMTPPassword     string `json:"smtp_password"`
 	SMTPFromName     string `json:"smtp_from_name"`
 	SMTPFromEmail    string `json:"smtp_from_email"`
 	UseTLS           bool   `json:"use_tls"`
 	SkipVerification bool   `json:"skip_verification"`
-	
+
 	// Queue Settings
 	MaxRetries      int           `json:"max_retries"`
 	RetryDelay      time.Duration `json:"retry_delay"`
 	WorkerCount     int           `json:"worker_count"`
 	BatchSize       int           `json:"batch_size"`
 	QueueBufferSize int           `json:"queue_buffer_size"`
-	
+
 	// Template Settings
 	TemplateDir string `json:"template_dir"`
-	
+
 	// Database Settings
 	DBHost     string `json:"db_host"`
 	DBPort     string `json:"db_port"`
 	DBUser     string `json:"db_user"`
 	DBPassword string `json:"db_password"`
 	DBName     string `json:"db_name"`
-	
+
 	// Redis Settings
 	RedisHost string `json:"redis_host"`
 	RedisPort string `json:"redis_port"`
-	
+
 	// Rate Limiting
 	RateLimitPerMinute int `json:"rate_limit_per_minute"`
-	
+
 	// Server
 	ServerPort string `json:"server_port"`
 }
 
 // EmailTemplate - Email template structure
 type EmailTemplate struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	TemplateID  string    `gorm:"uniqueIndex" json:"template_id"`
-	Name        string    `json:"name"`
-	Subject     string    `json:"subject"`
-	BodyHTML    string    `gorm:"type:text" json:"body_html"`
-	BodyText    string    `gorm:"type:text" json:"body_text"`
-	Variables   string    `gorm:"type:jsonb" json:"variables"` // JSON array of variable names
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	TemplateID string    `gorm:"uniqueIndex" json:"template_id"`
+	Name       string    `json:"name"`
+	Subject    string    `json:"subject"`
+	BodyHTML   string    `gorm:"type:text" json:"body_html"`
+	BodyText   string    `gorm:"type:text" json:"body_text"`
+	Variables  string    `gorm:"type:jsonb" json:"variables"` // JSON array of variable names
+	IsActive   bool      `gorm:"default:true" json:"is_active"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // EmailQueue - Email queue for retry mechanism
 type EmailQueue struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	MessageID       string    `gorm:"uniqueIndex" json:"message_id"`
-	ToEmail         string    `gorm:"index" json:"to_email"`
-	ToName          string    `json:"to_name"`
-	FromEmail       string    `json:"from_email"`
-	FromName        string    `json:"from_name"`
-	Subject         string    `json:"subject"`
-	BodyHTML        string    `gorm:"type:text" json:"body_html"`
-	BodyText        string    `gorm:"type:text" json:"body_text"`
-	ReplyTo         string    `json:"reply_to"`
-	CC              string    `json:"cc"`
-	BCC             string    `json:"bcc"`
-	Attachments     string    `gorm:"type:jsonb" json:"attachments"`
-	Headers         string    `gorm:"type:jsonb" json:"headers"`
-	Priority        int       `gorm:"default:0" json:"priority"` // 0=normal, 1=high, 2=urgent
-	Status          string    `gorm:"index" json:"status"` // queued, sending, sent, failed, cancelled
-	RetryCount      int       `gorm:"default:0" json:"retry_count"`
-	LastError       string    `gorm:"type:text" json:"last_error"`
-	SentAt          *time.Time `json:"sent_at"`
-	CreatedAt       time.Time `json:"created_at"`
-	ScheduledAt     *time.Time `json:"scheduled_at"`
-	ProcessedAt     *time.Time `json:"processed_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	MessageID   string     `gorm:"uniqueIndex" json:"message_id"`
+	ToEmail     string     `gorm:"index" json:"to_email"`
+	ToName      string     `json:"to_name"`
+	FromEmail   string     `json:"from_email"`
+	FromName    string     `json:"from_name"`
+	Subject     string     `json:"subject"`
+	BodyHTML    string     `gorm:"type:text" json:"body_html"`
+	BodyText    string     `gorm:"type:text" json:"body_text"`
+	ReplyTo     string     `json:"reply_to"`
+	CC          string     `json:"cc"`
+	BCC         string     `json:"bcc"`
+	Attachments string     `gorm:"type:jsonb" json:"attachments"`
+	Headers     string     `gorm:"type:jsonb" json:"headers"`
+	Priority    int        `gorm:"default:0" json:"priority"` // 0=normal, 1=high, 2=urgent
+	Status      string     `gorm:"index" json:"status"`       // queued, sending, sent, failed, cancelled
+	RetryCount  int        `gorm:"default:0" json:"retry_count"`
+	LastError   string     `gorm:"type:text" json:"last_error"`
+	SentAt      *time.Time `json:"sent_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ScheduledAt *time.Time `json:"scheduled_at"`
+	ProcessedAt *time.Time `json:"processed_at"`
 }
 
 // EmailLog - Log of all sent emails
 type EmailLog struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	MessageID   string    `gorm:"uniqueIndex;index" json:"message_id"`
-	ToEmail     string    `gorm:"index" json:"to_email"`
-	ToName      string    `json:"to_name"`
-	Subject     string    `json:"subject"`
-	TemplateID  string    `gorm:"index" json:"template_id"`
-	Status      string    `json:"status"` // sent, delivered, bounced, opened, clicked
-	SentAt      time.Time `json:"sent_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	MessageID   string     `gorm:"uniqueIndex;index" json:"message_id"`
+	ToEmail     string     `gorm:"index" json:"to_email"`
+	ToName      string     `json:"to_name"`
+	Subject     string     `json:"subject"`
+	TemplateID  string     `gorm:"index" json:"template_id"`
+	Status      string     `json:"status"` // sent, delivered, bounced, opened, clicked
+	SentAt      time.Time  `json:"sent_at"`
 	DeliveredAt *time.Time `json:"delivered_at"`
 	BouncedAt   *time.Time `json:"bounced_at"`
 	OpenedAt    *time.Time `json:"opened_at"`
 	ClickedAt   *time.Time `json:"clicked_at"`
-	Error       string    `gorm:"type:text" json:"error"`
-	Metadata    string    `gorm:"type:jsonb" json:"metadata"`
-	CreatedAt   time.Time `json:"created_at"`
+	Error       string     `gorm:"type:text" json:"error"`
+	Metadata    string     `gorm:"type:jsonb" json:"metadata"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // EmailRecipient - Recipient management
 type EmailRecipient struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	Email           string    `gorm:"uniqueIndex;index" json:"email"`
-	Name            string    `json:"name"`
-	IsVerified      bool      `gorm:"default:false" json:"is_verified"`
-	VerifyToken     string    `gorm:"index" json:"verify_token"`
+	ID              uint       `gorm:"primaryKey" json:"id"`
+	Email           string     `gorm:"uniqueIndex;index" json:"email"`
+	Name            string     `json:"name"`
+	IsVerified      bool       `gorm:"default:false" json:"is_verified"`
+	VerifyToken     string     `gorm:"index" json:"verify_token"`
 	VerifyExpiresAt *time.Time `json:"verify_expires_at"`
-	IsActive        bool      `gorm:"default:true" json:"is_active"`
+	IsActive        bool       `gorm:"default:true" json:"is_active"`
 	LastSentAt      *time.Time `json:"last_sent_at"`
-	SendCount       int       `gorm:"default:0" json:"send_count"`
-	FailCount       int       `gorm:"default:0" json:"fail_count"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	SendCount       int        `gorm:"default:0" json:"send_count"`
+	FailCount       int        `gorm:"default:0" json:"fail_count"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // EmailUnsubscribe - Unsubscribe management
 type EmailUnsubscribe struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	Email       string    `gorm:"uniqueIndex;index" json:"email"`
-	Token       string    `gorm:"uniqueIndex" json:"token"`
-	Reason      string    `json:"reason"`
-	Categories  string    `json:"categories"` // JSON array of categories
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	Email          string    `gorm:"uniqueIndex;index" json:"email"`
+	Token          string    `gorm:"uniqueIndex" json:"token"`
+	Reason         string    `json:"reason"`
+	Categories     string    `json:"categories"` // JSON array of categories
 	UnsubscribedAt time.Time `json:"unsubscribed_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // EmailService - Main email service
 type EmailService struct {
-	config        EmailConfig
-	db            *gorm.DB
-	redis         *redis.Client
-	templates     map[string]*EmailTemplate
-	templateLock  sync.RWMutex
-	queue         chan *EmailQueue
-	workers       sync.WaitGroup
-	stopCh        chan struct{}
-	rateLimiter   *RateLimiter
-	smtpAuth      smtp.Auth
+	config       EmailConfig
+	db           *gorm.DB
+	redis        *redis.Client
+	templates    map[string]*EmailTemplate
+	templateLock sync.RWMutex
+	queue        chan *EmailQueue
+	workers      sync.WaitGroup
+	stopCh       chan struct{}
+	rateLimiter  *RateLimiter
+	smtpAuth     smtp.Auth
 }
 
 // RateLimiter - Token bucket rate limiter
 type RateLimiter struct {
-	tokens    int
-	maxTokens int
+	tokens     int
+	maxTokens  int
 	refillRate time.Duration
 	lastRefill time.Time
-	mu        sync.Mutex
+	mu         sync.Mutex
 }
 
 // NewRateLimiter - Create new rate limiter
@@ -188,14 +188,14 @@ func NewRateLimiter(tokensPerMinute int) *RateLimiter {
 func (r *RateLimiter) Acquire() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	now := time.Now()
 	elapsed := now.Sub(r.lastRefill)
 	if elapsed >= r.refillRate {
 		r.tokens = r.maxTokens
 		r.lastRefill = now
 	}
-	
+
 	if r.tokens > 0 {
 		r.tokens--
 		return true
@@ -208,68 +208,68 @@ func NewEmailService(cfg EmailConfig) (*EmailService, error) {
 	// Connect to database
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
-	
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	
+
 	// Auto migrate
 	err = db.AutoMigrate(&EmailTemplate{}, &EmailQueue{}, &EmailLog{}, &EmailRecipient{}, &EmailUnsubscribe{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
-	
+
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 	})
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
-	
+
 	// Create SMTP auth
 	auth := smtp.PlainAuth("", cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPHost)
-	
+
 	// Load templates
 	templates, err := loadTemplates(db)
 	if err != nil {
 		log.Printf("Warning: Failed to load templates: %v", err)
 	}
-	
+
 	// Create queue buffer
 	queueSize := cfg.QueueBufferSize
 	if queueSize == 0 {
 		queueSize = 1000
 	}
-	
+
 	workerCount := cfg.WorkerCount
 	if workerCount == 0 {
 		workerCount = 5
 	}
-	
+
 	rateLimit := cfg.RateLimitPerMinute
 	if rateLimit == 0 {
 		rateLimit = 100
 	}
-	
+
 	service := &EmailService{
-		config:       cfg,
-		db:           db,
-		redis:        rdb,
-		templates:    templates,
-		queue:        make(chan *EmailQueue, queueSize),
-		stopCh:       make(chan struct{}),
-		rateLimiter:  NewRateLimiter(rateLimit),
-		smtpAuth:     auth,
+		config:      cfg,
+		db:          db,
+		redis:       rdb,
+		templates:   templates,
+		queue:       make(chan *EmailQueue, queueSize),
+		stopCh:      make(chan struct{}),
+		rateLimiter: NewRateLimiter(rateLimit),
+		smtpAuth:    auth,
 	}
-	
+
 	// Seed default templates
 	service.seedDefaultTemplates()
-	
+
 	return service, nil
 }
 
@@ -279,7 +279,7 @@ func loadTemplates(db *gorm.DB) (map[string]*EmailTemplate, error) {
 	if err := db.Where("is_active = ?", true).Find(&templates).Error; err != nil {
 		return nil, err
 	}
-	
+
 	result := make(map[string]*EmailTemplate)
 	for i := range templates {
 		result[templates[i].TemplateID] = &templates[i]
@@ -426,7 +426,7 @@ func (s *EmailService) seedDefaultTemplates() {
 			IsActive:   true,
 		},
 	}
-	
+
 	for _, tmpl := range defaultTemplates {
 		var existing EmailTemplate
 		result := s.db.Where("template_id = ?", tmpl.TemplateID).First(&existing)
@@ -434,7 +434,7 @@ func (s *EmailService) seedDefaultTemplates() {
 			s.db.Create(&tmpl)
 		}
 	}
-	
+
 	// Reload templates
 	templates, _ := loadTemplates(s.db)
 	s.templateLock.Lock()
@@ -451,33 +451,33 @@ func (s *EmailService) GenerateMessageID() string {
 func (s *EmailService) SendEmail(toEmail, toName, subject, bodyHTML, bodyText string, options ...EmailOption) error {
 	// Apply options
 	opts := &EmailOptions{
-		From:    s.config.SMTPFromEmail,
+		From:     s.config.SMTPFromEmail,
 		FromName: s.config.SMTPFromName,
 	}
 	for _, opt := range options {
 		opt(opts)
 	}
-	
+
 	// Check rate limit
 	if !s.rateLimiter.Acquire() {
 		return fmt.Errorf("rate limit exceeded")
 	}
-	
+
 	// Check unsubscribe
 	if s.isUnsubscribed(toEmail) {
 		return fmt.Errorf("recipient unsubscribed")
 	}
-	
+
 	// Create message
 	messageID := s.GenerateMessageID()
-	
+
 	// Build email
 	var buf bytes.Buffer
 	err := s.buildEmail(&buf, messageID, toEmail, toName, subject, bodyHTML, bodyText, opts)
 	if err != nil {
 		return fmt.Errorf("failed to build email: %w", err)
 	}
-	
+
 	// Send via SMTP
 	err = s.sendSMTP(toEmail, buf.Bytes())
 	if err != nil {
@@ -485,7 +485,7 @@ func (s *EmailService) SendEmail(toEmail, toName, subject, bodyHTML, bodyText st
 		s.logEmail(messageID, toEmail, toName, subject, "", "failed", err.Error())
 		return fmt.Errorf("failed to send email: %w", err)
 	}
-	
+
 	// Log success
 	s.logEmail(messageID, toEmail, toName, subject, "", "sent", "")
 	return nil
@@ -496,12 +496,12 @@ type EmailOption func(*EmailOptions)
 
 // EmailOptions - Email options
 type EmailOptions struct {
-	From      string
-	FromName  string
-	ReplyTo   string
-	CC        string
-	BCC       string
-	Headers   map[string]string
+	From     string
+	FromName string
+	ReplyTo  string
+	CC       string
+	BCC      string
+	Headers  map[string]string
 }
 
 // WithReplyTo - Set reply-to
@@ -538,7 +538,7 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 	if opts.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", opts.FromName, opts.From)
 	}
-	
+
 	// Headers
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", sanitizeHeader(from)))
 	buf.WriteString(fmt.Sprintf("To: %s <%s>\r\n", sanitizeHeader(toName), sanitizeHeader(toEmail)))
@@ -546,26 +546,26 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 	buf.WriteString(fmt.Sprintf("Message-ID: %s\r\n", sanitizeHeader(messageID)))
 	buf.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	buf.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\n"))
-	
+
 	if opts.ReplyTo != "" {
 		buf.WriteString(fmt.Sprintf("Reply-To: %s\r\n", sanitizeHeader(opts.ReplyTo)))
 	}
 	if opts.CC != "" {
 		buf.WriteString(fmt.Sprintf("Cc: %s\r\n", sanitizeHeader(opts.CC)))
 	}
-	
+
 	// Custom headers
 	if opts.Headers != nil {
 		for k, v := range opts.Headers {
 			buf.WriteString(fmt.Sprintf("%s: %s\r\n", sanitizeHeader(k), sanitizeHeader(v)))
 		}
 	}
-	
+
 	// Create multipart alternative
 	boundary := randomString(32)
 	buf.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%s\r\n", boundary))
 	buf.WriteString("\r\n")
-	
+
 	// Plain text part
 	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	buf.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
@@ -573,7 +573,7 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 	buf.WriteString("\r\n")
 	buf.WriteString(quotedPrintable(bodyText))
 	buf.WriteString("\r\n")
-	
+
 	// HTML part
 	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	buf.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
@@ -581,20 +581,20 @@ func (s *EmailService) buildEmail(buf *bytes.Buffer, messageID, toEmail, toName,
 	buf.WriteString("\r\n")
 	buf.WriteString(quotedPrintable(bodyHTML))
 	buf.WriteString("\r\n")
-	
+
 	// Close boundary
 	buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
-	
+
 	return nil
 }
 
 // sendSMTP - Send email via SMTP
 func (s *EmailService) sendSMTP(to string, data []byte) error {
 	addr := net.JoinHostPort(s.config.SMTPHost, fmt.Sprintf("%d", s.config.SMTPPort))
-	
+
 	var conn net.Conn
 	var err error
-	
+
 	if s.config.UseTLS {
 		if s.config.SkipVerification {
 			return fmt.Errorf("SMTP_SKIP_VERIFY is not permitted: refusing to send mail over an unverified TLS connection")
@@ -605,69 +605,69 @@ func (s *EmailService) sendSMTP(to string, data []byte) error {
 	} else {
 		conn, err = net.Dial("tcp", addr)
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to connect to SMTP server: %w", err)
 	}
 	defer conn.Close()
-	
+
 	client, err := smtp.NewClient(conn, s.config.SMTPHost)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
 	defer client.Quit()
-	
+
 	// Authenticate
 	if s.smtpAuth != nil {
 		if err = client.Auth(s.smtpAuth); err != nil {
 			return fmt.Errorf("SMTP auth failed: %w", err)
 		}
 	}
-	
+
 	// Set from
 	if err = client.Mail(s.config.SMTPFromEmail); err != nil {
 		return fmt.Errorf("failed to set from: %w", err)
 	}
-	
+
 	// Set to
 	if err = client.Rcpt(to); err != nil {
 		return fmt.Errorf("failed to set to: %w", err)
 	}
-	
+
 	// Send data
 	w, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("failed to get data writer: %w", err)
 	}
 	defer w.Close()
-	
+
 	_, err = w.Write(data)
 	if err != nil {
 		return fmt.Errorf("failed to write data: %w", err)
 	}
-	
+
 	return nil
 }
 
 // logEmail - Log email to database
 func (s *EmailService) logEmail(messageID, toEmail, toName, subject, templateID, status, errorMsg string) {
 	log := &EmailLog{
-		MessageID: messageID,
-		ToEmail:   toEmail,
-		ToName:    toName,
-		Subject:   subject,
+		MessageID:  messageID,
+		ToEmail:    toEmail,
+		ToName:     toName,
+		Subject:    subject,
 		TemplateID: templateID,
-		Status:    status,
-		SentAt:    time.Now(),
-		Error:     errorMsg,
-		CreatedAt: time.Now(),
+		Status:     status,
+		SentAt:     time.Now(),
+		Error:      errorMsg,
+		CreatedAt:  time.Now(),
 	}
-	
+
 	if status == "sent" {
 		now := time.Now()
 		log.SentAt = now
 	}
-	
+
 	s.db.Create(log)
 }
 
@@ -683,29 +683,29 @@ func (s *EmailService) SendTemplateEmail(toEmail, toName, templateID string, var
 	s.templateLock.RLock()
 	template, ok := s.templates[templateID]
 	s.templateLock.RUnlock()
-	
+
 	if !ok {
 		return fmt.Errorf("template not found: %s", templateID)
 	}
-	
+
 	// Parse subject
 	subjectTmpl, err := template.ParseSubject(variables)
 	if err != nil {
 		return fmt.Errorf("failed to parse subject: %w", err)
 	}
-	
+
 	// Parse body HTML
 	bodyHTML, err := template.ParseBodyHTML(variables)
 	if err != nil {
 		return fmt.Errorf("failed to parse HTML body: %w", err)
 	}
-	
+
 	// Parse body text
 	bodyText, err := template.ParseBodyText(variables)
 	if err != nil {
 		return fmt.Errorf("failed to parse text body: %w", err)
 	}
-	
+
 	return s.SendEmail(toEmail, toName, subjectTmpl, bodyHTML, bodyText)
 }
 
@@ -715,13 +715,13 @@ func (t *EmailTemplate) ParseSubject(vars map[string]interface{}) (string, error
 	if err != nil {
 		return "", err
 	}
-	
+
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, vars)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return buf.String(), nil
 }
 
@@ -731,13 +731,13 @@ func (t *EmailTemplate) ParseBodyHTML(vars map[string]interface{}) (string, erro
 	if err != nil {
 		return "", err
 	}
-	
+
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, vars)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return buf.String(), nil
 }
 
@@ -747,13 +747,13 @@ func (t *EmailTemplate) ParseBodyText(vars map[string]interface{}) (string, erro
 	if err != nil {
 		return "", err
 	}
-	
+
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, vars)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return buf.String(), nil
 }
 
@@ -778,7 +778,7 @@ func (s *EmailService) ProcessQueue() {
 func (s *EmailService) processEmail(email *EmailQueue) {
 	// Update status
 	s.db.Model(email).Update("status", "sending")
-	
+
 	// Build email
 	var buf bytes.Buffer
 	err := s.buildEmail(&buf, email.MessageID, email.ToEmail, email.ToName, email.Subject, email.BodyHTML, email.BodyText, &EmailOptions{
@@ -788,12 +788,12 @@ func (s *EmailService) processEmail(email *EmailQueue) {
 		CC:       email.CC,
 		BCC:      email.BCC,
 	})
-	
+
 	if err != nil {
 		s.handleEmailFailure(email, fmt.Sprintf("failed to build email: %v", err))
 		return
 	}
-	
+
 	// Check rate limit
 	if !s.rateLimiter.Acquire() {
 		// Re-queue
@@ -801,22 +801,22 @@ func (s *EmailService) processEmail(email *EmailQueue) {
 		time.Sleep(time.Second)
 		return
 	}
-	
+
 	// Send
 	err = s.sendSMTP(email.ToEmail, buf.Bytes())
 	if err != nil {
 		s.handleEmailFailure(email, fmt.Sprintf("failed to send: %v", err))
 		return
 	}
-	
+
 	// Success
 	now := time.Now()
 	s.db.Model(email).Updates(map[string]interface{}{
-		"status":   "sent",
-		"sent_at":  now,
+		"status":       "sent",
+		"sent_at":      now,
 		"processed_at": now,
 	})
-	
+
 	// Update recipient stats
 	s.db.Model(&EmailRecipient{}).Where("email = ?", email.ToEmail).Updates(map[string]interface{}{
 		"last_sent_at": now,
@@ -828,7 +828,7 @@ func (s *EmailService) processEmail(email *EmailQueue) {
 func (s *EmailService) handleEmailFailure(email *EmailQueue, errorMsg string) {
 	email.RetryCount++
 	email.LastError = errorMsg
-	
+
 	if email.RetryCount >= s.config.MaxRetries {
 		// Mark as failed
 		now := time.Now()
@@ -837,7 +837,7 @@ func (s *EmailService) handleEmailFailure(email *EmailQueue, errorMsg string) {
 			"last_error":   errorMsg,
 			"processed_at": now,
 		})
-		
+
 		// Update recipient fail count
 		s.db.Model(&EmailRecipient{}).Where("email = ?", email.ToEmail).Update("fail_count", gorm.Expr("fail_count + 1"))
 	} else {
@@ -868,16 +868,16 @@ func (s *EmailService) StopWorkers() {
 // Unsubscribe - Unsubscribe email
 func (s *EmailService) Unsubscribe(email, reason, categories string) error {
 	token := randomString(32)
-	
+
 	unsub := &EmailUnsubscribe{
-		Email:         strings.ToLower(email),
-		Token:         token,
-		Reason:        reason,
-		Categories:    categories,
+		Email:          strings.ToLower(email),
+		Token:          token,
+		Reason:         reason,
+		Categories:     categories,
 		UnsubscribedAt: time.Now(),
-		CreatedAt:     time.Now(),
+		CreatedAt:      time.Now(),
 	}
-	
+
 	return s.db.Create(unsub).Error
 }
 
@@ -904,10 +904,10 @@ func (s *EmailService) VerifyRecipient(token string) error {
 	if result.Error != nil {
 		return result.Error
 	}
-	
+
 	return s.db.Model(&recipient).Updates(map[string]interface{}{
-		"is_verified":     true,
-		"verify_token":    nil,
+		"is_verified":       true,
+		"verify_token":      nil,
 		"verify_expires_at": nil,
 	}).Error
 }
@@ -915,33 +915,33 @@ func (s *EmailService) VerifyRecipient(token string) error {
 // Stats - Get email stats
 func (s *EmailService) Stats() (map[string]interface{}, error) {
 	var total, sent, failed, queued int64
-	
+
 	s.db.Model(&EmailLog{}).Count(&total)
 	s.db.Model(&EmailLog{}).Where("status = ?", "sent").Count(&sent)
 	s.db.Model(&EmailLog{}).Where("status = ?", "failed").Count(&failed)
 	s.db.Model(&EmailQueue{}).Where("status = ?", "queued").Count(&queued)
-	
+
 	return map[string]interface{}{
-		"total":    total,
-		"sent":     sent,
-		"failed":   failed,
-		"queued":   queued,
-		"rate":     s.config.RateLimitPerMinute,
+		"total":  total,
+		"sent":   sent,
+		"failed": failed,
+		"queued": queued,
+		"rate":   s.config.RateLimitPerMinute,
 	}, nil
 }
 
 // HTTP Handlers
 
 type CreateEmailRequest struct {
-	ToEmail   string                 `json:"to_email" binding:"required,email"`
-	ToName    string                 `json:"to_name"`
-	Subject   string                 `json:"subject" binding:"required"`
-	BodyHTML  string                 `json:"body_html"`
-	BodyText  string                 `json:"body_text"`
-	ReplyTo   string                 `json:"reply_to"`
-	CC        string                 `json:"cc"`
-	BCC       string                 `json:"bcc"`
-	Headers   map[string]string     `json:"headers"`
+	ToEmail  string            `json:"to_email" binding:"required,email"`
+	ToName   string            `json:"to_name"`
+	Subject  string            `json:"subject" binding:"required"`
+	BodyHTML string            `json:"body_html"`
+	BodyText string            `json:"body_text"`
+	ReplyTo  string            `json:"reply_to"`
+	CC       string            `json:"cc"`
+	BCC      string            `json:"bcc"`
+	Headers  map[string]string `json:"headers"`
 }
 
 func (s *EmailService) CreateEmailHandler(c *gin.Context) {
@@ -950,12 +950,12 @@ func (s *EmailService) CreateEmailHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	toName := req.ToName
 	if toName == "" {
 		toName = req.ToEmail
 	}
-	
+
 	options := []EmailOption{
 		WithReplyTo(req.ReplyTo),
 		WithCC(req.CC),
@@ -964,21 +964,21 @@ func (s *EmailService) CreateEmailHandler(c *gin.Context) {
 	if req.Headers != nil {
 		options = append(options, WithHeaders(req.Headers))
 	}
-	
+
 	err := s.SendEmail(req.ToEmail, toName, req.Subject, req.BodyHTML, req.BodyText, options...)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "sent"})
 }
 
 type SendTemplateRequest struct {
-	ToEmail   string                 `json:"to_email" binding:"required,email"`
-	ToName    string                 `json:"to_name"`
-	TemplateID string                `json:"template_id" binding:"required"`
-	Variables map[string]interface{} `json:"variables"`
+	ToEmail    string                 `json:"to_email" binding:"required,email"`
+	ToName     string                 `json:"to_name"`
+	TemplateID string                 `json:"template_id" binding:"required"`
+	Variables  map[string]interface{} `json:"variables"`
 }
 
 func (s *EmailService) SendTemplateHandler(c *gin.Context) {
@@ -987,32 +987,32 @@ func (s *EmailService) SendTemplateHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	toName := req.ToName
 	if toName == "" {
 		toName = req.ToEmail
 	}
-	
+
 	err := s.SendTemplateEmail(req.ToEmail, toName, req.TemplateID, req.Variables)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "sent", "template_id": req.TemplateID})
 }
 
 type QueueEmailRequest struct {
-	ToEmail    string                 `json:"to_email" binding:"required,email"`
-	ToName     string                 `json:"to_name"`
-	Subject    string                 `json:"subject" binding:"required"`
-	BodyHTML   string                 `json:"body_html"`
-	BodyText   string                 `json:"body_text"`
-	ReplyTo    string                 `json:"reply_to"`
-	CC         string                 `json:"cc"`
-	BCC        string                 `json:"bcc"`
-	Priority   int                    `json:"priority"`
-	ScheduledAt *time.Time           `json:"scheduled_at"`
+	ToEmail     string     `json:"to_email" binding:"required,email"`
+	ToName      string     `json:"to_name"`
+	Subject     string     `json:"subject" binding:"required"`
+	BodyHTML    string     `json:"body_html"`
+	BodyText    string     `json:"body_text"`
+	ReplyTo     string     `json:"reply_to"`
+	CC          string     `json:"cc"`
+	BCC         string     `json:"bcc"`
+	Priority    int        `json:"priority"`
+	ScheduledAt *time.Time `json:"scheduled_at"`
 }
 
 func (s *EmailService) QueueEmailHandler(c *gin.Context) {
@@ -1021,12 +1021,12 @@ func (s *EmailService) QueueEmailHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	toName := req.ToName
 	if toName == "" {
 		toName = req.ToEmail
 	}
-	
+
 	queue := &EmailQueue{
 		MessageID:   s.GenerateMessageID(),
 		ToEmail:     req.ToEmail,
@@ -1044,13 +1044,13 @@ func (s *EmailService) QueueEmailHandler(c *gin.Context) {
 		ScheduledAt: req.ScheduledAt,
 		CreatedAt:   time.Now(),
 	}
-	
+
 	err := s.QueueEmail(queue)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "queued", "message_id": queue.MessageID})
 }
 
@@ -1066,13 +1066,13 @@ func (s *EmailService) UnsubscribeHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	err := s.Unsubscribe(req.Email, req.Reason, req.Categories)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "unsubscribed"})
 }
 
@@ -1096,13 +1096,13 @@ func (s *EmailService) AddRecipientHandler(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	err := s.AddRecipient(req.Email, req.Name)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(200, gin.H{"status": "added"})
 }
 
@@ -1199,94 +1199,94 @@ Need help? Contact us at: {{.SupportURL}}
 // Add all other template functions here (password_reset, email_verify, etc.)
 // For brevity, including placeholders for remaining templates
 
-func getPasswordResetTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getPasswordResetTemplateText() string { return getWelcomeTemplateText() }
-func getEmailVerifyTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getEmailVerifyTemplateText() string { return getWelcomeTemplateText() }
-func getDepositTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getDepositTemplateText() string { return getWelcomeTemplateText() }
-func getWithdrawalTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getWithdrawalTemplateText() string { return getWelcomeTemplateText() }
-func getSecurityAlertTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getSecurityAlertTemplateText() string { return getWelcomeTemplateText() }
-func getKYCApprovedTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getKYCApprovedTemplateText() string { return getWelcomeTemplateText() }
-func getKYCRejectedTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getKYCRejectedTemplateText() string { return getWelcomeTemplateText() }
-func get2FAEnabledTemplateHTML() string { return getWelcomeTemplateHTML() }
-func get2FAEnabledTemplateText() string { return getWelcomeTemplateText() }
-func get2FADisabledTemplateHTML() string { return getWelcomeTemplateHTML() }
-func get2FADisabledTemplateText() string { return getWelcomeTemplateText() }
-func getAccountLockedTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getAccountLockedTemplateText() string { return getWelcomeTemplateText() }
+func getPasswordResetTemplateHTML() string      { return getWelcomeTemplateHTML() }
+func getPasswordResetTemplateText() string      { return getWelcomeTemplateText() }
+func getEmailVerifyTemplateHTML() string        { return getWelcomeTemplateHTML() }
+func getEmailVerifyTemplateText() string        { return getWelcomeTemplateText() }
+func getDepositTemplateHTML() string            { return getWelcomeTemplateHTML() }
+func getDepositTemplateText() string            { return getWelcomeTemplateText() }
+func getWithdrawalTemplateHTML() string         { return getWelcomeTemplateHTML() }
+func getWithdrawalTemplateText() string         { return getWelcomeTemplateText() }
+func getSecurityAlertTemplateHTML() string      { return getWelcomeTemplateHTML() }
+func getSecurityAlertTemplateText() string      { return getWelcomeTemplateText() }
+func getKYCApprovedTemplateHTML() string        { return getWelcomeTemplateHTML() }
+func getKYCApprovedTemplateText() string        { return getWelcomeTemplateText() }
+func getKYCRejectedTemplateHTML() string        { return getWelcomeTemplateHTML() }
+func getKYCRejectedTemplateText() string        { return getWelcomeTemplateText() }
+func get2FAEnabledTemplateHTML() string         { return getWelcomeTemplateHTML() }
+func get2FAEnabledTemplateText() string         { return getWelcomeTemplateText() }
+func get2FADisabledTemplateHTML() string        { return getWelcomeTemplateHTML() }
+func get2FADisabledTemplateText() string        { return getWelcomeTemplateText() }
+func getAccountLockedTemplateHTML() string      { return getWelcomeTemplateHTML() }
+func getAccountLockedTemplateText() string      { return getWelcomeTemplateText() }
 func getWithdrawalApprovedTemplateHTML() string { return getWelcomeTemplateHTML() }
 func getWithdrawalApprovedTemplateText() string { return getWelcomeTemplateText() }
 func getWithdrawalRejectedTemplateHTML() string { return getWelcomeTemplateHTML() }
 func getWithdrawalRejectedTemplateText() string { return getWelcomeTemplateText() }
-func getSupportTicketTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getSupportTicketTemplateText() string { return getWelcomeTemplateText() }
-func getMonthlyStatementTemplateHTML() string { return getWelcomeTemplateHTML() }
-func getMonthlyStatementTemplateText() string { return getWelcomeTemplateText() }
+func getSupportTicketTemplateHTML() string      { return getWelcomeTemplateHTML() }
+func getSupportTicketTemplateText() string      { return getWelcomeTemplateText() }
+func getMonthlyStatementTemplateHTML() string   { return getWelcomeTemplateHTML() }
+func getMonthlyStatementTemplateText() string   { return getWelcomeTemplateText() }
 
 // Main
 
 func main() {
 	cfg := EmailConfig{
-		SMTPHost:          getEnv("SMTP_HOST", "smtp.gmail.com"),
-		SMTPPort:          getEnvInt("SMTP_PORT", 587),
-		SMTPUsername:      getEnv("SMTP_USERNAME", ""),
-		SMTPPassword:      getEnv("SMTP_PASSWORD", ""),
-		SMTPFromName:      getEnv("SMTP_FROM_NAME", "TigerWallet"),
-		SMTPFromEmail:     getEnv("SMTP_FROM_EMAIL", "noreply@tigerwallet.com"),
-		UseTLS:            getEnvBool("SMTP_USE_TLS", true),
-		MaxRetries:        getEnvInt("EMAIL_MAX_RETRIES", 3),
-		RetryDelay:        getEnvDuration("EMAIL_RETRY_DELAY", 5*time.Second),
-		WorkerCount:       getEnvInt("EMAIL_WORKERS", 5),
-		QueueBufferSize:   getEnvInt("EMAIL_QUEUE_SIZE", 1000),
+		SMTPHost:           getEnv("SMTP_HOST", "smtp.gmail.com"),
+		SMTPPort:           getEnvInt("SMTP_PORT", 587),
+		SMTPUsername:       getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:       getEnv("SMTP_PASSWORD", ""),
+		SMTPFromName:       getEnv("SMTP_FROM_NAME", "TigerWallet"),
+		SMTPFromEmail:      getEnv("SMTP_FROM_EMAIL", "noreply@tigerwallet.com"),
+		UseTLS:             getEnvBool("SMTP_USE_TLS", true),
+		MaxRetries:         getEnvInt("EMAIL_MAX_RETRIES", 3),
+		RetryDelay:         getEnvDuration("EMAIL_RETRY_DELAY", 5*time.Second),
+		WorkerCount:        getEnvInt("EMAIL_WORKERS", 5),
+		QueueBufferSize:    getEnvInt("EMAIL_QUEUE_SIZE", 1000),
 		RateLimitPerMinute: getEnvInt("EMAIL_RATE_LIMIT", 100),
-		DBHost:            getEnv("DB_HOST", "localhost"),
-		DBPort:            getEnv("DB_PORT", "5432"),
-		DBUser:            getEnv("DB_USER", "postgres"),
-		DBPassword:        mustEnv("DB_PASSWORD"),
-		DBName:            getEnv("DB_NAME", "email_db"),
-		RedisHost:         getEnv("REDIS_HOST", "localhost"),
-		RedisPort:         getEnv("REDIS_PORT", "6379"),
-		ServerPort:        getEnv("EMAIL_SERVER_PORT", "8087"),
+		DBHost:             getEnv("DB_HOST", "localhost"),
+		DBPort:             getEnv("DB_PORT", "5432"),
+		DBUser:             getEnv("DB_USER", "postgres"),
+		DBPassword:         mustEnv("DB_PASSWORD"),
+		DBName:             getEnv("DB_NAME", "email_db"),
+		RedisHost:          getEnv("REDIS_HOST", "localhost"),
+		RedisPort:          getEnv("REDIS_PORT", "6379"),
+		ServerPort:         getEnv("EMAIL_SERVER_PORT", "8087"),
 	}
-	
+
 	service, err := NewEmailService(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize email service: %v", err)
 	}
-	
+
 	// Start workers
 	service.StartWorkers()
-	
+
 	// Setup HTTP routes
 	r := gin.Default()
-	
+
 	r.POST("/emails", service.CreateEmailHandler)
 	r.POST("/emails/template", service.SendTemplateHandler)
 	r.POST("/emails/queue", service.QueueEmailHandler)
 	r.POST("/unsubscribe", service.UnsubscribeHandler)
 	r.POST("/recipients", service.AddRecipientHandler)
 	r.GET("/stats", service.StatsHandler)
-	
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "healthy", "service": "email"})
 	})
-	
+
 	go func() {
 		log.Printf("Email Service starting on port %s", cfg.ServerPort)
 		if err := r.Run(":" + cfg.ServerPort); err != nil {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
-	
+
 	// Wait for shutdown
 	quit := make(chan os.Signal, 1)
 	<-quit
-	
+
 	log.Println("Shutting down email service...")
 	service.StopWorkers()
 }

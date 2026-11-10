@@ -1038,9 +1038,9 @@ func (s *Server) updateChannelStatusHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Channel status updated"})
 }
 
-func (s *Server) emailStatusWebhookHandler(c *gin.Context)   { s.statusWebhook(c) }
-func (s *Server) smsStatusWebhookHandler(c *gin.Context)     { s.statusWebhook(c) }
-func (s *Server) pushStatusWebhookHandler(c *gin.Context)    { s.statusWebhook(c) }
+func (s *Server) emailStatusWebhookHandler(c *gin.Context) { s.statusWebhook(c) }
+func (s *Server) smsStatusWebhookHandler(c *gin.Context)   { s.statusWebhook(c) }
+func (s *Server) pushStatusWebhookHandler(c *gin.Context)  { s.statusWebhook(c) }
 
 func (s *Server) statusWebhook(c *gin.Context) {
 	var req struct {

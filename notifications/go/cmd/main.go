@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	sharedauth "github.com/tigerwallet/sharedauth"
 	"google.golang.org/api/option"
 )
 
@@ -64,8 +65,11 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-notifications"})
 	})
 
-	// API routes
+	// API routes. Every route below either reads or writes one user's data, so
+	// the whole group requires a token. Handlers take the acting user from the
+	// token, never from the request.
 	api := router.Group("/api/v1")
+	api.Use(requireCaller())
 	{
 		// Notifications
 		api.POST("/notifications", createNotificationHandler(db, queue))
@@ -512,6 +516,70 @@ func corsMiddleware() gin.HandlerFunc {
 	}
 }
 
+// requireCaller authenticates the request and stores the caller in the
+// context. A missing or invalid token is refused before the handler runs.
+func requireCaller() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		secret, err := sharedauth.Secret()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is not configured"})
+			return
+		}
+		token, ok := sharedauth.Bearer(c.Request)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+		id, err := sharedauth.Parse(secret, token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		c.Set("callerID", id.UserID)
+		c.Set("callerRole", id.Role)
+		c.Next()
+	}
+}
+
+// requireAdmin restricts a group to admin callers. Sending to another user and
+// editing shared templates are operator actions.
+func requireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		v, _ := c.Get("callerRole")
+		r, _ := v.(string)
+		if r != "admin" && r != "super_admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin privileges required"})
+			return
+		}
+		c.Next()
+	}
+}
+
+// callerID returns the authenticated user id, or "" when absent.
+func callerID(c *gin.Context) string {
+	v, _ := c.Get("callerID")
+	s, _ := v.(string)
+	return s
+}
+
+// callerIsAdmin reports whether the authenticated caller holds an admin role.
+func callerIsAdmin(c *gin.Context) bool {
+	v, _ := c.Get("callerRole")
+	r, _ := v.(string)
+	return r == "admin" || r == "super_admin"
+}
+
+// ownedByCaller reports whether userID is the authenticated caller. An admin
+// may act on any user. When it does not match, a 403 is written and the
+// handler must return.
+func ownedByCaller(c *gin.Context, userID string) bool {
+	if callerIsAdmin(c) || userID == callerID(c) {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not permitted for this user"})
+	return false
+}
+
 func createNotificationHandler(db DB, queue *NotificationQueue) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -526,6 +594,9 @@ func createNotificationHandler(db DB, queue *NotificationQueue) gin.HandlerFunc 
 
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if !ownedByCaller(c, req.UserID) {
 			return
 		}
 
@@ -560,6 +631,9 @@ func getNotificationsHandler(db DB) gin.HandlerFunc {
 		userID := c.Param("user_id")
 		if userID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
+			return
+		}
+		if !ownedByCaller(c, userID) {
 			return
 		}
 		items, err := db.ListNotifications(c.Request.Context(), userID, 50)
@@ -711,6 +785,9 @@ func deleteTemplateHandler(db DB) gin.HandlerFunc {
 func getPreferencesHandler(db DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.Param("user_id")
+		if !ownedByCaller(c, userID) {
+			return
+		}
 		prefs, err := db.GetPreferences(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -736,6 +813,9 @@ type preferencesRequest struct {
 func updatePreferencesHandler(db DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.Param("user_id")
+		if !ownedByCaller(c, userID) {
+			return
+		}
 		var req preferencesRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -932,6 +1012,9 @@ func broadcastHandler(queue *NotificationQueue, db DB) gin.HandlerFunc {
 func listNotificationsHandler(db DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.Param("user_id")
+		if !ownedByCaller(c, userID) {
+			return
+		}
 		limit := 50
 		items, err := db.ListNotifications(c.Request.Context(), userID, limit)
 		if err != nil {

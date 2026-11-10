@@ -12,23 +12,23 @@ import (
 	"syscall"
 	"time"
 
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/messaging"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	firebase "firebase.google.com/go/v4"
-	"firebase.google.com/go/v4/messaging"
 	"google.golang.org/api/option"
 )
 
 // ============ Configuration ============
 
 type Config struct {
-	Port              string
-	FCMCredentials   string
-	APNSKeyPath      string
-	APNSKeyID        string
-	APNSTeamID       string
-	RedisURL          string
+	Port           string
+	FCMCredentials string
+	APNSKeyPath    string
+	APNSKeyID      string
+	APNSTeamID     string
+	RedisURL       string
 }
 
 // ============ Models ============
@@ -36,13 +36,13 @@ type Config struct {
 type NotificationType string
 
 const (
-	TypePriceAlert      NotificationType = "price_alert"
-	TypeTransaction    NotificationType = "transaction"
-	TypeAirdrop        NotificationType = "airdrop"
-	TypeStakingReward  NotificationType = "staking_reward"
-	TypeGovernance     NotificationType = "governance"
-	TypeSecurity       NotificationType = "security"
-	TypeMarketing      NotificationType = "marketing"
+	TypePriceAlert    NotificationType = "price_alert"
+	TypeTransaction   NotificationType = "transaction"
+	TypeAirdrop       NotificationType = "airdrop"
+	TypeStakingReward NotificationType = "staking_reward"
+	TypeGovernance    NotificationType = "governance"
+	TypeSecurity      NotificationType = "security"
+	TypeMarketing     NotificationType = "marketing"
 )
 
 type NotificationPriority string
@@ -54,36 +54,36 @@ const (
 )
 
 type Notification struct {
-	ID          string             `json:"id"`
-	UserID      string             `json:"userId"`
-	Type        NotificationType  `json:"type"`
-	Title       string             `json:"title"`
-	Body        string             `json:"body"`
-	Data        map[string]string  `json:"data,omitempty"`
-	Priority    NotificationPriority `json:"priority"`
-	ExpiresAt   *time.Time         `json:"expiresAt,omitempty"`
-	CreatedAt   time.Time          `json:"createdAt"`
-	ReadAt      *time.Time         `json:"readAt,omitempty"`
+	ID        string               `json:"id"`
+	UserID    string               `json:"userId"`
+	Type      NotificationType     `json:"type"`
+	Title     string               `json:"title"`
+	Body      string               `json:"body"`
+	Data      map[string]string    `json:"data,omitempty"`
+	Priority  NotificationPriority `json:"priority"`
+	ExpiresAt *time.Time           `json:"expiresAt,omitempty"`
+	CreatedAt time.Time            `json:"createdAt"`
+	ReadAt    *time.Time           `json:"readAt,omitempty"`
 }
 
 type Device struct {
-	ID           string   `json:"id"`
-	UserID       string   `json:"userId"`
-	Token        string   `json:"token"`
-	Platform     string   `json:"platform"` // ios, android, web
-	AppVersion   string   `json:"appVersion"`
-	Language     string   `json:"language"`
-	Timezone     string   `json:"timezone"`
+	ID           string    `json:"id"`
+	UserID       string    `json:"userId"`
+	Token        string    `json:"token"`
+	Platform     string    `json:"platform"` // ios, android, web
+	AppVersion   string    `json:"appVersion"`
+	Language     string    `json:"language"`
+	Timezone     string    `json:"timezone"`
 	LastActiveAt time.Time `json:"lastActiveAt"`
-	CreatedAt   time.Time `json:"createdAt"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type Subscription struct {
-	UserID     string             `json:"userId"`
-	Types      []NotificationType `json:"types"`
-	Devices    []string           `json:"devices"`
-	MinAmount  float64            `json:"minAmount,omitempty"` // For price alerts
-	Enabled    bool               `json:"enabled"`
+	UserID    string             `json:"userId"`
+	Types     []NotificationType `json:"types"`
+	Devices   []string           `json:"devices"`
+	MinAmount float64            `json:"minAmount,omitempty"` // For price alerts
+	Enabled   bool               `json:"enabled"`
 }
 
 // ============ Push Service ============
@@ -125,10 +125,10 @@ func NewPushService(config *Config) (*PushService, error) {
 	})
 
 	return &PushService{
-		config:    config,
-		messaging: messagingClient,
+		config:      config,
+		messaging:   messagingClient,
 		firebaseApp: firebaseApp,
-		redis:     redisClient,
+		redis:       redisClient,
 	}, nil
 }
 
@@ -288,10 +288,10 @@ func (s *PushService) GetSubscription(ctx context.Context, userID string) (*Subs
 // Send Price Alert
 func (s *PushService) SendPriceAlert(ctx context.Context, userID, symbol, direction string, price, change float64) error {
 	title := fmt.Sprintf("%s Price Alert", strings.ToUpper(symbol))
-	body := fmt.Sprintf("%s is now $%.2f (%s%.2f%%)", 
-		strings.ToUpper(symbol), 
-		price, 
-		"+", 
+	body := fmt.Sprintf("%s is now $%.2f (%s%.2f%%)",
+		strings.ToUpper(symbol),
+		price,
+		"+",
 		change,
 	)
 
@@ -327,11 +327,11 @@ func (s *PushService) SendTransactionNotification(
 		Body:     body,
 		Priority: PriorityHigh,
 		Data: map[string]string{
-			"type":      txType,
-			"symbol":    symbol,
-			"amount":    fmt.Sprintf("%.8f", amount),
-			"value":     fmt.Sprintf("%.2f", value),
-			"hash":      hash,
+			"type":   txType,
+			"symbol": symbol,
+			"amount": fmt.Sprintf("%.8f", amount),
+			"value":  fmt.Sprintf("%.2f", value),
+			"hash":   hash,
 		},
 	}
 
@@ -427,7 +427,7 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 		return
 	}
 
-	ids, err := h.pushService.redis.LRange(c.Request.Context(), 
+	ids, err := h.pushService.redis.LRange(c.Request.Context(),
 		fmt.Sprintf("user:%s:notifications", userID), 0, 50).Result()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -436,9 +436,9 @@ func (h *Handler) GetNotifications(c *gin.Context) {
 
 	var notifications []Notification
 	for _, id := range ids {
-		data, _ := h.pushService.redis.Get(c.Request.Context(), 
+		data, _ := h.pushService.redis.Get(c.Request.Context(),
 			fmt.Sprintf("notification:%s", id)).Bytes()
-		
+
 		var n Notification
 		json.Unmarshal(data, &n)
 		notifications = append(notifications, n)
@@ -461,7 +461,7 @@ func (h *Handler) PriceAlert(c *gin.Context) {
 		return
 	}
 
-	err := h.pushService.SendPriceAlert(c.Request.Context(), 
+	err := h.pushService.SendPriceAlert(c.Request.Context(),
 		req.UserID, req.Symbol, req.Direction, req.Price, req.Change)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -475,12 +475,12 @@ func (h *Handler) PriceAlert(c *gin.Context) {
 
 func main() {
 	config := &Config{
-		Port:            getEnv("PORT", "8080"),
-		FCMCredentials:  os.Getenv("FCM_CREDENTIALS"),
-		APNSKeyPath:     os.Getenv("APNS_KEY_PATH"),
-		APNSKeyID:       os.Getenv("APNS_KEY_ID"),
-		APNSTeamID:      os.Getenv("APNS_TEAM_ID"),
-		RedisURL:        getEnv("REDIS_URL", "localhost:6379"),
+		Port:           getEnv("PORT", "8080"),
+		FCMCredentials: os.Getenv("FCM_CREDENTIALS"),
+		APNSKeyPath:    os.Getenv("APNS_KEY_PATH"),
+		APNSKeyID:      os.Getenv("APNS_KEY_ID"),
+		APNSTeamID:     os.Getenv("APNS_TEAM_ID"),
+		RedisURL:       getEnv("REDIS_URL", "localhost:6379"),
 	}
 
 	pushService, err := NewPushService(config)
