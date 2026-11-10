@@ -12,11 +12,12 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/google/uuid"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type Server struct {
@@ -24,35 +25,99 @@ type Server struct {
 	mu sync.RWMutex
 	// In-memory cache of payment methods and fiat currencies when DB is unavailable
 	paymentMethods []PaymentMethod
-	fiatCurrencies  []FiatCurrency
+	fiatCurrencies []FiatCurrency
 }
 
 type Advert struct {
-	ID           string  `json:"id"`
-	AdvertiserID  string  `json:"advertiser_id"`
-	AdType       string  `json:"type"` // "sell" or "buy"
-	CryptoAsset   string  `json:"crypto_asset"`
-	FiatCurrency string  `json:"fiat_currency"`
-	Price         float64 `json:"price"`
-	MinAmount    float64 `json:"min_amount"`
-	MaxAmount    float64 `json:"max_amount"`
-	PaymentMethods []string `json:"payment_methods"`
-	Status       string  `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	AdvertiserID   string    `json:"advertiser_id"`
+	AdType         string    `json:"type"` // "sell" or "buy"
+	CryptoAsset    string    `json:"crypto_asset"`
+	FiatCurrency   string    `json:"fiat_currency"`
+	Price          float64   `json:"price"`
+	MinAmount      float64   `json:"min_amount"`
+	MaxAmount      float64   `json:"max_amount"`
+	PaymentMethods []string  `json:"payment_methods"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type Order struct {
-	ID          string  `json:"id"`
-	AdvertID    string  `json:"advert_id"`
-	TakerID     string  `json:"taker_id"`
-	AdType      string  `json:"type"`
-	CryptoAsset string  `json:"crypto_asset"`
-	FiatAmount  float64 `json:"fiat_amount"`
-	CryptoAmount float64 `json:"crypto_amount"`
-	Price       float64 `json:"price"`
-	Status      string  `json:"status"` // pending, paid, confirmed, cancelled, disputed
-	PaymentMethod string `json:"payment_method"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	AdvertID      string    `json:"advert_id"`
+	TakerID       string    `json:"taker_id"`
+	AdType        string    `json:"type"`
+	CryptoAsset   string    `json:"crypto_asset"`
+	FiatAmount    float64   `json:"fiat_amount"`
+	CryptoAmount  float64   `json:"crypto_amount"`
+	Price         float64   `json:"price"`
+	Status        string    `json:"status"` // pending, paid, confirmed, cancelled, disputed
+	PaymentMethod string    `json:"payment_method"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// pgTextArray scans a PostgreSQL text[] column. The pgx stdlib driver returns
+// such a column as its literal text form ("{a,b}") rather than a []string, so
+// the value has to be parsed. Scanning straight into []string failed with
+// "unsupported Scan, storing driver.Value type string", which meant no advert
+// could ever be read back.
+type pgTextArray []string
+
+func (a *pgTextArray) Scan(src interface{}) error {
+	switch v := src.(type) {
+	case nil:
+		*a = pgTextArray{}
+	case []string:
+		*a = pgTextArray(v)
+	case []byte:
+		return a.parse(string(v))
+	case string:
+		return a.parse(v)
+	default:
+		return fmt.Errorf("unsupported type for text array: %T", src)
+	}
+	return nil
+}
+
+func (a *pgTextArray) parse(lit string) error {
+	lit = strings.TrimSpace(lit)
+	if len(lit) < 2 || lit[0] != '{' || lit[len(lit)-1] != '}' {
+		return fmt.Errorf("malformed array literal")
+	}
+	body := lit[1 : len(lit)-1]
+	if body == "" {
+		*a = pgTextArray{}
+		return nil
+	}
+	out := make([]string, 0, 4)
+	var cur strings.Builder
+	inQuote, escaped := false, false
+	for i := 0; i < len(body); i++ {
+		ch := body[i]
+		if escaped {
+			cur.WriteByte(ch)
+			escaped = false
+			continue
+		}
+		switch ch {
+		case 0x5c: // backslash
+			escaped = true
+		case '"':
+			inQuote = !inQuote
+		case ',':
+			if inQuote {
+				cur.WriteByte(ch)
+			} else {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteByte(ch)
+		}
+	}
+	out = append(out, cur.String())
+	*a = out
+	return nil
 }
 
 type PaymentMethod struct {
@@ -69,6 +134,10 @@ type FiatCurrency struct {
 }
 
 func main() {
+	if err := requireAuthSecret(); err != nil {
+		log.Fatalf("refusing to start: %v", err)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8475"
@@ -132,6 +201,16 @@ func (s *Server) initSchema() {
 			status TEXT NOT NULL DEFAULT 'active',
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS p2p_order_audit (
+			id          BIGSERIAL PRIMARY KEY,
+			order_id    TEXT NOT NULL,
+			actor_id    TEXT NOT NULL,
+			action      TEXT NOT NULL,
+			from_status TEXT,
+			to_status   TEXT,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_p2p_audit_order ON p2p_order_audit(order_id, created_at DESC)`,
 		`CREATE TABLE IF NOT EXISTS p2p_orders (
 			id TEXT PRIMARY KEY,
 			advert_id TEXT NOT NULL REFERENCES p2p_adverts(id),
@@ -154,14 +233,23 @@ func (s *Server) initSchema() {
 }
 
 func (s *Server) handleAdverts(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		s.getAdverts(w, r)
-	case http.MethodPost:
-		s.createAdvert(w, r)
-	default:
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	if r.Method == http.MethodPost {
+		caller, ok := requireCaller(w, r)
+		if !ok {
+			return
+		}
+		s.createAdvert(w, r, caller)
+		return
 	}
+	s.listAdverts(w, r)
+}
+
+func (s *Server) listAdverts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	s.getAdverts(w, r)
 }
 
 func (s *Server) getAdverts(w http.ResponseWriter, r *http.Request) {
@@ -196,11 +284,13 @@ func (s *Server) getAdverts(w http.ResponseWriter, r *http.Request) {
 		var adverts []Advert
 		for rows.Next() {
 			var a Advert
-			var methods []string
-			if err := rows.Scan(&a.ID, &a.AdvertiserID, &a.AdType, &a.CryptoAsset, &a.FiatCurrency, &a.Price, &a.MinAmount, &a.MaxAmount, &methods, &a.Status, &a.CreatedAt); err == nil {
-				a.PaymentMethods = methods
-				adverts = append(adverts, a)
+			var methods pgTextArray
+			if err := rows.Scan(&a.ID, &a.AdvertiserID, &a.AdType, &a.CryptoAsset, &a.FiatCurrency, &a.Price, &a.MinAmount, &a.MaxAmount, &methods, &a.Status, &a.CreatedAt); err != nil {
+				log.Printf("advert row scan failed: %v", err)
+				continue
 			}
+			a.PaymentMethods = []string(methods)
+			adverts = append(adverts, a)
 		}
 		if adverts == nil {
 			adverts = []Advert{}
@@ -215,7 +305,7 @@ func (s *Server) getAdverts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"adverts": []Advert{}})
 }
 
-func (s *Server) createAdvert(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createAdvert(w http.ResponseWriter, r *http.Request, caller *caller) {
 	if !enforceFeature(w, GatedFeature) {
 		return
 	}
@@ -225,6 +315,9 @@ func (s *Server) createAdvert(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
+	// The advertiser is whoever the token says it is; a body field would let a
+	// caller post offers in someone else's name.
+	a.AdvertiserID = caller.UserID
 	if a.AdType != "sell" && a.AdType != "buy" {
 		http.Error(w, `{"error":"type must be 'sell' or 'buy'"}`, http.StatusBadRequest)
 		return
@@ -232,6 +325,15 @@ func (s *Server) createAdvert(w http.ResponseWriter, r *http.Request) {
 	if a.CryptoAsset == "" || a.FiatCurrency == "" || a.Price <= 0 {
 		http.Error(w, `{"error":"crypto_asset, fiat_currency, and positive price required"}`, http.StatusBadRequest)
 		return
+	}
+	if a.MinAmount <= 0 || a.MaxAmount <= 0 || a.MaxAmount < a.MinAmount {
+		http.Error(w, `{"error":"min_amount must be positive and no greater than max_amount"}`, http.StatusBadRequest)
+		return
+	}
+	// payment_methods is NOT NULL; a nil slice would be sent as NULL and the
+	// insert would fail.
+	if a.PaymentMethods == nil {
+		a.PaymentMethods = []string{}
 	}
 	a.ID = uuid.New().String()
 	a.Status = "active"
@@ -253,18 +355,27 @@ func (s *Server) createAdvert(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleOrders(w http.ResponseWriter, r *http.Request) {
+	caller, ok := requireCaller(w, r)
+	if !ok {
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
-		s.getOrders(w, r)
+		s.getOrders(w, r, caller)
 	case http.MethodPost:
-		s.createOrder(w, r)
+		s.createOrder(w, r, caller)
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Server) getOrders(w http.ResponseWriter, r *http.Request) {
-	takerID := r.URL.Query().Get("taker_id")
+func (s *Server) getOrders(w http.ResponseWriter, r *http.Request, caller *caller) {
+	takerID := caller.UserID
+	if isAdminRole(caller.Role) {
+		if q := r.URL.Query().Get("taker_id"); q != "" {
+			takerID = q
+		}
+	}
 	status := r.URL.Query().Get("status")
 
 	if s.db != nil {
@@ -305,14 +416,13 @@ func (s *Server) getOrders(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"orders": []Order{}})
 }
 
-func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, caller *caller) {
 	if !enforceFeature(w, GatedFeature) {
 		return
 	}
 
 	var req struct {
 		AdvertID      string  `json:"advert_id"`
-		TakerID       string  `json:"taker_id"`
 		FiatAmount    float64 `json:"fiat_amount"`
 		PaymentMethod string  `json:"payment_method"`
 	}
@@ -320,19 +430,27 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
-	if req.AdvertID == "" || req.TakerID == "" || req.FiatAmount <= 0 {
-		http.Error(w, `{"error":"advert_id, taker_id, and positive fiat_amount required"}`, http.StatusBadRequest)
+	if req.AdvertID == "" || req.FiatAmount <= 0 {
+		http.Error(w, `{"error":"advert_id and positive fiat_amount required"}`, http.StatusBadRequest)
 		return
 	}
+	takerID := caller.UserID
 
 	var advert Advert
+	var advertMethods pgTextArray
 	if s.db != nil {
 		err := s.db.QueryRow(
 			`SELECT id, advertiser_id, type, crypto_asset, fiat_currency, price, min_amount, max_amount, payment_methods, status, created_at FROM p2p_adverts WHERE id=$1 AND status='active'`,
 			req.AdvertID,
-		).Scan(&advert.ID, &advert.AdvertiserID, &advert.AdType, &advert.CryptoAsset, &advert.FiatCurrency, &advert.Price, &advert.MinAmount, &advert.MaxAmount, &advert.PaymentMethods, &advert.Status, &advert.CreatedAt)
-		if err != nil {
+		).Scan(&advert.ID, &advert.AdvertiserID, &advert.AdType, &advert.CryptoAsset, &advert.FiatCurrency, &advert.Price, &advert.MinAmount, &advert.MaxAmount, &advertMethods, &advert.Status, &advert.CreatedAt)
+		advert.PaymentMethods = []string(advertMethods)
+		if err == sql.ErrNoRows {
 			http.Error(w, `{"error":"advert not found or inactive"}`, http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("advert lookup failed: %v", err)
+			http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 			return
 		}
 		if req.FiatAmount < advert.MinAmount || req.FiatAmount > advert.MaxAmount {
@@ -346,17 +464,17 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request) {
 
 	cryptoAmount := req.FiatAmount / advert.Price
 	order := Order{
-		ID:           uuid.New().String(),
-		AdvertID:     req.AdvertID,
-		TakerID:      req.TakerID,
-		AdType:       advert.AdType,
-		CryptoAsset:  advert.CryptoAsset,
-		FiatAmount:   req.FiatAmount,
-		CryptoAmount: cryptoAmount,
-		Price:        advert.Price,
-		Status:       "pending",
+		ID:            uuid.New().String(),
+		AdvertID:      req.AdvertID,
+		TakerID:       takerID,
+		AdType:        advert.AdType,
+		CryptoAsset:   advert.CryptoAsset,
+		FiatAmount:    req.FiatAmount,
+		CryptoAmount:  cryptoAmount,
+		Price:         advert.Price,
+		Status:        "pending",
 		PaymentMethod: req.PaymentMethod,
-		CreatedAt:    time.Now(),
+		CreatedAt:     time.Now(),
 	}
 
 	_, err := s.db.Exec(
@@ -393,36 +511,95 @@ func (s *Server) handleOrderAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	caller, ok := requireCaller(w, r)
+	if !ok {
+		return
+	}
+
 	if s.db == nil {
 		http.Error(w, `{"error":"database unavailable"}`, http.StatusServiceUnavailable)
 		return
 	}
 
+	// Load the order and the advert behind it so the caller can be checked
+	// against the parties actually involved. Without this, any authenticated
+	// user could move any order through its lifecycle, including confirming
+	// payment on an order they are not part of.
+	var takerID, sellerID, currentStatus, advertType string
+	err := s.db.QueryRow(`
+		SELECT o.taker_id, a.advertiser_id, o.status, o.type
+		FROM p2p_orders o JOIN p2p_adverts a ON a.id = o.advert_id
+		WHERE o.id = $1`, orderID).Scan(&takerID, &sellerID, &currentStatus, &advertType)
+	if err == sql.ErrNoRows {
+		http.Error(w, `{"error":"order not found"}`, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	isAdmin := isAdminRole(caller.Role)
+	isTaker := caller.UserID == takerID
+	isSeller := caller.UserID == sellerID
+
+	// Which party may perform which transition. The seller of crypto is the
+	// advert owner for a sell advert and the taker for a buy advert.
 	var newStatus string
 	switch action {
 	case "pay":
+		// The fiat buyer marks the transfer sent.
+		if !isAdmin && !isTaker {
+			http.Error(w, `{"error":"not a party to this order"}`, http.StatusForbidden)
+			return
+		}
 		newStatus = "paid"
 	case "confirm":
+		// The crypto seller confirms receipt and releases escrow.
+		if !isAdmin && !(isSeller && currentStatus == "paid") {
+			http.Error(w, `{"error":"only the crypto seller can confirm a paid order"}`, http.StatusForbidden)
+			return
+		}
 		newStatus = "confirmed"
 	case "cancel":
+		if !isAdmin && !isTaker && !isSeller {
+			http.Error(w, `{"error":"not a party to this order"}`, http.StatusForbidden)
+			return
+		}
 		newStatus = "cancelled"
 	case "dispute":
+		if !isAdmin && !isTaker && !isSeller {
+			http.Error(w, `{"error":"not a party to this order"}`, http.StatusForbidden)
+			return
+		}
 		newStatus = "disputed"
 	default:
 		http.Error(w, `{"error":"unknown action"}`, http.StatusBadRequest)
 		return
 	}
 
-	result, err := s.db.Exec(`UPDATE p2p_orders SET status=$1 WHERE id=$2 AND status IN ('pending','paid')`, newStatus, orderID)
+	allowedFrom := map[string][]string{
+		"paid":      {"pending"},
+		"confirmed": {"paid"},
+		"cancelled": {"pending", "paid"},
+		"disputed":  {"pending", "paid"},
+	}[newStatus]
+
+	result, err := s.db.Exec(`
+		UPDATE p2p_orders SET status = $1
+		WHERE id = $2 AND status = ANY($3)`, newStatus, orderID, allowedFrom)
 	if err != nil {
 		http.Error(w, `{"error":"database error"}`, http.StatusInternalServerError)
 		return
 	}
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		http.Error(w, `{"error":"order not found or action not allowed in current state"}`, http.StatusNotFound)
+		http.Error(w, `{"error":"action not allowed in current state"}`, http.StatusConflict)
 		return
 	}
+
+	s.audit(r.Context(), orderID, caller.UserID, action, currentStatus, newStatus)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"order_id": orderID,
