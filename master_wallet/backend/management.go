@@ -15,12 +15,12 @@ import (
 // --- Policies ---
 
 type policyReq struct {
-	Name        string                 `json:"name" binding:"required"`
-	PolicyType  string                 `json:"policy_type" binding:"required"`
-	Conditions  map[string]interface{} `json:"conditions"`
-	Actions     map[string]interface{} `json:"actions"`
-	IsActive    *bool                  `json:"is_active"`
-	Priority    int                    `json:"priority"`
+	Name       string                 `json:"name" binding:"required"`
+	PolicyType string                 `json:"policy_type" binding:"required"`
+	Conditions map[string]interface{} `json:"conditions"`
+	Actions    map[string]interface{} `json:"actions"`
+	IsActive   *bool                  `json:"is_active"`
+	Priority   int                    `json:"priority"`
 }
 
 func (svc *Service) GetPolicies(c *gin.Context) {
@@ -206,6 +206,26 @@ type feeUpdateReq struct {
 // UpdateFeeConfig — PUT /:id/fees/:fid. The MasterWallet owner can update any
 // UserWallet fee (percentage / fixed / active state). Fee percentage is capped
 // at 20%, matching the client-side cap in master_wallet/rust local_fee_config.
+// Shared with statements_test.go; see the note above sqlInsertSignedTx.
+const (
+	sqlUpdateFeeConfig = `UPDATE fee_config
+		 SET fee_type = COALESCE(NULLIF($1, ''), fee_type),
+		     fee_percentage = COALESCE($2, fee_percentage),
+		     fee_fixed = COALESCE(NULLIF($3, '')::numeric, fee_fixed),
+		     is_active = COALESCE($4, is_active),
+		     updated_at = NOW()
+		 WHERE id = $5 AND master_wallet_id = $6`
+
+	sqlUpdateAutoSignRule = `UPDATE auto_sign_rules
+		 SET name = COALESCE(NULLIF($1, ''), name),
+		     rule_type = COALESCE(NULLIF($2, ''), rule_type),
+		     conditions = COALESCE($3, conditions),
+		     max_amount = COALESCE(NULLIF($4, '')::numeric, max_amount),
+		     is_active = COALESCE($5, is_active),
+		     updated_at = NOW()
+		 WHERE id = $6 AND master_wallet_id = $7`
+)
+
 func (svc *Service) UpdateFeeConfig(c *gin.Context) {
 	masterID, ok := svc.requireMasterWalletAccess(c)
 	if !ok {
@@ -222,14 +242,7 @@ func (svc *Service) UpdateFeeConfig(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	res, err := svc.store.db.Exec(ctx,
-		`UPDATE fee_config
-		 SET fee_type = COALESCE(NULLIF($1, ''), fee_type),
-		     fee_percentage = COALESCE($2, fee_percentage),
-		     fee_fixed = COALESCE(NULLIF($3, ''), fee_fixed),
-		     is_active = COALESCE($4, is_active),
-		     updated_at = NOW()
-		 WHERE id = $5 AND master_wallet_id = $6`,
+	res, err := svc.store.db.Exec(ctx, sqlUpdateFeeConfig,
 		req.FeeType, req.FeePercentage, req.FeeFixed, req.IsActive, fid, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -262,11 +275,11 @@ func (svc *Service) DeleteFeeConfig(c *gin.Context) {
 // --- Auto-sign rules ---
 
 type autoSignReq struct {
-	Name      string                 `json:"name" binding:"required"`
-	RuleType  string                 `json:"rule_type" binding:"required"`
+	Name       string                 `json:"name" binding:"required"`
+	RuleType   string                 `json:"rule_type" binding:"required"`
 	Conditions map[string]interface{} `json:"conditions"`
-	MaxAmount string                 `json:"max_amount"`
-	IsActive  *bool                  `json:"is_active"`
+	MaxAmount  string                 `json:"max_amount"`
+	IsActive   *bool                  `json:"is_active"`
 }
 
 func (svc *Service) GetAutoSignRules(c *gin.Context) {
@@ -352,15 +365,7 @@ func (svc *Service) UpdateAutoSignRule(c *gin.Context) {
 		conditions = detailsJSON(req.Conditions)
 	}
 	ctx := c.Request.Context()
-	res, err := svc.store.db.Exec(ctx,
-		`UPDATE auto_sign_rules
-		 SET name = COALESCE(NULLIF($1, ''), name),
-		     rule_type = COALESCE(NULLIF($2, ''), rule_type),
-		     conditions = COALESCE($3, conditions),
-		     max_amount = COALESCE(NULLIF($4, ''), max_amount),
-		     is_active = COALESCE($5, is_active),
-		     updated_at = NOW()
-		 WHERE id = $6 AND master_wallet_id = $7`,
+	res, err := svc.store.db.Exec(ctx, sqlUpdateAutoSignRule,
 		req.Name, req.RuleType, conditions, req.MaxAmount, req.IsActive, rid, masterID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -464,11 +469,11 @@ func (svc *Service) CreateUser(c *gin.Context) {
 // userUpdateReq is the partial-update form of userReq. Password is optional:
 // when supplied it is re-hashed (bcrypt) and rotated.
 type userUpdateReq struct {
-	Email    string `json:"email"`
+	Email    string  `json:"email"`
 	Name     *string `json:"name"`
-	Role     string `json:"role"`
+	Role     string  `json:"role"`
 	IsActive *bool   `json:"is_active"`
-	Password string `json:"password"`
+	Password string  `json:"password"`
 }
 
 // validMWRoles is the closed set of roles a master-wallet user may hold.

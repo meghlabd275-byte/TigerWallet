@@ -422,9 +422,7 @@ func (svc *Service) SignTransaction(c *gin.Context) {
 	// Persist the transaction record.
 	txRec := uuid.New().String()
 	ctx := c.Request.Context()
-	_, _ = svc.store.db.Exec(ctx,
-		`INSERT INTO transactions (id, master_wallet_id, tx_hash, tx_type, status, blockchain, from_address, to_address, amount, token_symbol, chain_id)
-		 VALUES ($1,$2,$3,'transfer','pending',$4,$5,$6,$7,$8)`,
+	_, _ = svc.store.db.Exec(ctx, sqlInsertSignedTx,
 		txRec, id, txHash, "ethereum", fromAddr, req.To, req.Amount, req.Token, chainID)
 	svc.store.audit(ctx, id, "transaction.sign", "transaction", "user", currentUserID(c), "transaction", txRec, "high", gin.H{"to": req.To, "amount": req.Amount})
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "broadcast", "from": fromAddr, "chain_id": chainID})
@@ -744,9 +742,7 @@ func (svc *Service) TransferFromSubWallet(c *gin.Context) {
 		return
 	}
 	txRec := uuid.New().String()
-	_, _ = svc.store.db.Exec(ctx,
-		`INSERT INTO transactions (id, master_wallet_id, sub_wallet_id, tx_hash, tx_type, status, blockchain, from_address, to_address, amount, token_symbol, chain_id)
-		 VALUES ($1,$2,$3,$4,'transfer','pending',$5,$6,$7,$8,$9)`,
+	_, _ = svc.store.db.Exec(ctx, sqlInsertSubWalletSignedTx,
 		txRec, masterID, id, txHash, "ethereum", fromAddr, req.To, req.Amount, req.Token, chainID)
 	c.JSON(http.StatusOK, gin.H{"transaction_hash": txHash, "status": "pending"})
 }
@@ -855,6 +851,25 @@ type createTxReq struct {
 	ChainID     int64  `json:"chain_id"`
 }
 
+// Statements shared with statements_test.go. Keeping them here means the test
+// executes the statement the handler runs, so a change that breaks it fails the
+// test rather than passing against a stale copy.
+const (
+	sqlInsertSignedTx = `INSERT INTO transactions (id, master_wallet_id, tx_hash, tx_type, status, blockchain, from_address, to_address, amount, token_symbol, chain_id)
+		 VALUES ($1,$2,$3,'transfer','pending',$4,$5,$6,$7,$8,$9)`
+
+	sqlInsertSubWalletSignedTx = `INSERT INTO transactions (id, master_wallet_id, sub_wallet_id, tx_hash, tx_type, status, blockchain, from_address, to_address, amount, token_symbol, chain_id)
+		 VALUES ($1,$2,$3,$4,'transfer','pending',$5,$6,$7,$8,$9,$10)`
+
+	sqlInsertApprovalRequest = `INSERT INTO approval_requests (transaction_id, required_approvals, current_approvals, metadata)
+		 VALUES ($1,$2,0,$3)`
+
+	sqlApprovalThreshold = `SELECT COALESCE(ar.required_approvals, 1)
+		   FROM transactions t
+		   LEFT JOIN approval_requests ar ON ar.transaction_id = t.id
+		  WHERE t.id = $1 AND t.master_wallet_id = $2`
+)
+
 func (svc *Service) CreateTransaction(c *gin.Context) {
 	masterID, ok := svc.requireMasterWalletAccess(c)
 	if !ok {
@@ -910,9 +925,7 @@ func (svc *Service) CreateTransaction(c *gin.Context) {
 	if threshold < 1 {
 		threshold = 1
 	}
-	if _, err := svc.store.db.Exec(ctx,
-		`INSERT INTO approval_requests (transaction_id, required_approvals, current_approvals, metadata)
-		 VALUES ($1,$2,0,$3)`,
+	if _, err := svc.store.db.Exec(ctx, sqlInsertApprovalRequest,
 		txRec, threshold, string(metadata)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create approval request"})
 		return
@@ -940,11 +953,7 @@ func (svc *Service) ApproveTransaction(c *gin.Context) {
 	// The transaction must belong to this master wallet, otherwise a member of one
 	// tenant could approve a transaction id belonging to another.
 	var requiredApprovals int
-	err := svc.store.db.QueryRow(ctx,
-		`SELECT COALESCE(ar.required_approvals, 1)
-		 FROM transactions t
-		 LEFT JOIN approval_requests ar ON ar.transaction_id = t.id
-		 WHERE t.id = $1 AND t.master_wallet_id = $2`, txID, masterID).Scan(&requiredApprovals)
+	err := svc.store.db.QueryRow(ctx, sqlApprovalThreshold, txID, masterID).Scan(&requiredApprovals)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
 		return

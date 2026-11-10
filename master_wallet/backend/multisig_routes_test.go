@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -101,6 +102,54 @@ func TestMultisigWalletHandlersAreOwnerScoped(t *testing.T) {
 	}
 }
 
+// constStringLiterals maps every package-level string constant in file to its
+// value. Queries live in constants so tests and handlers share one definition,
+// so a body-only scan would miss the SQL a handler actually runs.
+func constStringLiterals(file string) map[string]string {
+	out := map[string]string{}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, file, nil, 0)
+	if err != nil {
+		return out
+	}
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok || len(vs.Names) != len(vs.Values) {
+				continue
+			}
+			for i, name := range vs.Names {
+				lit, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					continue
+				}
+				if v, err := strconv.Unquote(lit.Value); err == nil {
+					out[name.Name] = v
+				}
+			}
+		}
+	}
+	return out
+}
+
+// referencedConsts returns the values of the package constants whose names
+// appear in src, so a caller can search a handler together with its queries.
+func referencedConsts(file, src string) string {
+	consts := constStringLiterals(file)
+	var b strings.Builder
+	for name, val := range consts {
+		if strings.Contains(src, name) {
+			b.WriteString("\n")
+			b.WriteString(val)
+		}
+	}
+	return b.String()
+}
+
 func funcBody(t *testing.T, file, funcName string) string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -113,7 +162,8 @@ func funcBody(t *testing.T, file, funcName string) string {
 		if !ok || fd.Name.Name != funcName {
 			continue
 		}
-		return srcBetween(file, fset.Position(fd.Pos()).Offset, fset.Position(fd.End()).Offset)
+		body := srcBetween(file, fset.Position(fd.Pos()).Offset, fset.Position(fd.End()).Offset)
+		return body + referencedConsts(file, body)
 	}
 	t.Fatalf("%s not found", funcName)
 	return ""

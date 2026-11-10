@@ -729,26 +729,41 @@ func (a *AutoSigner) releaseClaim(ctx context.Context, txID string, refusal bool
 // an incremented attempt counter and exponential hold; once the attempts
 // ceiling is reached the row lands in 'failed' with the real error message —
 // it never silently strands in an unretryable state. Returns the final status.
+// Shared with statements_test.go; see the note above sqlInsertSignedTx.
+const (
+	sqlAutoSignFail = `UPDATE transactions SET status='failed', error_message=$2, updated_at=NOW(),
+		     metadata = COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('auto_sign_attempts', $3::int)
+		         - 'auto_sign_claim' - 'auto_sign_claimed_at'
+		 WHERE id=$1`
+
+	sqlAutoSignRequeue = `UPDATE transactions SET status='pending', error_message=$2, updated_at=NOW(),
+		     metadata = COALESCE(metadata,'{}'::jsonb)
+		         || jsonb_build_object('auto_sign_attempts', $3::int, 'auto_sign_hold_until', (NOW() + $4::interval)::text)
+		         - 'auto_sign_claim' - 'auto_sign_claimed_at'
+		 WHERE id=$1`
+
+	sqlAutoSignAttempts = `SELECT COALESCE((metadata->>'auto_sign_attempts')::int, 0) FROM transactions WHERE id=$1`
+
+	sqlActiveSignerForWallet = `SELECT id::text FROM signers
+		 WHERE master_wallet_id = $1 AND is_active
+		 ORDER BY CASE signer_type WHEN 'owner' THEN 0 WHEN 'cosigner' THEN 1 ELSE 2 END, created_at
+		 LIMIT 1`
+
+	sqlRecordSignature = `INSERT INTO transaction_signatures (transaction_id, signer_id, signature_status, approved_at)
+		 VALUES ($1, $2, 'signed', NOW())
+		 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='signed', approved_at=NOW()`
+)
+
 func (a *AutoSigner) requeueOrFail(ctx context.Context, tx *pendingAutoTx, signErr error) string {
 	var attempts int
-	_ = a.svc.store.db.QueryRow(ctx,
-		`SELECT COALESCE((metadata->>'auto_sign_attempts')::int, 0) FROM transactions WHERE id=$1`, tx.ID).Scan(&attempts)
+	_ = a.svc.store.db.QueryRow(ctx, sqlAutoSignAttempts, tx.ID).Scan(&attempts)
 	attempts++
 	if attempts >= a.maxAttempts {
-		_, _ = a.svc.store.db.Exec(ctx,
-			`UPDATE transactions SET status='failed', error_message=$2, updated_at=NOW(),
-			     metadata = COALESCE(metadata,'{}'::jsonb) || jsonb_build_object('auto_sign_attempts', $3)
-			         - 'auto_sign_claim' - 'auto_sign_claimed_at'
-			 WHERE id=$1`, tx.ID, signErr.Error(), attempts)
+		_, _ = a.svc.store.db.Exec(ctx, sqlAutoSignFail, tx.ID, signErr.Error(), attempts)
 		return "failed"
 	}
 	hold := holdDuration(attempts, false)
-	_, _ = a.svc.store.db.Exec(ctx,
-		`UPDATE transactions SET status='pending', error_message=$2, updated_at=NOW(),
-		     metadata = COALESCE(metadata,'{}'::jsonb)
-		         || jsonb_build_object('auto_sign_attempts', $3, 'auto_sign_hold_until', (NOW() + $4::interval)::text)
-		         - 'auto_sign_claim' - 'auto_sign_claimed_at'
-		 WHERE id=$1`, tx.ID, signErr.Error(), attempts, hold.String())
+	_, _ = a.svc.store.db.Exec(ctx, sqlAutoSignRequeue, tx.ID, signErr.Error(), attempts, hold.String())
 	return "pending"
 }
 
@@ -806,10 +821,7 @@ func (a *AutoSigner) processTx(ctx context.Context, tx *pendingAutoTx, pol *auto
 	// daemon signs on behalf of the master wallet's owner signer, which
 	// CreateMasterWallet registers; approval_requests are always resolved.
 	var signerID string
-	if err := a.svc.store.db.QueryRow(ctx,
-		`SELECT id::text FROM signers WHERE master_wallet_id = $1 AND is_active ORDER BY
-			CASE signer_type WHEN 'owner' THEN 0 WHEN 'cosigner' THEN 1 ELSE 2 END, created_at
-		 LIMIT 1`, tx.MasterWalletID).Scan(&signerID); err != nil {
+	if err := a.svc.store.db.QueryRow(ctx, sqlActiveSignerForWallet, tx.MasterWalletID).Scan(&signerID); err != nil {
 		// Without a signer row there is nothing to attribute the approval to.
 		// Refuse rather than sign on an unattributable approval, and release the
 		// claim so the row is retried once a signer exists.
@@ -818,10 +830,7 @@ func (a *AutoSigner) processTx(ctx context.Context, tx *pendingAutoTx, pol *auto
 		a.releaseClaim(ctx, tx.ID, true, 0)
 		return
 	}
-	if _, err := a.svc.store.db.Exec(ctx,
-		`INSERT INTO transaction_signatures (transaction_id, signer_id, signature_status, approved_at)
-		 VALUES ($1, $2, 'signed', NOW())
-		 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='signed', approved_at=NOW()`,
+	if _, err := a.svc.store.db.Exec(ctx, sqlRecordSignature,
 		tx.ID, signerID); err != nil {
 		a.releaseClaim(ctx, tx.ID, false, 0)
 		return
