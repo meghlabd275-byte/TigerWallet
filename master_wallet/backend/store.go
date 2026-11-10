@@ -12,9 +12,9 @@ import (
 	"log"
 	"time"
 
+	redislib "github.com/go-redis/redis/v8"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	redislib "github.com/go-redis/redis/v8"
 )
 
 // Store wraps the DB pool + Redis client.
@@ -147,6 +147,21 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`,
+		// Declared after mw_users because user_id references it.
+		`CREATE TABLE IF NOT EXISTS signers (
+			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			master_wallet_id UUID NOT NULL REFERENCES master_wallets(id) ON DELETE CASCADE,
+			user_id UUID REFERENCES mw_users(id) ON DELETE SET NULL,
+			label VARCHAR(255) NOT NULL DEFAULT '',
+			signer_type VARCHAR(30) NOT NULL DEFAULT 'owner',
+			public_key TEXT NOT NULL DEFAULT '',
+			address VARCHAR(255) NOT NULL DEFAULT '',
+			is_active BOOLEAN NOT NULL DEFAULT true,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_signers_wallet_user ON signers(master_wallet_id, user_id) WHERE user_id IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_signers_wallet ON signers(master_wallet_id)`,
 		`CREATE TABLE IF NOT EXISTS transactions (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			master_wallet_id UUID NOT NULL REFERENCES master_wallets(id) ON DELETE RESTRICT,

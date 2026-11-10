@@ -193,6 +193,14 @@ func (svc *Service) CreateMasterWallet(c *gin.Context) {
 	}
 	// Link the user to this wallet.
 	_, _ = svc.store.db.Exec(ctx, `UPDATE mw_users SET master_wallet_id = $1 WHERE id = $2`, walletID, userID)
+	// Register the creator as the wallet's owner signer. The auto-signer records
+	// its approvals in transaction_signatures against a signer row, so without
+	// this the approval counter would be updated with no signature behind it.
+	_, _ = svc.store.db.Exec(ctx,
+		`INSERT INTO signers (master_wallet_id, user_id, label, signer_type, address)
+		 VALUES ($1,$2,$3,'owner',$4)
+		 ON CONFLICT (master_wallet_id, user_id) WHERE user_id IS NOT NULL DO NOTHING`,
+		walletID, nilIfEmpty(userID), "Owner", address.Hex())
 	svc.store.audit(ctx, walletID, "master_wallet.create", "wallet", "user", userID, "master_wallet", walletID, "normal", gin.H{"name": req.Name, "blockchain": chain.Blockchain})
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -891,6 +899,22 @@ func (svc *Service) CreateTransaction(c *gin.Context) {
 		txRec, masterID, nilIfEmpty(req.SubWalletID), req.TxHash, req.TxType, status, fromAddr, req.To, req.Amount, req.Token, chainID, string(metadata))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// An approval request is what ApproveTransaction and the auto-signer update, and
+	// what carries the wallet's approval threshold. Creating it here keeps the two
+	// halves of the flow on the same row instead of updating a request that was
+	// never inserted.
+	var threshold int
+	_ = svc.store.db.QueryRow(ctx, `SELECT threshold FROM master_wallets WHERE id = $1`, masterID).Scan(&threshold)
+	if threshold < 1 {
+		threshold = 1
+	}
+	if _, err := svc.store.db.Exec(ctx,
+		`INSERT INTO approval_requests (transaction_id, required_approvals, current_approvals, metadata)
+		 VALUES ($1,$2,0,$3)`,
+		txRec, threshold, string(metadata)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create approval request"})
 		return
 	}
 	svc.store.audit(ctx, masterID, "transaction.create", "transaction", "user", currentUserID(c), "transaction", txRec, "normal", gin.H{"to": req.To, "amount": req.Amount})

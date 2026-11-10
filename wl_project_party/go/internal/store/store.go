@@ -75,8 +75,6 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS total_supply NUMERIC(36,18) DEFAULT 0`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`,
 		`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS owner_id UUID`,
-		`ALTER TABLE mm_orders ADD COLUMN IF NOT EXISTS owner_id UUID`,
-		`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS idx_tokens_featured ON tokens(is_featured)`,
 
 		// Launchpad contributions (atomic contribute/claim/cancel workflow).
@@ -91,6 +89,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`CREATE TABLE IF NOT EXISTS mm_orders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE, side VARCHAR(8) NOT NULL, price NUMERIC(36,18) NOT NULL DEFAULT 0, quantity NUMERIC(36,18) NOT NULL DEFAULT 0, remaining NUMERIC(36,18) NOT NULL DEFAULT 0, status VARCHAR(16) NOT NULL DEFAULT 'pending', filled_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_mm_orders_token ON mm_orders(token_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_mm_orders_status ON mm_orders(status)`,
+		`ALTER TABLE mm_orders ADD COLUMN IF NOT EXISTS owner_id UUID`,
 
 		// Liquidity positions (real LP records for /liquidity add/remove + aggregate).
 		`CREATE TABLE IF NOT EXISTS liquidity_positions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), token_id UUID NOT NULL REFERENCES tokens(id) ON DELETE CASCADE, user_id UUID REFERENCES users(id) ON DELETE SET NULL, quote_token VARCHAR(64), lp_tokens NUMERIC(36,18) NOT NULL DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW())`,
@@ -111,6 +110,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		// Fee payments (real on-chain tx_hash recorded, not fabricated).
 		`CREATE TABLE IF NOT EXISTS fee_payments (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), token_id UUID REFERENCES tokens(id) ON DELETE SET NULL, user_id UUID REFERENCES users(id) ON DELETE SET NULL, amount NUMERIC(36,18) NOT NULL DEFAULT 0, currency VARCHAR(16) DEFAULT 'USD', payment_method VARCHAR(64), tx_hash VARCHAR(128), status VARCHAR(32) NOT NULL DEFAULT 'completed', created_at TIMESTAMPTZ DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_fee_payments_token ON fee_payments(token_id)`,
+		`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ`,
 
 		// Fee schedule (real fee_config rows drive /calculate, no hardcoded fallback).
 		`CREATE TABLE IF NOT EXISTS fee_schedule (fee_type VARCHAR(64) PRIMARY KEY, amount NUMERIC(18,4) NOT NULL DEFAULT 0)`,

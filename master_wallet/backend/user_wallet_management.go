@@ -1386,15 +1386,19 @@ func (svc *Service) getUserChainRPC(chainID int64, chainType string) string {
 	return rpc
 }
 
-// auditAction records an audit log entry.
+// auditAction records an audit log entry. audit_logs has no user_id or action
+// column, so the actor is stored in actor_id and the action in event_type; the
+// free-form text goes into details. A failed write is reported rather than
+// dropped, because an audit trail with silent gaps is worse than none.
 func (svc *Service) auditAction(masterID, userID, action, details string) {
 	ctx := context.Background()
-	if store == nil {
+	if svc.store == nil || svc.store.db == nil {
 		return
 	}
-	_, err := store.DB().Exec(ctx, `
-		INSERT INTO audit_logs (master_wallet_id, user_id, action, details)
-		VALUES ($1,$2,$3,$4)`, masterID, userID, action, details)
+	_, err := svc.store.db.Exec(ctx, `
+		INSERT INTO audit_logs (master_wallet_id, event_type, event_category, actor_type, actor_id, target_type, severity, details)
+		VALUES ($1,$2,'wallet_management','user',$3,$4,'normal',$5)`,
+		nilIfEmpty(masterID), action, userID, action, detailsJSON(map[string]interface{}{"detail": details}))
 	if err != nil {
 		log.Printf("WARN: audit log: %v", err)
 	}

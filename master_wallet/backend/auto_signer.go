@@ -803,29 +803,38 @@ func (a *AutoSigner) processTx(ctx context.Context, tx *pendingAutoTx, pol *auto
 	}
 
 	// Record the automatic approval (real rows in the existing schema). The
-	// daemon signs on behalf of the master wallet's owner signer when one is
-	// registered; approval_requests are always resolved.
+	// daemon signs on behalf of the master wallet's owner signer, which
+	// CreateMasterWallet registers; approval_requests are always resolved.
 	var signerID string
-	_ = a.svc.store.db.QueryRow(ctx,
-		`SELECT id::text FROM signers WHERE master_wallet_id = $1 ORDER BY
+	if err := a.svc.store.db.QueryRow(ctx,
+		`SELECT id::text FROM signers WHERE master_wallet_id = $1 AND is_active ORDER BY
 			CASE signer_type WHEN 'owner' THEN 0 WHEN 'cosigner' THEN 1 ELSE 2 END, created_at
-		 LIMIT 1`, tx.MasterWalletID).Scan(&signerID)
-	if signerID != "" {
-		_, _ = a.svc.store.db.Exec(ctx,
-			`INSERT INTO transaction_signatures (transaction_id, signer_id, signature_status, approved_at)
-			 VALUES ($1, $2, 'signed', NOW())
-			 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='signed', approved_at=NOW()`,
-			tx.ID, signerID)
+		 LIMIT 1`, tx.MasterWalletID).Scan(&signerID); err != nil {
+		// Without a signer row there is nothing to attribute the approval to.
+		// Refuse rather than sign on an unattributable approval, and release the
+		// claim so the row is retried once a signer exists.
+		a.svc.store.audit(ctx, tx.MasterWalletID, "transaction.auto_sign_blocked", "transaction", "service", "auto-signer",
+			"transaction", tx.ID, "high", gin.H{"reason": "no active signer registered for master wallet"})
+		a.releaseClaim(ctx, tx.ID, true, 0)
+		return
+	}
+	if _, err := a.svc.store.db.Exec(ctx,
+		`INSERT INTO transaction_signatures (transaction_id, signer_id, signature_status, approved_at)
+		 VALUES ($1, $2, 'signed', NOW())
+		 ON CONFLICT (transaction_id, signer_id) DO UPDATE SET signature_status='signed', approved_at=NOW()`,
+		tx.ID, signerID); err != nil {
+		a.releaseClaim(ctx, tx.ID, false, 0)
+		return
 	}
 	// Set the counter from the signed rows rather than incrementing it. A manual
 	// approval may already exist for this transaction, and a blind increment would
 	// double-count it.
 	var autoApprovals int
-	_ = a.svc.store.db.QueryRow(ctx,
+	if err := a.svc.store.db.QueryRow(ctx,
 		`SELECT COUNT(*) FROM transaction_signatures WHERE transaction_id = $1 AND signature_status = 'signed'`,
-		tx.ID).Scan(&autoApprovals)
-	if autoApprovals < 1 {
-		autoApprovals = 1
+		tx.ID).Scan(&autoApprovals); err != nil {
+		a.releaseClaim(ctx, tx.ID, false, 0)
+		return
 	}
 	_, _ = a.svc.store.db.Exec(ctx,
 		`UPDATE approval_requests SET current_approvals = $2, is_approved = true, resolved_at = NOW()
