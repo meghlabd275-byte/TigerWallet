@@ -21,6 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 type Config struct {
@@ -124,6 +125,9 @@ func (ns *NotificationService) SendNotification(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !ownedByCaller(c, req.UserID) {
+		return
+	}
 	channel := req.Channel
 	if channel == "" {
 		channel = "in_app"
@@ -163,6 +167,9 @@ func (ns *NotificationService) SendNotification(c *gin.Context) {
 
 func (ns *NotificationService) GetNotifications(c *gin.Context) {
 	userID := c.Param("user_id")
+	if !ownedByCaller(c, userID) {
+		return
+	}
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	notifs, err := ns.store.listForUser(c.Request.Context(), userID, limit)
 	if err != nil {
@@ -176,11 +183,7 @@ func (ns *NotificationService) GetNotifications(c *gin.Context) {
 // user cannot modify another user's notification by guessing its id.
 func (ns *NotificationService) MarkAsRead(c *gin.Context) {
 	notifID := c.Param("id")
-	userID := c.Query("user_id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
-		return
-	}
+	userID := callerID(c)
 	ok, err := ns.store.markRead(c.Request.Context(), notifID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot update notification"})
@@ -195,6 +198,9 @@ func (ns *NotificationService) MarkAsRead(c *gin.Context) {
 
 func (ns *NotificationService) MarkAllAsRead(c *gin.Context) {
 	userID := c.Param("user_id")
+	if !ownedByCaller(c, userID) {
+		return
+	}
 	count, err := ns.store.markAllRead(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot update notifications"})
@@ -205,11 +211,7 @@ func (ns *NotificationService) MarkAllAsRead(c *gin.Context) {
 
 func (ns *NotificationService) DeleteNotification(c *gin.Context) {
 	notifID := c.Param("id")
-	userID := c.Query("user_id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
-		return
-	}
+	userID := callerID(c)
 	ok, err := ns.store.delete(c.Request.Context(), notifID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot delete notification"})
@@ -224,6 +226,9 @@ func (ns *NotificationService) DeleteNotification(c *gin.Context) {
 
 func (ns *NotificationService) ClearAll(c *gin.Context) {
 	userID := c.Param("user_id")
+	if !ownedByCaller(c, userID) {
+		return
+	}
 	removed, err := ns.store.clearForUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot clear notifications"})
@@ -240,6 +245,9 @@ func (ns *NotificationService) Subscribe(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !ownedByCaller(c, req.UserID) {
 		return
 	}
 	sub := &Subscription{
@@ -259,11 +267,7 @@ func (ns *NotificationService) Subscribe(c *gin.Context) {
 
 func (ns *NotificationService) Unsubscribe(c *gin.Context) {
 	subID := c.Param("id")
-	userID := c.Query("user_id")
-	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
-		return
-	}
+	userID := callerID(c)
 	ok, err := ns.store.deleteSubscription(c.Request.Context(), subID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "cannot remove subscription"})
@@ -274,6 +278,71 @@ func (ns *NotificationService) Unsubscribe(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "status": "unsubscribed"})
+}
+
+// requireCaller authenticates the request and stores the caller in the
+// context. A missing or invalid token is refused before the handler runs.
+func requireCaller() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		secret, err := sharedauth.Secret()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is not configured"})
+			return
+		}
+		token, ok := sharedauth.Bearer(c.Request)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+		id, err := sharedauth.Parse(secret, token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		c.Set("callerID", id.UserID)
+		c.Set("callerRole", id.Role)
+		c.Next()
+	}
+}
+
+// requireAdminOrService restricts a group to callers allowed to address other
+// users. This service does not mint service tokens of its own, so only admin
+// roles pass.
+func requireAdminOrService() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("callerRole")
+		r, _ := role.(string)
+		if r != "admin" && r != "super_admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin privileges required"})
+			return
+		}
+		c.Next()
+	}
+}
+
+// callerID returns the authenticated user id, or "" when absent.
+func callerID(c *gin.Context) string {
+	v, _ := c.Get("callerID")
+	s, _ := v.(string)
+	return s
+}
+
+// callerIsAdmin reports whether the authenticated caller holds an admin role.
+func callerIsAdmin(c *gin.Context) bool {
+	v, _ := c.Get("callerRole")
+	r, _ := v.(string)
+	return r == "admin" || r == "super_admin"
+}
+
+// ownedByCaller reports whether userID is the authenticated caller. An admin
+// may act on any user. When it does not match, a 403 is written and the handler
+// must return.
+func ownedByCaller(c *gin.Context, userID string) bool {
+	if callerIsAdmin(c) || userID == callerID(c) {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not permitted for this user"})
+	return false
 }
 
 // SendBatch fans a message out to the given users, attempting delivery for
@@ -293,6 +362,22 @@ func (ns *NotificationService) SendBatch(c *gin.Context) {
 	if len(req.UserIDs) > 10000 {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "batch is limited to 10000 recipients"})
 		return
+	}
+	if !callerIsAdmin(c) {
+		for _, uid := range req.UserIDs {
+			if uid != callerID(c) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "not permitted for this user"})
+				return
+			}
+		}
+	}
+	if !callerIsAdmin(c) {
+		for _, uid := range req.UserIDs {
+			if uid != callerID(c) {
+				c.JSON(http.StatusForbidden, gin.H{"error": "not permitted for this user"})
+				return
+			}
+		}
 	}
 	channel := req.Channel
 	if channel == "" {
@@ -417,16 +502,29 @@ func main() {
 
 	api := r.Group("/api/v1/notifications")
 	{
-		api.POST("/send", ns.SendNotification)
-		api.POST("/batch", ns.SendBatch)
-		api.GET("/users/:user_id", ns.GetNotifications)
-		api.PUT("/users/:user_id/read", ns.MarkAllAsRead)
-		api.PUT("/users/:user_id/clear", ns.ClearAll)
-		api.PUT("/:id/read", ns.MarkAsRead)
-		api.DELETE("/:id", ns.DeleteNotification)
-		api.POST("/subscribe", ns.Subscribe)
-		api.DELETE("/subscribe/:id", ns.Unsubscribe)
-		api.GET("/templates", ns.GetTemplates)
+		// Delivery is internal: only a service or an admin may push to another
+		// user. A regular user may not address an arbitrary user_id.
+		deliver := api.Group("")
+		deliver.Use(requireCaller())
+		deliver.Use(requireAdminOrService())
+		{
+			deliver.POST("/send", ns.SendNotification)
+			deliver.POST("/batch", ns.SendBatch)
+			deliver.GET("/templates", ns.GetTemplates)
+		}
+
+		// Everything below is scoped to the authenticated user's own inbox.
+		own := api.Group("")
+		own.Use(requireCaller())
+		{
+			own.GET("/users/:user_id", ns.GetNotifications)
+			own.PUT("/users/:user_id/read", ns.MarkAllAsRead)
+			own.PUT("/users/:user_id/clear", ns.ClearAll)
+			own.PUT("/:id/read", ns.MarkAsRead)
+			own.DELETE("/:id", ns.DeleteNotification)
+			own.POST("/subscribe", ns.Subscribe)
+			own.DELETE("/subscribe/:id", ns.Unsubscribe)
+		}
 	}
 
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: r}

@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 // ============================================================================
@@ -520,8 +521,61 @@ func (ss *SwapService) AddLiquidity(c *gin.Context) {
 }
 
 // Get user's liquidity positions
+// requireCaller authenticates the request and stores the caller in the
+// context. A missing or invalid token is refused before the handler runs.
+func requireCaller() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		secret, err := sharedauth.Secret()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is not configured"})
+			return
+		}
+		token, ok := sharedauth.Bearer(c.Request)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+		id, err := sharedauth.Parse(secret, token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		c.Set("callerID", id.UserID)
+		c.Set("callerRole", id.Role)
+		c.Next()
+	}
+}
+
+// callerID returns the authenticated user id, or "" when absent.
+func callerID(c *gin.Context) string {
+	v, _ := c.Get("callerID")
+	s, _ := v.(string)
+	return s
+}
+
+// callerIsAdmin reports whether the authenticated caller holds an admin role.
+func callerIsAdmin(c *gin.Context) bool {
+	v, _ := c.Get("callerRole")
+	r, _ := v.(string)
+	return r == "admin" || r == "super_admin"
+}
+
+// ownedByCaller reports whether userID is the authenticated caller. An admin
+// may act on any user. When it does not match, a 403 is written and the
+// handler must return.
+func ownedByCaller(c *gin.Context, userID string) bool {
+	if callerIsAdmin(c) || userID == callerID(c) {
+		return true
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not permitted for this user"})
+	return false
+}
+
 func (ss *SwapService) GetUserPools(c *gin.Context) {
 	userID := c.Param("user_id")
+	if !ownedByCaller(c, userID) {
+		return
+	}
 
 	pools := make([]*LiquidityPool, 0)
 	for _, pool := range ss.pools {
@@ -852,8 +906,11 @@ func main() {
 	r.GET("/api/v1/swap/popular", ss.GetPopularTokens)
 	r.GET("/api/v1/swap/trending", ss.GetTrendingPairs)
 
-	// Protected routes
+	// Token and pair listings above are public. Everything here acts on behalf
+	// of a user, so it requires a token; a user id taken from the body or the
+	// path is only ever used to check it matches the caller.
 	api := r.Group("/api/v1/swap")
+	api.Use(requireCaller())
 	{
 		api.POST("/quote", ss.GetQuote)
 		api.POST("/execute", ss.ExecuteSwap)

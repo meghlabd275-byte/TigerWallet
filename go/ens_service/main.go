@@ -21,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 // ============================================================================
@@ -403,7 +404,7 @@ func (s *ENSService) RegisterRoutes(r *gin.Engine) {
 
 	api := r.Group("/api/v1/ens")
 	{
-		// Resolution
+		// Resolution and record reads are public: they are pure chain reads.
 		api.GET("/resolve/:name", s.handleResolve)
 		api.GET("/reverse/:address", s.handleReverseResolve)
 
@@ -413,18 +414,63 @@ func (s *ENSService) RegisterRoutes(r *gin.Engine) {
 		api.GET("/text/:name/:key", s.handleGetTextRecord)
 		api.GET("/content/:name", s.handleGetContentHash)
 
-		// Updates (would require auth in production)
-		api.POST("/address", s.handleSetAddress)
-		api.POST("/text", s.handleSetTextRecord)
-		api.POST("/content", s.handleSetContentHash)
-
 		// Batch
 		api.POST("/batch", s.handleBatchResolve)
 
 		// Domains
 		api.GET("/domains/:owner", s.handleGetDomains)
 		api.GET("/domain/:name", s.handleGetDomain)
+
+		// Record writes need an authenticated owner. The handlers verify that the
+		// caller owns the name before any write is attempted.
+		writes := api.Group("")
+		writes.Use(requireCaller())
+		{
+			writes.POST("/address", s.handleSetAddress)
+			writes.POST("/text", s.handleSetTextRecord)
+			writes.POST("/content", s.handleSetContentHash)
+		}
 	}
+}
+
+// requireCaller authenticates the request and stores the caller in the context.
+// A missing or invalid token is refused before the handler runs.
+func requireCaller() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		secret, err := sharedauth.Secret()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is not configured"})
+			return
+		}
+		token, ok := sharedauth.Bearer(c.Request)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+		id, err := sharedauth.Parse(secret, token)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		c.Set("callerID", id.UserID)
+		c.Set("callerRole", id.Role)
+		c.Next()
+	}
+}
+
+// callerOwnsName reports whether the authenticated caller controls the name.
+// An admin may act on any name.
+func (s *ENSService) callerOwnsName(c *gin.Context, name string) bool {
+	role, _ := c.Get("callerRole")
+	if r, _ := role.(string); r == "admin" || r == "super_admin" {
+		return true
+	}
+	callerID, _ := c.Get("callerID")
+	owner, err := s.GetOwner(name)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(owner, callerID.(string))
 }
 
 func (s *ENSService) handleResolve(c *gin.Context) {
@@ -512,11 +558,12 @@ func (s *ENSService) handleSetAddress(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if errors.Is(err, errENSWriteUnsupported) {
-			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
-			return
-		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !s.callerOwnsName(c, req.Name) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "caller does not own this name"})
 		return
 	}
 
@@ -540,11 +587,12 @@ func (s *ENSService) handleSetTextRecord(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if errors.Is(err, errENSWriteUnsupported) {
-			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
-			return
-		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !s.callerOwnsName(c, req.Name) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "caller does not own this name"})
 		return
 	}
 
@@ -567,11 +615,12 @@ func (s *ENSService) handleSetContentHash(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		if errors.Is(err, errENSWriteUnsupported) {
-			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
-			return
-		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !s.callerOwnsName(c, req.Name) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "caller does not own this name"})
 		return
 	}
 

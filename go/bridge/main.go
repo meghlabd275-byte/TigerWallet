@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	aggregator "github.com/tigerwallet/bridge/aggregator"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 type Server struct {
@@ -44,14 +46,56 @@ func main() {
 	})
 	mux.HandleFunc("/api/v1/bridge/routes", srv.handleRoutes)
 	mux.HandleFunc("/api/v1/bridge/quote", srv.handleQuote)
-	mux.HandleFunc("/api/v1/bridge/transfer", srv.handleTransfer)
-	mux.HandleFunc("/api/v1/bridge/history", srv.handleHistory)
+
+	// Transfer and history act on behalf of a user, so they require a token.
+	// A user id taken from the body is only ever used to check it matches the
+	// caller. Routes and quotes stay public: they are pure aggregator reads.
+	mux.Handle("/api/v1/bridge/transfer", requireCaller(http.HandlerFunc(srv.handleTransfer)))
+	mux.Handle("/api/v1/bridge/history", requireCaller(http.HandlerFunc(srv.handleHistory)))
 	mux.HandleFunc("/api/v1/bridge/status", srv.handleStatus)
 
 	log.Printf("Bridge aggregator service starting on :%s", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+// requireCaller authenticates the request and stores the caller on the
+// context. A missing or invalid token is refused before the handler runs.
+func requireCaller(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secret, err := sharedauth.Secret()
+		if err != nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "authentication is not configured")
+			return
+		}
+		token, ok := sharedauth.Bearer(r)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		id, err := sharedauth.Parse(secret, token)
+		if err != nil {
+			writeJSONError(w, http.StatusUnauthorized, "invalid or expired token")
+			return
+		}
+		ctx := context.WithValue(r.Context(), callerKey{}, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+type callerKey struct{}
+
+// callerFrom returns the authenticated caller, or the zero value.
+func callerFrom(r *http.Request) sharedauth.Identity {
+	id, _ := r.Context().Value(callerKey{}).(sharedauth.Identity)
+	return id
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": msg})
 }
 
 func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
@@ -177,6 +221,11 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 		bridge = "Stargate"
 	}
 	recipient := pick("recipient", "user_id")
+	caller := callerFrom(r)
+	if !caller.IsAdmin() && !strings.EqualFold(recipient, caller.UserID) {
+		writeJSONError(w, http.StatusForbidden, "not permitted for this recipient")
+		return
+	}
 	fromChain := pick("from_chain", "srcChain")
 	toChain := pick("to_chain", "dstChain")
 	token := pick("token", "asset")
