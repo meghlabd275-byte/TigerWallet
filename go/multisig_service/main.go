@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -127,6 +129,11 @@ type MultiSigService struct {
 	wallets      map[string]*MultiSigWallet
 	transactions map[string]*TransactionRequest
 	privateKey   *ecdsa.PrivateKey
+
+	// storage, when set, mirrors wallet and transaction state to Redis so the
+	// service can run as more than one replica and survive a restart.
+	storage   *redis.Client
+	storageOK bool
 }
 
 func NewMultiSigService(config *Config) *MultiSigService {
@@ -145,13 +152,112 @@ func NewMultiSigService(config *Config) *MultiSigService {
 		log.Fatalf("failed to load relayer key: %v", err)
 	}
 
-	return &MultiSigService{
+	service := &MultiSigService{
 		config:       config,
 		redis:        redisClient,
 		wallets:      make(map[string]*MultiSigWallet),
 		transactions: make(map[string]*TransactionRequest),
 		privateKey:   privateKey,
 	}
+	if err := redisClient.Ping(context.Background()).Err(); err != nil {
+		log.Printf("WARNING: Redis unavailable (%v); multisig state is in-memory and will not survive a restart", err)
+	} else {
+		service.storage = redisClient
+		service.storageOK = true
+		if err := service.restoreState(); err != nil {
+			log.Fatalf("failed to restore multisig state: %v", err)
+		}
+	}
+	return service
+}
+
+const (
+	walletKeyPrefix = "multisig:wallet:"
+	walletIndexKey  = "multisig:wallets"
+	txKeyPrefix     = "multisig:tx:"
+)
+
+// saveWallet persists a wallet and keeps the index in sync. Failures are
+// reported but do not take the service down; the in-memory copy stays usable.
+func (s *MultiSigService) saveWallet(w *MultiSigWallet) {
+	if !s.storageOK {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	blob, err := json.Marshal(w)
+	if err != nil {
+		log.Printf("wallet marshal failed: %v", err)
+		return
+	}
+	if err := s.storage.Set(ctx, walletKeyPrefix+w.ID, blob, 0).Err(); err != nil {
+		log.Printf("wallet persist failed: %v", err)
+		return
+	}
+	if err := s.storage.SAdd(ctx, walletIndexKey, w.ID).Err(); err != nil {
+		log.Printf("wallet index persist failed: %v", err)
+	}
+}
+
+// saveTransaction persists a transaction request.
+func (s *MultiSigService) saveTransaction(tx *TransactionRequest) {
+	if !s.storageOK {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	blob, err := json.Marshal(tx)
+	if err != nil {
+		log.Printf("transaction marshal failed: %v", err)
+		return
+	}
+	if err := s.storage.Set(ctx, txKeyPrefix+tx.ID, blob, 0).Err(); err != nil {
+		log.Printf("transaction persist failed: %v", err)
+	}
+}
+
+// restoreState loads wallets and transactions written by this or a sibling
+// replica.
+func (s *MultiSigService) restoreState() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ids, err := s.storage.SMembers(ctx, walletIndexKey).Result()
+	if err != nil {
+		return fmt.Errorf("read wallet index: %w", err)
+	}
+	for _, id := range ids {
+		blob, err := s.storage.Get(ctx, walletKeyPrefix+id).Result()
+		if err != nil {
+			continue
+		}
+		var w MultiSigWallet
+		if err := json.Unmarshal([]byte(blob), &w); err != nil {
+			log.Printf("skipping unreadable wallet %s: %v", id, err)
+			continue
+		}
+		s.wallets[w.ID] = &w
+	}
+
+	for _, w := range s.wallets {
+		txIDs, err := s.storage.SMembers(ctx, walletKeyPrefix+w.ID+":txs").Result()
+		if err != nil {
+			continue
+		}
+		for _, id := range txIDs {
+			blob, err := s.storage.Get(ctx, txKeyPrefix+id).Result()
+			if err != nil {
+				continue
+			}
+			var tx TransactionRequest
+			if err := json.Unmarshal([]byte(blob), &tx); err != nil {
+				continue
+			}
+			s.transactions[tx.ID] = &tx
+		}
+	}
+	log.Printf("restored %d wallets, %d transactions from Redis", len(s.wallets), len(s.transactions))
+	return nil
 }
 
 // loadRelayerKey returns the secp256k1 private key used to broadcast the
@@ -181,6 +287,12 @@ func (s *MultiSigService) CreateWallet(name string, owners []string, threshold u
 		return nil, fmt.Errorf("not enough owners for threshold")
 	}
 
+	for _, o := range uniqueOwners {
+		if !common.IsHexAddress(strings.TrimSpace(o)) {
+			return nil, fmt.Errorf("owner %q is not a valid address", o)
+		}
+	}
+
 	// Sort owners for deterministic address
 	sort.Strings(uniqueOwners)
 
@@ -199,6 +311,7 @@ func (s *MultiSigService) CreateWallet(name string, owners []string, threshold u
 
 	s.wallets[wallet.ID] = wallet
 	s.wallets[wallet.Address] = wallet
+	s.saveWallet(wallet)
 
 	return wallet, nil
 }
@@ -246,14 +359,25 @@ func (s *MultiSigService) AddOwner(walletID string, owner string) error {
 		return fmt.Errorf("wallet not found")
 	}
 
+	if !common.IsHexAddress(owner) {
+		return fmt.Errorf("owner must be a valid address")
+	}
+
 	for _, o := range wallet.Owners {
-		if o == owner {
+		if strings.EqualFold(o, owner) {
 			return fmt.Errorf("owner already exists")
 		}
 	}
 
+	delete(s.wallets, wallet.Address)
 	wallet.Owners = append(wallet.Owners, owner)
+	// The wallet address is derived from the owner set and threshold, so it must
+	// be recomputed when either changes; otherwise the on-chain wallet no longer
+	// matches the off-chain record.
+	wallet.Address = s.computeAddress(wallet.Owners, wallet.Threshold)
 	wallet.UpdatedAt = time.Now().Unix()
+	s.wallets[wallet.Address] = wallet
+	s.saveWallet(wallet)
 
 	return nil
 }
@@ -266,17 +390,24 @@ func (s *MultiSigService) RemoveOwner(walletID string, owner string) error {
 
 	newOwners := make([]string, 0)
 	for _, o := range wallet.Owners {
-		if o != owner {
+		if !strings.EqualFold(o, owner) {
 			newOwners = append(newOwners, o)
 		}
 	}
 
+	// Removing an owner below the threshold would make the wallet permanently
+	// unusable, so it is refused instead.
 	if uint(len(newOwners)) < wallet.Threshold {
-		return fmt.Errorf("cannot remove owner: would break threshold")
+		return fmt.Errorf("cannot remove owner: remaining owners (%d) would be below threshold (%d)", len(newOwners), wallet.Threshold)
 	}
 
+	delete(s.wallets, wallet.Address)
 	wallet.Owners = newOwners
+	// The address is derived from the owner set, so it changes with it.
+	wallet.Address = s.computeAddress(wallet.Owners, wallet.Threshold)
 	wallet.UpdatedAt = time.Now().Unix()
+	s.wallets[wallet.Address] = wallet
+	s.saveWallet(wallet)
 
 	return nil
 }
@@ -304,6 +435,14 @@ func (s *MultiSigService) CreateTransaction(walletID, to, value, data string) (*
 	}
 
 	s.transactions[tx.ID] = tx
+	s.saveTransaction(tx)
+	if s.storageOK {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := s.storage.SAdd(ctx, walletKeyPrefix+walletID+":txs", tx.ID).Err(); err != nil {
+			log.Printf("transaction index persist failed: %v", err)
+		}
+	}
 
 	return tx, nil
 }
@@ -449,9 +588,26 @@ func (s *MultiSigService) GetPendingTransactions(walletID string) []*Transaction
 // computeAddress derives the multisig wallet's Ethereum address from the
 // relayer's secp256k1 public key. Real EIP-55 checksummed address, derived as
 // keccak256(pubkey[1:])[-20:].
+// computeAddress derives the deterministic address of the multisig wallet
+// contract from its owner set, threshold and chain id. Owners are lowercased
+// and sorted so every replica derives the same address, and the result is the
+// CREATE address for nonce 0 of a sender derived from that seed.
 func (s *MultiSigService) computeAddress(owners []string, threshold uint) string {
-	addr := crypto.PubkeyToAddress(s.privateKey.PublicKey)
-	return addr.Hex()
+	sorted := make([]string, len(owners))
+	for i, o := range owners {
+		sorted[i] = strings.ToLower(strings.TrimSpace(o))
+	}
+	sort.Strings(sorted)
+
+	parts := make([][]byte, 0, len(sorted)+2)
+	parts = append(parts, common.LeftPadBytes(big.NewInt(int64(threshold)).Bytes(), 32))
+	parts = append(parts, common.LeftPadBytes(big.NewInt(s.config.ChainID).Bytes(), 32))
+	for _, o := range sorted {
+		parts = append(parts, common.LeftPadBytes(common.HexToAddress(o).Bytes(), 32))
+	}
+
+	seed := crypto.Keccak256(parts...)
+	return crypto.CreateAddress(common.BytesToAddress(seed[12:]), 0).Hex()
 }
 
 // buildExecuteData encodes the calldata forwarded to the multisig wallet
@@ -694,12 +850,36 @@ func (s *MultiSigService) VerifyTransaction(tx *TransactionRequest) (bool, error
 // HTTP Handlers
 // ============================================================================
 
+// requireServiceAuth gates the multisig surface with a shared service token.
+// This service signs and broadcasts real transactions and mutates wallet owner
+// sets, so it fails closed: with no token configured it refuses to serve rather
+// than running open to the network. The token is only ever held by the
+// MasterWallet backend, which is the sole legitimate caller.
+func requireServiceAuth() gin.HandlerFunc {
+	token := strings.TrimSpace(os.Getenv("MULTISIG_SERVICE_TOKEN"))
+	return func(c *gin.Context) {
+		if len(token) < 32 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service not configured"})
+			c.Abort()
+			return
+		}
+		presented := c.GetHeader("X-Service-Token")
+		if subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid service token"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func (s *MultiSigService) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "multisig-service"})
 	})
 
 	api := r.Group("/api/v1/multisig")
+	api.Use(requireServiceAuth())
 	{
 		// Wallets
 		api.POST("/wallets", s.handleCreateWallet)
@@ -727,13 +907,13 @@ func (s *MultiSigService) handleCreateWallet(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
 	wallet, err := s.CreateWallet(req.Name, req.Owners, req.Threshold)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -749,7 +929,7 @@ func (s *MultiSigService) handleGetWallet(c *gin.Context) {
 
 	wallet, err := s.GetWallet(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
 
@@ -765,13 +945,13 @@ func (s *MultiSigService) handleUpdateWallet(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
 	wallet, err := s.UpdateWallet(id, req.Name, req.Threshold)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -786,12 +966,12 @@ func (s *MultiSigService) handleAddOwner(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
 	if err := s.AddOwner(id, req.Owner); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -803,7 +983,7 @@ func (s *MultiSigService) handleRemoveOwner(c *gin.Context) {
 	owner := c.Param("owner")
 
 	if err := s.RemoveOwner(id, owner); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -819,13 +999,13 @@ func (s *MultiSigService) handleCreateTransaction(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
 	tx, err := s.CreateTransaction(req.WalletID, req.To, req.Value, req.Data)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -837,7 +1017,7 @@ func (s *MultiSigService) handleGetTransaction(c *gin.Context) {
 
 	tx, err := s.GetTransaction(id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
 	}
 
@@ -855,12 +1035,12 @@ func (s *MultiSigService) handleSignTransaction(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
 	if err := s.SignTransaction(id, req.Owner, req.V, req.R, req.S); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -872,7 +1052,7 @@ func (s *MultiSigService) handleExecuteTransaction(c *gin.Context) {
 
 	txHash, err := s.ExecuteTransaction(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
@@ -887,12 +1067,12 @@ func (s *MultiSigService) handleRevokeTransaction(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 
 	if err := s.RevokeTransaction(id, req.Owner); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
 

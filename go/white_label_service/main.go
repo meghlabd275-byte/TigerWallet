@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -45,13 +46,17 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	return &Config{
+	cfg := &Config{
 		ServerPort:     getEnv("WL_SERVICE_PORT", "8085"),
 		DatabaseURL:    getEnv("DATABASE_URL", "postgres://tigerwallet:tigerpass@localhost:5432/tigerwallet?sslmode=disable"),
 		RedisURL:       getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:      getEnv("JWT_SECRET", ""),
-		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "*"),
+		JWTSecret:      os.Getenv("JWT_SECRET"),
+		AllowedOrigins: getEnv("ALLOWED_ORIGINS", ""),
 	}
+	if len(cfg.JWTSecret) < 32 {
+		log.Fatal("JWT_SECRET is required and must be at least 32 characters")
+	}
+	return cfg
 }
 
 func getEnv(key, defaultValue string) string {
@@ -103,6 +108,288 @@ func InitRedis(redisURL string) error {
 	}
 
 	log.Println("✅ Redis connected successfully")
+	return nil
+}
+
+// ============================================================================
+// SCHEMA
+// ============================================================================
+
+// ensureSchema creates every table and column this service queries. The service
+// is the owner of the white-label control plane, so it provisions its own
+// storage rather than assuming an external bootstrap; each statement is
+// idempotent, and the ALTERs carry explicit types so they are valid on an empty
+// database as well as on an existing one.
+func ensureSchema(ctx context.Context) error {
+	statements := []string{
+		`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,
+		`CREATE EXTENSION IF NOT EXISTS "citext"`,
+
+		`CREATE TABLE IF NOT EXISTS admin_users (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			username       CITEXT NOT NULL UNIQUE,
+			email          CITEXT NOT NULL UNIQUE,
+			password_hash  TEXT NOT NULL,
+			role           VARCHAR(50) NOT NULL DEFAULT 'admin',
+			status         VARCHAR(50) NOT NULL DEFAULT 'active',
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS white_labels (
+			id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name                   VARCHAR(255) NOT NULL,
+			domain                 VARCHAR(255) NOT NULL UNIQUE,
+			subdomain              VARCHAR(100),
+			api_key_hash           VARCHAR(255) NOT NULL,
+			status                 VARCHAR(50) NOT NULL DEFAULT 'pending',
+			fee_percent            NUMERIC(5,2) NOT NULL DEFAULT 20.0,
+			profit_share_percent   NUMERIC(5,2) NOT NULL DEFAULT 20.0,
+			plan_tier              VARCHAR(50) NOT NULL DEFAULT 'basic',
+			max_users              INTEGER NOT NULL DEFAULT 1000,
+			max_api_calls          INTEGER NOT NULL DEFAULT 100000,
+			monthly_fee            NUMERIC(12,2) NOT NULL DEFAULT 0,
+			branding_config        JSONB NOT NULL DEFAULT '{}'::jsonb,
+			features               JSONB NOT NULL DEFAULT '[]'::jsonb,
+			master_wallet_address  VARCHAR(100),
+			custom_branding        BOOLEAN NOT NULL DEFAULT TRUE,
+			support_email          VARCHAR(255),
+			terms_url              VARCHAR(500),
+			privacy_url            VARCHAR(500),
+			approved_by            UUID,
+			approved_at            TIMESTAMPTZ,
+			created_by             UUID,
+			created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS white_label_admins (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id UUID NOT NULL REFERENCES white_labels(id) ON DELETE CASCADE,
+			username       CITEXT NOT NULL,
+			email          CITEXT NOT NULL,
+			password_hash  TEXT NOT NULL,
+			role           VARCHAR(50) NOT NULL DEFAULT 'white_label_admin',
+			permissions    JSONB NOT NULL DEFAULT '[]'::jsonb,
+			status         VARCHAR(50) NOT NULL DEFAULT 'active',
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			last_login     TIMESTAMPTZ,
+			UNIQUE (white_label_id, username)
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS wl_api_keys (
+			id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id    UUID NOT NULL REFERENCES white_labels(id) ON DELETE CASCADE,
+			name              VARCHAR(255) NOT NULL,
+			key_hash          VARCHAR(255) NOT NULL UNIQUE,
+			permissions       JSONB NOT NULL DEFAULT '[]'::jsonb,
+			rate_limit_minute INTEGER NOT NULL DEFAULT 60,
+			rate_limit_day    INTEGER NOT NULL DEFAULT 10000,
+			is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+			expires_at        TIMESTAMPTZ,
+			last_used         TIMESTAMPTZ,
+			created_by        UUID,
+			created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS products (
+			id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id   UUID REFERENCES white_labels(id) ON DELETE CASCADE,
+			name             VARCHAR(255) NOT NULL,
+			type             VARCHAR(50) NOT NULL,
+			description      TEXT,
+			status           VARCHAR(50) NOT NULL DEFAULT 'enabled',
+			fee_percent      NUMERIC(5,2) NOT NULL DEFAULT 0,
+			min_deposit      NUMERIC(30,8) NOT NULL DEFAULT 0,
+			max_deposit      NUMERIC(30,8),
+			features         JSONB NOT NULL DEFAULT '[]'::jsonb,
+			supported_chains JSONB NOT NULL DEFAULT '[]'::jsonb,
+			is_global        BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS trading_pairs (
+			id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id     UUID REFERENCES white_labels(id) ON DELETE CASCADE,
+			base_token         VARCHAR(50) NOT NULL,
+			quote_token        VARCHAR(50) NOT NULL,
+			pair_symbol        VARCHAR(50) NOT NULL,
+			min_trade_amount   NUMERIC(30,8) NOT NULL DEFAULT 0,
+			max_trade_amount   NUMERIC(30,8),
+			maker_fee          NUMERIC(5,4) NOT NULL DEFAULT 0,
+			taker_fee          NUMERIC(5,4) NOT NULL DEFAULT 0,
+			status             VARCHAR(50) NOT NULL DEFAULT 'active',
+			chain_id           VARCHAR(50),
+			price_precision    INTEGER NOT NULL DEFAULT 8,
+			quantity_precision INTEGER NOT NULL DEFAULT 8,
+			created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS users (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id UUID REFERENCES white_labels(id) ON DELETE SET NULL,
+			email          VARCHAR(255) UNIQUE,
+			username       VARCHAR(100),
+			wallet_address VARCHAR(100) UNIQUE,
+			kyc_status     VARCHAR(50) NOT NULL DEFAULT 'none',
+			status         VARCHAR(50) NOT NULL DEFAULT 'active',
+			risk_score     INTEGER NOT NULL DEFAULT 0,
+			country        VARCHAR(50),
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			last_active    TIMESTAMPTZ
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS transactions (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id        UUID REFERENCES users(id) ON DELETE SET NULL,
+			white_label_id UUID REFERENCES white_labels(id) ON DELETE SET NULL,
+			tx_hash        VARCHAR(255),
+			type           VARCHAR(50) NOT NULL,
+			status         VARCHAR(50) NOT NULL DEFAULT 'pending',
+			from_address   VARCHAR(100),
+			to_address     VARCHAR(100),
+			token_symbol   VARCHAR(50),
+			chain_id       VARCHAR(50),
+			amount         NUMERIC(30,8) NOT NULL DEFAULT 0,
+			fee            NUMERIC(30,8) NOT NULL DEFAULT 0,
+			usd_value      NUMERIC(30,8),
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS blockchains (
+			id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name          VARCHAR(100) NOT NULL,
+			symbol        VARCHAR(20) NOT NULL,
+			chain_id      VARCHAR(50) NOT NULL,
+			chain_type    VARCHAR(50),
+			native_token  VARCHAR(50) NOT NULL,
+			decimals      INTEGER NOT NULL DEFAULT 18,
+			is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+			is_testnet    BOOLEAN NOT NULL DEFAULT FALSE,
+			rpc_urls      JSONB NOT NULL DEFAULT '[]'::jsonb,
+			explorer_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
+			UNIQUE (chain_id)
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS fee_structures (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id UUID REFERENCES white_labels(id) ON DELETE CASCADE,
+			name           VARCHAR(255) NOT NULL,
+			type           VARCHAR(50) NOT NULL,
+			token_symbol   VARCHAR(50),
+			chain_id       VARCHAR(50),
+			fee_percent    NUMERIC(5,4) NOT NULL DEFAULT 0,
+			fee_fixed      NUMERIC(30,8) NOT NULL DEFAULT 0,
+			is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS audit_logs (
+			id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			admin_id    UUID,
+			action      VARCHAR(100) NOT NULL,
+			entity_type VARCHAR(50),
+			entity_id   VARCHAR(100),
+			details     TEXT,
+			ip_address  VARCHAR(45),
+			status      VARCHAR(50) NOT NULL DEFAULT 'success',
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS webhooks (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id UUID NOT NULL REFERENCES white_labels(id) ON DELETE CASCADE,
+			name           VARCHAR(255) NOT NULL,
+			url            VARCHAR(2048) NOT NULL,
+			events         JSONB NOT NULL DEFAULT '[]'::jsonb,
+			secret_hash    VARCHAR(255),
+			is_active      BOOLEAN NOT NULL DEFAULT TRUE,
+			retry_count    INTEGER NOT NULL DEFAULT 0,
+			last_triggered TIMESTAMPTZ,
+			failure_count  INTEGER NOT NULL DEFAULT 0,
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS profit_sharing (
+			id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id     UUID NOT NULL UNIQUE REFERENCES white_labels(id) ON DELETE CASCADE,
+			super_admin_wallet VARCHAR(100) NOT NULL,
+			profit_percentage  NUMERIC(5,2) NOT NULL DEFAULT 20.0,
+			is_active          BOOLEAN NOT NULL DEFAULT TRUE,
+			auto_transfer      BOOLEAN NOT NULL DEFAULT FALSE,
+			transfer_frequency VARCHAR(50) NOT NULL DEFAULT 'daily',
+			created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS profit_transactions (
+			id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			white_label_id UUID REFERENCES white_labels(id) ON DELETE SET NULL,
+			amount         NUMERIC(30,8) NOT NULL DEFAULT 0,
+			status         VARCHAR(50) NOT NULL DEFAULT 'pending',
+			tx_hash        VARCHAR(255),
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+
+		// Columns added after the original release. Explicit types keep these
+		// valid against an empty database as well as an existing one.
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(50)`,
+		`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS white_label_id UUID`,
+		`ALTER TABLE white_labels ADD COLUMN IF NOT EXISTS branding_config JSONB NOT NULL DEFAULT '{}'::jsonb`,
+		`ALTER TABLE white_labels ADD COLUMN IF NOT EXISTS support_email VARCHAR(255)`,
+		`ALTER TABLE white_labels ADD COLUMN IF NOT EXISTS terms_url VARCHAR(500)`,
+		`ALTER TABLE white_labels ADD COLUMN IF NOT EXISTS privacy_url VARCHAR(500)`,
+		`ALTER TABLE white_labels ADD COLUMN IF NOT EXISTS approved_by UUID`,
+		`ALTER TABLE white_labels ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`,
+		`ALTER TABLE wl_api_keys ADD COLUMN IF NOT EXISTS created_by UUID`,
+
+		`CREATE INDEX IF NOT EXISTS idx_white_labels_status ON white_labels(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_white_labels_created_at ON white_labels(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_white_label ON users(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
+		`CREATE INDEX IF NOT EXISTS idx_transactions_white_label ON transactions(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_products_white_label ON products(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_trading_pairs_white_label ON trading_pairs(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_wl_api_keys_white_label ON wl_api_keys(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_fee_structures_white_label ON fee_structures(white_label_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("schema statement failed: %w", err)
+		}
+	}
+	return nil
+}
+
+// superAdminProfitWallet returns the wallet that receives TigerWallet's share of
+// white-label profit. It is operator configuration; when it is unset the wallet
+// is recorded as empty rather than filled with a placeholder that would send
+// funds nowhere.
+func superAdminProfitWallet() string {
+	return os.Getenv("SUPER_ADMIN_PROFIT_WALLET")
+}
+
+// dbError logs the driver's message and returns an opaque error to the caller.
+func dbError(c *gin.Context, action string, err error) {
+	log.Printf("%s: %v", action, err)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+}
+
+// scanJSONString reads a JSON/text column that may be NULL into a slice.
+func scanJSONString(raw []byte, out *[]string) error {
+	if len(raw) == 0 {
+		*out = []string{}
+		return nil
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		*out = []string{}
+	}
 	return nil
 }
 
@@ -462,7 +749,7 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -478,12 +765,25 @@ func LoginHandler(c *gin.Context) {
 	redisClient.Incr(ctx, rateKey)
 	redisClient.Expire(ctx, rateKey, 15*time.Minute)
 
+	// A white-label client's own administrators live in white_label_admins and
+	// sign in through this same endpoint; without this branch they could never
+	// authenticate at all. The global table is consulted first so an operator
+	// account always wins over a tenant account with the same username.
 	var admin Admin
+	var whiteLabelID string
 	err := db.QueryRow(`
-		SELECT id, username, email, password_hash, role, status 
-		FROM admin_users 
+		SELECT id, username, email, password_hash, role, status, ''
+		FROM admin_users
 		WHERE username = $1 OR email = $1
-	`, req.Username).Scan(&admin.ID, &admin.Username, &admin.Email, &admin.PasswordHash, &admin.Role, &admin.Status)
+	`, req.Username).Scan(&admin.ID, &admin.Username, &admin.Email, &admin.PasswordHash, &admin.Role, &admin.Status, &whiteLabelID)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		err = db.QueryRow(`
+			SELECT id, username, email, password_hash, role, status, white_label_id::text
+			FROM white_label_admins
+			WHERE username = $1 OR email = $1
+		`, req.Username).Scan(&admin.ID, &admin.Username, &admin.Email, &admin.PasswordHash, &admin.Role, &admin.Status, &whiteLabelID)
+	}
 
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
@@ -501,7 +801,7 @@ func LoginHandler(c *gin.Context) {
 	}
 
 	// Generate token
-	token, err := GenerateToken(admin.ID, admin.Username, string(admin.Role), "")
+	token, err := GenerateToken(admin.ID, admin.Username, string(admin.Role), whiteLabelID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -548,12 +848,12 @@ func GetAdminsHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var admins []gin.H
+	admins := []gin.H{}
 	for rows.Next() {
 		var admin Admin
 		if err := rows.Scan(&admin.ID, &admin.Username, &admin.Email, &admin.Role, &admin.Status, &admin.CreatedAt, &admin.LastLogin); err != nil {
@@ -584,7 +884,7 @@ func CreateAdminHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -656,7 +956,7 @@ func UpdateAdminHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -695,7 +995,7 @@ func UpdateAdminHandler(c *gin.Context) {
 
 	_, err := db.Exec(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -713,7 +1013,7 @@ func SuspendAdminHandler(c *gin.Context) {
 	`, adminID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -752,12 +1052,12 @@ func GetWhiteLabelsHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var whiteLabels []gin.H
+	whiteLabels := []gin.H{}
 	for rows.Next() {
 		var wl WhiteLabel
 		if err := rows.Scan(&wl.ID, &wl.Name, &wl.Domain, &wl.Status, &wl.FeePercent,
@@ -788,6 +1088,7 @@ func GetWhiteLabelHandler(c *gin.Context) {
 	wlID := c.Param("id")
 
 	var wl WhiteLabel
+	var featuresJSON []byte
 	err := db.QueryRow(`
 		SELECT id, name, domain, subdomain, status, fee_percent, profit_share_percent, 
 			plan_tier, max_users, max_api_calls, monthly_fee, branding_config, features,
@@ -796,9 +1097,12 @@ func GetWhiteLabelHandler(c *gin.Context) {
 		FROM white_labels WHERE id = $1
 	`, wlID).Scan(&wl.ID, &wl.Name, &wl.Domain, &wl.Subdomain, &wl.Status,
 		&wl.FeePercent, &wl.ProfitSharePercent, &wl.PlanTier, &wl.MaxUsers,
-		&wl.MaxAPICalls, &wl.MonthlyFee, &wl.BrandingConfig, &wl.Features,
+		&wl.MaxAPICalls, &wl.MonthlyFee, &wl.BrandingConfig, &featuresJSON,
 		&wl.MasterWalletAddress, &wl.CustomBranding, &wl.SupportEmail,
 		&wl.TermsURL, &wl.PrivacyURL, &wl.CreatedAt, &wl.UpdatedAt, &wl.ApprovedAt)
+	if err == nil {
+		scanJSONString(featuresJSON, &wl.Features)
+	}
 
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "White label not found"})
@@ -820,7 +1124,7 @@ func CreateWhiteLabelHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -886,7 +1190,7 @@ func UpdateWhiteLabelHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -963,7 +1267,7 @@ func UpdateWhiteLabelHandler(c *gin.Context) {
 
 	_, err := db.Exec(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -982,18 +1286,23 @@ func ApproveWhiteLabelHandler(c *gin.Context) {
 	`, adminID, wlID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
 	logAudit(adminID.(string), "APPROVE_WHITE_LABEL", "white_label", wlID, "Approved white label", c.ClientIP())
 
 	// Create profit sharing record
-	db.Exec(`
+	// Record this client's profit-sharing terms. super_admin_wallet is
+	// operator configuration (SUPER_ADMIN_PROFIT_WALLET), never a placeholder.
+	if _, err := db.Exec(`
 		INSERT INTO profit_sharing (white_label_id, super_admin_wallet, profit_percentage, is_active, auto_transfer, transfer_frequency, created_at)
-		VALUES ($1, '0xSuperAdminWallet', 20.0, TRUE, TRUE, 'daily', NOW())
+		VALUES ($1, $2, 20.0, TRUE, TRUE, 'daily', NOW())
 		ON CONFLICT (white_label_id) DO NOTHING
-	`, wlID)
+	`, wlID, superAdminProfitWallet()); err != nil {
+		dbError(c, "create profit sharing record", err)
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "White label approved"})
 }
@@ -1007,7 +1316,7 @@ func SuspendWhiteLabelHandler(c *gin.Context) {
 	`, wlID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1025,7 +1334,7 @@ func RevokeWhiteLabelHandler(c *gin.Context) {
 	`, wlID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1040,7 +1349,7 @@ func DestroyWhiteLabelHandler(c *gin.Context) {
 
 	tx, err := db.Begin()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1048,35 +1357,35 @@ func DestroyWhiteLabelHandler(c *gin.Context) {
 	_, err = tx.Exec("DELETE FROM wl_api_keys WHERE white_label_id = $1", wlID)
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
 	_, err = tx.Exec("DELETE FROM white_label_admins WHERE white_label_id = $1", wlID)
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
 	_, err = tx.Exec("DELETE FROM webhooks WHERE white_label_id = $1", wlID)
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
 	_, err = tx.Exec("DELETE FROM profit_sharing WHERE white_label_id = $1", wlID)
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
 	_, err = tx.Exec("DELETE FROM white_labels WHERE id = $1", wlID)
 	if err != nil {
 		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1110,19 +1419,22 @@ func GetProductsHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var products []gin.H
+	products := []gin.H{}
 	for rows.Next() {
 		var p Product
+		var featuresJSON, chainsJSON []byte
 		if err := rows.Scan(&p.ID, &p.WhiteLabelID, &p.Name, &p.Type, &p.Description,
-			&p.Status, &p.FeePercent, &p.MinDeposit, &p.MaxDeposit, &p.Features,
-			&p.SupportedChains, &p.IsGlobal, &p.CreatedAt); err != nil {
+			&p.Status, &p.FeePercent, &p.MinDeposit, &p.MaxDeposit, &featuresJSON,
+			&chainsJSON, &p.IsGlobal, &p.CreatedAt); err != nil {
 			continue
 		}
+		scanJSONString(featuresJSON, &p.Features)
+		scanJSONString(chainsJSON, &p.SupportedChains)
 		products = append(products, gin.H{
 			"id":               p.ID,
 			"white_label_id":   p.WhiteLabelID,
@@ -1160,7 +1472,7 @@ func CreateProductHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -1182,7 +1494,7 @@ func CreateProductHandler(c *gin.Context) {
 		req.MinDeposit, req.MaxDeposit, string(featuresJSON), string(chainsJSON), req.IsGlobal)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1207,7 +1519,7 @@ func UpdateProductHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -1270,7 +1582,7 @@ func UpdateProductHandler(c *gin.Context) {
 
 	_, err := db.Exec(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1303,12 +1615,12 @@ func GetTradingPairsHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var pairs []gin.H
+	pairs := []gin.H{}
 	for rows.Next() {
 		var p TradingPair
 		if err := rows.Scan(&p.ID, &p.WhiteLabelID, &p.BaseToken, &p.QuoteToken,
@@ -1356,7 +1668,7 @@ func CreateTradingPairHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -1387,7 +1699,7 @@ func CreateTradingPairHandler(c *gin.Context) {
 		req.ChainID, req.PricePrecision, req.QuantityPrecision)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1446,12 +1758,12 @@ func GetUsersHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var users []gin.H
+	users := []gin.H{}
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.WhiteLabelID, &u.Email, &u.Username, &u.WalletAddress,
@@ -1544,18 +1856,20 @@ func GetAPIKeysHandler(c *gin.Context) {
 	`, wlID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var keys []gin.H
+	keys := []gin.H{}
 	for rows.Next() {
 		var k APIKey
-		if err := rows.Scan(&k.ID, &k.Name, &k.Permissions, &k.RateLimitMin,
+		var permissionsJSON []byte
+		if err := rows.Scan(&k.ID, &k.Name, &permissionsJSON, &k.RateLimitMin,
 			&k.RateLimitDay, &k.IsActive, &k.LastUsed, &k.ExpiresAt, &k.CreatedAt); err != nil {
 			continue
 		}
+		scanJSONString(permissionsJSON, &k.Permissions)
 		keys = append(keys, gin.H{
 			"id":             k.ID,
 			"name":           k.Name,
@@ -1585,7 +1899,7 @@ func CreateAPIKeyHandler(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
@@ -1618,7 +1932,7 @@ func CreateAPIKeyHandler(c *gin.Context) {
 	`, id, wlID, req.Name, apiKeyHash, string(permissionsJSON), req.RateLimitMin, req.RateLimitDay, expiresAt, adminID)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1638,7 +1952,7 @@ func RevokeAPIKeyHandler(c *gin.Context) {
 
 	_, err := db.Exec("UPDATE wl_api_keys SET is_active = FALSE WHERE id = $1", keyID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 
@@ -1659,12 +1973,12 @@ func GetBlockchainsHandler(c *gin.Context) {
 	`)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var chains []gin.H
+	chains := []gin.H{}
 	for rows.Next() {
 		var b Blockchain
 		var rpcJSON, explorerJSON sql.NullString
@@ -1720,12 +2034,12 @@ func GetFeeStructuresHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var fees []gin.H
+	fees := []gin.H{}
 	for rows.Next() {
 		var f FeeStructure
 		if err := rows.Scan(&f.ID, &f.WhiteLabelID, &f.Name, &f.Type,
@@ -1786,12 +2100,12 @@ func GetAuditLogsHandler(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		dbError(c, "request failed", err)
 		return
 	}
 	defer rows.Close()
 
-	var logs []gin.H
+	logs := []gin.H{}
 	for rows.Next() {
 		var log struct {
 			ID         string    `json:"id"`
@@ -1956,6 +2270,14 @@ func main() {
 	}
 	defer db.Close()
 
+	// Provision the control-plane schema before serving traffic. The service
+	// owns these tables; without this step every query would fail on a fresh
+	// database.
+	if err := ensureSchema(context.Background()); err != nil {
+		log.Fatalf("Failed to apply schema: %v", err)
+	}
+	log.Println("Schema applied")
+
 	// Initialize Redis
 	if err := InitRedis(config.RedisURL); err != nil {
 		log.Fatalf("Failed to initialize Redis: %v", err)
@@ -1968,15 +2290,26 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 
-	// CORS
-	origins := strings.Split(config.AllowedOrigins, ",")
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     origins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
+	// CORS. Only explicitly configured origins are accepted; an empty list
+	// means no cross-origin browser access, which is the safe default for an
+	// admin API. AllowCredentials requires concrete origins (the library
+	// rejects a wildcard, which would be unsafe here anyway).
+	var origins []string
+	for _, o := range strings.Split(config.AllowedOrigins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			origins = append(origins, o)
+		}
+	}
+	if len(origins) > 0 {
+		r.Use(cors.New(cors.Config{
+			AllowOrigins:     origins,
+			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+			ExposeHeaders:    []string{"Content-Length"},
+			AllowCredentials: true,
+			MaxAge:           10 * time.Minute,
+		}))
+	}
 
 	// Setup routes
 	SetupRoutes(r)
