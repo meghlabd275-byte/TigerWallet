@@ -200,7 +200,15 @@ CREATE TABLE IF NOT EXISTS finance_audit_log (
 CREATE INDEX IF NOT EXISTS finance_audit_action_idx ON finance_audit_log(action, created_at DESC);
 `
 
+// migrateFinance ensures the finance-plane tables exist. The statements are
+// idempotent and are also part of schemaSQL, so this call is a safety net for
+// databases created before the finance plane existed. It must not run before
+// NewStore has applied schemaSQL: the finance tables carry foreign keys to
+// users(id), which schemaSQL creates.
 func migrateFinance(ctx context.Context) error {
+	if store == nil || store.PG == nil {
+		return fmt.Errorf("finance migration requires an initialised store")
+	}
 	_, err := store.PG.Exec(ctx, financeSchemaSQL)
 	return err
 }

@@ -2859,13 +2859,6 @@ CREATE TABLE IF NOT EXISTS tokens (
 	contract_verified BOOLEAN DEFAULT false,
 	verified_at TIMESTAMPTZ
 );
-ALTER TABLE tokens ADD COLUMN IF NOT EXISTS contract_verified BOOLEAN DEFAULT false;
-ALTER TABLE tokens ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
-ALTER TABLE tokens ADD COLUMN IF NOT EXISTS owner_id UUID;
-ALTER TABLE token_listings ADD COLUMN IF NOT EXISTS owner_id UUID;
-ALTER TABLE launchpads ADD COLUMN IF NOT EXISTS owner_id UUID;
-ALTER TABLE market_maker_orders ADD COLUMN IF NOT EXISTS owner_id UUID;
-ALTER TABLE liquidity_positions ADD COLUMN IF NOT EXISTS amount TEXT DEFAULT '0';
 CREATE INDEX IF NOT EXISTS idx_tokens_status ON tokens(status);
 CREATE INDEX IF NOT EXISTS idx_tokens_chain ON tokens(chain);
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
@@ -3023,7 +3016,6 @@ CREATE TABLE IF NOT EXISTS fee_payments (
 	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 	verified_at TIMESTAMPTZ
 );
-ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS fee_schedule (
 	fee_type TEXT PRIMARY KEY,
@@ -3033,6 +3025,14 @@ INSERT INTO fee_schedule (fee_type, amount) VALUES
 	('basic_listing', 500), ('featured_listing', 1500), ('audit_required', 5000),
 	('kyc_verification', 1000), ('launchpad_basic', 5000), ('launchpad_premium', 15000)
 ON CONFLICT (fee_type) DO NOTHING;
+ALTER TABLE tokens ADD COLUMN IF NOT EXISTS contract_verified BOOLEAN DEFAULT false;
+ALTER TABLE tokens ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE tokens ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE token_listings ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE launchpads ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE market_maker_orders ADD COLUMN IF NOT EXISTS owner_id UUID;
+ALTER TABLE liquidity_positions ADD COLUMN IF NOT EXISTS amount TEXT DEFAULT '0';
+ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 `
 
 func initDatabase(cfg *Config) (*pgxpool.Pool, error) {
@@ -3049,43 +3049,14 @@ func initDatabase(cfg *Config) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Apply schema migrations (idempotent). The script is not ordered by
-	// dependency — several ALTER TABLE statements precede the CREATE TABLE that
-	// defines their target — so it is applied statement by statement, retrying
-	// in passes until every statement succeeds. Only the final pass's error is
-	// reported, and a pass that makes no progress ends the loop.
-	if err := applySchema(context.Background(), pool); err != nil {
+	// Apply schema migrations (idempotent). The script is ordered so that every
+	// CREATE TABLE precedes the ALTER TABLE and index statements that target it;
+	// a single Exec is safe here because the statements are all valid SQL that
+	// runs in order. Semicolons inside the script only terminate statements.
+	if _, err := pool.Exec(context.Background(), schemaSQL); err != nil {
 		return nil, fmt.Errorf("failed to apply schema: %w", err)
 	}
 
 	log.Println("ProjectParty database initialized with schema migrations applied")
 	return pool, nil
-}
-
-// applySchema runs schemaSQL to completion. Statements are separated by a
-// newline-terminated semicolon; that is sufficient because the script contains
-// no procedural bodies and no literal semicolons.
-func applySchema(ctx context.Context, pool *pgxpool.Pool) error {
-	parts := strings.Split(schemaSQL, ";\n")
-	pending := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			pending = append(pending, p)
-		}
-	}
-	for len(pending) > 0 {
-		var remaining []string
-		var lastErr error
-		for _, stmt := range pending {
-			if _, err := pool.Exec(ctx, stmt); err != nil {
-				remaining = append(remaining, stmt)
-				lastErr = err
-			}
-		}
-		if len(remaining) == len(pending) {
-			return lastErr
-		}
-		pending = remaining
-	}
-	return nil
 }

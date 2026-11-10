@@ -68,12 +68,12 @@ func TestApplySchemaCompletes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	if err := applySchema(ctx, pool); err != nil {
-		t.Fatalf("applySchema failed: %v", err)
+	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
+		t.Fatalf("schema failed to apply: %v", err)
 	}
 	// Idempotency: a second run must also succeed.
-	if err := applySchema(ctx, pool); err != nil {
-		t.Fatalf("second applySchema failed: %v", err)
+	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
+		t.Fatalf("second application failed: %v", err)
 	}
 
 	var tables int
@@ -96,8 +96,8 @@ func TestDeferredAlterColumnsExist(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	if err := applySchema(ctx, pool); err != nil {
-		t.Fatalf("applySchema failed: %v", err)
+	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
+		t.Fatalf("schema failed to apply: %v", err)
 	}
 
 	for _, table := range []string{"tokens", "token_listings", "launchpads", "market_maker_orders"} {
