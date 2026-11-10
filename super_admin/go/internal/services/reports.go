@@ -140,10 +140,9 @@ func (s *ReportService) generateComplianceReport(ctx context.Context, params map
 		var email, username, kycStatus, userStatus, docType, kycStatus2 string
 		var createdAt, submittedAt, reviewedAt *time.Time
 
-		err := rows.Scan(&userID, &email, &username, &kycStatus, &userStatus, &createdAt,
-			&kycID, &docType, &kycStatus2, &submittedAt, &reviewedAt)
-		if err != nil {
-			continue
+		if err := rows.Scan(&userID, &email, &username, &kycStatus, &userStatus, &createdAt,
+			&kycID, &docType, &kycStatus2, &submittedAt, &reviewedAt); err != nil {
+			return nil, err
 		}
 
 		reports = append(reports, map[string]interface{}{
@@ -162,11 +161,11 @@ func (s *ReportService) generateComplianceReport(ctx context.Context, params map
 
 func (s *ReportService) generateFinanceReport(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	rows, err := database.Pool.Query(ctx, `
-		SELECT DATE(created_at) as date, COUNT(*) as transaction_count, 
+		SELECT DATE(timestamp) as date, COUNT(*) as transaction_count, 
 			   SUM(amount) as total_volume, SUM(fee) as total_fees
 		FROM transactions
-		WHERE created_at > NOW() - INTERVAL '30 days'
-		GROUP BY DATE(created_at)
+		WHERE timestamp > NOW() - INTERVAL '30 days'
+		GROUP BY DATE(timestamp)
 		ORDER BY date DESC
 	`)
 	if err != nil {
@@ -180,9 +179,8 @@ func (s *ReportService) generateFinanceReport(ctx context.Context, params map[st
 		var count int64
 		var volume, fees float64
 
-		err := rows.Scan(&date, &count, &volume, &fees)
-		if err != nil {
-			continue
+		if err := rows.Scan(&date, &count, &volume, &fees); err != nil {
+			return nil, err
 		}
 
 		reports = append(reports, map[string]interface{}{
@@ -216,9 +214,8 @@ func (s *ReportService) generateSecurityReport(ctx context.Context, params map[s
 		var action, resourceType, ipAddress, username string
 		var createdAt time.Time
 
-		err := rows.Scan(&logID, &adminID, &action, &resourceType, &ipAddress, &createdAt, &username)
-		if err != nil {
-			continue
+		if err := rows.Scan(&logID, &adminID, &action, &resourceType, &ipAddress, &createdAt, &username); err != nil {
+			return nil, err
 		}
 
 		reports = append(reports, map[string]interface{}{
@@ -236,10 +233,10 @@ func (s *ReportService) generateSecurityReport(ctx context.Context, params map[s
 
 func (s *ReportService) generateTransactionReport(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	rows, err := database.Pool.Query(ctx, `
-		SELECT id, user_id, type, amount, currency, status, from_address, to_address, tx_hash, created_at
+		SELECT id, user_id, type, amount, currency, status, from_address, to_address, tx_hash, timestamp
 		FROM transactions
-		WHERE created_at > NOW() - INTERVAL '30 days'
-		ORDER BY created_at DESC
+		WHERE timestamp > NOW() - INTERVAL '30 days'
+		ORDER BY timestamp DESC
 		LIMIT 1000
 	`)
 	if err != nil {
@@ -254,9 +251,8 @@ func (s *ReportService) generateTransactionReport(ctx context.Context, params ma
 		var amount float64
 		var createdAt time.Time
 
-		err := rows.Scan(&id, &userID, &txType, &amount, &currency, &status, &fromAddr, &toAddr, &txHash, &createdAt)
-		if err != nil {
-			continue
+		if err := rows.Scan(&id, &userID, &txType, &amount, &currency, &status, &fromAddr, &toAddr, &txHash, &createdAt); err != nil {
+			return nil, err
 		}
 
 		reports = append(reports, map[string]interface{}{
@@ -294,9 +290,8 @@ func (s *ReportService) generateUserReport(ctx context.Context, params map[strin
 		var email, username, kycStatus, status, country string
 		var createdAt, lastLogin *time.Time
 
-		err := rows.Scan(&id, &email, &username, &kycStatus, &status, &country, &createdAt, &lastLogin)
-		if err != nil {
-			continue
+		if err := rows.Scan(&id, &email, &username, &kycStatus, &status, &country, &createdAt, &lastLogin); err != nil {
+			return nil, err
 		}
 
 		reports = append(reports, map[string]interface{}{
@@ -513,11 +508,12 @@ func (s *ReportService) ListReportConfigs(ctx context.Context) ([]ReportConfig, 
 	for rows.Next() {
 		var c ReportConfig
 		var paramsJSON []byte
-		err := rows.Scan(&c.ID, &c.Name, &c.ReportType, &paramsJSON, &c.FileFormat, &c.IsScheduled, &c.Schedule, &c.CreatedBy, &c.CreatedAt)
-		if err != nil {
-			continue
+		if err := rows.Scan(&c.ID, &c.Name, &c.ReportType, &paramsJSON, &c.FileFormat, &c.IsScheduled, &c.Schedule, &c.CreatedBy, &c.CreatedAt); err != nil {
+			return nil, err
 		}
-		json.Unmarshal(paramsJSON, &c.Parameters)
+		if err := json.Unmarshal(paramsJSON, &c.Parameters); err != nil {
+			return nil, err
+		}
 		configs = append(configs, c)
 	}
 	return configs, nil
@@ -549,9 +545,8 @@ func (s *ReportService) ListReports(ctx context.Context, limit, offset int) ([]R
 	var reports []Report
 	for rows.Next() {
 		var r Report
-		err := rows.Scan(&r.ID, &r.ConfigID, &r.Name, &r.FilePath, &r.FileSize, &r.Status, &r.CreatedBy, &r.CreatedAt, &r.CompletedAt)
-		if err != nil {
-			continue
+		if err := rows.Scan(&r.ID, &r.ConfigID, &r.Name, &r.FilePath, &r.FileSize, &r.Status, &r.CreatedBy, &r.CreatedAt, &r.CompletedAt); err != nil {
+			return nil, 0, err
 		}
 		reports = append(reports, r)
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -208,3 +209,162 @@ func TestParseCopyHeaderRejectsUnsafeNames(t *testing.T) {
 		t.Errorf("cols = %q, want %q", cols, `"id", "action", "resource_id"`)
 	}
 }
+
+// The scheduled loop is what makes backups exist at all in production, so it is
+// exercised against a live database: the loop must record a completed row, write
+// the file, and then delete both once the file falls outside the retention
+// window.
+func TestScheduledBackupLoopWritesAndPrunes(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping scheduled backup test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+
+	previous := database.Pool
+	database.Pool = pool
+	defer func() { database.Pool = previous }()
+
+	if _, err := pool.Exec(ctx, backupsTableDDL); err != nil {
+		t.Fatalf("create backups table: %v", err)
+	}
+	// The schema check runs the real migrations, which use CREATE TABLE IF NOT
+	// EXISTS. A table left behind here would shadow the production definition, so
+	// remove it when the test ends.
+	t.Cleanup(func() {
+		if _, err := pool.Exec(context.Background(), `DROP TABLE IF EXISTS backups`); err != nil {
+			t.Logf("drop backups table: %v", err)
+		}
+	})
+	if _, err := pool.Exec(ctx, `DELETE FROM backups`); err != nil {
+		t.Fatalf("clear backups: %v", err)
+	}
+
+	dir := t.TempDir()
+	svc := &BackupService{BackupDir: dir}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// 20ms is far below any real schedule; it only has to fire while we wait.
+	go svc.ScheduledBackupLoop(runCtx, 20*time.Millisecond, 0)
+
+	var status, filePath string
+	var size int64
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		err := pool.QueryRow(ctx,
+			`SELECT status, file_path, file_size FROM backups
+			 WHERE status='completed' ORDER BY completed_at DESC LIMIT 1`).
+			Scan(&status, &filePath, &size)
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+
+	if status != "completed" {
+		t.Fatalf("scheduled loop never recorded a completed backup (status %q)", status)
+	}
+	if size <= 0 {
+		t.Errorf("scheduled backup size = %d, want > 0", size)
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		t.Fatalf("scheduled backup file missing: %v", err)
+	}
+	if info.Size() != size {
+		t.Errorf("recorded size %d does not match file size %d", size, info.Size())
+	}
+
+	// Age the row past a one day window; the next run must remove row and file.
+	if _, err := pool.Exec(ctx,
+		`UPDATE backups SET completed_at = NOW() - INTERVAL '3 days' WHERE file_path = $1`, filePath); err != nil {
+		t.Fatalf("age backup: %v", err)
+	}
+	svc.pruneOldBackups(ctx, 1)
+
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Errorf("expired backup file still present (stat err = %v)", err)
+	}
+	var remaining int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM backups WHERE file_path = $1`, filePath).Scan(&remaining); err != nil {
+		t.Fatalf("count after prune: %v", err)
+	}
+	if remaining != 0 {
+		t.Errorf("expired backup row still present: %d", remaining)
+	}
+}
+
+// A retention window that keeps everything must not delete a recent backup.
+func TestPruneOldBackupsKeepsRecent(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping retention test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+
+	previous := database.Pool
+	database.Pool = pool
+	defer func() { database.Pool = previous }()
+
+	if _, err := pool.Exec(ctx, backupsTableDDL); err != nil {
+		t.Fatalf("create backups table: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := pool.Exec(context.Background(), `DROP TABLE IF EXISTS backups`); err != nil {
+			t.Logf("drop backups table: %v", err)
+		}
+	})
+
+	dir := t.TempDir()
+	svc := &BackupService{BackupDir: dir}
+	fresh := filepath.Join(dir, uuid.New().String()+".sql")
+	if err := os.WriteFile(fresh, []byte("SELECT 1;\n"), 0o600); err != nil {
+		t.Fatalf("write fresh backup: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO backups (backup_type, file_path, file_size, status, completed_at)
+		 VALUES ('full',$1,$2,'completed',NOW())`, fresh, 9); err != nil {
+		t.Fatalf("insert fresh backup: %v", err)
+	}
+
+	svc.pruneOldBackups(ctx, 30)
+
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("recent backup file was removed: %v", err)
+	}
+	var remaining int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM backups WHERE file_path = $1`, fresh).Scan(&remaining); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if remaining != 1 {
+		t.Errorf("recent backup row count = %d, want 1", remaining)
+	}
+}
+
+// backupsTableDDL mirrors the production schema for the table the scheduler
+// records its jobs in, including columns the test does not itself set.
+const backupsTableDDL = `CREATE TABLE IF NOT EXISTS backups (
+	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	backup_type VARCHAR(50) NOT NULL,
+	file_path TEXT NOT NULL,
+	file_size BIGINT,
+	status VARCHAR(50) DEFAULT 'pending',
+	created_by UUID,
+	created_at TIMESTAMPTZ DEFAULT NOW(),
+	completed_at TIMESTAMPTZ
+)`

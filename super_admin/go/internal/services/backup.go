@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,7 +35,18 @@ type BackupService struct {
 }
 
 func NewBackupService() *BackupService {
-	dir := os.Getenv("BACKUP_DIR")
+	return NewBackupServiceAt("")
+}
+
+// NewBackupServiceAt builds a service writing to dir. An empty dir falls back to
+// the environment so a caller with no configuration can still use it.
+func NewBackupServiceAt(dir string) *BackupService {
+	if dir == "" {
+		dir = os.Getenv("BACKUP_DIR")
+	}
+	if dir == "" {
+		dir = os.Getenv("BACKUP_PATH")
+	}
 	if dir == "" {
 		dir = "/var/lib/tigerwallet/backups"
 	}
@@ -266,6 +278,96 @@ func tableDDL(ctx context.Context, table string) (string, error) {
 
 	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n%s\n);",
 		quoteIdent(table), strings.Join(cols, ",\n")), nil
+}
+
+// ScheduledBackupLoop takes a backup on each interval and prunes files past the
+// retention window, repeating until ctx is cancelled. It returns immediately
+// when the interval is not positive, so callers can start it unconditionally.
+// The first backup runs after one interval, not at startup.
+func (s *BackupService) ScheduledBackupLoop(ctx context.Context, interval time.Duration, retentionDays int) {
+	if interval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			id := uuid.New()
+			if _, err := database.Pool.Exec(ctx,
+				`INSERT INTO backups (id, backup_type, file_path, file_size, status, created_at)
+				 VALUES ($1,'scheduled','',0,'in_progress',NOW())`, id); err != nil {
+				log.Printf("scheduled backup: cannot record job: %v", err)
+				continue
+			}
+			path, size, err := s.CreateBackup(ctx, id)
+			if err != nil {
+				log.Printf("scheduled backup %s failed: %v", id, err)
+				if _, uerr := database.Pool.Exec(ctx, `UPDATE backups SET status='failed' WHERE id=$1`, id); uerr != nil {
+					log.Printf("scheduled backup %s: cannot mark failed: %v", id, uerr)
+				}
+				continue
+			}
+			if _, err := database.Pool.Exec(ctx,
+				`UPDATE backups SET file_path=$1, file_size=$2, status='completed', completed_at=NOW() WHERE id=$3`,
+				path, size, id); err != nil {
+				log.Printf("scheduled backup %s: cannot mark completed: %v", id, err)
+			}
+			log.Printf("scheduled backup %s completed (%d bytes)", id, size)
+
+			if retentionDays > 0 {
+				s.pruneOldBackups(ctx, retentionDays)
+			}
+		}
+	}
+}
+
+// pruneOldBackups removes completed backup rows and their files once they are
+// older than the retention window. A file that cannot be removed keeps its row,
+// so a later pass retries instead of losing track of the file.
+func (s *BackupService) pruneOldBackups(ctx context.Context, retentionDays int) {
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+
+	rows, err := database.Pool.Query(ctx,
+		`SELECT id, file_path FROM backups
+		 WHERE status = 'completed' AND completed_at IS NOT NULL AND completed_at < $1`, cutoff)
+	if err != nil {
+		log.Printf("backup retention: cannot list expired backups: %v", err)
+		return
+	}
+	type expired struct{ id, path string }
+	var old []expired
+	for rows.Next() {
+		var e expired
+		if err := rows.Scan(&e.id, &e.path); err != nil {
+			rows.Close()
+			log.Printf("backup retention: cannot read row: %v", err)
+			return
+		}
+		old = append(old, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("backup retention: %v", err)
+		return
+	}
+
+	for _, e := range old {
+		if e.path != "" {
+			if err := os.Remove(e.path); err != nil && !os.IsNotExist(err) {
+				log.Printf("backup retention: cannot remove %s: %v", e.path, err)
+				continue
+			}
+		}
+		if _, err := database.Pool.Exec(ctx, `DELETE FROM backups WHERE id=$1`, e.id); err != nil {
+			log.Printf("backup retention: cannot delete row %s: %v", e.id, err)
+			continue
+		}
+		log.Printf("backup retention: removed expired backup %s", e.id)
+	}
 }
 
 // RestoreBackup replays an export file. It runs inside one transaction, so a

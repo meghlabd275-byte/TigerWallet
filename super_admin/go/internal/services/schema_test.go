@@ -42,9 +42,9 @@ func TestHandlerStatementsMatchSchema(t *testing.T) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 
-	files := []string{
-		filepath.Join(moduleRoot, "main.go"),
-		filepath.Join(moduleRoot, "trading_control.go"),
+	files, err := goSourceFiles(moduleRoot)
+	if err != nil {
+		t.Fatalf("list source files: %v", err)
 	}
 	statements, err := collectStatements(files)
 	if err != nil {
@@ -97,6 +97,35 @@ var (
 	// the suffix in a separate literal, so those fragments are skipped.
 	isWholeStatement = regexp.MustCompile(`(?is)^(select|insert|update|delete)\b.*\b(from|into|set|values)\b`)
 )
+
+// goSourceFiles returns every non-test Go file under root, skipping vendor and
+// generated directories. Test files are excluded because their SQL belongs to
+// fixtures rather than to the handlers under check.
+func goSourceFiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case "vendor", "node_modules", ".git":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
+}
 
 // collectStatements pulls SQL out of the given Go files. Queries built by
 // concatenating a constant are reconstructed from the constant and the literal

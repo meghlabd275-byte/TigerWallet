@@ -68,6 +68,17 @@ func main() {
 		log.Println("Feature-flag Redis client initialized")
 	}
 
+	// Scheduled backups. The loop stops when the process context is cancelled at
+	// shutdown; a disabled or zero interval makes it return at once.
+	bgCtx, stopBackground := context.WithCancel(context.Background())
+	defer stopBackground()
+	if cfg.BackupEnabled {
+		backupSvc := services.NewBackupServiceAt(cfg.BackupPath)
+		go backupSvc.ScheduledBackupLoop(bgCtx, cfg.BackupInterval, cfg.BackupRetentionDays)
+		log.Printf("Scheduled backups enabled: interval %s, retention %d days, dir %s",
+			cfg.BackupInterval, cfg.BackupRetentionDays, backupSvc.BackupDir)
+	}
+
 	router := gin.Default()
 
 	router.Use(func() gin.HandlerFunc {
