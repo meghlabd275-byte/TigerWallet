@@ -2,9 +2,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -659,7 +666,7 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
 	}
-	database.Pool.Exec(ctx, `UPDATE admin_users SET last_login_at=NOW() WHERE id=$1`, id)
+	database.Pool.Exec(ctx, `UPDATE admin_users SET last_login=NOW() WHERE id=$1`, id)
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr, "user": gin.H{"id": id, "email": req.Email, "username": username, "role": role}})
 }
 
@@ -1016,7 +1023,7 @@ func handleRejectKYC(c *gin.Context) {
 // ---- Transactions ----
 
 func handleGetTransactions(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, user_id, type, amount, currency, status, from_address, to_address, tx_hash, chain_id, created_at FROM transactions ORDER BY created_at DESC LIMIT 100`)
+	rows, err := dbQuery(c, `SELECT id, user_id, type, amount, currency, status, from_address, to_address, tx_hash, chain_id, timestamp AS created_at FROM transactions ORDER BY timestamp DESC LIMIT 100`)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -1026,7 +1033,7 @@ func handleGetTransactions(c *gin.Context) {
 }
 
 func handleGetTransaction(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, user_id, type, amount, currency, status, from_address, to_address, tx_hash, chain_id, created_at FROM transactions WHERE id=$1`, c.Param("id"))
+	rows, err := dbQuery(c, `SELECT id, user_id, type, amount, currency, status, from_address, to_address, tx_hash, chain_id, timestamp AS created_at FROM transactions WHERE id=$1`, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -1327,7 +1334,12 @@ func handleUpdateFee(c *gin.Context) {
 // ---- Webhooks ----
 
 func handleGetWebhooks(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, name, url, secret, events, is_active FROM webhooks ORDER BY created_at DESC LIMIT 100`)
+	// The signing secret is never returned. An operator who needs to rotate it
+	// sets a new one; reading it back would put every webhook's shared secret in
+	// the browser and in every proxy log along the way.
+	rows, err := dbQuery(c, `SELECT id, name, url, is_active, events, created_at,
+		(secret IS NOT NULL AND secret <> '') AS has_secret
+		FROM webhooks ORDER BY created_at DESC LIMIT 100`)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -1357,7 +1369,55 @@ func handleCreateWebhook(c *gin.Context) {
 }
 
 func handleTestWebhook(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "webhook test sent", "success": true})
+	var hook struct {
+		URL    string
+		Secret *string
+	}
+	if err := dbQueryRow(c, `SELECT url, secret FROM webhooks WHERE id=$1`, c.Param("id")).
+		Scan(&hook.URL, &hook.Secret); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "webhook not found"})
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event":     "webhook.test",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, hook.URL, bytes.NewReader(body))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-TigerWallet-Event", "webhook.test")
+
+	// Sign the body so the receiver can verify it came from this backend. The
+	// signature is over the exact bytes sent, hex encoded.
+	if hook.Secret != nil && *hook.Secret != "" {
+		mac := hmac.New(sha256.New, []byte(*hook.Secret))
+		mac.Write(body)
+		req.Header.Set("X-TigerWallet-Signature", hex.EncodeToString(mac.Sum(nil)))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "error": "delivery failed: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":     resp.StatusCode >= 200 && resp.StatusCode < 300,
+		"status_code": resp.StatusCode,
+	})
 }
 
 func handleDeleteWebhook(c *gin.Context) {
@@ -1439,7 +1499,7 @@ func handleBroadcastNotification(c *gin.Context) {
 // ---- Audit Logs ----
 
 func handleGetAuditLogs(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, admin_id, action, resource_type, resource_id, details, ip, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200`)
+	rows, err := dbQuery(c, `SELECT id, admin_id, action, resource_type, resource_id, details, ip_address, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200`)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -1449,13 +1509,61 @@ func handleGetAuditLogs(c *gin.Context) {
 }
 
 func handleExportAuditLogs(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"file_path": "/exports/audit_logs.csv", "message": "export started"})
+	// Streamed as CSV so the export works regardless of how large the audit log
+	// has grown; buffering it in memory would fall over on a busy deployment.
+	filename := "audit_logs_" + time.Now().UTC().Format("20060102T150405Z") + ".csv"
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+
+	rows, err := dbQuery(c, `SELECT id, admin_id, action, resource_type, resource_id, details, ip_address, user_agent, created_at
+		FROM audit_logs ORDER BY created_at DESC`)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	w := csv.NewWriter(c.Writer)
+	if err := w.Write([]string{"id", "admin_id", "action", "resource_type", "resource_id", "details", "ip_address", "user_agent", "created_at"}); err != nil {
+		return
+	}
+
+	for rows.Next() {
+		var (
+			id, action, resourceType           string
+			adminID, resourceID, ip, userAgent *string
+			details                            []byte
+			createdAt                          time.Time
+		)
+		if err := rows.Scan(&id, &adminID, &action, &resourceType, &resourceID, &details, &ip, &userAgent, &createdAt); err != nil {
+			return
+		}
+		record := []string{
+			id, deref(adminID), action, resourceType, deref(resourceID),
+			string(details), deref(ip), deref(userAgent), createdAt.UTC().Format(time.RFC3339),
+		}
+		if err := w.Write(record); err != nil {
+			return
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return
+	}
+	w.Flush()
+}
+
+// deref renders a nullable string column as an empty field in CSV output.
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // ---- Sessions ----
 
 func handleGetSessions(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, admin_id, ip, user_agent, expires_at FROM admin_sessions WHERE admin_id=$1 ORDER BY expires_at DESC`, c.GetString("user_id"))
+	rows, err := dbQuery(c, `SELECT id, admin_id, ip_address, user_agent, expires_at FROM admin_sessions WHERE admin_id=$1 ORDER BY expires_at DESC`, c.GetString("user_id"))
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -1864,7 +1972,7 @@ func handleGetStats(c *gin.Context) {
 // ---- Admins ----
 
 func handleGetAdmins(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, username, email, role, is_active, created_at, last_login_at FROM admin_users ORDER BY created_at DESC`)
+	rows, err := dbQuery(c, `SELECT id, username, email, role, is_active, created_at, last_login FROM admin_users ORDER BY created_at DESC`)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -1874,7 +1982,7 @@ func handleGetAdmins(c *gin.Context) {
 }
 
 func handleGetAdmin(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, username, email, role, is_active, created_at, last_login_at FROM admin_users WHERE id=$1`, c.Param("id"))
+	rows, err := dbQuery(c, `SELECT id, username, email, role, is_active, created_at, last_login FROM admin_users WHERE id=$1`, c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -2040,15 +2148,58 @@ func handleCreateBackup(c *gin.Context) {
 	if req.BackupType == "" {
 		req.BackupType = "full"
 	}
-	if _, err := dbExec(c, `INSERT INTO backups (id, backup_type, file_path, file_size, status, created_by) VALUES ($1,$2,$3,0,'in_progress',$4)`, uuid.New(), req.BackupType, "/backups/"+uuid.New().String(), c.GetString("user_id")); err != nil {
+
+	backupID := uuid.New()
+	actorID := c.GetString("user_id")
+	if _, err := dbExec(c, `INSERT INTO backups (id, backup_type, file_path, file_size, status, created_by) VALUES ($1,$2,'',0,'in_progress',$3)`, backupID, req.BackupType, actorID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"message": "backup started"})
+
+	// The dump runs synchronously so the response reflects what actually
+	// happened; a caller that gets a row marked "completed" can trust the file
+	// exists.
+	path, size, err := services.NewBackupService().CreateBackup(c.Request.Context(), backupID)
+	if err != nil {
+		if _, uerr := dbExec(c, `UPDATE backups SET status='failed' WHERE id=$1`, backupID); uerr != nil {
+			log.Printf("mark backup %s failed: %v", backupID, uerr)
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if _, err := dbExec(c, `UPDATE backups SET file_path=$1, file_size=$2, status='completed', completed_at=NOW() WHERE id=$3`,
+		path, size, backupID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id": backupID, "file_path": path, "file_size": size, "status": "completed",
+	})
 }
 
 func handleRestoreBackup(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "restore started"})
+	var row struct {
+		FilePath string
+		Status   string
+	}
+	if err := dbQueryRow(c, `SELECT file_path, status FROM backups WHERE id=$1`, c.Param("id")).
+		Scan(&row.FilePath, &row.Status); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "backup not found"})
+		return
+	}
+	if row.FilePath == "" {
+		c.JSON(http.StatusConflict, gin.H{"error": "backup has no file; it never completed"})
+		return
+	}
+
+	if err := services.NewBackupService().RestoreBackup(c.Request.Context(), row.FilePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "restore completed", "file_path": row.FilePath})
 }
 
 func handleDeleteBackup(c *gin.Context) {
@@ -2396,7 +2547,12 @@ func handleGenerateSLAReport(c *gin.Context) {
 // ---- Integrations ----
 
 func handleGetIntegrations(c *gin.Context) {
-	rows, err := dbQuery(c, `SELECT id, integration, name, api_key, webhook_url, is_active FROM integration_configs ORDER BY created_at DESC`)
+	// api_key and api_secret are stored encrypted and are never returned. The
+	// listing exposes whether a credential is set instead.
+	rows, err := dbQuery(c, `SELECT id, integration, name, webhook_url, is_active, created_at,
+		(api_key IS NOT NULL AND api_key <> '') AS has_api_key,
+		(api_secret IS NOT NULL AND api_secret <> '') AS has_api_secret
+		FROM integration_configs ORDER BY created_at DESC`)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
 		return
@@ -2417,11 +2573,29 @@ func handleCreateIntegration(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if _, err := dbExec(c, `INSERT INTO integration_configs (id, integration, name, api_key, api_secret, webhook_url, is_active, settings, created_by) VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8)`, uuid.New(), req.Integration, req.Name, req.APIKey, req.APISecret, req.WebhookURL, []byte("{}"), c.GetString("user_id")); err != nil {
+
+	// Credentials go through the integration service so they are sealed with the
+	// encryption key before they reach the database. Writing them directly left
+	// them in plaintext.
+	adminID, err := uuid.Parse(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid admin identity"})
+		return
+	}
+	cfg := &services.IntegrationConfig{
+		Integration: req.Integration,
+		Name:        req.Name,
+		APIKey:      req.APIKey,
+		APISecret:   req.APISecret,
+		WebhookURL:  req.WebhookURL,
+		IsActive:    true,
+	}
+	saved, err := services.NewIntegrationService(appCfg).SaveIntegrationConfig(c.Request.Context(), cfg, adminID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "integration created"})
+	c.JSON(http.StatusCreated, gin.H{"id": saved.ID, "message": "integration created"})
 }
 
 func handleUpdateIntegration(c *gin.Context) {
@@ -2452,7 +2626,24 @@ func handleDeleteIntegration(c *gin.Context) {
 }
 
 func handleTestIntegration(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "integration test successful"})
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid integration id"})
+		return
+	}
+
+	ok, detail, err := services.NewIntegrationService(appCfg).TestIntegration(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	status := http.StatusOK
+	if !ok {
+		// The credential was rejected or the provider is unreachable; the caller
+		// asked whether it works and the answer is no.
+		status = http.StatusBadGateway
+	}
+	c.JSON(status, gin.H{"success": ok, "detail": detail})
 }
 
 // ---- Bot Management ----
@@ -2903,7 +3094,7 @@ func handleUpdateWhiteLabelStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "is_active or status is required"})
 		return
 	}
-	if _, err := dbExec(c, `UPDATE white_labels SET is_active=$1, updated_at=NOW() WHERE id=$2`, *req.IsActive, c.Param("id")); err != nil {
+	if _, err := dbExec(c, `UPDATE white_labels SET is_active=$1 WHERE id=$2`, *req.IsActive, c.Param("id")); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

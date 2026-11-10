@@ -90,6 +90,9 @@ func runMigrations(ctx context.Context) error {
 		`ALTER TABLE sla_reports ADD COLUMN IF NOT EXISTS uptime_measured BOOLEAN DEFAULT FALSE`,
 		// Health-check history backing the uptime figure in an SLA report.
 		`CREATE TABLE IF NOT EXISTS service_health_checks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), service VARCHAR(100) NOT NULL, healthy BOOLEAN NOT NULL, latency_ms INTEGER, detail TEXT, checked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW())`,
+		// Crypto card administration. "limit" is a reserved word, so it is quoted
+		// everywhere it is referenced.
+		`CREATE TABLE IF NOT EXISTS crypto_cards (id BIGSERIAL PRIMARY KEY, user_id UUID REFERENCES users(id) ON DELETE SET NULL, user_name VARCHAR(255) NOT NULL, card_number VARCHAR(32) NOT NULL, currency VARCHAR(20) NOT NULL, balance NUMERIC(40, 8) NOT NULL DEFAULT 0, "limit" NUMERIC(40, 8) NOT NULL DEFAULT 0, status VARCHAR(50) NOT NULL DEFAULT 'pending', card_type VARCHAR(50) NOT NULL DEFAULT 'virtual', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_service_health_checks_checked_at ON service_health_checks(checked_at)`,
 		`CREATE TABLE IF NOT EXISTS integration_configs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), integration VARCHAR(50) NOT NULL, name VARCHAR(255) NOT NULL, api_key TEXT, api_secret TEXT, webhook_url TEXT, is_active BOOLEAN DEFAULT TRUE, settings JSONB, created_by UUID REFERENCES admin_users(id), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW())`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_id ON audit_logs(admin_id)`,
