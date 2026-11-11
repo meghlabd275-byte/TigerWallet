@@ -192,22 +192,19 @@ type PaymentService struct {
 	ethClients     map[string]*ethclient.Client
 	privateKey     *ecdsa.PrivateKey
 	mu             sync.RWMutex
-	payments       map[string]*Payment
-	paymentAddrs   map[string]*PaymentAddress
-	feeConfigs     map[string]*FeeConfig
+	store          *paymentStore
 	webhookClients map[string]*http.Client
 }
 
 func NewPaymentService() *PaymentService {
-	return &PaymentService{
+	s := &PaymentService{
 		config:         &cfg,
 		redis:          redis.NewClient(&redis.Options{Addr: cfg.RedisAddr}),
 		ethClients:     make(map[string]*ethclient.Client),
-		payments:       make(map[string]*Payment),
-		paymentAddrs:   make(map[string]*PaymentAddress),
-		feeConfigs:     make(map[string]*FeeConfig),
 		webhookClients: make(map[string]*http.Client),
 	}
+	s.store = newPaymentStore(s.redis)
+	return s
 }
 
 func (s *PaymentService) initBlockchainClients() error {
@@ -258,8 +255,15 @@ func (s *PaymentService) initFeeConfigs() {
 		{ID: "withdrawal_fee", FeeType: "withdrawal", Token: "USDT", Amount: "10", AmountUSD: "10", IsActive: true},
 	}
 
+	// Seeded once: an operator's later edit must not be overwritten on every
+	// restart, so only ids that are not already stored are written.
 	for _, fee := range defaultFees {
-		s.feeConfigs[fee.ID] = fee
+		if _, exists := s.store.getFee(fee.ID); exists {
+			continue
+		}
+		if err := s.store.putFee(fee); err != nil {
+			log.Printf("cannot seed fee %s: %v", fee.ID, err)
+		}
 	}
 }
 
@@ -337,10 +341,6 @@ func (s *PaymentService) GeneratePaymentAddress(c *gin.Context) {
 		CreatedAt: time.Now(),
 	}
 
-	s.mu.Lock()
-	s.paymentAddrs[paymentAddr.Address] = paymentAddr
-	s.mu.Unlock()
-
 	// Create payment record if amount specified
 	var payment *Payment
 	if req.Amount != "" && req.OrderID != "" {
@@ -358,10 +358,24 @@ func (s *PaymentService) GeneratePaymentAddress(c *gin.Context) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
+	}
 
-		s.mu.Lock()
-		s.payments[payment.ID] = payment
-		s.mu.Unlock()
+	// The address and its payment are written together: the chain listener
+	// attributes an incoming transfer by address, so an address that is not
+	// durably recorded is money that can never be matched to a payment.
+	s.mu.Lock()
+	var storeErr error
+	if payment != nil {
+		storeErr = s.store.putPaymentWithAddress(payment, paymentAddr)
+	} else {
+		storeErr = s.store.putAddress(paymentAddr)
+	}
+	s.mu.Unlock()
+
+	if storeErr != nil {
+		log.Printf("cannot persist the deposit address for order %s: %v", req.OrderID, storeErr)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the payment address could not be saved, please retry"})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -382,7 +396,7 @@ func (s *PaymentService) GetPaymentAddress(c *gin.Context) {
 	address := c.Param("address")
 
 	s.mu.RLock()
-	paymentAddr, ok := s.paymentAddrs[address]
+	paymentAddr, ok := s.store.getAddress(address)
 	s.mu.RUnlock()
 
 	if !ok {
@@ -402,7 +416,7 @@ func (s *PaymentService) GetPaymentStatus(c *gin.Context) {
 	if id == "" {
 		address := c.Param("address")
 		s.mu.RLock()
-		paymentAddr, ok := s.paymentAddrs[address]
+		paymentAddr, ok := s.store.getAddress(address)
 		s.mu.RUnlock()
 
 		if !ok {
@@ -412,7 +426,7 @@ func (s *PaymentService) GetPaymentStatus(c *gin.Context) {
 
 		// Find payment by order ID or address
 		s.mu.RLock()
-		for _, p := range s.payments {
+		for _, p := range s.store.listPayments() {
 			if p.ToAddress == address || p.OrderID == paymentAddr.OrderID {
 				s.mu.RUnlock()
 				c.JSON(http.StatusOK, gin.H{
@@ -435,7 +449,7 @@ func (s *PaymentService) GetPaymentStatus(c *gin.Context) {
 	}
 
 	s.mu.RLock()
-	payment, ok := s.payments[id]
+	payment, ok := s.store.getPayment(id)
 	s.mu.RUnlock()
 
 	if !ok {
@@ -508,9 +522,13 @@ func (s *PaymentService) CreateDeposit(c *gin.Context) {
 	}
 
 	s.mu.Lock()
-	s.payments[payment.ID] = payment
-	s.paymentAddrs[paymentAddr.Address] = paymentAddr
+	storeErr := s.store.putPaymentWithAddress(payment, paymentAddr)
 	s.mu.Unlock()
+	if storeErr != nil {
+		log.Printf("cannot persist deposit %s: %v", payment.ID, storeErr)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the deposit could not be saved, please retry"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -579,8 +597,13 @@ func (s *PaymentService) CreateWithdrawal(c *gin.Context) {
 	}
 
 	s.mu.Lock()
-	s.payments[payment.ID] = payment
+	storeErr := s.store.putPayment(payment)
 	s.mu.Unlock()
+	if storeErr != nil {
+		log.Printf("cannot persist withdrawal %s: %v", payment.ID, storeErr)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the withdrawal could not be saved, please retry"})
+		return
+	}
 
 	// Broadcast runs in the background; the response returns while it is in flight.
 	go s.processWithdrawal(payment)
@@ -679,8 +702,14 @@ func (s *PaymentService) processWithdrawal(payment *Payment) {
 	payment.UpdatedAt = time.Now()
 
 	s.mu.Lock()
-	s.payments[payment.ID] = payment
+	err = s.store.putPayment(payment)
 	s.mu.Unlock()
+	if err != nil {
+		// The transaction is already on chain, so this is a bookkeeping
+		// failure: report it loudly rather than losing the hash.
+		log.Printf("withdrawal %s broadcast as %s but could not be recorded: %v", payment.ID, payment.TxHash, err)
+		return
+	}
 
 	log.Printf("Withdrawal %s broadcasted: %s", payment.ID, payment.TxHash)
 }
@@ -691,7 +720,7 @@ func (s *PaymentService) GetPaymentHistory(c *gin.Context) {
 
 	s.mu.RLock()
 	var userPayments []*Payment
-	for _, p := range s.payments {
+	for _, p := range s.store.listPayments() {
 		if p.UserID == userID {
 			userPayments = append(userPayments, p)
 		}
@@ -709,10 +738,7 @@ func (s *PaymentService) GetFeeConfigs(c *gin.Context) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var fees []*FeeConfig
-	for _, f := range s.feeConfigs {
-		fees = append(fees, f)
-	}
+	fees := s.store.listFees()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -744,7 +770,7 @@ func (s *PaymentService) UpdateFeeConfig(c *gin.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if fee, ok := s.feeConfigs[req.FeeID]; ok {
+	if fee, ok := s.store.getFee(req.FeeID); ok {
 		fee.Amount = req.Amount
 		if req.AmountUSD != "" {
 			fee.AmountUSD = req.AmountUSD
@@ -754,6 +780,11 @@ func (s *PaymentService) UpdateFeeConfig(c *gin.Context) {
 		}
 		fee.UpdatedBy = req.UpdatedBy
 		fee.UpdatedAt = time.Now()
+		if err := s.store.putFee(fee); err != nil {
+			log.Printf("cannot persist fee %s: %v", fee.ID, err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the fee could not be saved, please retry"})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"fee":     fee,
@@ -840,7 +871,7 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 
 	// Find payment by address
 	var payment *Payment
-	for _, p := range s.payments {
+	for _, p := range s.store.listPayments() {
 		if strings.EqualFold(p.ToAddress, payload.Address) && p.Status == "pending" {
 			payment = p
 			break
@@ -873,6 +904,12 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 	}
 
 	payment.UpdatedAt = time.Now()
+
+	if err := s.store.putPayment(payment); err != nil {
+		log.Printf("cannot record verified deposit %s: %v", payment.ID, err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the verified payment could not be recorded, please retry"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -1017,17 +1054,46 @@ func paymentWebhookSecret() string {
 	return strings.TrimSpace(os.Getenv("PAYMENT_WEBHOOK_SECRET"))
 }
 
-// Health check
+// HealthCheck reports whether the service can actually do its job. The store
+// holds the deposit addresses the chain listener resolves against, so if it is
+// unreachable a payment made to an issued address cannot be attributed and the
+// service must not be reported healthy.
 func (s *PaymentService) HealthCheck(c *gin.Context) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	storeStatus := "ok"
+	status := "healthy"
+	httpStatus := http.StatusOK
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":           "healthy",
+	if s.redis != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := s.redis.Ping(ctx).Err(); err != nil {
+			storeStatus = "unavailable"
+			status = "degraded"
+			httpStatus = http.StatusServiceUnavailable
+		}
+	}
+
+	chainStatus := "ok"
+	if len(s.ethClients) == 0 {
+		// Without an RPC client no deposit can be verified on chain.
+		chainStatus = "unconfigured"
+		status = "degraded"
+		httpStatus = http.StatusServiceUnavailable
+	}
+
+	s.mu.RLock()
+	payments := len(s.store.payments)
+	addresses := len(s.store.addrs)
+	s.mu.RUnlock()
+
+	c.JSON(httpStatus, gin.H{
+		"status":           status,
 		"service":          "payment-service",
 		"timestamp":        time.Now().Unix(),
-		"active_payments":  len(s.payments),
-		"active_addresses": len(s.paymentAddrs),
+		"store":            storeStatus,
+		"chains":           chainStatus,
+		"active_payments":  payments,
+		"active_addresses": addresses,
 		"connected_chains": len(s.ethClients),
 	})
 }
@@ -1172,7 +1238,7 @@ func (s *PaymentService) monitorPayments() {
 	for range ticker.C {
 		s.mu.RLock()
 		var pending []*Payment
-		for _, p := range s.payments {
+		for _, p := range s.store.listPayments() {
 			if p.Status == "pending" && p.TxHash != "" && p.Confirmations < cfg.ConfirmationBlocks {
 				pending = append(pending, p)
 			}
@@ -1215,5 +1281,8 @@ func (s *PaymentService) checkPaymentConfirmation(payment *Payment) {
 		}
 	}
 	payment.UpdatedAt = time.Now()
+	if err := s.store.putPayment(payment); err != nil {
+		log.Printf("cannot record confirmations for %s: %v", payment.ID, err)
+	}
 	s.mu.Unlock()
 }

@@ -156,6 +156,7 @@ type TokenListing struct {
 	PaymentStatus     string     `json:"payment_status" bson:"payment_status"`
 	PaymentTxHash     string     `json:"payment_tx_hash" bson:"payment_tx_hash"`
 	PaymentAddress    string     `json:"payment_address" bson:"payment_address"`
+	PaymentOrderID    string     `json:"payment_order_id" bson:"payment_order_id"`
 	Status            string     `json:"status" bson:"status"` // pending, paid, reviewing, approved, rejected
 	AdminNotes        string     `json:"admin_notes" bson:"admin_notes"`
 	ReviewedBy        string     `json:"reviewed_by" bson:"reviewed_by"`
@@ -253,6 +254,16 @@ func NewListingService() *ListingService {
 // listingKey namespaces a single listing inside Redis.
 func listingKey(id string) string { return "listing:" + id }
 
+// orderIndexKey maps a payment order id to the listing it was issued for.
+//
+// The webhook carries the order id, not the listing id, and the order id only
+// embeds the first eight characters of the listing UUID. Resolving it by
+// scanning every listing and prefix-matching is both O(n) per callback and
+// unsafe: two listings whose ids share a first character would let one
+// applicant's payment be applied to another's listing. The index makes the
+// lookup exact.
+func orderIndexKey(orderID string) string { return "listing:order:" + orderID }
+
 // storeListing writes a listing to Redis and updates the in-process cache. The
 // map alone is not enough: this service is deployed as a container that can be
 // restarted or rescheduled, and an application whose listing disappears when
@@ -306,6 +317,24 @@ func (s *ListingService) loadListing(ctx context.Context, id string) (*TokenList
 
 	snapshot := listing
 	return &snapshot, true
+}
+
+// indexOrder records which listing a payment order id belongs to.
+func (s *ListingService) indexOrder(ctx context.Context, orderID, listingID string) error {
+	if err := s.redis.Set(ctx, orderIndexKey(orderID), listingID, 0).Err(); err != nil {
+		return fmt.Errorf("cannot index order %s: %w", orderID, err)
+	}
+	return nil
+}
+
+// listingIDForOrder resolves a payment order id to its listing, exactly. It
+// reports false when the order is unknown rather than guessing from a prefix.
+func (s *ListingService) listingIDForOrder(ctx context.Context, orderID string) (string, bool) {
+	id, err := s.redis.Get(ctx, orderIndexKey(orderID)).Result()
+	if err != nil {
+		return "", false
+	}
+	return id, id != ""
 }
 
 // deleteListing removes a listing from Redis and the cache.
@@ -513,10 +542,14 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 		return
 	}
 
+	// The order id is issued once and reused for the intent and the listing, so
+	// the callback can be resolved back to this listing exactly.
+	orderID := fmt.Sprintf("LISTING-%s", listing.ID[:8])
+
 	// Create payment request via Payment Service
 	paymentReq := map[string]interface{}{
 		"user_id":     listing.ID,
-		"order_id":    fmt.Sprintf("LISTING-%s", listing.ID[:8]),
+		"order_id":    orderID,
 		"amount":      tier.FeeAmount,
 		"amount_usd":  tier.FeeUSD,
 		"chain":       "ethereum",
@@ -537,12 +570,22 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 		listing.PaymentID = intent.PaymentID
 		listing.PaymentAddress = intent.PaymentAddress
 		listing.PaymentStatus = "pending"
+		listing.PaymentOrderID = orderID
 	}
 
 	// Persist the payment outcome so the record the applicant is shown matches
 	// what the store holds.
 	if err := s.storeListing(c.Request.Context(), listing); err != nil {
 		log.Printf("listing %s: cannot record the payment outcome: %v", listing.ID, err)
+	}
+	if listing.PaymentOrderID != "" {
+		if err := s.indexOrder(c.Request.Context(), listing.PaymentOrderID, listing.ID); err != nil {
+			// Without the index the callback cannot be resolved back to this
+			// listing, so a payment would be taken and never credited.
+			log.Printf("listing %s: cannot index order %s: %v", listing.ID, listing.PaymentOrderID, err)
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the payment could not be prepared, please retry"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -772,38 +815,28 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 		return
 	}
 
-	// Extract listing ID from order ID
+	// Resolve the order to its listing through the index written when the
+	// intent was issued. Scanning every listing and matching an eight-character
+	// prefix would be both O(n) per callback and wrong: two listings whose ids
+	// share a first character could have one applicant's payment credited to the
+	// other's listing.
 	orderID := payload.OrderID
 	if !strings.HasPrefix(orderID, "LISTING-") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID"})
 		return
 	}
-
-	// Find the listing the order belongs to. The order id carries the first
-	// eight characters of the listing id (see SubmitApplication), so match on
-	// that. Matching on the payment id would never succeed: the payment service
-	// returns plain UUIDs, not "pay_"-prefixed ids.
-	suffix := orderID[len("LISTING-"):]
-	if suffix == "" {
+	if len(orderID) <= len("LISTING-") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID"})
 		return
 	}
 
-	all, err := s.listListings(c.Request.Context(), "", "")
-	if err != nil {
-		log.Printf("payment webhook: cannot read listings: %v", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the listings could not be read, please retry"})
+	listingID, ok := s.listingIDForOrder(c.Request.Context(), orderID)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}
-	var listing *TokenListing
-	for _, l := range all {
-		if strings.HasPrefix(l.ID, suffix) {
-			listing = l
-			break
-		}
-	}
-
-	if listing == nil {
+	listing, ok := s.loadListing(c.Request.Context(), listingID)
+	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}

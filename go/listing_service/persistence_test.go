@@ -328,6 +328,9 @@ func TestCompletedPaymentMarksTheListingPaid(t *testing.T) {
 	}
 
 	const txHash = "0xabc123"
+	if err := svc.indexOrder(context.Background(), "LISTING-abcdef01", listing.ID); err != nil {
+		t.Fatalf("indexOrder: %v", err)
+	}
 	body := completedPaymentBody("LISTING-abcdef01", listing.PaymentID, txHash)
 	code, resp := postSignedWebhook(t, svc, secret, body)
 	if code != http.StatusOK {
@@ -437,6 +440,9 @@ func TestCompletionForAnotherListingsPaymentIsRefused(t *testing.T) {
 		t.Fatalf("storeListing: %v", err)
 	}
 
+	if err := svc.indexOrder(context.Background(), "LISTING-abcdef02", listing.ID); err != nil {
+		t.Fatalf("indexOrder: %v", err)
+	}
 	body := completedPaymentBody("LISTING-abcdef02", "some-other-payment", "0xabc123")
 	code, _ := postSignedWebhook(t, svc, secret, body)
 	if code != http.StatusConflict {
@@ -463,6 +469,9 @@ func TestCompletionWithoutTxHashIsRefused(t *testing.T) {
 		t.Fatalf("storeListing: %v", err)
 	}
 
+	if err := svc.indexOrder(context.Background(), "LISTING-abcdef03", listing.ID); err != nil {
+		t.Fatalf("indexOrder: %v", err)
+	}
 	body := completedPaymentBody("LISTING-abcdef03", listing.PaymentID, "")
 	code, _ := postSignedWebhook(t, svc, secret, body)
 	if code != http.StatusBadRequest {
@@ -488,6 +497,9 @@ func TestNonCompletionEventLeavesTheListingAlone(t *testing.T) {
 		t.Fatalf("storeListing: %v", err)
 	}
 
+	if err := svc.indexOrder(context.Background(), "LISTING-abcdef04", listing.ID); err != nil {
+		t.Fatalf("indexOrder: %v", err)
+	}
 	body := []byte(`{"event":"payment.pending","order_id":"LISTING-abcdef04","status":"pending"}`)
 	if code, _ := postSignedWebhook(t, svc, secret, body); code != http.StatusOK {
 		t.Fatalf("a pending event returned %d, want 200", code)
@@ -512,6 +524,9 @@ func TestRedeliveredCompletionIsIdempotent(t *testing.T) {
 		t.Fatalf("storeListing: %v", err)
 	}
 
+	if err := svc.indexOrder(context.Background(), "LISTING-abcdef05", listing.ID); err != nil {
+		t.Fatalf("indexOrder: %v", err)
+	}
 	body := completedPaymentBody("LISTING-abcdef05", listing.PaymentID, "0xdeadbeef")
 	if code, _ := postSignedWebhook(t, svc, secret, body); code != http.StatusOK {
 		t.Fatalf("first delivery returned %d, want 200", code)

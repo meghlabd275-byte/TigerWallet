@@ -15,8 +15,10 @@ import (
 )
 
 func newTestPaymentService() *PaymentService {
+	// The in-memory store is deliberately not durable; tests exercise the
+	// handler logic, not the persistence layer.
 	return &PaymentService{
-		payments:   make(map[string]*Payment),
+		store:      newMemoryPaymentStore(),
 		ethClients: make(map[string]*ethclient.Client),
 	}
 }
@@ -51,7 +53,7 @@ func TestDepositCallbackRejectsUnsignedCaller(t *testing.T) {
 	t.Setenv("PAYMENT_WEBHOOK_SECRET", "chain-listener-secret")
 
 	svc := newTestPaymentService()
-	svc.payments["p1"] = &Payment{
+	svc.store.payments["p1"] = &Payment{
 		ID:        "p1",
 		ToAddress: "0x1111111111111111111111111111111111111111",
 		Amount:    "1000000",
@@ -64,8 +66,8 @@ func TestDepositCallbackRejectsUnsignedCaller(t *testing.T) {
 	if code != http.StatusUnauthorized {
 		t.Fatalf("unsigned callback returned %d, want %d", code, http.StatusUnauthorized)
 	}
-	if svc.payments["p1"].Status != "pending" {
-		t.Errorf("the payment moved to %q on an unsigned callback", svc.payments["p1"].Status)
+	if svc.store.payments["p1"].Status != "pending" {
+		t.Errorf("the payment moved to %q on an unsigned callback", svc.store.payments["p1"].Status)
 	}
 }
 
@@ -73,7 +75,7 @@ func TestDepositCallbackRejectsForgedSignature(t *testing.T) {
 	t.Setenv("PAYMENT_WEBHOOK_SECRET", "chain-listener-secret")
 
 	svc := newTestPaymentService()
-	svc.payments["p1"] = &Payment{
+	svc.store.payments["p1"] = &Payment{
 		ID:        "p1",
 		ToAddress: "0x1111111111111111111111111111111111111111",
 		Amount:    "1000000",
@@ -86,8 +88,8 @@ func TestDepositCallbackRejectsForgedSignature(t *testing.T) {
 	if code != http.StatusUnauthorized {
 		t.Fatalf("forged callback returned %d, want %d", code, http.StatusUnauthorized)
 	}
-	if svc.payments["p1"].Status != "pending" {
-		t.Errorf("the payment moved to %q on a forged callback", svc.payments["p1"].Status)
+	if svc.store.payments["p1"].Status != "pending" {
+		t.Errorf("the payment moved to %q on a forged callback", svc.store.payments["p1"].Status)
 	}
 }
 
@@ -109,7 +111,7 @@ func TestSignedCallbackWithoutChainEvidenceDoesNotComplete(t *testing.T) {
 	t.Setenv("PAYMENT_WEBHOOK_SECRET", secret)
 
 	svc := newTestPaymentService()
-	svc.payments["p1"] = &Payment{
+	svc.store.payments["p1"] = &Payment{
 		ID:        "p1",
 		ToAddress: "0x1111111111111111111111111111111111111111",
 		Amount:    "1000000",
@@ -122,8 +124,8 @@ func TestSignedCallbackWithoutChainEvidenceDoesNotComplete(t *testing.T) {
 	if code == http.StatusOK {
 		t.Fatal("a signed callback completed a payment with no on-chain evidence")
 	}
-	if svc.payments["p1"].Status != "pending" {
-		t.Errorf("the payment moved to %q without on-chain evidence", svc.payments["p1"].Status)
+	if svc.store.payments["p1"].Status != "pending" {
+		t.Errorf("the payment moved to %q without on-chain evidence", svc.store.payments["p1"].Status)
 	}
 }
 
