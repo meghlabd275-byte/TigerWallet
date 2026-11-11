@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { adminApi } from '../services/api';
+import { explorerTxUrl } from '../utils/safeUrl';
 
 interface Withdrawal {
   id: string;
@@ -278,11 +279,11 @@ const WithdrawalsPage: React.FC = () => {
                                 </button>
                               </>
                             )}
-                            {withdrawal.txHash && (
+                            {explorerTxUrl('https://etherscan.io', withdrawal.txHash) && (
                               <a
-                                href={`https://etherscan.io/tx/${withdrawal.txHash}`}
+                                href={explorerTxUrl('https://etherscan.io', withdrawal.txHash)!}
                                 target="_blank"
-                                rel="noopener noreferrer"
+                                rel="noopener noreferrer nofollow"
                                 className="btn btn-sm btn-outline"
                               >
                                 View

@@ -4,6 +4,7 @@
 // Auto-dismisses after 30s; the user can also dismiss manually.
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
+import { explorerTxUrl } from '../utils/safeUrl';
 
 interface Props {
   txHash: string;
@@ -40,8 +41,8 @@ export default function TxSubmittedBanner({ txHash, chainId, onDismiss }: Props)
       <div className="banner-content">
         <strong>Transaction submitted to the blockchain network</strong>
         <div className="banner-hash">
-          {explorer ? (
-            <a href={`${explorer}${txHash}`} target="_blank" rel="noopener noreferrer">
+          {explorerTxUrl(explorer, txHash) ? (
+            <a href={explorerTxUrl(explorer, txHash)!} target="_blank" rel="noopener noreferrer nofollow">
               {txHash.slice(0, 10)}…{txHash.slice(-8)} ↗
             </a>
           ) : (

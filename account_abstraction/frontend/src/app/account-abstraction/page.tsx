@@ -24,6 +24,7 @@ import {
   type AccountCall
 } from "@/lib/smartAccount";
 import { accountFactoryContract, type FactoryMode } from "@/lib/contracts";
+import { safeExternalUrl, explorerTxUrl } from '@/lib/safeUrl';
 
 type ChainConfig = {
   name: string;
@@ -676,11 +677,11 @@ export default function AccountAbstractionPage() {
                             <span className="text-xs text-gray-500">block {op.blockNumber}</span>
                           )}
                         </div>
-                        {config && (
+                        {explorerTxUrl(config?.explorer, op.hash) && (
                           <a
-                            href={`${config.explorer}/tx/${op.hash}`}
+                            href={explorerTxUrl(config?.explorer, op.hash)!}
                             target="_blank"
-                            rel="noopener noreferrer"
+                            rel="noopener noreferrer nofollow"
                             className="text-tiger-accent hover:underline text-sm flex items-center gap-1 flex-shrink-0"
                           >
                             View <ExternalLink className="w-3 h-3" />

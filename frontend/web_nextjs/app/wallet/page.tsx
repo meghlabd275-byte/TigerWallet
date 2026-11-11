@@ -13,6 +13,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { explorerTxUrl } from '@/lib/safeUrl'
 import { useTheme } from '../components/ThemeProvider';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -811,18 +812,36 @@ export default function TigerWallet() {
           <div className={`${isDark ? 'text-gray-400' : 'text-gray-500'} text-center py-4`}>No transactions yet</div>
         ) : (
           <div className="space-y-3">
-            {allTxs.map((tx, i) => (
-              <a key={i} href={`${DEFAULT_CHAINS.find((c) => c.id === selectedChain)?.explorer}/tx/${tx.hash}`} target="_blank" rel="noopener noreferrer" className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} transition`}>
-                <div>
-                  <div className={`font-medium capitalize ${isDark ? 'text-white' : 'text-gray-900'}`}>{tx.direction === 'in' ? 'receive' : tx.type}</div>
-                  <div className={`text-sm font-mono truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.hash.slice(0, 18)}...</div>
+            {allTxs.map((tx, i) => {
+              // The explorer link is only rendered when both the explorer base
+              // and the hash are well formed; otherwise the row is plain text.
+              const explorerHref = explorerTxUrl(
+                DEFAULT_CHAINS.find((c) => c.id === selectedChain)?.explorer,
+                tx.hash
+              );
+              const rowClass = `flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} transition`;
+              const body = (
+                <>
+                  <div>
+                    <div className={`font-medium capitalize ${isDark ? 'text-white' : 'text-gray-900'}`}>{tx.direction === 'in' ? 'receive' : tx.type}</div>
+                    <div className={`text-sm font-mono truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{tx.hash.slice(0, 18)}...</div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{tx.value}</div>
+                    <div className={`text-sm ${tx.status === 'confirmed' ? 'text-green-400' : tx.status === 'pending' ? 'text-yellow-400' : 'text-red-400'}`}>{tx.status}</div>
+                  </div>
+                </>
+              );
+              return explorerHref ? (
+                <a key={i} href={explorerHref} target="_blank" rel="noopener noreferrer nofollow" className={rowClass}>
+                  {body}
+                </a>
+              ) : (
+                <div key={i} className={rowClass}>
+                  {body}
                 </div>
-                <div className="text-right">
-                  <div className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{tx.value}</div>
-                  <div className={`text-sm ${tx.status === 'confirmed' ? 'text-green-400' : tx.status === 'pending' ? 'text-yellow-400' : 'text-red-400'}`}>{tx.status}</div>
-                </div>
-              </a>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

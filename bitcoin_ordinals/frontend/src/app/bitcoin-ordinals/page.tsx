@@ -18,6 +18,7 @@ import {
   Layers,
   Shield
 } from "lucide-react";
+import { safeExternalUrl } from '@/lib/safeUrl';
 
 // Ordinals Types
 interface Ordinal {
@@ -523,14 +524,16 @@ export default function BitcoinOrdinalsPage() {
                           >
                             Transfer
                           </button>
-                          <a
-                            href={`${BITCOIN_NETWORKS[network].explorer}/inscription/${ordinal.inscription}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="bg-gray-700 hover:bg-gray-600 py-1.5 px-3 rounded text-sm"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
+                          {safeExternalUrl(`${BITCOIN_NETWORKS[network].explorer}/inscription/${encodeURIComponent(ordinal.inscription)}`) && (
+                            <a
+                              href={safeExternalUrl(`${BITCOIN_NETWORKS[network].explorer}/inscription/${encodeURIComponent(ordinal.inscription)}`)!}
+                              target="_blank"
+                              rel="noopener noreferrer nofollow"
+                              className="bg-gray-700 hover:bg-gray-600 py-1.5 px-3 rounded text-sm"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>
