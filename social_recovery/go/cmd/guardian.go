@@ -155,8 +155,8 @@ func (s *SocialRecoveryService) VerifyGuardian(ctx context.Context, walletID, gu
 		wallet.Guardians[i].ConfirmedAt = &now
 		wallet.UpdatedAt = now
 
-		if data, err := json.Marshal(wallet); err == nil {
-			s.redis.Set(ctx, fmt.Sprintf("wallet:%s", wallet.ID), data, 0)
+		if err := s.saveWallet(ctx, wallet); err != nil {
+			return err
 		}
 		// A code is single use.
 		s.redis.Del(ctx, guardianCodeKey(walletID, guardianID))

@@ -31,6 +31,10 @@ import (
 
 // ============ Configuration ============
 
+// recoveryRequestTTL bounds how long an unsigned recovery request stays
+// actionable. It matches the ExpiresAt set on new requests.
+const recoveryRequestTTL = 7 * 24 * time.Hour
+
 type Config struct {
 	Port            string
 	RedisURL        string
@@ -179,14 +183,63 @@ func NewSocialRecoveryService(config *Config) (*SocialRecoveryService, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// A client that never answered a ping is not usable, but it still accepts
+	// writes: they queue and fail later, after the handler has already replied
+	// that the wallet was saved. Dropping the handle here means a store that is
+	// down is reported as down instead of silently swallowing every write.
 	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Printf("Warning: Redis not available: %v", err)
+		log.Printf("Redis unavailable at %s, recovery state cannot be persisted: %v", config.RedisURL, err)
+		_ = redisClient.Close()
+		redisClient = nil
 	}
 
 	return &SocialRecoveryService{
 		config: config,
 		redis:  redisClient,
 	}, nil
+}
+
+// saveWallet persists a wallet and reports whether the write landed. Callers
+// return an error rather than a wallet the store does not have, because a
+// guardian added to a wallet that was never saved cannot be used to recover
+// anything.
+func (s *SocialRecoveryService) saveWallet(ctx context.Context, wallet *Wallet) error {
+	if s.redis == nil {
+		return fmt.Errorf("recovery store is unavailable: the wallet was not saved")
+	}
+	data, err := json.Marshal(wallet)
+	if err != nil {
+		return fmt.Errorf("cannot encode the wallet: %w", err)
+	}
+	key := fmt.Sprintf("wallet:%s", wallet.ID)
+	// The address index is written in the same pipeline so a wallet is never
+	// reachable by ID but invisible to a lookup by address.
+	pipe := s.redis.TxPipeline()
+	pipe.Set(ctx, key, data, 0)
+	pipe.Set(ctx, fmt.Sprintf("wallet:address:%s:%s", wallet.Chain, wallet.Address), wallet.ID, 0)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("cannot save the wallet: %w", err)
+	}
+	return nil
+}
+
+// saveRecoveryRequest persists a recovery request, including the wallet index
+// that lets a later lookup find the open request for a wallet.
+func (s *SocialRecoveryService) saveRecoveryRequest(ctx context.Context, request *RecoveryRequest, walletID string) error {
+	if s.redis == nil {
+		return fmt.Errorf("recovery store is unavailable: the request was not saved")
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("cannot encode the recovery request: %w", err)
+	}
+	pipe := s.redis.TxPipeline()
+	pipe.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, recoveryRequestTTL)
+	pipe.Set(ctx, fmt.Sprintf("recovery:wallet:%s", walletID), request.ID, recoveryRequestTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("cannot save the recovery request: %w", err)
+	}
+	return nil
 }
 
 // Create Wallet
@@ -203,10 +256,8 @@ func (s *SocialRecoveryService) CreateWallet(ctx context.Context, address, chain
 		UpdatedAt:     time.Now(),
 	}
 
-	if s.redis != nil {
-		data, _ := json.Marshal(wallet)
-		s.redis.Set(ctx, fmt.Sprintf("wallet:%s", wallet.ID), data, 0)
-		s.redis.Set(ctx, fmt.Sprintf("wallet:address:%s:%s", chain, address), wallet.ID, 0)
+	if err := s.saveWallet(ctx, wallet); err != nil {
+		return nil, err
 	}
 
 	return wallet, nil
@@ -229,9 +280,8 @@ func (s *SocialRecoveryService) AddGuardian(ctx context.Context, walletID string
 	wallet.Guardians = append(wallet.Guardians, guardian)
 	wallet.UpdatedAt = time.Now()
 
-	if s.redis != nil {
-		data, _ := json.Marshal(wallet)
-		s.redis.Set(ctx, fmt.Sprintf("wallet:%s", wallet.ID), data, 0)
+	if err := s.saveWallet(ctx, wallet); err != nil {
+		return nil, err
 	}
 
 	// Send invitation (in production, would send email/SMS)
@@ -256,9 +306,8 @@ func (s *SocialRecoveryService) RemoveGuardian(ctx context.Context, walletID, gu
 
 	wallet.UpdatedAt = time.Now()
 
-	if s.redis != nil {
-		data, _ := json.Marshal(wallet)
-		s.redis.Set(ctx, fmt.Sprintf("wallet:%s", wallet.ID), data, 0)
+	if err := s.saveWallet(ctx, wallet); err != nil {
+		return nil, err
 	}
 
 	return wallet, nil
@@ -305,10 +354,8 @@ func (s *SocialRecoveryService) InitiateRecovery(ctx context.Context, walletID, 
 	// placeholder made up the second count.
 	request.Challenge = generateChallenge()
 
-	if s.redis != nil {
-		data, _ := json.Marshal(request)
-		s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
-		s.redis.Set(ctx, fmt.Sprintf("recovery:wallet:%s", walletID), request.ID, 7*24*time.Hour)
+	if err := s.saveRecoveryRequest(ctx, request, walletID); err != nil {
+		return nil, err
 	}
 
 	// Notify guardians
@@ -381,9 +428,8 @@ func (s *SocialRecoveryService) SignRecovery(ctx context.Context, requestID, gua
 		request.Status = RecoveryApproved
 	}
 
-	if s.redis != nil {
-		data, _ := json.Marshal(request)
-		s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+	if err := s.saveRecoveryRequest(ctx, request, request.WalletID); err != nil {
+		return nil, err
 	}
 
 	return request, nil
@@ -415,9 +461,8 @@ func (s *SocialRecoveryService) ExecuteRecovery(ctx context.Context, requestID s
 	if s.config == nil || strings.TrimSpace(s.config.RecoveryContract) == "" ||
 		strings.TrimSpace(s.config.RPCURL) == "" || strings.TrimSpace(s.config.ExecutorPrivateKey) == "" {
 		request.Status = RecoveryApproved
-		if s.redis != nil {
-			data, _ := json.Marshal(request)
-			s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+		if err := s.saveRecoveryRequest(ctx, request, request.WalletID); err != nil {
+			log.Printf("could not persist the approved recovery %s: %v", request.ID, err)
 		}
 		return request, fmt.Errorf(
 			"the recovery is approved and ready to execute, but this service is not configured to broadcast: " +
@@ -427,9 +472,8 @@ func (s *SocialRecoveryService) ExecuteRecovery(ctx context.Context, requestID s
 	txHash, err := s.broadcastRecovery(ctx, request)
 	if err != nil {
 		request.Status = RecoveryApproved
-		if s.redis != nil {
-			data, _ := json.Marshal(request)
-			s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+		if saveErr := s.saveRecoveryRequest(ctx, request, request.WalletID); saveErr != nil {
+			log.Printf("could not persist the approved recovery %s: %v", request.ID, saveErr)
 		}
 		return nil, fmt.Errorf("the recovery transaction was not broadcast: %w", err)
 	}
@@ -439,20 +483,19 @@ func (s *SocialRecoveryService) ExecuteRecovery(ctx context.Context, requestID s
 	request.ExecutedTxHash = txHash
 	request.Status = RecoveryCompleted
 
-	// Update wallet
+	// The wallet is only marked recovered after the chain accepted the
+	// transaction, so the count cannot run ahead of the on-chain state.
 	wallet, err := s.GetWallet(ctx, request.WalletID)
 	if err == nil {
 		wallet.RecoveryCount++
 		wallet.UpdatedAt = time.Now()
-		if s.redis != nil {
-			data, _ := json.Marshal(wallet)
-			s.redis.Set(ctx, fmt.Sprintf("wallet:%s", wallet.ID), data, 0)
+		if saveErr := s.saveWallet(ctx, wallet); saveErr != nil {
+			log.Printf("could not record recovery %s on wallet %s: %v", request.ID, wallet.ID, saveErr)
 		}
 	}
 
-	if s.redis != nil {
-		data, _ := json.Marshal(request)
-		s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+	if err := s.saveRecoveryRequest(ctx, request, request.WalletID); err != nil {
+		return nil, fmt.Errorf("the recovery transaction was broadcast as %s but the request could not be saved: %w", txHash, err)
 	}
 
 	return request, nil
@@ -469,9 +512,8 @@ func (s *SocialRecoveryService) CancelRecovery(ctx context.Context, requestID st
 	now := time.Now()
 	request.CancelledAt = &now
 
-	if s.redis != nil {
-		data, _ := json.Marshal(request)
-		s.redis.Set(ctx, fmt.Sprintf("recovery:%s", request.ID), data, 7*24*time.Hour)
+	if err := s.saveRecoveryRequest(ctx, request, request.WalletID); err != nil {
+		return nil, err
 	}
 
 	return request, nil
@@ -489,7 +531,9 @@ func (s *SocialRecoveryService) GetWallet(ctx context.Context, walletID string) 
 	}
 
 	var wallet Wallet
-	json.Unmarshal(data, &wallet)
+	if err := json.Unmarshal(data, &wallet); err != nil {
+		return nil, fmt.Errorf("the stored wallet %s is not readable: %w", walletID, err)
+	}
 	return &wallet, nil
 }
 
@@ -519,7 +563,9 @@ func (s *SocialRecoveryService) GetRecoveryRequest(ctx context.Context, requestI
 	}
 
 	var request RecoveryRequest
-	json.Unmarshal(data, &request)
+	if err := json.Unmarshal(data, &request); err != nil {
+		return nil, fmt.Errorf("the stored recovery request %s is not readable: %w", requestID, err)
+	}
 	return &request, nil
 }
 

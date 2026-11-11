@@ -490,8 +490,8 @@ func (s *Svc) UpdateCardLimits(c *gin.Context) {
 	c.JSON(http.StatusOK, s.cardJSON(card))
 }
 
-// GetRates returns the card funding rates (USD per unit). Backed by the
-// store's static rates stub until a real oracle is wired in.
+// GetRates returns the card funding rates (USD per unit) from the price
+// oracle, with a short cache in front of it.
 func (s *Svc) GetRates(c *gin.Context) {
 	rates := s.store.Rates(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{"rates": rates, "count": len(rates)})

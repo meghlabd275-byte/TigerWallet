@@ -264,3 +264,6 @@ gasless-tx-service
 
 # Compiled service binaries
 liquid_staking/go/liquid-staking
+
+# Compiled service binaries
+integrations/go/slack/slack
