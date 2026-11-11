@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
+import { SafeExternalLink } from '../components/SafeExternalLink'
 import { useTheme } from '../components/ThemeProvider';
 
 interface WalletConnectSession {
@@ -114,7 +115,7 @@ export default function WalletConnect() {
             {RECOMMENDED_DAPPS.map((dapp) => (
               <div key={dapp.id} className={`rounded-lg p-4 hover:shadow-lg transition-shadow ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                 <div className="flex items-center gap-3 mb-3"><div className="text-3xl">{dapp.icon}</div><div><div className="font-semibold">{dapp.name}</div><div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{dapp.description}</div></div></div>
-                <div className="flex gap-2"><button onClick={() => handleConnect(dapp)} disabled={connecting} className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white py-2 rounded-lg text-sm">Connect</button><a href={dapp.url} target="_blank" rel="noopener noreferrer" className={`px-4 py-2 rounded-lg text-sm ${isDark ? 'bg-slate-600' : 'bg-slate-200'}`}>Visit</a></div>
+                <div className="flex gap-2"><button onClick={() => handleConnect(dapp)} disabled={connecting} className="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-400 text-white py-2 rounded-lg text-sm">Connect</button><SafeExternalLink href={dapp.url} className={`px-4 py-2 rounded-lg text-sm ${isDark ? 'bg-slate-600' : 'bg-slate-200'}`}>Visit</SafeExternalLink></div>
               </div>
             ))}
           </div>

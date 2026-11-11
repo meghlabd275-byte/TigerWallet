@@ -10,6 +10,25 @@ function esc(v) {
         "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
     }[c]));
 }
+// Escape a value for use in an href/src attribute. esc() alone is not enough:
+// a URL of "javascript:alert(1)" contains no characters esc() rewrites, and
+// the browser would run it on click. Only http, https and data:image are
+// allowed; anything else is dropped.
+function safeUrl(v) {
+    if (v === null || v === undefined) return '';
+    const s = String(v).trim();
+    if (s === '') return '';
+    // Strip control characters and whitespace the way browsers do when
+    // resolving a scheme, so "java\nscript:" cannot slip through.
+    const normalized = s.replace(/[\u0000-\u0020\u007f]+/g, '').toLowerCase();
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) return esc(s);
+    if (normalized.startsWith('data:image/')) return esc(s);
+    if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../')) return esc(s);
+    if (normalized.startsWith('#')) return esc(s);
+    // Relative path with no scheme.
+    if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return esc(s);
+    return '';
+}
 
 /**
  * TigerWallet Browser Extension - NFT Trading Module
@@ -257,7 +276,7 @@ class NFTTradingModule {
 
       gallery.innerHTML = nfts.map(nft => `
         <div class="tw-nft-card">
-          <img src="${esc(nft.imageUrl || 'https://via.placeholder.com/150')}" alt="${esc(nft.name)}" />
+          <img src="${safeUrl(nft.imageUrl || 'https://via.placeholder.com/150')}" alt="${esc(nft.name)}" />
           <div class="tw-nft-info">
             <div class="tw-nft-name">${esc(nft.name)}</div>
             <div class="tw-nft-collection">${esc(nft.collection)}</div>
@@ -278,7 +297,7 @@ class NFTTradingModule {
       grid.innerHTML = collections.map(col => `
         <div class="tw-collection-card">
           <div class="tw-collection-image">
-            <img src="${esc(col.image || 'https://via.placeholder.com/150')}" alt="${esc(col.name)}" />
+            <img src="${safeUrl(col.image || 'https://via.placeholder.com/150')}" alt="${esc(col.name)}" />
           </div>
           <div class="tw-collection-info">
             <div class="tw-collection-name">${esc(col.name)}</div>

@@ -13,6 +13,25 @@ function esc(v) {
         "'": '&#39;', '`': '&#96;', '=': '&#61;', '/': '&#47;'
     }[c]));
 }
+// Escape a value for use in an href/src attribute. esc() alone is not enough:
+// a URL of "javascript:alert(1)" contains no characters esc() rewrites, and
+// the browser would run it on click. Only http, https and data:image are
+// allowed; anything else is dropped.
+function safeUrl(v) {
+    if (v === null || v === undefined) return '';
+    const s = String(v).trim();
+    if (s === '') return '';
+    // Strip control characters and whitespace the way browsers do when
+    // resolving a scheme, so "java\nscript:" cannot slip through.
+    const normalized = s.replace(/[\u0000-\u0020\u007f]+/g, '').toLowerCase();
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) return esc(s);
+    if (normalized.startsWith('data:image/')) return esc(s);
+    if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../')) return esc(s);
+    if (normalized.startsWith('#')) return esc(s);
+    // Relative path with no scheme.
+    if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return esc(s);
+    return '';
+}
 
 class TigerWalletApp {
     constructor() {
@@ -1351,7 +1370,7 @@ class TigerWalletApp {
             if (!nfts.length) { grid.innerHTML = '<div class="empty-state">No NFTs in this wallet</div>'; return; }
             grid.innerHTML = nfts.map(n => `
                 <div class="nft-card">
-                    <div class="nft-image">${n.image_url ? `<img src="${esc(n.image_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🖼️'}</div>
+                    <div class="nft-image">${n.image_url ? `<img src="${safeUrl(n.image_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🖼️'}</div>
                     <div class="nft-name">${esc(n.name || '#' + (n.token_id || ''))}</div>
                     <div class="nft-collection">${esc(n.collection || n.contract || '')}</div>
                     <div class="asset-address">${esc(n.standard || 'ERC-721')}</div>
@@ -1449,10 +1468,10 @@ class TigerWalletApp {
             if (!dapps.length) { box.innerHTML = '<div class="empty-state">No dApps available</div>'; return; }
             box.innerHTML = dapps.map(d => `
                 <div class="nft-card">
-                    <div class="nft-image">${d.icon_url ? `<img src="${esc(d.icon_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🌐'}</div>
+                    <div class="nft-image">${d.icon_url ? `<img src="${safeUrl(d.icon_url)}" alt="" style="width:100%;height:120px;object-fit:cover">` : '🌐'}</div>
                     <div class="nft-name">${esc(d.name || '')}</div>
                     <div class="nft-collection">${esc(d.category || '')}</div>
-                    <div class="asset-address">${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>
+                    <div class="asset-address">${d.url ? `<a href="${safeUrl(d.url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>
                 </div>`).join('');
         } catch (e) {
             box.innerHTML = '<div class="empty-state">dApp catalog unavailable</div>';

@@ -13,6 +13,7 @@ import {
   ContentCopy, Refresh, ArrowDropDown
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { explorerTxUrl } from '@/lib/safeUrl';
 
 // Same-origin API base: the Next.js app proxies /api/v1/* to the backend
 // services (see app/api/v1/_proxy.ts). In the browser this resolves to the
@@ -708,8 +709,8 @@ export default function BridgePage() {
                       </Box>
                       <Typography variant="caption" sx={{ color: 'var(--text-secondary)' }}>
                         {timeAgo(tx.timestamp)}
-                        {tx.sourceTxHash && (
-                          <> • Source: <a href={`${chains.find(c => c.id === tx.fromChain)?.explorerUrl}/tx/${tx.sourceTxHash}`} target="_blank" rel="noopener" style={{ color: '#00d4aa' }}>{formatAddress(tx.sourceTxHash)}</a></>
+                        {explorerTxUrl(chains.find(c => c.id === tx.fromChain)?.explorerUrl, tx.sourceTxHash) && (
+                          <> • Source: <a href={explorerTxUrl(chains.find(c => c.id === tx.fromChain)?.explorerUrl, tx.sourceTxHash)!} target="_blank" rel="noopener noreferrer nofollow" style={{ color: '#00d4aa' }}>{formatAddress(tx.sourceTxHash)}</a></>
                         )}
                       </Typography>
                       {tx.status === 'confirming' && (
@@ -720,11 +721,12 @@ export default function BridgePage() {
                         </Box>
                       )}
                     </Box>
-                    {tx.destTxHash && (
+                    {explorerTxUrl(chains.find(c => c.id === tx.toChain)?.explorerUrl, tx.destTxHash) && (
                       <Button
                         size="small"
-                        href={`${chains.find(c => c.id === tx.toChain)?.explorerUrl}/tx/${tx.destTxHash}`}
+                        href={explorerTxUrl(chains.find(c => c.id === tx.toChain)?.explorerUrl, tx.destTxHash)!}
                         target="_blank"
+                        rel="noopener noreferrer nofollow"
                         sx={{ color: '#00d4aa' }}
                       >
                         View on Dest

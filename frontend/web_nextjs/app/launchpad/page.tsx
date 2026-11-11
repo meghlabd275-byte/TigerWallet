@@ -12,6 +12,15 @@ import {
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
 import { api, LaunchpadProject as IDOProject } from '@/lib/api/client';
+import { safeExternalUrl } from '@/lib/safeUrl';
+
+// Twitter handles are pasted by project owners; only a bare handle is accepted
+// so the resulting URL cannot point anywhere other than twitter.com.
+function twitterHandle(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const handle = raw.trim().replace(/^@/, '');
+  return /^[A-Za-z0-9_]{1,15}$/.test(handle) ? handle : null;
+}
 
 // ============================================================================
 // Types
@@ -557,17 +566,24 @@ export default function LaunchpadPage() {
                 </Box>
               )}
 
-              {/* Links */}
+              {/* Links. These URLs are supplied by the project owner, so each
+                  one is validated before it becomes an href. */}
               <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
-                <Button size="small" href={selectedProject.website || '#'} target="_blank" sx={{ color: '#00d4aa' }}>
-                  Website
-                </Button>
-                <Button size="small" href={selectedProject.twitter ? `https://twitter.com/${selectedProject.twitter}` : '#'} target="_blank" sx={{ color: '#00d4aa' }}>
-                  Twitter
-                </Button>
-                <Button size="small" href={selectedProject.whitepaper || '#'} target="_blank" sx={{ color: '#00d4aa' }}>
-                  Docs
-                </Button>
+                {safeExternalUrl(selectedProject.website) && (
+                  <Button size="small" href={safeExternalUrl(selectedProject.website)!} target="_blank" rel="noopener noreferrer nofollow" sx={{ color: '#00d4aa' }}>
+                    Website
+                  </Button>
+                )}
+                {twitterHandle(selectedProject.twitter) && (
+                  <Button size="small" href={`https://twitter.com/${twitterHandle(selectedProject.twitter)}`} target="_blank" rel="noopener noreferrer nofollow" sx={{ color: '#00d4aa' }}>
+                    Twitter
+                  </Button>
+                )}
+                {safeExternalUrl(selectedProject.whitepaper) && (
+                  <Button size="small" href={safeExternalUrl(selectedProject.whitepaper)!} target="_blank" rel="noopener noreferrer nofollow" sx={{ color: '#00d4aa' }}>
+                    Docs
+                  </Button>
+                )}
               </Box>
             </CardContent>
           </Card>

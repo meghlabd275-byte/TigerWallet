@@ -10,6 +10,25 @@ function esc(v) {
         "'": "&#39;", "`": "&#96;", "=": "&#61;", "/": "&#47;"
     }[c]));
 }
+// Escape a value for use in an href/src attribute. esc() alone is not enough:
+// a URL of "javascript:alert(1)" contains no characters esc() rewrites, and
+// the browser would run it on click. Only http, https and data:image are
+// allowed; anything else is dropped.
+function safeUrl(v) {
+    if (v === null || v === undefined) return '';
+    const s = String(v).trim();
+    if (s === '') return '';
+    // Strip control characters and whitespace the way browsers do when
+    // resolving a scheme, so "java\nscript:" cannot slip through.
+    const normalized = s.replace(/[\u0000-\u0020\u007f]+/g, '').toLowerCase();
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) return esc(s);
+    if (normalized.startsWith('data:image/')) return esc(s);
+    if (normalized.startsWith('/') || normalized.startsWith('./') || normalized.startsWith('../')) return esc(s);
+    if (normalized.startsWith('#')) return esc(s);
+    // Relative path with no scheme.
+    if (!/^[a-z][a-z0-9+.-]*:/.test(normalized)) return esc(s);
+    return '';
+}
 
 /**
  * TigerWallet Admin Firefox Extension - Popup Script
@@ -769,7 +788,7 @@ function esc(v) {
         elements.tokensGrid.innerHTML = tokens.map(token => `
             <div class="token-card" data-token-id="${esc(token.id)}">
                 <div class="token-header">
-                    <img src="${esc(token.logo)}" alt="${esc(token.symbol)}" class="token-logo" onerror="this.src='data:image/svg+xml,...'">
+                    <img src="${safeUrl(token.logo)}" alt="${esc(token.symbol)}" class="token-logo" onerror="this.src='data:image/svg+xml,...'">
                     <div class="token-info">
                         <span class="token-symbol">${esc(token.symbol)}</span>
                         <span class="token-name">${esc(token.name)}</span>

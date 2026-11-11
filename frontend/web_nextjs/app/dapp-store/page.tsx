@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../components/ThemeProvider'
+import { SafeExternalLink } from '../components/SafeExternalLink'
 
 // Types mirror the backend DAppEntry (go/wallet_api/dapp_directory.go).
 // Only verifiable fields; no fabricated metrics (no invented ratings/users).
@@ -124,12 +125,12 @@ export default function DAppStorePage() {
                 <h2 className={`text-xl font-semibold mb-4 ${isDark ? 'text-white' : 'text-slate-900'}`}>⭐ Featured</h2>
                 <div className="flex gap-4 overflow-x-auto pb-4">
                   {featuredDapps.map(dapp => (
-                    <a key={dapp.id} href={dapp.url} target="_blank" rel="noopener noreferrer"
+                    <SafeExternalLink key={dapp.id} href={dapp.url}
                        className="flex-shrink-0 w-48 p-4 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl border border-blue-500/30 hover:border-blue-500/60 transition-colors">
                       <div className="text-3xl mb-2">{dapp.logo}</div>
                       <h3 className={`font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>{dapp.name}</h3>
                       <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{dapp.category}</p>
-                    </a>
+                    </SafeExternalLink>
                   ))}
                 </div>
               </div>
@@ -207,10 +208,10 @@ export default function DAppStorePage() {
                       {bookmarkedDapps.includes(dapp.id) ? '★' : '☆'}
                     </button>
                   </div>
-                  <a href={dapp.url} target="_blank" rel="noopener noreferrer"
+                  <SafeExternalLink href={dapp.url}
                      className="block mt-4 text-center bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium">
                     Open DApp
-                  </a>
+                  </SafeExternalLink>
                 </div>
               ))}
             </div>

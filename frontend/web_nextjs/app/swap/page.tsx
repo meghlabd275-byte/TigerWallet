@@ -12,6 +12,7 @@ import {
   OpenInNew, Shield, Speed, CompareArrows
 } from '@mui/icons-material';
 import { useTheme } from '../components/ThemeProvider';
+import { explorerTxUrl } from '@/lib/safeUrl';
 
 // Same-origin API base: the Next.js app proxies /api/v1/* to the backend
 // services (see app/api/v1/_proxy.ts). In the browser this resolves to the
@@ -395,10 +396,11 @@ export default function SwapPage() {
             {error && <Alert severity="error" className="mt-4" onClose={() => setError(null)}>{error}</Alert>}
             {success && <Alert severity="success" className="mt-4" onClose={() => setSuccess(null)}>{success}</Alert>}
 
-            {txHash && (
+            {explorerTxUrl(CHAIN_CONFIG[chainId]?.explorer, txHash) && (
               <Button
-                href={`${CHAIN_CONFIG[chainId]?.explorer}/tx/${txHash}`}
+                href={explorerTxUrl(CHAIN_CONFIG[chainId]?.explorer, txHash)!}
                 target="_blank"
+                rel="noopener noreferrer nofollow"
                 endIcon={<OpenInNew />}
                 className="mt-2 text-green-500"
               >
