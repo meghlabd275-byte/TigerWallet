@@ -1,0 +1,4 @@
+bin/
+devnet-data/
+devnet.json
+tsc-data-*/
