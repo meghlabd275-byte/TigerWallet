@@ -7,10 +7,9 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -46,6 +45,12 @@ type Config struct {
 	StripeKey    string
 	PayPalClient string
 	PayPalSecret string
+	// MasterSeed is the HKDF root for deposit addresses. When it is unset
+	// the gateway refuses to issue an address rather than inventing one.
+	MasterSeed []byte
+	// TreasuryRPCURL is the JSON-RPC endpoint used to confirm that a
+	// crypto deposit actually landed on chain.
+	TreasuryRPCURL string
 }
 
 func LoadConfig() *Config {
@@ -61,6 +66,8 @@ func LoadConfig() *Config {
 		StripeKey:    getEnv("STRIPE_KEY", ""),
 		PayPalClient: getEnv("PAYPAL_CLIENT", ""),
 		PayPalSecret: getEnv("PAYPAL_SECRET", ""),
+		MasterSeed:    loadMasterSeed(),
+		TreasuryRPCURL: getEnv("TREASURY_RPC_URL", ""),
 	}
 }
 
@@ -73,6 +80,25 @@ func mustEnv(key string) string {
 	}
 	log.Fatalf("%s must be set", key)
 	return ""
+}
+
+// loadMasterSeed reads the deposit-address master seed. A missing seed is not
+// fatal at startup, because the gateway also serves card and bank flows; the
+// crypto path fails closed on its own when the seed is absent.
+func loadMasterSeed() []byte {
+	raw := strings.TrimSpace(os.Getenv("PAYMENT_MASTER_SEED"))
+	if raw == "" {
+		return nil
+	}
+	if decoded, err := hex.DecodeString(raw); err == nil && len(decoded) >= 32 {
+		return decoded
+	}
+	// Accept a passphrase of sufficient length as well, but never a short one:
+	// a low-entropy root would make every derived address predictable.
+	if len(raw) < 32 {
+		log.Fatalf("PAYMENT_MASTER_SEED must be at least 32 bytes of entropy (hex or passphrase)")
+	}
+	return []byte(raw)
 }
 
 func getEnv(key, defaultValue string) string {
@@ -162,6 +188,7 @@ type PaymentGateway struct {
 	db       *gorm.DB
 	redis    *redis.Client
 	provider *StripeClient
+	chain    *chainClient
 }
 
 func NewPaymentGateway(cfg *Config) (*PaymentGateway, error) {
@@ -188,11 +215,19 @@ func NewPaymentGateway(cfg *Config) (*PaymentGateway, error) {
 		return nil, err
 	}
 
+	if cfg.TreasuryRPCURL != "" {
+		configureERC20(map[string]string{
+			"USDT": getEnv("USDT_CONTRACT", ""),
+			"USDC": getEnv("USDC_CONTRACT", ""),
+		})
+	}
+
 	return &PaymentGateway{
 		config:   cfg,
 		db:       db,
 		redis:    rdb,
 		provider: provider,
+		chain:    newChainClient(cfg.TreasuryRPCURL),
 	}, nil
 }
 
@@ -558,13 +593,23 @@ type CryptoPayment struct {
 	Network   string  `json:"network"`
 	Currency  string  `json:"currency"`
 	ExpiresAt int64   `json:"expires_at"`
+	UserID    uint    `json:"user_id"`
+	Status    string  `json:"status"`
 }
 
 func (p *PaymentGateway) CreateCryptoPayment(userID uint, amount float64, currency, network string) (*CryptoPayment, error) {
-	// Generate payment address (in production, this would be a real crypto address)
-	address := generateCryptoAddress(currency, network)
+	if amount <= 0 {
+		return nil, errors.New("amount must be greater than zero")
+	}
 
-	// Set expiration (30 minutes)
+	// The address is derived from the master seed, so the gateway can always
+	// re-derive it and spend whatever arrives. Fail-closed when no seed is
+	// configured: an address without a key would strand the customer's funds.
+	address, err := derivePaymentAddress(p.config.MasterSeed, userID, currency)
+	if err != nil {
+		return nil, err
+	}
+
 	expiresAt := time.Now().Add(30 * time.Minute).Unix()
 
 	payment := CryptoPayment{
@@ -573,33 +618,48 @@ func (p *PaymentGateway) CreateCryptoPayment(userID uint, amount float64, curren
 		Network:   network,
 		Currency:  currency,
 		ExpiresAt: expiresAt,
+		UserID:    userID,
+		Status:    "pending",
 	}
 
-	// Store in Redis with expiration
-	paymentJSON, _ := json.Marshal(payment)
-	p.redis.Set(context.Background(), fmt.Sprintf("crypto_payment:%s", address), paymentJSON, 30*time.Minute)
+	paymentJSON, err := json.Marshal(payment)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.redis.Set(context.Background(),
+		fmt.Sprintf("crypto_payment:%s", strings.ToLower(address)), paymentJSON, 30*time.Minute).Err(); err != nil {
+		return nil, fmt.Errorf("could not record the payment: %w", err)
+	}
 
-	// Create transaction record
 	txn := Transaction{
 		TransactionID: uuid.New().String(),
 		UserID:        userID,
 		Amount:        amount,
 		Currency:      currency,
 		PaymentMethod: "crypto",
-		Provider:      "coinbase",
+		Provider:      "onchain",
 		Status:        "pending",
 		Type:          "deposit",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
-	p.db.Create(&txn)
+	if err := p.db.Create(&txn).Error; err != nil {
+		return nil, fmt.Errorf("could not record the transaction: %w", err)
+	}
 
 	return &payment, nil
 }
 
+// VerifyCryptoPayment reports whether the expected amount has actually
+// arrived at the payment address.
+//
+// The previous version returned true whenever the address existed in Redis,
+// which is to say: always, for any address the gateway had issued. A payment
+// was therefore "verified" before any money moved. The balance is now read
+// from the chain.
 func (p *PaymentGateway) VerifyCryptoPayment(address string) (bool, error) {
 	ctx := context.Background()
-	result, err := p.redis.Get(ctx, fmt.Sprintf("crypto_payment:%s", address)).Result()
+	result, err := p.redis.Get(ctx, fmt.Sprintf("crypto_payment:%s", strings.ToLower(address))).Result()
 	if err == redis.Nil {
 		return false, nil
 	}
@@ -612,12 +672,25 @@ func (p *PaymentGateway) VerifyCryptoPayment(address string) (bool, error) {
 		return false, err
 	}
 
-	// Check expiration
 	if time.Now().Unix() > payment.ExpiresAt {
 		return false, nil
 	}
 
-	return true, nil
+	if p.chain == nil {
+		return false, errors.New("cannot verify a crypto payment: no chain RPC endpoint is configured")
+	}
+
+	balance, err := p.chain.balanceFor(payment.Currency, payment.Address)
+	if err != nil {
+		return false, err
+	}
+
+	// Compare in the smallest unit to avoid float comparison on money.
+	expected, err := toBaseUnits(payment.Amount, payment.Currency)
+	if err != nil {
+		return false, err
+	}
+	return balance.Cmp(expected) >= 0, nil
 }
 
 // ============================================================================
@@ -1062,19 +1135,6 @@ func toMinorUnits(amount float64) (int64, error) {
 		return 0, fmt.Errorf("amount must be positive")
 	}
 	return minor, nil
-}
-
-func generateCryptoAddress(currency, network string) string {
-	data := fmt.Sprintf("%s:%s:%d", currency, network, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	switch currency {
-	case "BTC":
-		return "bc1" + base64.StdEncoding.EncodeToString(hash[:])[:38]
-	case "ETH":
-		return "0x" + hex.EncodeToString(hash[:])[:40]
-	default:
-		return "0x" + hex.EncodeToString(hash[:])[:40]
-	}
 }
 
 // ============================================================================
