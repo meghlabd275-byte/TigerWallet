@@ -82,10 +82,59 @@ impl MasterWalletDatabase {
     }
 }
 
-/// Query builder for type-safe queries
+/// Query builder for type-safe queries.
+///
+/// Table, column and direction names cannot be bound as query parameters, so
+/// they are interpolated into the SQL text. Every such value is checked
+/// against a strict identifier pattern first and the builder records the first
+/// failure instead of emitting a statement. Values always travel as bind
+/// parameters; `where_clause` accepts only a condition that uses `$N`
+/// placeholders.
 pub struct QueryBuilder {
     query: String,
     params: Vec<Box<dyn tokio_postgres::types::ToSql>>,
+    error: Option<String>,
+}
+
+/// Matches a bare SQL identifier such as `created_at`, plus `*` and qualified
+/// names like `wallets.address`.
+fn is_valid_identifier(name: &str) -> bool {
+    fn is_segment(segment: &str) -> bool {
+        let mut chars = segment.chars();
+        match chars.next() {
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+            _ => return false,
+        }
+        chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+
+    if name == "*" {
+        return true;
+    }
+    // A column list is passed as one string; validate each comma-separated part.
+    name.split(',').all(|part| {
+        let part = part.trim();
+        if part.is_empty() {
+            return false;
+        }
+        // Allow an optional alias: "col AS alias".
+        let mut pieces = part.split_whitespace();
+        let target = match pieces.next() {
+            Some(t) => t,
+            None => return false,
+        };
+        if !target.split('.').all(is_segment) {
+            return false;
+        }
+        match pieces.next() {
+            None => true,
+            Some(kw) if kw.eq_ignore_ascii_case("AS") => match pieces.next() {
+                Some(alias) => is_segment(alias) && pieces.next().is_none(),
+                None => false,
+            },
+            Some(_) => false,
+        }
+    })
 }
 
 impl QueryBuilder {
@@ -93,16 +142,39 @@ impl QueryBuilder {
         Self {
             query: String::new(),
             params: Vec::new(),
+            error: None,
+        }
+    }
+
+    fn fail(&mut self, message: String) {
+        if self.error.is_none() {
+            self.error = Some(message);
         }
     }
 
     pub fn select(mut self, columns: &str, from: &str) -> Self {
+        if !is_valid_identifier(columns) {
+            self.fail(format!("invalid column list: {:?}", columns));
+        }
+        if !is_valid_identifier(from) {
+            self.fail(format!("invalid table name: {:?}", from));
+        }
         self.query = format!("SELECT {} FROM {}", columns, from);
         self
     }
 
+    /// Append a condition. The condition must reference bind parameters
+    /// (`$1`, `$2`, ...) rather than inline values.
     pub fn where_clause(mut self, condition: &str) -> Self {
-        if self.query.contains("WHERE") {
+        if condition.trim().is_empty() {
+            self.fail("empty WHERE clause".to_string());
+            return self;
+        }
+        if self.query.is_empty() {
+            self.fail("where_clause called before select".to_string());
+            return self;
+        }
+        if self.query.contains(" WHERE ") {
             self.query.push_str(&format!(" AND {}", condition));
         } else {
             self.query.push_str(&format!(" WHERE {}", condition));
@@ -110,7 +182,34 @@ impl QueryBuilder {
         self
     }
 
+    /// Append a condition of the form `column = $N`. The column is validated
+    /// as an identifier, so it is safe to pass a value that came from a
+    /// request as long as it matches a real column name.
+    pub fn where_eq(mut self, column: &str, placeholder: u32) -> Self {
+        if !is_valid_identifier(column) {
+            self.fail(format!("invalid column name: {:?}", column));
+            return self;
+        }
+        if placeholder == 0 {
+            self.fail("placeholder indexes start at 1".to_string());
+            return self;
+        }
+        self.where_clause(&format!("{} = ${}", column, placeholder))
+    }
+
     pub fn order_by(mut self, column: &str, direction: &str) -> Self {
+        if !is_valid_identifier(column) {
+            self.fail(format!("invalid order column: {:?}", column));
+            return self;
+        }
+        let direction = if direction.eq_ignore_ascii_case("asc") {
+            "ASC"
+        } else if direction.eq_ignore_ascii_case("desc") {
+            "DESC"
+        } else {
+            self.fail(format!("invalid sort direction: {:?}", direction));
+            return self;
+        };
         self.query.push_str(&format!(" ORDER BY {} {}", column, direction));
         self
     }
@@ -125,8 +224,25 @@ impl QueryBuilder {
         self
     }
 
-    pub fn build(self) -> (String, Vec<Box<dyn tokio_postgres::types::ToSql>>) {
-        (self.query, self.params)
+    /// Add a bind parameter. Values never reach the SQL text.
+    pub fn bind<T>(mut self, value: T) -> Self
+    where
+        T: tokio_postgres::types::ToSql + Send + Sync + 'static,
+    {
+        self.params.push(Box::new(value));
+        self
+    }
+
+    /// Finish the statement. Returns the error recorded by any rejected
+    /// identifier instead of a query that could be malformed.
+    pub fn build(self) -> Result<(String, Vec<Box<dyn tokio_postgres::types::ToSql>>), String> {
+        if let Some(err) = self.error {
+            return Err(err);
+        }
+        if self.query.is_empty() {
+            return Err("no statement was built".to_string());
+        }
+        Ok((self.query, self.params))
     }
 }
 
@@ -155,10 +271,97 @@ mod tests {
             .order_by("created_at", "DESC")
             .limit(10);
 
-        let (query, _) = builder.build();
+        let (query, _) = builder.build().expect("a well-formed query builds");
         assert!(query.contains("SELECT"));
         assert!(query.contains("WHERE"));
         assert!(query.contains("ORDER BY"));
         assert!(query.contains("LIMIT"));
+    }
+
+    #[test]
+    fn identifiers_accept_qualified_names_and_aliases() {
+        assert!(is_valid_identifier("wallets.address"));
+        assert!(is_valid_identifier("*"));
+        assert!(is_valid_identifier("id, name AS label"));
+        assert!(is_valid_identifier("created_at"));
+    }
+
+    #[test]
+    fn identifiers_reject_injection_payloads() {
+        assert!(!is_valid_identifier("users; DROP TABLE wallets"));
+        assert!(!is_valid_identifier("users --"));
+        assert!(!is_valid_identifier("1users"));
+        assert!(!is_valid_identifier(""));
+        assert!(!is_valid_identifier("users'"));
+        assert!(!is_valid_identifier("name; SELECT pg_sleep(10)"));
+        assert!(!is_valid_identifier("id UNION SELECT password"));
+    }
+
+    #[test]
+    fn a_malicious_table_name_is_reported_not_executed() {
+        let result = QueryBuilder::new()
+            .select("*", "users; DROP TABLE wallets")
+            .build();
+        assert!(result.is_err(), "the builder must refuse the table name");
+    }
+
+    #[test]
+    fn a_malicious_order_column_is_reported() {
+        let result = QueryBuilder::new()
+            .select("*", "users")
+            .order_by("id; DROP TABLE wallets", "ASC")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn an_invalid_sort_direction_is_reported() {
+        let result = QueryBuilder::new()
+            .select("*", "users")
+            .order_by("id", "ASC; DROP TABLE wallets")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn a_valid_direction_is_normalized() {
+        let (query, _) = QueryBuilder::new()
+            .select("*", "users")
+            .order_by("id", "desc")
+            .build()
+            .unwrap();
+        assert!(query.ends_with("ORDER BY id DESC"));
+    }
+
+    #[test]
+    fn where_eq_builds_a_placeholder_condition() {
+        let (query, params) = QueryBuilder::new()
+            .select("*", "users")
+            .where_eq("id", 1)
+            .bind(42i32)
+            .build()
+            .unwrap();
+        assert!(query.contains("WHERE id = $1"), "got {query}");
+        assert_eq!(params.len(), 1);
+    }
+
+    #[test]
+    fn where_eq_rejects_a_malicious_column() {
+        let result = QueryBuilder::new()
+            .select("*", "users")
+            .where_eq("id = 1 OR 1=1 --", 1)
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn where_clause_before_select_is_reported() {
+        let result = QueryBuilder::new().where_clause("id = $1").build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn an_empty_builder_reports_an_error() {
+        assert!(QueryBuilder::new().build().is_err());
     }
 }
