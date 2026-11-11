@@ -146,9 +146,10 @@ func initializeDatabase() error {
 
 	err = db.Ping()
 	if err != nil {
-		log.Printf("  PostgreSQL not available: %v - using in-memory storage", err)
-		db = nil
-		return nil
+		// Falling back to the in-memory map would accept listings, report
+		// success, and lose them on restart — including applications whose fee
+		// was already paid. Refuse to start instead.
+		return fmt.Errorf("cannot reach PostgreSQL at %s:%s: %w", DB_HOST, DB_PORT, err)
 	}
 
 	schema := `
@@ -218,11 +219,8 @@ func initializeDatabase() error {
 	);
 	`
 
-	_, err = db.Exec(schema)
-	if err != nil {
-		log.Printf("  Schema creation failed: %v", err)
-		db = nil
-		return nil
+	if _, err = db.Exec(schema); err != nil {
+		return fmt.Errorf("cannot create the listings schema: %w", err)
 	}
 
 	log.Println(" Database connected successfully")
@@ -342,10 +340,6 @@ func saveUser(user *User) error {
 		return err
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-	inMemoryDB["user:"+user.ID] = user
-	inMemoryDB["user_email:"+user.Email] = user.ID
 	return nil
 }
 
@@ -426,9 +420,6 @@ func saveListing(listing *TokenListing) error {
 		return err
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-	inMemoryDB["listing:"+listing.ID] = listing
 	return nil
 }
 
@@ -508,9 +499,6 @@ func updateListing(listing *TokenListing) error {
 		return err
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-	inMemoryDB["listing:"+listing.ID] = listing
 	return nil
 }
 
@@ -575,9 +563,6 @@ func savePayment(payment *Payment) error {
 		return err
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-	inMemoryDB["payment:"+payment.ID] = payment
 	return nil
 }
 
@@ -624,9 +609,6 @@ func logAdminAction(action *AdminAction) error {
 		return err
 	}
 
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-	inMemoryDB["action:"+action.ID] = action
 	return nil
 }
 
@@ -1147,32 +1129,36 @@ func GetListingStats(c *gin.Context) {
 }
 
 func HealthCheck(c *gin.Context) {
+	// The database is the only store for listings; a failing ping means the
+	// service cannot serve them. Report that honestly and answer 503 so a
+	// broken replica leaves the rotation instead of staying in it.
+	status := http.StatusOK
+	overall := "healthy"
+	database := "healthy"
+	if err := db.Ping(); err != nil {
+		database = "unavailable"
+		overall = "degraded"
+		status = http.StatusServiceUnavailable
+	}
+
 	health := gin.H{
-		"status":    "healthy",
+		"status":    overall,
 		"timestamp": time.Now().UTC(),
 		"services": gin.H{
-			"database": "healthy",
+			"database": database,
 			"redis":    "not_configured",
 		},
 	}
 
-	if db != nil {
-		if err := db.Ping(); err != nil {
-			health["services"].(gin.H)["database"] = "healthy (in-memory fallback)"
-		}
-	} else {
-		health["services"].(gin.H)["database"] = "in-memory"
-	}
-
 	if redisClient != nil {
 		if err := redisClient.Ping(context.Background()).Err(); err != nil {
-			health["services"].(gin.H)["redis"] = "not_configured"
+			health["services"].(gin.H)["redis"] = "unavailable"
 		} else {
 			health["services"].(gin.H)["redis"] = "healthy"
 		}
 	}
 
-	c.JSON(http.StatusOK, health)
+	c.JSON(status, health)
 }
 
 // allowedOrigin reports whether origin appears in
@@ -1217,7 +1203,7 @@ func main() {
 	log.Println(" Starting TigerWallet Listing Service...")
 
 	if err := initializeDatabase(); err != nil {
-		log.Printf("  Database initialization: %v", err)
+		log.Fatalf("database initialization failed: %v", err)
 	}
 
 	initializeRedis()

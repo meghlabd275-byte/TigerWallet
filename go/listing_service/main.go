@@ -8,9 +8,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -47,6 +51,14 @@ func getEnv(key, dflt string) string {
 		return v
 	}
 	return dflt
+}
+
+// listingWebhookSecret is the shared secret the payment service signs webhook
+// bodies with (the same value the payment service reads). It is read per
+// request so a rotated value takes effect without a restart. An empty value
+// disables the endpoint rather than accepting unsigned callers.
+func listingWebhookSecret() string {
+	return strings.TrimSpace(os.Getenv("PAYMENT_WEBHOOK_SECRET"))
 }
 
 // parseAdminJWT validates an HS256 JWT and returns the subject. The subject
@@ -142,6 +154,8 @@ type TokenListing struct {
 	FeeUSD            string     `json:"fee_usd" bson:"fee_usd"`
 	PaymentID         string     `json:"payment_id" bson:"payment_id"`
 	PaymentStatus     string     `json:"payment_status" bson:"payment_status"`
+	PaymentTxHash     string     `json:"payment_tx_hash" bson:"payment_tx_hash"`
+	PaymentAddress    string     `json:"payment_address" bson:"payment_address"`
 	Status            string     `json:"status" bson:"status"` // pending, paid, reviewing, approved, rejected
 	AdminNotes        string     `json:"admin_notes" bson:"admin_notes"`
 	ReviewedBy        string     `json:"reviewed_by" bson:"reviewed_by"`
@@ -234,6 +248,113 @@ func NewListingService() *ListingService {
 		adminUsers: make(map[string]*AdminUser),
 		paymentURL: cfg.PaymentServiceURL,
 	}
+}
+
+// listingKey namespaces a single listing inside Redis.
+func listingKey(id string) string { return "listing:" + id }
+
+// storeListing writes a listing to Redis and updates the in-process cache. The
+// map alone is not enough: this service is deployed as a container that can be
+// restarted or rescheduled, and an application whose listing disappears when
+// that happens loses the record of a fee the applicant already paid. Redis is
+// the durable copy; the map is a read-through cache.
+func (s *ListingService) storeListing(ctx context.Context, listing *TokenListing) error {
+	payload, err := json.Marshal(listing)
+	if err != nil {
+		return fmt.Errorf("cannot encode listing %s: %w", listing.ID, err)
+	}
+	// No TTL: a listing is a financial record, not a cache entry. It is
+	// removed only by an explicit delete.
+	if err := s.redis.Set(ctx, listingKey(listing.ID), payload, 0).Err(); err != nil {
+		return fmt.Errorf("cannot persist listing %s: %w", listing.ID, err)
+	}
+	s.mu.Lock()
+	s.listings[listing.ID] = listing
+	s.mu.Unlock()
+	return nil
+}
+
+// loadListing returns a listing from the cache, falling back to Redis. The
+// fallback is what makes a restart survivable: a replica that did not handle
+// the original request, or one that just started, still answers correctly.
+//
+// The returned value is a copy. Callers that need to modify a listing mutate
+// their copy and hand it back through storeListing, so a read never observes a
+// half-updated record and no lock has to be held across request handling.
+func (s *ListingService) loadListing(ctx context.Context, id string) (*TokenListing, bool) {
+	s.mu.RLock()
+	cached, ok := s.listings[id]
+	s.mu.RUnlock()
+	if ok {
+		snapshot := *cached
+		return &snapshot, true
+	}
+
+	payload, err := s.redis.Get(ctx, listingKey(id)).Bytes()
+	if err != nil {
+		return nil, false
+	}
+	var listing TokenListing
+	if err := json.Unmarshal(payload, &listing); err != nil {
+		log.Printf("listing %s in the store is not readable: %v", id, err)
+		return nil, false
+	}
+
+	s.mu.Lock()
+	s.listings[id] = &listing
+	s.mu.Unlock()
+
+	snapshot := listing
+	return &snapshot, true
+}
+
+// deleteListing removes a listing from Redis and the cache.
+func (s *ListingService) deleteListing(ctx context.Context, id string) error {
+	if err := s.redis.Del(ctx, listingKey(id)).Err(); err != nil {
+		return fmt.Errorf("cannot delete listing %s: %w", id, err)
+	}
+	s.mu.Lock()
+	delete(s.listings, id)
+	s.mu.Unlock()
+	return nil
+}
+
+// listListings returns every listing matching the filters, reading from Redis so
+// the result does not depend on which replica served earlier requests.
+func (s *ListingService) listListings(ctx context.Context, status, tier string) ([]*TokenListing, error) {
+	keys, err := s.redis.Keys(ctx, "listing:*").Result()
+	if err != nil {
+		return nil, fmt.Errorf("cannot enumerate listings: %w", err)
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	values, err := s.redis.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read listings: %w", err)
+	}
+
+	result := make([]*TokenListing, 0, len(values))
+	for _, raw := range values {
+		text, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		var listing TokenListing
+		if err := json.Unmarshal([]byte(text), &listing); err != nil {
+			log.Printf("a listing in the store is not readable: %v", err)
+			continue
+		}
+		if status != "" && listing.Status != status {
+			continue
+		}
+		if tier != "" && listing.Tier != tier {
+			continue
+		}
+		result = append(result, &listing)
+	}
+	return result, nil
 }
 
 func (s *ListingService) initAdminUsers() {
@@ -383,9 +504,14 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 		UpdatedAt:      time.Now(),
 	}
 
-	s.mu.Lock()
-	s.listings[listing.ID] = listing
-	s.mu.Unlock()
+	// The listing is persisted before the payment intent is requested. An
+	// applicant who is shown a payment address must be findable afterwards,
+	// even if the process dies between the two steps.
+	if err := s.storeListing(c.Request.Context(), listing); err != nil {
+		log.Printf("cannot store the new listing: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the listing could not be saved, please retry"})
+		return
+	}
 
 	// Create payment request via Payment Service
 	paymentReq := map[string]interface{}{
@@ -400,20 +526,24 @@ func (s *ListingService) SubmitApplication(c *gin.Context) {
 
 	// Create a real payment intent via the payment service HTTP API. If the
 	// payment service is unreachable, record the listing as "payment_pending"
-	// (no fabricated payment ID).
-	paymentID, payErr := s.createPaymentIntent(paymentReq)
+	// (no fabricated payment id or address).
+	intent, payErr := s.createPaymentIntent(paymentReq)
 	if payErr != nil {
 		log.Printf("listing %s: payment service error: %v", listing.ID, payErr)
 		listing.PaymentID = ""
+		listing.PaymentAddress = ""
 		listing.PaymentStatus = "payment_pending"
 	} else {
-		listing.PaymentID = paymentID
+		listing.PaymentID = intent.PaymentID
+		listing.PaymentAddress = intent.PaymentAddress
 		listing.PaymentStatus = "pending"
 	}
 
-	s.mu.Lock()
-	s.listings[listing.ID] = listing
-	s.mu.Unlock()
+	// Persist the payment outcome so the record the applicant is shown matches
+	// what the store holds.
+	if err := s.storeListing(c.Request.Context(), listing); err != nil {
+		log.Printf("listing %s: cannot record the payment outcome: %v", listing.ID, err)
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -460,62 +590,106 @@ func (s *ListingService) verifyTokenContract(chain, address string) (bool, error
 	return true, nil
 }
 
-// getPaymentAddress returns the real configured fee-recipient wallet
-// (AdminWallet). It NEVER fabricates a deposit address: users must only send
-// listing fees to a real key-controlled address. If no admin wallet is
-// configured, the listing cannot collect a payment and returns an error
-// indicator (empty string).
+// getPaymentAddress returns the address the applicant must pay to. The address
+// issued by the payment service for this listing takes precedence: it is the one
+// the chain listener watches, so paying anywhere else is never matched. The
+// admin wallet is only a fallback for when no per-listing address was issued.
 func (s *ListingService) getPaymentAddress(listing *TokenListing) string {
+	if listing != nil && listing.PaymentAddress != "" {
+		if common.IsHexAddress(listing.PaymentAddress) {
+			return common.HexToAddress(listing.PaymentAddress).Hex()
+		}
+		log.Printf("listing %s: the payment service issued an unusable address %q", listing.ID, listing.PaymentAddress)
+	}
 	if cfg.AdminWallet == "" || !common.IsHexAddress(cfg.AdminWallet) {
-		log.Printf("listing %s: no valid ADMIN_WALLET configured, payment unavailable", listing.ID)
+		if listing != nil {
+			log.Printf("listing %s: no valid ADMIN_WALLET configured, payment unavailable", listing.ID)
+		}
 		return ""
 	}
 	return common.HexToAddress(cfg.AdminWallet).Hex()
 }
 
-// createPaymentIntent POSTs a real payment intent to the configured payment
-// service and returns the payment ID it assigned. Returns an error (not a fake
-// id) if the service is unreachable or rejects the request.
-func (s *ListingService) createPaymentIntent(req map[string]interface{}) (string, error) {
+// paymentIntent is what the payment service returns for a deposit request.
+type paymentIntent struct {
+	PaymentID      string `json:"payment_id"`
+	PaymentAddress string `json:"payment_address"`
+	ExpiresAt      string `json:"expires_at"`
+}
+
+// createPaymentIntent asks the payment service for a deposit address and
+// returns it. The address is what the applicant pays to, so a failure here
+// leaves the listing without a way to pay and is reported as such rather than
+// being papered over with a fabricated id.
+func (s *ListingService) createPaymentIntent(req map[string]interface{}) (*paymentIntent, error) {
 	if s.paymentURL == "" {
-		return "", fmt.Errorf("payment service URL not configured")
+		return nil, fmt.Errorf("payment service URL not configured")
 	}
 	body, err := json.Marshal(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	resp, err := http.Post(s.paymentURL+"/api/v1/payment/intent", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(s.paymentURL+"/api/v1/payment/deposit/create", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("payment service unreachable: %v", err)
+		return nil, fmt.Errorf("payment service unreachable: %v", err)
 	}
 	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the payment service response: %v", err)
+	}
 	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("payment service returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("payment service returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-	var result struct {
-		PaymentID string `json:"payment_id"`
-		ID        string `json:"id"`
+
+	// The deposit endpoint nests the payment under "payment"; accept a flat
+	// body too so a version skew does not silently drop the address.
+	var decoded struct {
+		PaymentID      string `json:"payment_id"`
+		PaymentAddress string `json:"payment_address"`
+		ExpiresAt      string `json:"expires_at"`
+		Payment        struct {
+			ID             string `json:"id"`
+			PaymentAddress string `json:"payment_address"`
+			ExpiresAt      string `json:"expires_at"`
+		} `json:"payment"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("invalid payment service response: %v", err)
+	if err := json.Unmarshal(respBody, &decoded); err != nil {
+		return nil, fmt.Errorf("invalid payment service response: %v", err)
 	}
-	if result.PaymentID == "" && result.ID != "" {
-		result.PaymentID = result.ID
+
+	out := &paymentIntent{
+		PaymentID:      decoded.PaymentID,
+		PaymentAddress: decoded.PaymentAddress,
+		ExpiresAt:      decoded.ExpiresAt,
 	}
-	if result.PaymentID == "" {
-		return "", fmt.Errorf("payment service returned no payment id")
+	if decoded.Payment.ID != "" {
+		out.PaymentID = decoded.Payment.ID
 	}
-	return result.PaymentID, nil
+	if decoded.Payment.PaymentAddress != "" {
+		out.PaymentAddress = decoded.Payment.PaymentAddress
+	}
+	if decoded.Payment.ExpiresAt != "" {
+		out.ExpiresAt = decoded.Payment.ExpiresAt
+	}
+
+	if out.PaymentID == "" {
+		return nil, fmt.Errorf("payment service returned no payment id")
+	}
+	if out.PaymentAddress == "" {
+		// Without an address the applicant cannot pay. Treat this as a failure
+		// so the listing is not shown a payment step that cannot be completed.
+		return nil, fmt.Errorf("payment service returned no deposit address")
+	}
+	return out, nil
 }
 
 // Get listing status
 func (s *ListingService) GetListingStatus(c *gin.Context) {
 	id := c.Param("id")
 
-	s.mu.RLock()
-	listing, ok := s.listings[id]
-	s.mu.RUnlock()
-
+	listing, ok := s.loadListing(c.Request.Context(), id)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
@@ -554,6 +728,33 @@ func (s *ListingService) GetChains(c *gin.Context) {
 
 // Handle payment webhook from payment service
 func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
+	// This endpoint is the only path that moves a listing to "paid", and it is
+	// reachable without a session, so the caller must prove it is the payment
+	// service. Without a signature anyone who learns a listing ID could mark
+	// their own application paid and skip the fee.
+	secret := listingWebhookSecret()
+	if secret == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payment processor not configured"})
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil || len(body) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+
+	signature := strings.TrimPrefix(c.GetHeader("X-Payment-Signature"), "sha256=")
+	if signature == "" {
+		signature = c.GetHeader("X-Signature-256")
+	}
+	computed := hmac.New(sha256.New, []byte(secret))
+	computed.Write(body)
+	if !hmac.Equal([]byte(signature), []byte(hex.EncodeToString(computed.Sum(nil)))) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+		return
+	}
+
 	var payload struct {
 		Event       string `json:"event"`
 		PaymentID   string `json:"payment_id"`
@@ -566,8 +767,8 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 		CompletedAt string `json:"completed_at"`
 	}
 
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := json.Unmarshal(body, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
 		return
 	}
 
@@ -578,30 +779,74 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 		return
 	}
 
-	// Find listing
-	s.mu.RLock()
+	// Find the listing the order belongs to. The order id carries the first
+	// eight characters of the listing id (see SubmitApplication), so match on
+	// that. Matching on the payment id would never succeed: the payment service
+	// returns plain UUIDs, not "pay_"-prefixed ids.
+	suffix := orderID[len("LISTING-"):]
+	if suffix == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID"})
+		return
+	}
+
+	all, err := s.listListings(c.Request.Context(), "", "")
+	if err != nil {
+		log.Printf("payment webhook: cannot read listings: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the listings could not be read, please retry"})
+		return
+	}
 	var listing *TokenListing
-	for _, l := range s.listings {
-		if strings.HasPrefix(l.PaymentID, "pay_"+orderID[8:]) {
+	for _, l := range all {
+		if strings.HasPrefix(l.ID, suffix) {
 			listing = l
 			break
 		}
 	}
-	s.mu.RUnlock()
 
 	if listing == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}
 
-	// Update listing status based on payment
-	s.mu.Lock()
-	if payload.Status == "completed" {
-		listing.PaymentStatus = "paid"
-		listing.Status = "paid"
+	// The payment must belong to this listing. The service echoes the id it
+	// issued at application time; a callback for a different intent is ignored.
+	if payload.PaymentID != "" && listing.PaymentID != "" && payload.PaymentID != listing.PaymentID {
+		c.JSON(http.StatusConflict, gin.H{"error": "payment does not belong to this listing"})
+		return
 	}
+
+	// A callback is only conclusive for a completed payment. Any other status
+	// leaves the listing untouched, so a stray event cannot move it.
+	if payload.Status != "completed" {
+		c.JSON(http.StatusOK, gin.H{"success": true, "listing": listing})
+		return
+	}
+
+	// A completed payment must name the transaction that settled it; without one
+	// there is nothing to reconcile against.
+	if strings.TrimSpace(payload.TxHash) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "a completed payment must carry a tx_hash"})
+		return
+	}
+
+	// Idempotent: a repeated delivery of the same payment must not rewrite the
+	// record or re-trigger downstream work.
+	if listing.PaymentStatus == "paid" && listing.PaymentTxHash == payload.TxHash {
+		c.JSON(http.StatusOK, gin.H{"success": true, "listing": listing})
+		return
+	}
+
+	listing.PaymentStatus = "paid"
+	listing.Status = "paid"
+	listing.PaymentID = payload.PaymentID
+	listing.PaymentTxHash = payload.TxHash
 	listing.UpdatedAt = time.Now()
-	s.mu.Unlock()
+
+	if err := s.storeListing(c.Request.Context(), listing); err != nil {
+		log.Printf("payment webhook: cannot record the payment: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the payment could not be recorded, please retry"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -686,18 +931,12 @@ func (s *ListingService) ListAllListings(c *gin.Context) {
 	page := c.DefaultQuery("page", "1")
 	limit := c.DefaultQuery("limit", "20")
 
-	s.mu.RLock()
-	var result []*TokenListing
-	for _, l := range s.listings {
-		if status != "" && l.Status != status {
-			continue
-		}
-		if tier != "" && l.Tier != tier {
-			continue
-		}
-		result = append(result, l)
+	result, err := s.listListings(c.Request.Context(), status, tier)
+	if err != nil {
+		log.Printf("cannot list listings: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the listings could not be read, please retry"})
+		return
 	}
-	s.mu.RUnlock()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
@@ -711,10 +950,7 @@ func (s *ListingService) ListAllListings(c *gin.Context) {
 func (s *ListingService) GetListingDetails(c *gin.Context) {
 	id := c.Param("id")
 
-	s.mu.RLock()
-	listing, ok := s.listings[id]
-	s.mu.RUnlock()
-
+	listing, ok := s.loadListing(c.Request.Context(), id)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
@@ -738,10 +974,7 @@ func (s *ListingService) UpdateListingStatus(c *gin.Context) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	listing, ok := s.listings[id]
+	listing, ok := s.loadListing(c.Request.Context(), id)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
@@ -763,6 +996,12 @@ func (s *ListingService) UpdateListingStatus(c *gin.Context) {
 	listing.Status = req.Status
 	listing.UpdatedAt = time.Now()
 
+	if err := s.storeListing(c.Request.Context(), listing); err != nil {
+		log.Printf("listing %s: cannot record the new status: %v", id, err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the status could not be saved, please retry"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"listing": listing,
@@ -771,8 +1010,6 @@ func (s *ListingService) UpdateListingStatus(c *gin.Context) {
 
 func (s *ListingService) ReviewListing(c *gin.Context) {
 	id := c.Param("id")
-
-	adminEmail, _ := c.Get("admin_email")
 
 	var req struct {
 		Status     string `json:"status" binding:"required"`
@@ -784,10 +1021,7 @@ func (s *ListingService) ReviewListing(c *gin.Context) {
 		return
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	listing, ok := s.listings[id]
+	listing, ok := s.loadListing(c.Request.Context(), id)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
@@ -796,9 +1030,19 @@ func (s *ListingService) ReviewListing(c *gin.Context) {
 	now := time.Now()
 	listing.Status = req.Status
 	listing.AdminNotes = req.AdminNotes
-	listing.ReviewedBy = adminEmail.(string)
+	if adminEmail, ok := c.Get("admin_email"); ok {
+		if email, isString := adminEmail.(string); isString {
+			listing.ReviewedBy = email
+		}
+	}
 	listing.ReviewedAt = &now
-	listing.UpdatedAt = time.Now()
+	listing.UpdatedAt = now
+
+	if err := s.storeListing(c.Request.Context(), listing); err != nil {
+		log.Printf("listing %s: cannot record the review: %v", id, err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the review could not be saved, please retry"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -809,15 +1053,16 @@ func (s *ListingService) ReviewListing(c *gin.Context) {
 func (s *ListingService) DeleteListing(c *gin.Context) {
 	id := c.Param("id")
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.listings[id]; !ok {
+	if _, ok := s.loadListing(c.Request.Context(), id); !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "listing not found"})
 		return
 	}
 
-	delete(s.listings, id)
+	if err := s.deleteListing(c.Request.Context(), id); err != nil {
+		log.Printf("listing %s: cannot delete: %v", id, err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the listing could not be deleted, please retry"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -826,11 +1071,15 @@ func (s *ListingService) DeleteListing(c *gin.Context) {
 }
 
 func (s *ListingService) GetListingStats(c *gin.Context) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	all, err := s.listListings(c.Request.Context(), "", "")
+	if err != nil {
+		log.Printf("cannot read listings for the stats: %v", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the stats could not be read, please retry"})
+		return
+	}
 
 	stats := map[string]int{
-		"total":     len(s.listings),
+		"total":     len(all),
 		"pending":   0,
 		"paid":      0,
 		"reviewing": 0,
@@ -838,7 +1087,7 @@ func (s *ListingService) GetListingStats(c *gin.Context) {
 		"rejected":  0,
 	}
 
-	for _, l := range s.listings {
+	for _, l := range all {
 		stats[l.Status]++
 	}
 
@@ -955,15 +1204,32 @@ func (s *ListingService) UpdateTierConfig(c *gin.Context) {
 
 // Health check
 func (s *ListingService) HealthCheck(c *gin.Context) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	// The health endpoint reports the store this service actually depends on.
+	// Listings live in Redis, so a Redis outage means the service cannot serve
+	// them; reporting "healthy" regardless would keep a broken replica in the
+	// load balancer and hide the outage from operators.
+	store := "healthy"
+	status := http.StatusOK
+	code := "healthy"
 
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
+	if err := s.redis.Ping(c.Request.Context()).Err(); err != nil {
+		store = "unavailable"
+		status = http.StatusServiceUnavailable
+		code = "degraded"
+	}
+
+	payload := gin.H{
+		"status":    code,
 		"service":   "listing-service",
 		"timestamp": time.Now().Unix(),
-		"listings":  len(s.listings),
-	})
+		"store":     store,
+	}
+
+	if all, err := s.listListings(c.Request.Context(), "", ""); err == nil {
+		payload["listings"] = len(all)
+	}
+
+	c.JSON(status, payload)
 }
 
 // ============================================================================
@@ -993,6 +1259,18 @@ func main() {
 
 	// Initialize service
 	ls := NewListingService()
+
+	// Listings are stored in Redis, so a service that cannot reach it would
+	// accept applications and then lose them. Refuse to start instead.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := ls.redis.Ping(ctx).Err()
+		cancel()
+		if err != nil {
+			log.Fatalf("cannot reach Redis at %s: %v", cfg.RedisAddr, err)
+		}
+		log.Printf("Connected to Redis at %s", cfg.RedisAddr)
+	}
 
 	// Initialize admin users
 	ls.initAdminUsers()

@@ -8,7 +8,6 @@ package main
 // movement, real WebAuthn attestation/con assertion verification.
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -488,11 +487,4 @@ func (svc *Service) VerifyPasskeyAssertion(c *gin.Context) {
 	}
 	svc.store.audit(ctx, masterID, "passkey.verified", "security", "user", currentUserID(c), "passkey", req.CredentialID, "info", nil)
 	c.JSON(http.StatusOK, gin.H{"verified": true, "credential_id": req.CredentialID})
-}
-
-// ensurePasskeyMigration adds the mw_passkeys table. Called from runMigrations
-// via an idempotent CREATE TABLE.
-func ensurePasskeyMigration(ctx context.Context, pool interface{}) {
-	// implemented in store.go migration list — this is a no-op placeholder
-	// kept so the function name resolves if referenced elsewhere.
 }

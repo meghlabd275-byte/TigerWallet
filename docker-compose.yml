@@ -1130,6 +1130,32 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Issues the deposit addresses the listing service collects application fees
+  # on, verifies deposits on chain, and signs its completion callbacks with
+  # PAYMENT_WEBHOOK_SECRET (the value listing-service verifies).
+  payment-service:
+    build:
+      context: ./go/payment
+      dockerfile: Dockerfile
+    container_name: tigerwallet-payment-service
+    ports:
+      - "8096:8096"
+    environment:
+      - PORT=8096
+      - REDIS_ADDR=redis:6379
+      - PAYMENT_WEBHOOK_SECRET=${PAYMENT_WEBHOOK_SECRET:-}
+      - ETH_RPC_URL=${ETH_RPC_URL:-}
+      - BSC_RPC_URL=${BSC_RPC_URL:-}
+      - POLYGON_RPC_URL=${POLYGON_RPC_URL:-}
+      - ARBITRUM_RPC_URL=${ARBITRUM_RPC_URL:-}
+      - OPTIMISM_RPC_URL=${OPTIMISM_RPC_URL:-}
+      - AVALANCHE_RPC_URL=${AVALANCHE_RPC_URL:-}
+      - CONFIRMATION_BLOCKS=${CONFIRMATION_BLOCKS:-12}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   listing-service:
     build:
       context: ./go/listing_service
@@ -1145,6 +1171,15 @@ services:
       - PAYMENT_SERVICE_URL=http://payment-service:8096
       - ETH_RPC_URL=${ETH_RPC_URL:-}
       - LISTING_SUPERADMIN_EMAIL=${LISTING_SUPERADMIN_EMAIL:-}
+      # Shared secret the payment service signs webhook bodies with. Unset
+      # disables the payment webhook, so a listing can never be marked paid
+      # by an unsigned caller.
+      - PAYMENT_WEBHOOK_SECRET=${PAYMENT_WEBHOOK_SECRET:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
     restart: unless-stopped
 
   portfolio-tracker:

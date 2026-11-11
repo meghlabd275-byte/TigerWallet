@@ -7,13 +7,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -787,20 +794,44 @@ func (s *PaymentService) GetSupportedChains(c *gin.Context) {
 	})
 }
 
-// Handle payment webhook from blockchain listener
+// HandlePaymentWebhook is called by the chain listener when a deposit reaches
+// the deposit address. The caller's data is only a hint: the transaction is
+// re-read from the chain and the payment is completed only when the transfer is
+// confirmed there, so a forged callback cannot mark a payment paid.
 func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
-	var payload struct {
-		TxHash        string `json:"tx_hash"`
-		Address       string `json:"address"`
-		Chain         string `json:"chain"`
-		Token         string `json:"token"`
-		Amount        string `json:"amount"`
-		BlockNum      uint64 `json:"block_number"`
-		Confirmations int64  `json:"confirmations"`
+	secret := paymentWebhookSecret()
+	if secret == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the chain listener is not configured"})
+		return
 	}
 
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil || len(body) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+
+	signature := strings.TrimPrefix(c.GetHeader("X-Payment-Signature"), "sha256=")
+	if signature == "" {
+		signature = c.GetHeader("X-Signature-256")
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	if !hmac.Equal([]byte(signature), []byte(hex.EncodeToString(mac.Sum(nil)))) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+		return
+	}
+
+	var payload struct {
+		TxHash  string `json:"tx_hash"`
+		Address string `json:"address"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid json"})
+		return
+	}
+	if payload.TxHash == "" || payload.Address == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tx_hash and address are required"})
 		return
 	}
 
@@ -821,11 +852,16 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 		return
 	}
 
-	payment.TxHash = payload.TxHash
-	payment.BlockNumber = payload.BlockNum
-	payment.Confirmations = payload.Confirmations
+	confirmations, err := s.verifyDepositOnChain(c.Request.Context(), payment, payload.TxHash)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
 
-	if payload.Confirmations >= cfg.ConfirmationBlocks {
+	payment.TxHash = payload.TxHash
+	payment.Confirmations = confirmations
+
+	if confirmations >= cfg.ConfirmationBlocks {
 		payment.Status = "completed"
 		now := time.Now()
 		payment.CompletedAt = &now
@@ -844,13 +880,83 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 	})
 }
 
+// verifyDepositOnChain re-reads a deposit from the chain and returns its
+// confirmation count. It fails when the transaction is missing, reverted, or
+// does not move the expected amount of the expected token to the payment's
+// address, so a callback can never complete a payment that did not happen.
+func (s *PaymentService) verifyDepositOnChain(ctx context.Context, payment *Payment, txHash string) (int64, error) {
+	if !strings.HasPrefix(txHash, "0x") || len(txHash) != 66 {
+		return 0, fmt.Errorf("tx_hash is not a transaction hash")
+	}
+
+	client, ok := s.ethClients[payment.Chain]
+	if !ok {
+		return 0, fmt.Errorf("no RPC client is configured for chain %s", payment.Chain)
+	}
+
+	receipt, err := client.TransactionReceipt(ctx, common.HexToHash(txHash))
+	if err != nil {
+		return 0, fmt.Errorf("the transaction is not on chain yet: %w", err)
+	}
+	if receipt.Status != types.ReceiptStatusSuccessful {
+		return 0, fmt.Errorf("the transaction reverted on chain")
+	}
+
+	tokenAddr, ok := StablecoinContracts[payment.Chain][payment.Token]
+	if !ok {
+		return 0, fmt.Errorf("token %s is not supported on chain %s", payment.Token, payment.Chain)
+	}
+
+	expected, ok := new(big.Int).SetString(payment.Amount, 10)
+	if !ok {
+		return 0, fmt.Errorf("the recorded amount is not a valid integer")
+	}
+
+	// ERC-20 Transfer(address,address,uint256): the deposit must move at least
+	// the expected amount of the expected token to the payment address. The
+	// topics and data are read from the chain, never from the request.
+	transferTopic := crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
+	toTopic := common.BytesToHash(common.LeftPadBytes(common.HexToAddress(payment.ToAddress).Bytes(), 32))
+
+	var credited *big.Int
+	for _, lg := range receipt.Logs {
+		if lg.Address != tokenAddr || len(lg.Topics) != 3 {
+			continue
+		}
+		if lg.Topics[0] != transferTopic || lg.Topics[2] != toTopic {
+			continue
+		}
+		value := new(big.Int).SetBytes(lg.Data)
+		if credited == nil || value.Cmp(credited) > 0 {
+			credited = value
+		}
+	}
+	if credited == nil {
+		return 0, fmt.Errorf("the transaction contains no transfer of %s to %s", payment.Token, payment.ToAddress)
+	}
+	if credited.Cmp(expected) < 0 {
+		return 0, fmt.Errorf("the transaction transferred %s but %s was required", credited.String(), expected.String())
+	}
+
+	head, err := client.BlockNumber(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("cannot read the current block: %w", err)
+	}
+	if head < receipt.BlockNumber.Uint64() {
+		return 0, fmt.Errorf("the transaction is ahead of the chain head")
+	}
+
+	payment.BlockNumber = receipt.BlockNumber.Uint64()
+	return int64(head-receipt.BlockNumber.Uint64()) + 1, nil
+}
+
 // Send webhook notification
 func (s *PaymentService) sendWebhook(payment *Payment) {
 	if payment.WebhookURL == "" {
 		return
 	}
 
-	payload, _ := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]interface{}{
 		"event":        "payment.completed",
 		"payment_id":   payment.ID,
 		"order_id":     payment.OrderID,
@@ -862,13 +968,53 @@ func (s *PaymentService) sendWebhook(payment *Payment) {
 		"status":       payment.Status,
 		"completed_at": payment.CompletedAt,
 	})
+	if err != nil {
+		log.Printf("payment %s: cannot encode the webhook body: %v", payment.ID, err)
+		return
+	}
+
+	req, err := http.NewRequest(http.MethodPost, payment.WebhookURL, bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("payment %s: cannot build the webhook request: %v", payment.ID, err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// The receiving service only acts on a signed body, so the signature is not
+	// optional: without it the callback is rejected and the order stays unpaid.
+	if secret := paymentWebhookSecret(); secret != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write(payload)
+		req.Header.Set("X-Payment-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	} else {
+		log.Printf("payment %s: PAYMENT_WEBHOOK_SECRET is unset; the callback will be rejected by the receiver", payment.ID)
+	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	client.Post(payment.WebhookURL, "application/json", strings.NewReader(string(payload)))
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("payment %s: webhook delivery failed: %v", payment.ID, err)
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+
+	// Only record the delivery as sent when the receiver accepted it, so a
+	// failed callback can be retried instead of being silently dropped.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("payment %s: webhook rejected with status %d", payment.ID, resp.StatusCode)
+		return
+	}
 
 	s.mu.Lock()
 	payment.WebhookSent = true
 	s.mu.Unlock()
+}
+
+// paymentWebhookSecret is the shared secret used to sign outbound webhooks. An
+// empty value means the receiver will reject the callback, which is logged.
+func paymentWebhookSecret() string {
+	return strings.TrimSpace(os.Getenv("PAYMENT_WEBHOOK_SECRET"))
 }
 
 // Health check
@@ -910,9 +1056,71 @@ func (s *PaymentService) getHotWalletAddress() string {
 // Main
 // ============================================================================
 
+// loadConfig populates cfg from the environment. Without this the service keeps
+// its built-in defaults: it would listen on the right port but hold no RPC
+// endpoints and no hot wallet key, so deposits could never be verified and
+// withdrawals could never be signed.
+func loadConfig() {
+	if v := getEnv("PORT", ""); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			cfg.Port = p
+		} else {
+			log.Printf("ignoring invalid PORT %q", v)
+		}
+	}
+	cfg.RedisAddr = getEnv("REDIS_ADDR", cfg.RedisAddr)
+	cfg.EthRPCURL = getEnv("ETH_RPC_URL", cfg.EthRPCURL)
+	cfg.BSCRPCURL = getEnv("BSC_RPC_URL", cfg.BSCRPCURL)
+	cfg.PolygonRPCURL = getEnv("POLYGON_RPC_URL", cfg.PolygonRPCURL)
+	cfg.ArbitrumRPCURL = getEnv("ARBITRUM_RPC_URL", cfg.ArbitrumRPCURL)
+	cfg.OptimismRPCURL = getEnv("OPTIMISM_RPC_URL", cfg.OptimismRPCURL)
+	cfg.AvalancheRPCURL = getEnv("AVALANCHE_RPC_URL", cfg.AvalancheRPCURL)
+	cfg.WebhookURL = getEnv("PAYMENT_WEBHOOK_URL", cfg.WebhookURL)
+
+	// The hot wallet key is only read when it is present; the service stays
+	// usable for deposit collection without it, but withdrawals then report
+	// "requires_signing" instead of being broadcast.
+	cfg.PrivateKey = strings.TrimSpace(os.Getenv("PAYMENT_PRIVATE_KEY"))
+
+	if v := getEnv("CONFIRMATION_BLOCKS", ""); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			cfg.ConfirmationBlocks = n
+		} else {
+			log.Printf("ignoring invalid CONFIRMATION_BLOCKS %q", v)
+		}
+	}
+
+	log.Printf("configuration: port=%d redis=%s confirmations=%d rpc_chains=%d hot_wallet=%t",
+		cfg.Port, cfg.RedisAddr, cfg.ConfirmationBlocks, countConfiguredRPCs(), cfg.PrivateKey != "")
+}
+
+// countConfiguredRPCs reports how many chain endpoints were supplied, so a
+// deployment that forgot them is visible at startup rather than at first use.
+func countConfiguredRPCs() int {
+	n := 0
+	for _, u := range []string{
+		cfg.EthRPCURL, cfg.BSCRPCURL, cfg.PolygonRPCURL,
+		cfg.ArbitrumRPCURL, cfg.OptimismRPCURL, cfg.AvalancheRPCURL,
+	} {
+		if strings.TrimSpace(u) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func getEnv(key, dflt string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return dflt
+}
+
 func main() {
 	log.Println("TigerWallet Crypto Payment Service")
 	log.Println("===================================")
+
+	loadConfig()
 
 	// Initialize payment service
 	ps := NewPaymentService()

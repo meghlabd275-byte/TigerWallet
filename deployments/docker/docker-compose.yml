@@ -17,7 +17,17 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # The gateway binds PORT; keep it in step with the published mapping.
+      - PORT=8080
       - NODE_ENV=production
+      # The gateway refuses to start without a signing secret of at least 32
+      # characters. It reads GATEWAY_JWT_SECRET; point that at the platform
+      # secret so one configured value covers the stack. Override it here if
+      # you want the gateway to sign with a dedicated key.
+      - GATEWAY_JWT_SECRET=${JWT_SECRET}
+      # Token guarding the gateway's own /admin/* routes. Generate one with
+      # `openssl rand -base64 48`.
+      - GATEWAY_ADMIN_TOKEN=${GATEWAY_ADMIN_TOKEN:-}
       - JWT_SECRET=${JWT_SECRET}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -113,7 +123,7 @@ services:
       dockerfile: Dockerfile
     container_name: tigerwallet-wallet-service
     ports:
-      - "8082:8080"
+      - "8082:8001"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432

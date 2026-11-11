@@ -334,14 +334,22 @@ func (g *APIGateway) Run() error {
 	mux.HandleFunc("/health", g.handleHealth)
 	mux.HandleFunc("/ready", g.handleReady)
 
+	// The listen address is configurable so the gateway can run behind an
+	// orchestrator that assigns the port (and so the value matches whatever the
+	// deployment maps). PORT defaults to 8000.
+	addr := ":8000"
+	if p := strings.TrimSpace(os.Getenv("PORT")); p != "" {
+		addr = ":" + p
+	}
+
 	g.server = &http.Server{
-		Addr:         ":8000",
+		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
-	log.Println("API Gateway starting on :8000")
+	log.Printf("API Gateway starting on %s", addr)
 	return g.server.ListenAndServe()
 }
 

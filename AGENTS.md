@@ -1416,3 +1416,62 @@
 - Remaining open in this module: the Ledger APDU exchange path and all Trezor
   protocol work still need a real transport (HID/WebHID) before they can do
   anything; they fail closed meanwhile, which is correct.
+
+## Session 41 (2026-11-11) — payment/listing money-path audit + deploy wiring (pushed to main)
+- TOOLCHAIN (sandbox reset): Go 1.24.5 at /tmp/go124; Docker daemon needs root
+  in this sandbox, so images were validated by running the exact Dockerfile
+  build command and then smoke-starting each binary instead.
+- CANONICAL go/listing_service — three real defects closed:
+  1. HandlePaymentWebhook was reachable with no session: anyone could mark a
+     listing "paid". Now fail-closed HMAC-SHA256 (X-Payment-Signature /
+     X-Signature-256), 503 when PAYMENT_WEBHOOK_SECRET is unset, 401 on mismatch.
+  2. The paid path never worked: it matched `strings.HasPrefix(l.PaymentID,
+     "pay_"+orderID[8:])` but the payment service issues PLAIN UUIDs, so a paid
+     listing stayed pending forever. Now matches the order id's 8-char listing-id
+     suffix (the value SubmitApplication actually writes), verifies the payment
+     belongs to the listing, requires a tx_hash, and is idempotent on redelivery.
+  3. The listing->payment integration was broken twice over: it POSTed
+     /api/v1/payment/intent (a route go/payment does NOT serve; the real route is
+     /api/v1/payment/deposit/create) and read a flat {payment_id}, while the real
+     response nests {payment:{id,payment_address}}. Worse, the deposit address
+     shown to the applicant came from ADMIN_WALLET, not the per-deposit address
+     the chain listener watches — so a payment could never be matched. Now the
+     issued address is stored on the listing (new payment_address +
+     payment_tx_hash fields) and returned to the applicant.
+- CANONICAL go/payment — the deposit callback was FORGEABLE and the config was
+  never loaded:
+  - HandlePaymentWebhook accepted an unsigned body and trusted its
+    `confirmations` field, so `{"tx_hash":"0x...","confirmations":12}` marked a
+    payment completed. Now it HMAC-verifies the body and RE-READS the tx from
+    chain: receipt must exist, not have reverted, and contain an ERC-20 Transfer
+    of the expected token to the payment address for >= the expected amount. The
+    confirmation count comes from the chain, never from the request.
+  - loadConfig() did not exist: cfg kept its defaults, so RPC endpoints and the
+    hot-wallet key were never read and no deposit could ever be verified. Now
+    loads PORT/REDIS_ADDR/*_RPC_URL/PAYMENT_PRIVATE_KEY/CONFIRMATION_BLOCKS and
+    logs what it found; invalid values keep the previous setting.
+  - sendWebhook now HMAC-signs its body (X-Payment-Signature) and reports a real
+    delivery status instead of swallowing the marshal error.
+- LEGACY listing_service/go: initializeDatabase() silently fell back to an
+  in-memory map (a paid application vanished on restart, and the write was
+  invisible to other replicas). Now returns the error and the process exits;
+  HealthCheck reports DB/Redis honestly and returns 503 when the DB is down; the
+  7 dead `inMemoryDB[...]` mirrors (pure leak, never read on the DB path) and the
+  `db = nil` schema-failure swallow are removed.
+- DEPLOY: 6 missing Dockerfiles created (go/payment, go/api_gateway,
+  go/cex_connector, go/websocket_service, go/wallet_service, listing_service/go)
+  — deployments/docker/docker-compose.yml referenced all four of the latter with
+  no Dockerfile, so those builds failed outright. Builder image matches each
+  module's `go` directive (1.22/1.25), and `COPY go.mod` omits go.sum where the
+  module has none (api_gateway, wallet_service).
+- REAL PORT/CONFIG BUGS in deployments/docker/docker-compose.yml: wallet-service
+  mapped 8082:8080 but listens on PORT (default 8001) -> nothing reachable;
+  api-gateway binds :8000 hard-coded while the mapping published 8080 -> nothing
+  reachable (Run() now honours PORT); the gateway demands GATEWAY_JWT_SECRET and
+  GATEWAY_ADMIN_TOKEN but compose supplied only JWT_SECRET -> the container could
+  never start (both now wired).
+- VERIFIED: 7 modules build+vet clean; go/listing_service 17 tests PASS,
+  go/payment 8 tests PASS; every touched binary was built with its exact
+  Dockerfile command and smoke-started (api-gateway /health 200 + /ready
+  {"status":"ready"}; wallet-service /health 200; the fail-closed services exit
+  with a named missing-secret error, which is correct).
