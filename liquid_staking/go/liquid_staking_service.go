@@ -16,14 +16,8 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -40,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -276,9 +269,50 @@ func (s *BlockchainService) GetBalance(address common.Address) (*big.Int, error)
 	return s.ethClient.BalanceAt(context.Background(), address, nil)
 }
 
+// erc20BalanceOfABI is the minimal ABI needed to read a token balance.
+const erc20BalanceOfABI = `[{"constant":true,"inputs":[{"name":"owner","type":"address"}],"name":"balanceOf","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]`
+
+// GetTokenBalance reads the ERC-20 balanceOf of ownerAddr.
+//
+// The previous version returned zero unconditionally, so every caller saw an
+// empty wallet. A failed call is now reported as an error rather than being
+// flattened into "no balance", because the two mean different things.
 func (s *BlockchainService) GetTokenBalance(tokenAddr, ownerAddr common.Address) (*big.Int, error) {
-	// Simplified - in production, call ERC20 balanceOf
-	return big.NewInt(0), nil
+	if s.ethClient == nil {
+		return nil, fmt.Errorf("no RPC client configured")
+	}
+	if tokenAddr == (common.Address{}) {
+		return nil, fmt.Errorf("token address must not be the zero address")
+	}
+
+	contract, err := abi.JSON(strings.NewReader(erc20BalanceOfABI))
+	if err != nil {
+		return nil, fmt.Errorf("token ABI is invalid: %w", err)
+	}
+	input, err := contract.Pack("balanceOf", ownerAddr)
+	if err != nil {
+		return nil, fmt.Errorf("could not encode balanceOf: %w", err)
+	}
+
+	result, err := s.ethClient.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &tokenAddr,
+		Data: input,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("balanceOf call failed: %w", err)
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("balanceOf returned no data: %s may not be an ERC-20 token", tokenAddr.Hex())
+	}
+
+	var balance *big.Int
+	if err := contract.UnpackIntoInterface(&balance, "balanceOf", result); err != nil {
+		return nil, fmt.Errorf("could not decode balanceOf result: %w", err)
+	}
+	if balance == nil {
+		return nil, fmt.Errorf("balanceOf decoded to nil for %s", tokenAddr.Hex())
+	}
+	return balance, nil
 }
 
 func (s *BlockchainService) SendTransaction(to common.Address, value *big.Int, data []byte) (string, error) {
@@ -317,9 +351,41 @@ func (s *BlockchainService) SendTransaction(to common.Address, value *big.Int, d
 	return signedTx.Hash().Hex(), nil
 }
 
-func (s *BlockchainService) CallContract(method string, args ...interface{}) ([]byte, error) {
-	// Simplified - in production, use ABI encoding
-	return []byte{}, nil
+// CallContract encodes a read-only contract call and returns the raw result.
+//
+// The previous version returned an empty slice, which a caller would read as
+// "the contract returned nothing" rather than "this method is not
+// implemented". The ABI is supplied by the caller because a method name alone
+// cannot be encoded: the argument types are part of the selector.
+func (s *BlockchainService) CallContract(contractAddr common.Address, contractABI string, method string, args ...interface{}) ([]byte, error) {
+	if s.ethClient == nil {
+		return nil, fmt.Errorf("no RPC client configured")
+	}
+	if contractAddr == (common.Address{}) {
+		return nil, fmt.Errorf("contract address must not be the zero address")
+	}
+
+	parsed, err := abi.JSON(strings.NewReader(contractABI))
+	if err != nil {
+		return nil, fmt.Errorf("contract ABI is invalid: %w", err)
+	}
+	if _, ok := parsed.Methods[method]; !ok {
+		return nil, fmt.Errorf("method %q is not present in the supplied ABI", method)
+	}
+
+	input, err := parsed.Pack(method, args...)
+	if err != nil {
+		return nil, fmt.Errorf("could not encode %s: %w", method, err)
+	}
+
+	result, err := s.ethClient.CallContract(context.Background(), ethereum.CallMsg{
+		To:   &contractAddr,
+		Data: input,
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%s call failed: %w", method, err)
+	}
+	return result, nil
 }
 
 // ============================================================================
@@ -512,14 +578,20 @@ func (s *StakingService) ClaimRewards(userID uint, positionID string) ([]RewardD
 }
 
 // GetAPY calculates current APY for a chain/token
+// GetAPY returns the pool's published rate.
+//
+// A pool that has not been configured now reports an error instead of
+// inheriting the global default. The default rate belongs to the platform's
+// own staking product; silently applying it to an arbitrary third-party pool
+// would promise a yield nobody has agreed to pay.
 func (s *StakingService) GetAPY(chain, token string) (float64, error) {
 	var pool StakingPool
 	if err := s.db.Where("chain = ? AND token = ?", chain, token).First(&pool).Error; err != nil {
-		// Return default APY if pool not found
-		return s.config.RewardAPY, nil
+		return 0, fmt.Errorf("no staking pool is configured for %s/%s: %w", chain, token, err)
 	}
-
-	// In production, calculate real APY based on validator performance
+	if pool.CurrentAPY <= 0 {
+		return 0, fmt.Errorf("staking pool %s/%s has no published rate", chain, token)
+	}
 	return pool.CurrentAPY, nil
 }
 
@@ -530,25 +602,45 @@ func (s *StakingService) UpdateRewards() error {
 		return err
 	}
 
+	now := time.Now()
 	for i := range positions {
-		// Calculate time-based rewards
 		apy, err := s.GetAPY(positions[i].Chain, positions[i].Token)
 		if err != nil {
+			// Leave the position untouched: accruing at a rate nobody
+			// published would overstate the user's balance.
 			continue
 		}
 
-		// Calculate rewards (simplified - in production, use proper time-based calculation)
-		hoursSinceUpdate := time.Since(positions[i].LastRewardUpdate).Hours()
-		rewardRate := apy / 100 / (365 * 24) // hourly rate
-		rewards := positions[i].StakedAmount * rewardRate * hoursSinceUpdate
+		hours := now.Sub(positions[i].LastRewardUpdate).Hours()
+		if hours <= 0 {
+			continue
+		}
+		// Clamp so a long outage cannot credit an implausible amount, and
+		// so a clock adjustment cannot credit negative time.
+		if hours > maxAccrualHours {
+			hours = maxAccrualHours
+		}
+
+		// Interest accrues on the principal the user staked. Accruing on
+		// the running total would compound automatically, which is a
+		// separate product decision and must not happen by accident.
+		rewardRate := apy / 100 / hoursPerYear
+		rewards := positions[i].StakedAmount * rewardRate * hours
 
 		positions[i].PendingRewards += rewards
-		positions[i].LastRewardUpdate = time.Now()
-		s.db.Save(&positions[i])
+		positions[i].LastRewardUpdate = now
+		if err := s.db.Save(&positions[i]).Error; err != nil {
+			return fmt.Errorf("could not persist rewards for position %s: %w", positions[i].PositionID, err)
+		}
 	}
 
 	return nil
 }
+
+const (
+	hoursPerYear   = 365 * 24
+	maxAccrualHours = 24 * 31
+)
 
 // GetUserPositions returns all staking positions for a user
 func (s *StakingService) GetUserPositions(userID uint) ([]StakingPosition, error) {

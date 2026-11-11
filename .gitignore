@@ -261,3 +261,6 @@ gasless-tx-service
 /crypto_card/go/cmd/payment_api/payment_api
 /cross_chain_protocol/bridge/go/bridge-service
 /security/kyc_aml/go/cmd/cmd
+
+# Compiled service binaries
+liquid_staking/go/liquid-staking
