@@ -362,6 +362,21 @@ func (s *PaymentService) Authorize(req *AuthorizationRequest) *AuthorizationResp
 	}
 
 	// Generate transaction
+	// Score the authorization from this card's own history before any
+	// money is approved.
+	signals := s.collectRiskSignals(req.CardToken, card, req, time.UnixMilli(int64(now)))
+	riskScore := calculateRiskScore(req, limits, signals)
+
+	if riskScore >= riskDeclineThreshold {
+		return &AuthorizationResponse{
+			Status:       "declined",
+			ResponseCode: "HIGH_RISK",
+			Message:      "Authorization declined by risk engine",
+			RiskScore:    riskScore,
+		}
+	}
+
+
 	txID := s.nextTxID
 	s.nextTxID++
 
@@ -380,7 +395,7 @@ func (s *PaymentService) Authorize(req *AuthorizationRequest) *AuthorizationResp
 		Country:          req.Country,
 		Timestamp:        now,
 		ProcessedAt:      now,
-		RiskScore:        10, // Low risk for demo
+		RiskScore:        riskScore,
 	}
 
 	// Calculate fees and cashback

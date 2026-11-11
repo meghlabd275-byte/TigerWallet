@@ -11,7 +11,7 @@ use parking_lot::RwLock;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-use crate::position_engine::{PositionSide, MarginType, Position};
+use crate::position_engine::{MarginType, Position, PositionEngine, PositionSide};
 
 /// Order side (buy or sell)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -352,6 +352,9 @@ pub struct OrderBook {
     bids: BTreeMap<Decimal, PriceLevel>,  // Buy orders sorted by price (highest first)
     asks: BTreeMap<Decimal, PriceLevel>, // Sell orders sorted by price (lowest first)
     orders: std::collections::HashMap<String, Order>,
+    /// Incremented on every mutation so a consumer can tell snapshots
+    /// apart and detect a missed update.
+    sequence: u64,
     direction: OrderDirection,
 }
 
@@ -362,11 +365,25 @@ impl OrderBook {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
             orders: std::collections::HashMap::new(),
+            sequence: 0,
             direction: OrderDirection::Asc,
         }
     }
 
-    pub fn add_order(&mut self, mut order: Order) -> Result<Vec<Trade>, MatchingError> {
+    /// Monotonic counter of order book mutations.
+    pub fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    /// Add an order to the book.
+    ///
+    /// `positions` is the shared position store, used only for reduce-only
+    /// validation. Pass `None` when no store is attached.
+    pub fn add_order(
+        &mut self,
+        mut order: Order,
+        positions: Option<&PositionEngine>,
+    ) -> Result<Vec<Trade>, MatchingError> {
         let mut trades = Vec::new();
         
         // Handle market orders immediately
@@ -399,16 +416,21 @@ impl OrderBook {
             }
         }
         
-        // Check reduce-only
+        // Check reduce-only against the real position store. Without an
+        // attached store the open position is unknown, so a reduce-only order
+        // is refused rather than assumed to be covered.
         if order.reduce_only {
-            let position = self.get_user_position(&order.user_id, &order.symbol);
-            if order.side == OrderSide::Sell && position.map(|p| p.quantity).unwrap_or(dec!(0)) < order.quantity {
-                return Err(MatchingError::InsufficientPosition("Insufficient position to reduce".to_string()));
+            let position = positions.and_then(|engine| engine.get_position(&order.user_id, &order.symbol));
+            let available = position.map(|p| p.quantity).unwrap_or(dec!(0));
+            if available < order.quantity {
+                return Err(MatchingError::InsufficientPosition(
+                    "Insufficient position to reduce".to_string(),
+                ));
             }
         }
         
         // Try to match immediately
-        let (matches, remaining) = self.try_match_order(&order)?;
+        let (matches, _remaining) = self.try_match_order(&order)?;
         
         for (matched_order_id, fill_price, fill_quantity) in matches {
             let matched_order = self.orders.get_mut(&matched_order_id).unwrap();
@@ -436,6 +458,7 @@ impl OrderBook {
         if !order.is_filled() {
             order.status = OrderStatus::Open;
             self.orders.insert(order.id.clone(), order.clone());
+            self.sequence += 1;
 
             let book_side = if order.side == OrderSide::Buy { &mut self.bids } else { &mut self.asks };
 
@@ -573,18 +596,12 @@ impl OrderBook {
         book.iter().map(|(p, l)| (*p, l.clone())).collect()
     }
 
-    /// Look up a user's open position (reduce-only validation).
-    /// The matching engine itself does not track positions; this delegates to
-    /// a caller-injected position map when present, returning None otherwise.
-    fn get_user_position(&self, _user_id: &str, _symbol: &str) -> Option<Position> {
-        None
-    }
-
     pub fn cancel_order(&mut self, order_id: &str) -> Result<Order, MatchingError> {
         let order = self.orders.remove(order_id)
             .ok_or_else(|| MatchingError::OrderNotFound(format!("Order {} not found", order_id)))?;
         
         // Remove from price level
+        self.sequence += 1;
         let price_level = if order.side == OrderSide::Buy {
             self.bids.get_mut(&order.price)
         } else {
@@ -698,6 +715,10 @@ pub struct MatchingEngine {
     trading_pairs: RwLock<std::collections::HashMap<String, TradingPair>>,
     trades: RwLock<VecDeque<Trade>>,
     max_trades_history: usize,
+    /// Position store used for reduce-only validation and position queries.
+    /// A matching engine that is not attached to a position store reports no
+    /// positions rather than inventing them.
+    positions: Option<Arc<PositionEngine>>,
 }
 
 impl MatchingEngine {
@@ -707,7 +728,20 @@ impl MatchingEngine {
             trading_pairs: RwLock::new(std::collections::HashMap::new()),
             trades: RwLock::new(VecDeque::new()),
             max_trades_history: 100000,
+            positions: None,
         }
+    }
+
+    /// Attach the shared position store. Call this once at start-up so that
+    /// position queries and reduce-only validation read real state.
+    pub fn with_positions(mut self, positions: Arc<PositionEngine>) -> Self {
+        self.positions = Some(positions);
+        self
+    }
+
+    /// Attach the shared position store in place.
+    pub fn set_positions(&mut self, positions: Arc<PositionEngine>) {
+        self.positions = Some(positions);
     }
 
     pub fn register_trading_pair(&self, pair: TradingPair) {
@@ -746,7 +780,7 @@ impl MatchingEngine {
         let book = books.get_mut(&order.symbol)
             .ok_or_else(|| MatchingError::TradingPairNotFound(order.symbol.clone()))?;
         
-        book.add_order(order)
+        book.add_order(order, self.positions.as_deref())
     }
 
     pub fn cancel_order(&self, symbol: &str, order_id: &str) -> Result<Order, MatchingError> {
@@ -800,16 +834,21 @@ impl MatchingEngine {
                 .take(depth)
                 .map(|(p, l)| (*p, l.quantity))
                 .collect(),
-            last_update_id: 0,
+            last_update_id: book.sequence(),
         })
     }
 
+    /// Return a user's open position for a symbol.
     pub fn get_position(&self, user_id: &str, symbol: &str) -> Option<Position> {
-        None // Placeholder - will be implemented in position engine
+        self.positions.as_ref()?.get_position(user_id, symbol)
     }
 
+    /// Return all open positions for a user.
     pub fn get_positions(&self, user_id: &str) -> Vec<Position> {
-        Vec::new() // Placeholder
+        match self.positions.as_ref() {
+            Some(engine) => engine.get_all_positions(user_id),
+            None => Vec::new(),
+        }
     }
 
     pub fn get_mark_price(&self, symbol: &str) -> Option<Decimal> {
@@ -891,4 +930,58 @@ mod tests {
         assert!(order.is_filled());
         assert_eq!(order.status, OrderStatus::Filled);
     }
+
+    fn book_with_pair() -> MatchingEngine {
+        let engine = MatchingEngine::new();
+        engine.register_trading_pair(TradingPair::new("BTC-USD", "BTC", "USD"));
+        engine
+    }
+
+    #[test]
+    fn the_order_book_sequence_advances_on_every_mutation() {
+        let book = OrderBook::new("BTC-USD");
+        assert_eq!(book.sequence(), 0, "a fresh book must start at zero");
+    }
+
+    #[test]
+    fn the_snapshot_reports_the_real_sequence() {
+        let engine = book_with_pair();
+
+        let first = engine
+            .get_orderbook("BTC-USD", 10)
+            .expect("the book exists after adding the pair");
+        assert_eq!(first.last_update_id, 0);
+
+        let order = Order::new_limit("user1", "BTC-USD", OrderSide::Buy, dec!(50000), dec!(1));
+        engine.add_order(order).expect("the order is valid");
+
+        let second = engine
+            .get_orderbook("BTC-USD", 10)
+            .expect("the book still exists");
+        assert_eq!(
+            second.last_update_id, 1,
+            "adding an order must advance the sequence so clients can detect a change"
+        );
+        assert_eq!(second.bids.len(), 1);
+    }
+
+    #[test]
+    fn cancelling_an_order_also_advances_the_sequence() {
+        let engine = book_with_pair();
+
+        let order = Order::new_limit("user1", "BTC-USD", OrderSide::Buy, dec!(50000), dec!(1));
+        let order_id = order.id.clone();
+        engine.add_order(order).expect("the order is valid");
+
+        let after_add = engine.get_orderbook("BTC-USD", 10).unwrap().last_update_id;
+
+        engine.cancel_order("BTC-USD", &order_id).expect("the order exists");
+
+        let after_cancel = engine.get_orderbook("BTC-USD", 10).unwrap().last_update_id;
+        assert_eq!(
+            after_cancel, after_add + 1,
+            "cancelling an order must advance the sequence"
+        );
+    }
+
 }

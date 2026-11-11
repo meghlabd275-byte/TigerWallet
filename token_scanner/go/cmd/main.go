@@ -23,6 +23,7 @@ import (
 type Config struct {
 	Port          string
 	RedisURL      string
+	DatabaseURL   string
 	EthereumRPC   string
 	PolygonRPC    string
 	BSCRPC        string
@@ -72,7 +73,11 @@ type Token struct {
 	Transfers   int64       `json:"transfers"`
 	Status      TokenStatus `json:"status"`
 	RiskScore   int         `json:"riskScore"`
-	Verified    bool        `json:"verified"`
+	// BalanceRaw is the holder's balance in base units; BalanceFormatted is the
+	// same amount scaled by Decimals. Both are populated only by a wallet scan.
+	BalanceRaw       string `json:"balanceRaw,omitempty"`
+	BalanceFormatted string `json:"balance,omitempty"`
+	Verified         bool   `json:"verified"`
 	Tags        []string    `json:"tags"`
 	Socials     Socials     `json:"socials"`
 	Contract    Contract    `json:"contract"`
@@ -130,9 +135,10 @@ type Airdrop struct {
 // ============ Token Scanner Service ============
 
 type TokenScannerService struct {
-	config *Config
-	redis  *redis.Client
-	tokens map[string]*Token
+	config   *Config
+	redis    *redis.Client
+	tokens   map[string]*Token
+	airdrops *AirdropStore
 }
 
 func NewTokenScannerService(config *Config) (*TokenScannerService, error) {
@@ -532,41 +538,43 @@ func (s *TokenScannerService) GetTokenPrice(address string) (float64, error) {
 	return entry.USD, nil
 }
 
-func (s *TokenScannerService) GetAirdrops(walletAddress string) []*Airdrop {
-	// Simulate airdrop detection
-	airdrops := []*Airdrop{
-		{
-			ID:           "arb-drop-1",
-			Name:         "Arbitrum Foundation",
-			Symbol:       "ARB",
-			ClaimAmount:  "500",
-			ClaimURL:     "https://arbitrum.foundation",
-			StartDate:    time.Now().Add(-7 * 24 * time.Hour).Unix(),
-			EndDate:      time.Now().Add(30 * 24 * time.Hour).Unix(),
-			SnapshotDate: time.Now().Add(-30 * 24 * time.Hour).Unix(),
-			Eligible:     true,
-			Claimed:      false,
-		},
+// GetAirdrops returns the operator-registered campaigns a wallet may be
+// eligible for. Eligibility is read from the campaign store; it is never
+// assumed. When the store is not configured the call fails rather than
+// returning an invented campaign.
+func (s *TokenScannerService) GetAirdrops(ctx context.Context, walletAddress string) ([]*Airdrop, error) {
+	if !isValidAddress(walletAddress) {
+		return nil, fmt.Errorf("invalid wallet address %q", walletAddress)
 	}
-
-	return airdrops
+	if s.airdrops == nil {
+		return nil, fmt.Errorf("airdrop store is not configured (DATABASE_URL)")
+	}
+	return s.airdrops.ListForWallet(ctx, strings.ToLower(walletAddress))
 }
 
-func (s *TokenScannerService) ScanWallet(walletAddress string) (map[string][]*Token, error) {
-	result := make(map[string][]*Token)
-
-	// In production, would scan multiple chains
-	// For demo, return some sample tokens
-	result["ethereum"] = []*Token{
-		{
-			Address:  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-			Name:     "USD Coin",
-			Symbol:   "USDC",
-			Decimals: 6,
-			Chain:    "ethereum",
-		},
+// ScanWallet discovers the tokens a wallet holds across every configured chain.
+func (s *TokenScannerService) ScanWallet(ctx context.Context, walletAddress string) (map[string][]*Token, error) {
+	if !isValidAddress(walletAddress) {
+		return nil, fmt.Errorf("invalid wallet address %q", walletAddress)
 	}
 
+	result := make(map[string][]*Token)
+	var firstErr error
+	for _, chain := range []string{"ethereum", "polygon", "bsc"} {
+		if s.rpcForChain(chain) == "" {
+			continue
+		}
+		scan, err := s.ScanWalletOnChain(ctx, walletAddress, chain)
+		if err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("%s: %w", chain, err)
+		}
+		if scan != nil {
+			result[chain] = scan.Tokens
+		}
+	}
+	if len(result) == 0 && firstErr != nil {
+		return nil, firstErr
+	}
 	return result, nil
 }
 
@@ -594,20 +602,10 @@ func (s *TokenScannerService) GetTrendingTokens(limit int) []*Token {
 	return tokens
 }
 
-func (s *TokenScannerService) CalculatePortfolioValue(walletAddress string) (float64, map[string]float64, error) {
-	holdings := make(map[string]float64)
-
-	// In production, would query all chains
-	holdings["ethereum"] = 15000.50
-	holdings["polygon"] = 2500.00
-	holdings["bsc"] = 1000.00
-
-	total := 0.0
-	for _, value := range holdings {
-		total += value
-	}
-
-	return total, holdings, nil
+// CalculatePortfolioValue values a wallet across every configured chain using
+// real on-chain balances. See CalculatePortfolioValueOnChains.
+func (s *TokenScannerService) CalculatePortfolioValue(ctx context.Context, walletAddress string) (float64, map[string]float64, []string, error) {
+	return s.CalculatePortfolioValueOnChains(ctx, walletAddress)
 }
 
 // ============ Handlers ============
@@ -692,16 +690,21 @@ func (h *Handler) GetSecurity(c *gin.Context) {
 func (h *Handler) GetAirdrops(c *gin.Context) {
 	wallet := c.Param("wallet")
 
-	airdrops := h.service.GetAirdrops(wallet)
+	airdrops, err := h.service.GetAirdrops(c.Request.Context(), wallet)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"airdrops": airdrops})
 }
 
 func (h *Handler) ScanWallet(c *gin.Context) {
 	wallet := c.Param("wallet")
 
-	tokens, err := h.service.ScanWallet(wallet)
+	tokens, err := h.service.ScanWallet(c.Request.Context(), wallet)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -711,9 +714,9 @@ func (h *Handler) ScanWallet(c *gin.Context) {
 func (h *Handler) GetPortfolio(c *gin.Context) {
 	wallet := c.Param("wallet")
 
-	total, holdings, err := h.service.CalculatePortfolioValue(wallet)
+	total, holdings, unpriced, err := h.service.CalculatePortfolioValue(c.Request.Context(), wallet)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -721,6 +724,7 @@ func (h *Handler) GetPortfolio(c *gin.Context) {
 		"wallet":     wallet,
 		"totalValue": total,
 		"holdings":   holdings,
+		"unpriced":   unpriced,
 	})
 }
 
@@ -735,6 +739,7 @@ func main() {
 	config := &Config{
 		Port:         getEnv("PORT", "8080"),
 		RedisURL:     getEnv("REDIS_URL", "localhost:6379"),
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
 		EthereumRPC:  getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
 		CoingeckoURL: getEnv("COINGECKO_URL", "https://api.coingecko.com/api/v3"),
 	}
@@ -745,6 +750,24 @@ func main() {
 	}
 
 	service.Initialize()
+
+	// The airdrop campaign store is optional at boot so the scanner still
+	// serves token analysis without PostgreSQL; the airdrop route fails closed
+	// until it is configured.
+	if config.DatabaseURL != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		store, err := NewAirdropStore(ctx, config.DatabaseURL)
+		cancel()
+		if err != nil {
+			log.Printf("Warning: airdrop store unavailable: %v", err)
+		} else {
+			service.airdrops = store
+			defer store.Close()
+		}
+	} else {
+		log.Println("Warning: DATABASE_URL is unset; the airdrop route is disabled")
+	}
+
 	handler := NewHandler(service)
 
 	// Setup Gin

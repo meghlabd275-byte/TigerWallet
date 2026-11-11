@@ -57,13 +57,21 @@ impl MarginAccount {
         }
     }
 
+    /// Recompute the derived fields from the account's own state.
+    ///
+    /// `available_margin` is free margin, so equity is the sum of free margin,
+    /// margin locked in open positions, and unrealised PnL.
     pub fn update(&mut self) {
         self.total_margin = self.available_margin + self.used_margin + self.unrealized_pnl;
         
         if self.total_position_value > dec!(0) {
             self.margin_ratio = self.total_margin / self.total_position_value;
         } else {
+            // No open positions means nothing can be liquidated, regardless of
+            // how much margin sits in the account.
             self.margin_ratio = dec!(0);
+            self.status = MarginStatus::Healthy;
+            return;
         }
         
         self.status = if self.margin_ratio <= dec!(0.005) {
@@ -529,15 +537,33 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_margin_account() {
+    fn test_margin_account_equity_sums_the_components() {
         let mut account = MarginAccount::new("user1");
         account.available_margin = dec!(10000);
         account.used_margin = dec!(5000);
-        
+        account.unrealized_pnl = dec!(250);
+
         account.update();
-        
-        assert_eq!(account.total_margin, dec!(10000));
+
+        // Equity is free margin + locked margin + unrealised PnL.
+        assert_eq!(account.total_margin, dec!(15250));
         assert_eq!(account.status, MarginStatus::Healthy);
+    }
+
+    #[test]
+    fn test_margin_account_reports_bankruptcy_when_equity_is_eroded() {
+        let mut account = MarginAccount::new("user1");
+        account.available_margin = dec!(0);
+        account.used_margin = dec!(1000);
+        account.unrealized_pnl = dec!(-950);
+        account.total_position_value = dec!(100000);
+
+        account.update();
+
+        // Equity of 50 against 100000 notional is a 0.0005 ratio, below the
+        // bankruptcy threshold.
+        assert_eq!(account.total_margin, dec!(50));
+        assert_eq!(account.status, MarginStatus::Bankrupt);
     }
     
     #[test]

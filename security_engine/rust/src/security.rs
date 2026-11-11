@@ -76,19 +76,6 @@ pub struct Signature {
 // Address Validation
 // ============================================================================
 
-/// Validate EVM address (0x...40 hex chars)
-pub fn is_valid_evm_address(address: &str) -> bool {
-    if !address.starts_with("0x") {
-        return false;
-    }
-    if address.len() != 42 {
-        return false;
-    }
-    
-    let hex_part = &address[2..];
-    hex_part.chars().all(|c| c.is_ascii_hexdigit())
-}
-
 /// Validate Solana address (base58, 32-44 chars)
 pub fn is_valid_solana_address(address: &str) -> bool {
     if address.len() < 32 || address.len() > 44 {
@@ -115,7 +102,7 @@ pub fn is_valid_bitcoin_address(address: &str) -> bool {
 /// Validate all chain addresses
 pub fn is_valid_address(address: &str, chain: &str) -> bool {
     match chain {
-        "evm" | "ethereum" | "polygon" | "bsc" | "arbitrum" | "optimism" | "base" | "avalanche" | "fantom" | "celo" | "klaytn" | "gnosis" | "cronos" | "moonbeam" | "celo" => {
+        "evm" | "ethereum" | "polygon" | "bsc" | "arbitrum" | "optimism" | "base" | "avalanche" | "fantom" | "celo" | "klaytn" | "gnosis" | "cronos" | "moonbeam" => {
             is_valid_evm_address(address)
         }
         "solana" => is_valid_solana_address(address),
@@ -367,29 +354,22 @@ pub fn select_utxos_for_privacy(
 // Encryption Keys Derivation
 // ============================================================================
 
-/// Derive encryption key from password using Argon2-like approach
+/// Iteration count for PBKDF2. Matches the browser implementation in
+/// `frontend/web_nextjs/app/wallet/lib/security.ts` so a key derived on one
+/// side decrypts on the other.
+pub const PBKDF2_ITERATIONS: u32 = 100_000;
+
+/// Derive a 32-byte AES-256 key from a password with PBKDF2-HMAC-SHA256.
+///
+/// The same parameters as the browser wallet are used, so the two agree.
 pub fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; 32] {
-    // Simplified KDF (in production, use Argon2 or PBKDF2)
     let mut key = [0u8; 32];
-    
-    for (i, byte) in password.as_bytes().iter().enumerate() {
-        key[i % 32] ^= *byte;
-    }
-    
-    for (i, byte) in salt.iter().enumerate() {
-        key[i % 32] ^= byte;
-    }
-    
-    // Mix in multiple rounds
-    for _ in 0..10000 {
-        let mut carry = 0u8;
-        for byte in key.iter_mut() {
-            let new_val = byte.wrapping_add(carry).rotate_left(3);
-            carry = *byte;
-            *byte = new_val;
-        }
-    }
-    
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
+        password.as_bytes(),
+        salt,
+        PBKDF2_ITERATIONS,
+        &mut key,
+    );
     key
 }
 
@@ -433,16 +413,30 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_evm_address_validation() {
-        assert!(is_valid_evm_address("0x742d35Cc6634C0532925a3b844Bc9e7595f0Eb707"));
-        assert!(!is_valid_evm_address("0x742d35Cc6634C0532925a3b844Bc9e7595f0Eb707"));
-        assert!(!is_valid_evm_address("742d35Cc6634C0532925a3b844Bc9e7595f0Eb707"));
+    fn test_evm_address_validation_accepts_canonical_addresses() {
+        assert!(is_valid_evm_address("0x742d35Cc6634C0532925a3b844Bc454e4438f44e"));
+        assert!(is_valid_evm_address("0x52908400098527886E0F7030069857D2E4169EE7"));
+        assert!(is_valid_evm_address("0X52908400098527886E0F7030069857D2E4169EE7"));
+    }
+
+    #[test]
+    fn test_evm_address_validation_rejects_bad_input() {
+        // Missing 0x prefix.
+        assert!(!is_valid_evm_address("742d35Cc6634C0532925a3b844Bc454e4438f44e"));
+        // One hex character too many.
+        assert!(!is_valid_evm_address("0x742d35Cc6634C0532925a3b844Bc454e4438f44e1"));
+        // One hex character too few.
+        assert!(!is_valid_evm_address("0x742d35Cc6634C0532925a3b844Bc454e4438f44"));
+        // Non-hex characters.
+        assert!(!is_valid_evm_address("0x742d35Cc6634C0532925a3b844Bc454e4438f44z"));
+        assert!(!is_valid_evm_address(""));
+        assert!(!is_valid_evm_address("0x"));
     }
     
     #[test]
     fn test_transaction_risk_analysis() {
         let result = analyze_transaction(
-            "0x742d35Cc6634C0532925a3b844Bc9e7595f0Eb707",
+            "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
             "0x",
             "0x095ea7b3",
             1,

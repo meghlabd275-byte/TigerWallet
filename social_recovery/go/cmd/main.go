@@ -40,6 +40,15 @@ type Config struct {
 	MinGuardians    int
 	EmailEnabled    bool
 	SMSEnabled      bool
+	// Guardian notification delivery. Invitations and recovery notices are only
+	// sent when the matching channel is configured; see guardian.go.
+	SMTPHost        string
+	SMTPPort        int
+	SMTPUsername    string
+	SMTPPassword    string
+	SMTPFrom        string
+	SMSWebhookURL   string
+	SMSWebhookToken string
 	// On-chain recovery. Without all three the service can approve a
 	// recovery but will not claim one has happened; see ExecuteRecovery.
 	RPCURL             string
@@ -57,6 +66,14 @@ func parseChainID(raw string) int64 {
 		return 1
 	}
 	return value
+}
+
+// parseInt parses an integer, falling back to def on any error.
+func parseInt(raw string, def int) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+		return n
+	}
+	return def
 }
 
 func getEnv(key, defaultValue string) string {
@@ -218,7 +235,7 @@ func (s *SocialRecoveryService) AddGuardian(ctx context.Context, walletID string
 	}
 
 	// Send invitation (in production, would send email/SMS)
-	go s.sendGuardianInvitation(guardian)
+	go s.sendGuardianInvitation(ctx, wallet.ID, guardian)
 
 	return wallet, nil
 }
@@ -520,48 +537,11 @@ func (s *SocialRecoveryService) GetActiveRecoveryRequest(ctx context.Context, wa
 	return s.GetRecoveryRequest(ctx, requestID)
 }
 
-// Verify Guardian
-func (s *SocialRecoveryService) VerifyGuardian(ctx context.Context, walletID, guardianID, code string) error {
-	// In production, would verify the code via email/SMS
-	wallet, err := s.GetWallet(ctx, walletID)
-	if err != nil {
-		return err
-	}
-
-	for i, g := range wallet.Guardians {
-		if g.ID == guardianID {
-			now := time.Now()
-			wallet.Guardians[i].Confirmed = true
-			wallet.Guardians[i].ConfirmedAt = &now
-			wallet.UpdatedAt = time.Now()
-
-			if s.redis != nil {
-				data, _ := json.Marshal(wallet)
-				s.redis.Set(ctx, fmt.Sprintf("wallet:%s", wallet.ID), data, 0)
-			}
-
-			return nil
-		}
-	}
-
-	return fmt.Errorf("guardian not found")
-}
-
 // Helper functions
 func generateChallenge() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return hex.EncodeToString(b)
-}
-
-func (s *SocialRecoveryService) sendGuardianInvitation(guardian Guardian) {
-	log.Printf("Sending invitation to guardian: %s", guardian.Address)
-	// In production, would send email/SMS
-}
-
-func (s *SocialRecoveryService) notifyGuardiansOfRecovery(wallet Wallet, request RecoveryRequest) {
-	log.Printf("Notifying guardians of recovery request: %s", request.ID)
-	// In production, would send notifications to all guardians
 }
 
 // ============ HTTP Handlers ============
@@ -939,6 +919,13 @@ func main() {
 		MinGuardians:       2,
 		EmailEnabled:       getEnv("EMAIL_ENABLED", "true") == "true",
 		SMSEnabled:         getEnv("SMS_ENABLED", "true") == "true",
+		SMTPHost:           os.Getenv("SMTP_HOST"),
+		SMTPPort:           parseInt(getEnv("SMTP_PORT", "587"), 587),
+		SMTPUsername:       os.Getenv("SMTP_USERNAME"),
+		SMTPPassword:       os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:           os.Getenv("SMTP_FROM"),
+		SMSWebhookURL:      os.Getenv("SMS_WEBHOOK_URL"),
+		SMSWebhookToken:    os.Getenv("SMS_WEBHOOK_TOKEN"),
 		RPCURL:             os.Getenv("SOCIAL_RECOVERY_RPC_URL"),
 		RecoveryContract:   os.Getenv("SOCIAL_RECOVERY_CONTRACT"),
 		ExecutorPrivateKey: os.Getenv("SOCIAL_RECOVERY_EXECUTOR_PRIVATE_KEY"),

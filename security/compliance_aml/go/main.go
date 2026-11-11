@@ -15,13 +15,16 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,14 +48,32 @@ type Config struct {
 }
 
 var cfg = Config{
-	ServerPort:          "8087",
-	DatabaseURL:         "postgresql://localhost:5432/tigerwallet",
-	BlockchainNodeURL:   "https://ethereum-rpc.publicnode.com",
-	SanctionsAPIURL:     "https://api.sanctionscreen.com/v1",
-	TravelRuleAPIURL:    "https://travelrule.ey.com/v2",
-	ReportAPIURL:        "https://fincen.gov/api/reports",
-	MaxBatchSize:        1000,
-	ScanIntervalSeconds: 60,
+	ServerPort:          getEnv("SERVER_PORT", "8087"),
+	DatabaseURL:         getEnv("DATABASE_URL", ""),
+	BlockchainNodeURL:   getEnv("BLOCKCHAIN_NODE_URL", "https://ethereum-rpc.publicnode.com"),
+	SanctionsAPIURL:     getEnv("SANCTIONS_API_URL", ""),
+	TravelRuleAPIURL:    getEnv("TRAVEL_RULE_API_URL", ""),
+	ReportAPIURL:        getEnv("REPORT_API_URL", ""),
+	MaxBatchSize:        getEnvInt("MAX_BATCH_SIZE", 1000),
+	ScanIntervalSeconds: getEnvInt("SCAN_INTERVAL_SECONDS", 60),
+}
+
+// getEnv returns the named environment variable or the supplied default.
+func getEnv(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
+}
+
+// getEnvInt returns an integer environment variable or the supplied default.
+func getEnvInt(key string, def int) int {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
 }
 
 // ============================================================================
@@ -400,6 +421,7 @@ type AMLService struct {
 	sanctionEntities map[string]*SanctionEntity
 	screeningResults map[string]*ScreeningResult
 	travelRules      map[string]*TravelRuleData
+	reports          map[string]interface{}
 	mu               sync.RWMutex
 }
 
@@ -412,6 +434,7 @@ func NewAMLService() *AMLService {
 		sanctionEntities: make(map[string]*SanctionEntity),
 		screeningResults: make(map[string]*ScreeningResult),
 		travelRules:      make(map[string]*TravelRuleData),
+		reports:          make(map[string]interface{}),
 	}
 }
 
@@ -853,16 +876,27 @@ func (s *AMLService) SubmitTravelRule(c *gin.Context) {
 	if amount > 3000 {
 		s.travelRules[req.TravelRuleID] = &req
 
-		// In production, send to counterparty FI
-		go s.sendTravelRuleNotice(&req)
+		// Delivery is attempted asynchronously; the stored status reflects the
+		// outcome rather than assuming the notice was accepted.
+		go func(rule *TravelRuleData) {
+			if err := s.sendTravelRuleNotice(rule); err != nil {
+				log.Printf("Travel Rule: delivery failed for %s: %v", rule.TransactionHash, err)
+			}
+		}(&req)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"travel_rule": req})
 }
 
-func (s *AMLService) sendTravelRuleNotice(tr *TravelRuleData) {
-	// Simulate sending travel rule notice to beneficiary's FI
-	log.Printf("Travel Rule: Sending notice for transaction %s", tr.TransactionHash)
+// sendTravelRuleNotice delivers the notice to the beneficiary's institution.
+// The notice is only recorded as delivered when the endpoint accepts it.
+func (s *AMLService) sendTravelRuleNotice(tr *TravelRuleData) error {
+	if err := sendTravelRuleNotice(context.Background(), cfg.TravelRuleAPIURL, tr); err != nil {
+		return err
+	}
+	tr.Status = "delivered"
+	log.Printf("Travel Rule: notice delivered for transaction %s", tr.TransactionHash)
+	return nil
 }
 
 func (s *AMLService) GetTravelRules(c *gin.Context) {
@@ -928,12 +962,22 @@ func (s *AMLService) GenerateSAR(c *gin.Context) {
 		CreatedAt:          time.Now(),
 	}
 
-	// In production, would file with FinCEN
-	report.Status = "filed"
-	now := time.Now()
-	report.FiledAt = &now
+	ack, err := submitRegulatoryReport(c.Request.Context(), cfg.ReportAPIURL, "SAR", report)
+	if err != nil {
+		s.reports[report.ReportID] = report
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"report": report,
+			"error":  "SAR recorded as a draft but not filed: " + err.Error(),
+		})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"report": report})
+	now := time.Now()
+	report.Status = "filed"
+	report.FiledAt = &now
+	s.reports[report.ReportID] = report
+
+	c.JSON(http.StatusOK, gin.H{"report": report, "regulator_reference": ack.Reference})
 }
 
 func (s *AMLService) GenerateCTR(c *gin.Context) {
@@ -974,10 +1018,22 @@ func (s *AMLService) GenerateCTR(c *gin.Context) {
 		CreatedAt:      time.Now(),
 	}
 
-	// In production, would file with FinCEN
-	report.Status = "filed"
+	ack, err := submitRegulatoryReport(c.Request.Context(), cfg.ReportAPIURL, "CTR", report)
+	if err != nil {
+		s.reports[report.ReportID] = report
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"report": report,
+			"error":  "CTR recorded as a draft but not filed: " + err.Error(),
+		})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{"report": report})
+	now := time.Now()
+	report.Status = "filed"
+	report.FiledAt = &now
+	s.reports[report.ReportID] = report
+
+	c.JSON(http.StatusOK, gin.H{"report": report, "regulator_reference": ack.Reference})
 }
 
 // ============================================================================

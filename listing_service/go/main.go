@@ -581,6 +581,21 @@ func savePayment(payment *Payment) error {
 	return nil
 }
 
+// updatePayment persists a status change for an existing payment row.
+func updatePayment(payment *Payment) error {
+        if db != nil {
+                _, err := db.Exec(`
+                        UPDATE payments SET status = $1, confirmed_at = $2, token = $3 WHERE id = $4`,
+                        payment.Status, payment.ConfirmedAt, payment.Token, payment.ID)
+                return err
+        }
+
+        dbMutex.Lock()
+        defer dbMutex.Unlock()
+        inMemoryDB["payment:"+payment.ID] = payment
+        return nil
+}
+
 func getPaymentByID(id string) (*Payment, error) {
 	if db != nil {
 		var p Payment
@@ -990,67 +1005,93 @@ type PaymentCallbackRequest struct {
 	Amount    float64 `json:"amount" binding:"required"`
 }
 
+// ProcessPayment records a listing fee payment and verifies it on chain.
+//
+// The payment stays "pending" until the transaction is found on the listing's
+// chain, has succeeded, and moved at least the quoted fee from the listing owner
+// to the treasury. A payment is never marked confirmed on a timer: an unverified
+// transaction leaves the listing untouched.
 func ProcessPayment(c *gin.Context) {
-	userID := c.GetString("user_id")
+        userID := c.GetString("user_id")
 
-	var req PaymentCallbackRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+        var req PaymentCallbackRequest
+        if err := c.ShouldBindJSON(&req); err != nil {
+                c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+                return
+        }
 
-	listing, err := getListingByID(req.ListingID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Listing not found"})
-		return
-	}
+        listing, err := getListingByID(req.ListingID)
+        if err != nil {
+                c.JSON(http.StatusNotFound, gin.H{"error": "Listing not found"})
+                return
+        }
 
-	if listing.UserID != userID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-		return
-	}
+        if listing.UserID != userID {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+                return
+        }
 
-	if req.Amount < listing.FeeAmount {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Insufficient payment amount"})
-		return
-	}
+        payment := &Payment{
+                ID:        uuid.New().String(),
+                ListingID: req.ListingID,
+                UserID:    userID,
+                Amount:    req.Amount,
+                Token:     req.Token,
+                TxHash:    req.TxHash,
+                Status:    "pending",
+                CreatedAt: time.Now(),
+        }
 
-	payment := &Payment{
-		ID:        uuid.New().String(),
-		ListingID: req.ListingID,
-		UserID:    userID,
-		Amount:    req.Amount,
-		Token:     req.Token,
-		TxHash:    req.TxHash,
-		Status:    "pending",
-		CreatedAt: time.Now(),
-	}
+        if err := savePayment(payment); err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record payment"})
+                return
+        }
 
-	if err := savePayment(payment); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record payment"})
-		return
-	}
+        verified, token, err := verifyListingPayment(
+                c.Request.Context(), listing.ChainID, req.TxHash, userID, req.Token)
+        if err != nil {
+                c.JSON(http.StatusAccepted, gin.H{
+                        "success":    false,
+                        "status":     "pending_verification",
+                        "payment_id": payment.ID,
+                        "message":    "Payment recorded but not yet verified on chain: " + err.Error(),
+                })
+                return
+        }
 
-	// Simulate payment confirmation
-	go func() {
-		time.Sleep(5 * time.Second)
-		payment.Status = "confirmed"
-		now := time.Now()
-		payment.ConfirmedAt = &now
-		savePayment(payment)
+        required := feeInBaseUnits(listing.FeeAmount)
+        if verified.Cmp(required) < 0 {
+                c.JSON(http.StatusBadRequest, gin.H{
+                        "error": fmt.Sprintf("paid amount is below the required fee of %s %s",
+                                formatBaseUnits(required), listing.FeeToken),
+                        "payment_id": payment.ID,
+                })
+                return
+        }
 
-		listing.Status = "payment_confirmed"
-		listing.UpdatedAt = time.Now()
-		updateListing(listing)
+        now := time.Now()
+        payment.Status = "confirmed"
+        payment.ConfirmedAt = &now
+        payment.Token = token
+        if err := updatePayment(payment); err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record confirmation"})
+                return
+        }
 
-		log.Printf(" Payment confirmed for listing: %s - Tx: %s", req.ListingID, req.TxHash)
-	}()
+        listing.Status = "payment_confirmed"
+        listing.UpdatedAt = now
+        if err := updateListing(listing); err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update listing"})
+                return
+        }
 
-	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"message":    "Payment submitted. Confirmation may take a few minutes.",
-		"payment_id": payment.ID,
-	})
+        log.Printf("Payment verified on chain for listing %s: tx %s", req.ListingID, req.TxHash)
+
+        c.JSON(http.StatusOK, gin.H{
+                "success":    true,
+                "message":    "Payment verified on chain.",
+                "payment_id": payment.ID,
+        })
 }
 
 func GetPaymentStatus(c *gin.Context) {

@@ -255,3 +255,9 @@ hardware_wallet/go/backend/hardware-wallet-backend
 
 # Compiled service binaries
 gasless-tx-service
+
+# Compiled Go binaries. Anchored to exact paths: a bare `payment_api` would
+# also ignore every file inside the crypto_card payment_api source directory.
+/crypto_card/go/cmd/payment_api/payment_api
+/cross_chain_protocol/bridge/go/bridge-service
+/security/kyc_aml/go/cmd/cmd

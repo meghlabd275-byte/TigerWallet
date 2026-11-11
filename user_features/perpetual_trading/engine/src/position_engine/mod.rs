@@ -105,15 +105,18 @@ impl Position {
         }
     }
 
+    /// Re-price the position against a new mark price.
+    ///
+    /// `unrealized_pnl` is a mark-to-market snapshot, not an increment: it is
+    /// recomputed from the entry price on every tick. Profit is realised only
+    /// when the position is closed or traded against, so this must not fold the
+    /// previous snapshot into `realized_pnl`.
     pub fn update_mark_price(&mut self, new_mark_price: Decimal) {
-        let old_pnl = self.unrealized_pnl;
-        
         self.unrealized_pnl = match self.side {
             PositionSide::Long => (new_mark_price - self.entry_price) * self.quantity,
             PositionSide::Short => (self.entry_price - new_mark_price) * self.quantity,
         };
-        
-        self.realized_pnl += old_pnl;
+
         self.mark_price = new_mark_price;
         
         self.liquidation_price = match self.side {
@@ -123,6 +126,22 @@ impl Position {
         
         self.updated_at = Utc::now();
     }
+
+    /// Unrealised profit or loss at an arbitrary price, without mutating state.
+    ///
+    /// Signed: a loss is negative.
+    pub fn unrealized_pnl_at(&self, mark_price: Decimal) -> Decimal {
+        match self.side {
+            PositionSide::Long => (mark_price - self.entry_price) * self.quantity,
+            PositionSide::Short => (self.entry_price - mark_price) * self.quantity,
+        }
+    }
+
+    /// Margin posted for this position plus its unrealised PnL at `mark_price`.
+    pub fn equity(&self, mark_price: Decimal) -> Decimal {
+        self.margin + self.unrealized_pnl_at(mark_price)
+    }
+
 
     pub fn add_trade(&mut self, price: Decimal, quantity: Decimal, side: OrderSide) {
         let new_quantity = self.quantity + quantity;
@@ -380,4 +399,92 @@ mod tests {
         
         assert!(position.unrealized_pnl > dec!(0));
     }
+
+    fn long_position() -> Position {
+        Position::new(
+            "user1",
+            "BTC-USD",
+            PositionSide::Long,
+            dec!(1),
+            dec!(50000),
+            dec!(5000),
+            dec!(10),
+            MarginType::Cross,
+        )
+    }
+
+    #[test]
+    fn updating_the_mark_price_recomputes_unrealized_pnl() {
+        let mut position = long_position();
+
+        position.update_mark_price(dec!(55000));
+        assert_eq!(position.unrealized_pnl, dec!(5000));
+
+        // A later tick recomputes from the entry price rather than adding to
+        // the previous snapshot.
+        position.update_mark_price(dec!(60000));
+        assert_eq!(position.unrealized_pnl, dec!(10000));
+        assert_eq!(position.mark_price, dec!(60000));
+    }
+
+    #[test]
+    fn updating_the_mark_price_does_not_realize_profit() {
+        let mut position = long_position();
+
+        position.update_mark_price(dec!(55000));
+        position.update_mark_price(dec!(60000));
+        position.update_mark_price(dec!(52000));
+
+        // Profit is realised on close, so marking to market must never book it.
+        assert_eq!(
+            position.realized_pnl,
+            dec!(0),
+            "marking to market must not move unrealized PnL into realized PnL"
+        );
+    }
+
+    #[test]
+    fn a_short_position_profits_when_the_price_falls() {
+        let mut position = Position::new(
+            "user1",
+            "BTC-USD",
+            PositionSide::Short,
+            dec!(1),
+            dec!(50000),
+            dec!(5000),
+            dec!(10),
+            MarginType::Cross,
+        );
+
+        position.update_mark_price(dec!(45000));
+        assert_eq!(position.unrealized_pnl, dec!(5000));
+
+        position.update_mark_price(dec!(40000));
+        assert_eq!(position.unrealized_pnl, dec!(10000));
+        assert_eq!(position.realized_pnl, dec!(0));
+    }
+
+    #[test]
+    fn equity_combines_margin_and_unrealized_pnl() {
+        let position = long_position();
+
+        assert_eq!(position.unrealized_pnl_at(dec!(55000)), dec!(5000));
+        assert_eq!(position.unrealized_pnl_at(dec!(45000)), dec!(-5000));
+        assert_eq!(position.equity(dec!(55000)), dec!(10000));
+        assert_eq!(position.equity(dec!(45000)), dec!(0));
+    }
+
+    #[test]
+    fn repeated_ticks_are_idempotent_for_the_same_price() {
+        let mut position = long_position();
+
+        position.update_mark_price(dec!(55000));
+        let first = (position.unrealized_pnl, position.realized_pnl);
+
+        position.update_mark_price(dec!(55000));
+        let second = (position.unrealized_pnl, position.realized_pnl);
+
+        assert_eq!(first, second, "re-applying the same price changed the PnL");
+    }
+
 }

@@ -5,6 +5,23 @@ use serde::{Deserialize, Serialize};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 
+pub mod security;
+pub mod phishing;
+pub mod signature;
+
+#[cfg(test)]
+mod kdf_tests;
+#[cfg(test)]
+mod phishing_tests;
+#[cfg(test)]
+mod signature_tests;
+
+pub use phishing::{heuristic_score, normalize_host, PhishingVerdict};
+pub use signature::{
+    decode_hex, evm_address_from_public_key, keccak256, verify_auto, verify_eip191_message,
+    verify_ed25519, verify_secp256k1_digest, SignatureAlgorithm, VerifiedSignature,
+};
+
 /// Signature verification result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignatureVerifyResult {
@@ -68,13 +85,8 @@ pub struct RiskThresholds {
 
 impl SecurityEngine {
     pub fn new() -> Self {
-        let mut domains = HashMap::new();
-        domains.insert("fake-metamask.com".to_string(), true);
-        domains.insert("airdrop-claim.net".to_string(), true);
-        domains.insert("free-nft-mint.io".to_string(), true);
-        
         Self {
-            known_phishing_domains: RwLock::new(domains),
+            known_phishing_domains: RwLock::new(HashMap::new()),
             risk_thresholds: RwLock::new(RiskThresholds {
                 low: 25.0,
                 medium: 50.0,
@@ -83,13 +95,36 @@ impl SecurityEngine {
         }
     }
 
-    /// Verify signature
+    /// Verify a signature against a public key.
+    ///
+    /// The algorithm is selected from the public key length and the signature
+    /// is checked cryptographically. Malformed input verifies as invalid.
     pub fn verify_signature(&self, signature: &[u8], message: &[u8], public_key: &[u8]) -> SignatureVerifyResult {
-        // Mock signature verification
+        let verified = verify_auto(message, signature, public_key);
         SignatureVerifyResult {
-            valid: !signature.is_empty() && !public_key.is_empty(),
-            signer: hex::encode(public_key),
-            algorithm: "ECDSA".to_string(),
+            valid: verified.valid,
+            signer: verified.signer,
+            algorithm: verified.algorithm.as_str().to_string(),
+        }
+    }
+
+    /// Verify an EIP-191 personal-sign message (EVM chains).
+    pub fn verify_evm_personal_sign(&self, signature: &[u8], message: &[u8], public_key: &[u8]) -> SignatureVerifyResult {
+        let verified = verify_eip191_message(message, signature, public_key);
+        SignatureVerifyResult {
+            valid: verified.valid,
+            signer: verified.signer,
+            algorithm: verified.algorithm.as_str().to_string(),
+        }
+    }
+
+    /// Verify an Ed25519 signature (Solana, Cosmos, NEAR, Sui).
+    pub fn verify_ed25519_signature(&self, signature: &[u8], message: &[u8], public_key: &[u8]) -> SignatureVerifyResult {
+        let verified = verify_ed25519(message, signature, public_key);
+        SignatureVerifyResult {
+            valid: verified.valid,
+            signer: verified.signer,
+            algorithm: verified.algorithm.as_str().to_string(),
         }
     }
 
@@ -127,11 +162,14 @@ impl SecurityEngine {
             factors.push(RiskFactor::UnverifiedContract);
         }
         
-        let risk_level = if risk_score >= 75.0 {
+        // Use the operator-configured thresholds rather than fixed values, so
+        // tightening the engine takes effect everywhere at once.
+        let thresholds = self.risk_thresholds.read();
+        let risk_level = if risk_score >= thresholds.high {
             RiskLevel::Critical
-        } else if risk_score >= 50.0 {
+        } else if risk_score >= thresholds.medium {
             RiskLevel::High
-        } else if risk_score >= 25.0 {
+        } else if risk_score >= thresholds.low {
             RiskLevel::Medium
         } else {
             RiskLevel::Low
@@ -145,47 +183,27 @@ impl SecurityEngine {
         }
     }
 
-    /// Detect phishing
+    /// Detect phishing.
+    ///
+    /// Combines the operator-managed blocklist with the heuristic scorer in
+    /// `phishing`. A blocklist hit is conclusive; otherwise the domain must
+    /// accumulate enough independent signals to be flagged.
     pub fn detect_phishing(&self, domain: &str) -> PhishingResult {
-        let is_known = self.known_phishing_domains.read().contains_key(domain);
-        
-        let mut matched_patterns = Vec::new();
-        
-        // Check suspicious patterns
-        if domain.contains("free") || domain.contains("airdrop") {
-            matched_patterns.push("Suspicious keyword".to_string());
-        }
-        if domain.contains("claim") || domain.contains("gift") {
-            matched_patterns.push("Airdrop claim pattern".to_string());
-        }
-        if domain.ends_with(".xyz") || domain.ends_with(".io") {
-            matched_patterns.push("Suspicious TLD".to_string());
-        }
-        
-        let confidence = if is_known {
-            95.0
-        } else if !matched_patterns.is_empty() {
-            60.0
-        } else {
-            0.0
-        };
-        
-        let recommendations = if confidence > 50.0 {
-            vec![
-                "Verify domain carefully".to_string(),
-                "Check official sources".to_string(),
-                "Never share seed phrase".to_string(),
-            ]
-        } else {
-            vec![]
-        };
-        
+        let blocklist: Vec<String> = self
+            .known_phishing_domains
+            .read()
+            .keys()
+            .cloned()
+            .collect();
+
+        let verdict = phishing::inspect(domain, &blocklist, &[]);
+
         PhishingResult {
-            is_phishing: is_known || confidence > 50.0,
-            confidence,
-            domain: domain.to_string(),
-            matched_patterns,
-            recommendations,
+            is_phishing: verdict.is_phishing,
+            confidence: verdict.confidence,
+            domain: verdict.domain,
+            matched_patterns: verdict.signals,
+            recommendations: verdict.recommendations,
         }
     }
 

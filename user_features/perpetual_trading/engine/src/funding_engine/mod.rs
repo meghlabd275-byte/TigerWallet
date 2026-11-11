@@ -42,16 +42,19 @@ impl FundingRate {
             dec!(0)
         };
         
-        // Clamp to max 0.75% (hourly)
-        let clamped_rate = price_ratio.max(dec!(-0.00075)).min(dec!(0.00075));
+        // When the perpetual trades above the index, longs pay shorts, so the
+        // published funding rate carries the opposite sign to the premium.
+        // Clamped to a maximum of 0.75% per interval.
+        let clamped_rate = (-price_ratio).max(dec!(-0.00075)).min(dec!(0.00075));
         self.rate = clamped_rate;
         
         self.avg_mark_price = mark_price;
         self.avg_index_price = index_price;
         
-        self.funding_indicator = if price_diff > dec!(0) {
+        // +1 when longs pay shorts, -1 when shorts pay longs.
+        self.funding_indicator = if self.rate > dec!(0) {
             1
-        } else if price_diff < dec!(0) {
+        } else if self.rate < dec!(0) {
             -1
         } else {
             0

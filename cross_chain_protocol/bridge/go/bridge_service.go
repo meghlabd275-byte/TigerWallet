@@ -8,12 +8,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
-	"math"
+	"net/http"
 	"os"
 	"os/signal"
-	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -330,65 +332,52 @@ type ExecuteResponse struct {
 }
 
 func (s *BridgeService) ExecuteBridge(ctx *gin.Context) {
-	var req ExecuteRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(400, ExecuteResponse{Success: false, Error: err.Error()})
-		return
-	}
+        var req ExecuteRequest
+        if err := ctx.ShouldBindJSON(&req); err != nil {
+                ctx.JSON(400, ExecuteResponse{Success: false, Error: err.Error()})
+                return
+        }
 
-	// Get bridge client
-	client, ok := s.bridgeClients[req.Bridge]
-	if !ok {
-		ctx.JSON(400, ExecuteResponse{Success: false, Error: "Invalid bridge"})
-		return
-	}
+        client, ok := s.bridgeClients[req.Bridge]
+        if !ok {
+                ctx.JSON(400, ExecuteResponse{Success: false, Error: "Invalid bridge"})
+                return
+        }
 
-	// Get quote first
-	quote, err := client.GetQuote(ctx.Request.Context(), req.FromChain, req.ToChain, req.FromToken, req.Amount)
-	if err != nil {
-		ctx.JSON(500, ExecuteResponse{Success: false, Error: "Failed to get quote"})
-		return
-	}
+        quote, err := client.GetQuote(ctx.Request.Context(), req.FromChain, req.ToChain, req.FromToken, req.Amount)
+        if err != nil {
+                ctx.JSON(502, ExecuteResponse{Success: false, Error: "Failed to get quote: " + err.Error()})
+                return
+        }
 
-	// Execute bridge
-	fromTxHash, err := client.ExecuteBridge(ctx.Request.Context(), quote, req.UserAddress)
-	if err != nil {
-		ctx.JSON(500, ExecuteResponse{Success: false, Error: err.Error()})
-		return
-	}
+        // The bridge adapter cannot move the user's funds: the deposit
+        // transaction must be signed by whoever holds them. Returning success
+        // here with a fabricated hash would report a transfer that never
+        // happened, so the caller is told to sign and broadcast instead.
+        txHash, err := client.ExecuteBridge(ctx.Request.Context(), quote, req.UserAddress)
+        if err != nil {
+                if errors.Is(err, ErrExecutionRequiresSignature) {
+                        ctx.JSON(http.StatusAccepted, ExecuteResponse{
+                                Success: false,
+                                Status:  "SIGNATURE_REQUIRED",
+                                Error:   "the bridge deposit must be signed and broadcast by the caller; no funds have moved",
+                        })
+                        return
+                }
+                ctx.JSON(502, ExecuteResponse{Success: false, Error: err.Error()})
+                return
+        }
 
-	// Create transaction record
-	txID := generateTransactionID(req.UserAddress, req.FromChain, req.ToChain, req.Amount)
-	transaction := BridgeTransaction{
-		TransactionID: txID,
-		UserAddress:   req.UserAddress,
-		FromChain:     req.FromChain,
-		ToChain:       req.ToChain,
-		FromToken:     req.FromToken,
-		ToToken:       req.ToToken,
-		FromAmount:    req.Amount,
-		ToAmount:      quote.ToAmount,
-		Bridge:        req.Bridge,
-		Status:        "PENDING",
-		FromTxHash:    fromTxHash,
-		Fee:           quote.Fee,
-		FeeToken:      quote.FeeToken,
-		EstimatedTime: quote.EstimatedTime,
-		ChainID:       1,
-	}
-
-	s.db.Create(&transaction)
-
-	// Cache transaction for status checking
-	s.redis.Set(ctx.Request.Context(), fmt.Sprintf("bridge:%s", txID), txID, 24*time.Hour)
-
-	ctx.JSON(200, ExecuteResponse{
-		Success:        true,
-		TransactionID: txID,
-		FromTxHash:    fromTxHash,
-		EstimatedTime: quote.EstimatedTime,
-		Status:        "PENDING",
-	})
+        // The adapter broadcast the deposit, so the hash it returned identifies
+        // the transfer. Discarding it would leave the caller unable to track the
+        // deposit.
+        ctx.JSON(http.StatusOK, ExecuteResponse{
+                Success:       true,
+                TransactionID: txHash,
+                FromTxHash:    txHash,
+                EstimatedTime: quote.EstimatedTime,
+                Status:        "SUBMITTED",
+        })
 }
 
 // ============================================================================
@@ -469,121 +458,222 @@ func (s *BridgeService) GetRoutes(ctx *gin.Context) {
 }
 
 // ============================================================================
-// Bridge Clients (Simulated for demonstration)
+// Bridge Clients
+//
+// A bridge adapter cannot settle a transfer on its own: the deposit transaction
+// must be signed by the holder of the funds. These adapters return a real quote
+// derived from the protocol's on-chain state and refuse to invent a settlement.
+// ExecuteBridge reports that a client-signed transaction is required, and
+// GetTransactionStatus reports only the status it can observe on the node.
 // ============================================================================
 
-type LayerZeroClient struct{}
+// ErrExecutionRequiresSignature signals that the adapter cannot move funds by
+// itself and the caller must sign and broadcast the deposit transaction.
+var ErrExecutionRequiresSignature = errors.New("bridge execution requires a client-signed transaction")
 
-func NewLayerZeroClient() *LayerZeroClient {
-	return &LayerZeroClient{}
+type LayerZeroClient struct {
+        rpcURL string
 }
 
-func (c *LayerZeroClient) GetQuote(ctx context.Context, fromChain, toChain int64, token, amount string) (*BridgeQuote, error) {
-	// Simulated LayerZero quote
-	amountFloat := 0.0
-	fmt.Sscanf(amount, "%f", &amountFloat)
+func NewLayerZeroClient() *LayerZeroClient {
+        return &LayerZeroClient{rpcURL: getEnv("LAYERZERO_RPC_URL", "https://eth.llamarpc.com")}
+}
 
-	return &BridgeQuote{
-		Bridge:        "LAYERZERO",
-		FromChain:     fromChain,
-		ToChain:       toChain,
-		FromToken:     token,
-		ToToken:       token,
-		FromAmount:    amount,
-		ToAmount:      fmt.Sprintf("%.6f", amountFloat*0.998),
-		Fee:           "5.0",
-		FeeToken:      "USDC",
-		EstimatedTime: 600,
-	}, nil
+// GetQuote prices the route from the LayerZero endpoint's own messaging fee.
+//
+// The fee is read with a live eth_call to the endpoint's quote function, so the
+// figure reflects the protocol's current price rather than a fixed multiplier.
+// When the endpoint is not configured the quote fails instead of falling back
+// to an invented number.
+func (c *LayerZeroClient) GetQuote(ctx context.Context, fromChain, toChain int64, token, amount string) (*BridgeQuote, error) {
+        endpoint := getEnv("LAYERZERO_ENDPOINT", "")
+        if endpoint == "" {
+                return nil, fmt.Errorf("LAYERZERO_ENDPOINT is not configured")
+        }
+
+        amountFloat, err := strconv.ParseFloat(strings.TrimSpace(amount), 64)
+        if err != nil || amountFloat <= 0 {
+                return nil, fmt.Errorf("invalid amount %q", amount)
+        }
+
+        // quoteLayerZeroFee(uint16 dstChainId, uint8 functionType, bytes payload,
+        // bytes adapterParams, address zroPaymentAddress, bytes adapterParams)
+        calldata := "0x" + encodeSelectorHex("quoteLayerZeroFee(uint16,uint8,bytes,bytes,address,bytes)")
+        calldata += encodeUintArg(toChain)
+        calldata += encodeUintArg(0)
+        calldata += encodeDynamicBytesArg(2, nil)
+        calldata += encodeDynamicBytesArg(3, nil)
+        calldata += encodeAddressArg("0x0000000000000000000000000000000000000000")
+        calldata += encodeDynamicBytesArg(5, nil)
+
+        raw, err := ethCallRaw(ctx, c.rpcURL, endpoint, calldata)
+        if err != nil {
+                return nil, fmt.Errorf("layerzero fee quote: %w", err)
+        }
+
+        nativeFee, err := decodeABIUintAt(raw, 0)
+        if err != nil {
+                return nil, fmt.Errorf("decode layerzero fee: %w", err)
+        }
+        feeFloat := weiToFloat(nativeFee)
+        if feeFloat <= 0 {
+                return nil, fmt.Errorf("layerzero returned a zero messaging fee")
+        }
+
+        return &BridgeQuote{
+                Bridge:        "LAYERZERO",
+                FromChain:     fromChain,
+                ToChain:       toChain,
+                FromToken:     token,
+                ToToken:       token,
+                FromAmount:    amount,
+                ToAmount:      formatAmount(amountFloat),
+                Fee:           strconv.FormatFloat(feeFloat, 'f', 8, 64),
+                FeeToken:      nativeSymbolForChain(fromChain),
+                EstimatedTime: 600,
+        }, nil
 }
 
 func (c *LayerZeroClient) ExecuteBridge(ctx context.Context, quote *BridgeQuote, userAddress string) (string, error) {
-	// Simulated transaction hash
-	data := fmt.Sprintf("%s:%s:%d:%d:%s", userAddress, quote.FromToken, quote.FromChain, quote.ToChain, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:]), nil
+        return "", ErrExecutionRequiresSignature
 }
 
 func (c *LayerZeroClient) GetTransactionStatus(ctx context.Context, txHash string) (string, error) {
-	return "CONFIRMED", nil
+        return bridgeStatusForHash(ctx, c.rpcURL, txHash)
 }
 
-type MultichainClient struct{}
+type MultichainClient struct {
+        rpcURL string
+}
 
 func NewMultichainClient() *MultichainClient {
-	return &MultichainClient{}
+        return &MultichainClient{rpcURL: getEnv("MULTICHAIN_RPC_URL", "https://eth.llamarpc.com")}
 }
 
+// GetQuote prices the route from the Multichain router's on-chain fee query.
 func (c *MultichainClient) GetQuote(ctx context.Context, fromChain, toChain int64, token, amount string) (*BridgeQuote, error) {
-	amountFloat := 0.0
-	fmt.Sscanf(amount, "%f", &amountFloat)
+        router := getEnv("MULTICHAIN_ROUTER", "")
+        if router == "" {
+                return nil, fmt.Errorf("MULTICHAIN_ROUTER is not configured")
+        }
 
-	return &BridgeQuote{
-		Bridge:        "MULTICHAIN",
-		FromChain:     fromChain,
-		ToChain:       toChain,
-		FromToken:     token,
-		ToToken:       token,
-		FromAmount:    amount,
-		ToAmount:      fmt.Sprintf("%.6f", amountFloat*0.997),
-		Fee:           "3.0",
-		FeeToken:      token,
-		EstimatedTime: 1200,
-	}, nil
+        amountFloat, err := strconv.ParseFloat(strings.TrimSpace(amount), 64)
+        if err != nil || amountFloat <= 0 {
+                return nil, fmt.Errorf("invalid amount %q", amount)
+        }
+
+        raw, err := ethCallRaw(ctx, c.rpcURL, router, "0x"+encodeSelectorHex("getRouterFee()"))
+        if err != nil {
+                return nil, fmt.Errorf("multichain fee quote: %w", err)
+        }
+        feeWei, err := decodeABIUintAt(raw, 0)
+        if err != nil {
+                return nil, fmt.Errorf("decode multichain fee: %w", err)
+        }
+
+        return &BridgeQuote{
+                Bridge:        "MULTICHAIN",
+                FromChain:     fromChain,
+                ToChain:       toChain,
+                FromToken:     token,
+                ToToken:       token,
+                FromAmount:    amount,
+                ToAmount:      formatAmount(amountFloat),
+                Fee:           strconv.FormatFloat(weiToFloat(feeWei), 'f', 8, 64),
+                FeeToken:      nativeSymbolForChain(fromChain),
+                EstimatedTime: 1200,
+        }, nil
 }
 
 func (c *MultichainClient) ExecuteBridge(ctx context.Context, quote *BridgeQuote, userAddress string) (string, error) {
-	data := fmt.Sprintf("%s:%s:%d:%d:%s", userAddress, quote.FromToken, quote.FromChain, quote.ToChain, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:]), nil
+        return "", ErrExecutionRequiresSignature
 }
 
 func (c *MultichainClient) GetTransactionStatus(ctx context.Context, txHash string) (string, error) {
-	return "CONFIRMED", nil
+        return bridgeStatusForHash(ctx, c.rpcURL, txHash)
 }
 
-type AxelarClient struct{}
+type AxelarClient struct {
+        rpcURL string
+}
 
 func NewAxelarClient() *AxelarClient {
-	return &AxelarClient{}
+        return &AxelarClient{rpcURL: getEnv("AXELAR_RPC_URL", "https://eth.llamarpc.com")}
 }
 
+// GetQuote prices the route from the Axelar gas service's on-chain fee record.
 func (c *AxelarClient) GetQuote(ctx context.Context, fromChain, toChain int64, token, amount string) (*BridgeQuote, error) {
-	amountFloat := 0.0
-	fmt.Sscanf(amount, "%f", &amountFloat)
+        gasService := getEnv("AXELAR_GAS_SERVICE", "")
+        if gasService == "" {
+                return nil, fmt.Errorf("AXELAR_GAS_SERVICE is not configured")
+        }
 
-	return &BridgeQuote{
-		Bridge:        "AXELAR",
-		FromChain:     fromChain,
-		ToChain:       toChain,
-		FromToken:     token,
-		ToToken:       token,
-		FromAmount:    amount,
-		ToAmount:      fmt.Sprintf("%.6f", amountFloat*0.996),
-		Fee:           "8.0",
-		FeeToken:      "USDC",
-		EstimatedTime: 900,
-	}, nil
+        amountFloat, err := strconv.ParseFloat(strings.TrimSpace(amount), 64)
+        if err != nil || amountFloat <= 0 {
+                return nil, fmt.Errorf("invalid amount %q", amount)
+        }
+
+        calldata := "0x" + encodeSelectorHex("getGasFee(address,uint256)") + encodeUintArg(fromChain)
+        raw, err := ethCallRaw(ctx, c.rpcURL, gasService, calldata)
+        if err != nil {
+                return nil, fmt.Errorf("axelar fee quote: %w", err)
+        }
+        feeWei, err := decodeABIUintAt(raw, 0)
+        if err != nil {
+                return nil, fmt.Errorf("decode axelar fee: %w", err)
+        }
+
+        return &BridgeQuote{
+                Bridge:        "AXELAR",
+                FromChain:     fromChain,
+                ToChain:       toChain,
+                FromToken:     token,
+                ToToken:       token,
+                FromAmount:    amount,
+                ToAmount:      formatAmount(amountFloat),
+                Fee:           strconv.FormatFloat(weiToFloat(feeWei), 'f', 8, 64),
+                FeeToken:      nativeSymbolForChain(fromChain),
+                EstimatedTime: 900,
+        }, nil
 }
 
 func (c *AxelarClient) ExecuteBridge(ctx context.Context, quote *BridgeQuote, userAddress string) (string, error) {
-	data := fmt.Sprintf("%s:%s:%d:%d:%s", userAddress, quote.FromToken, quote.FromChain, quote.ToChain, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "0x" + hex.EncodeToString(hash[:]), nil
+        return "", ErrExecutionRequiresSignature
 }
 
 func (c *AxelarClient) GetTransactionStatus(ctx context.Context, txHash string) (string, error) {
-	return "CONFIRMED", nil
+        return bridgeStatusForHash(ctx, c.rpcURL, txHash)
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+// bridgeStatusForHash reports the real on-chain status of a deposit transaction.
+//
+// Without a receipt the status is unknown, so PENDING is returned. The previous
+// implementation reported CONFIRMED unconditionally, which told a user their
+// funds had arrived when no transfer had happened.
+func bridgeStatusForHash(ctx context.Context, rpcURL, txHash string) (string, error) {
+        if !isHexHash(txHash) {
+                return "", fmt.Errorf("invalid transaction hash %q", txHash)
+        }
+        receipt, err := ethGetTransactionReceipt(ctx, rpcURL, txHash)
+        if err != nil {
+                return "", err
+        }
+        if receipt == nil {
+                return "PENDING", nil
+        }
+        if receipt.Status == "0x1" {
+                return "CONFIRMED", nil
+        }
+        return "FAILED", nil
+}
 
+// generateTransactionID derives the local record id for a bridge attempt. It
+// identifies a row in this service's database; it is never presented as an
+// on-chain transaction hash.
 func generateTransactionID(user string, from, to int64, amount string) string {
-	data := fmt.Sprintf("%s:%d:%d:%s:%d", user, from, to, amount, time.Now().UnixNano())
-	hash := sha256.Sum256([]byte(data))
-	return "bridge_" + hex.EncodeToString(hash[:])[:24]
+        data := fmt.Sprintf("%s:%d:%d:%s:%d", user, from, to, amount, time.Now().UnixNano())
+        hash := sha256.Sum256([]byte(data))
+        return "bridge_" + hex.EncodeToString(hash[:])[:24]
 }
 
 // ============================================================================

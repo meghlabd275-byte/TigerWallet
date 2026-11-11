@@ -17,7 +17,10 @@ import (
 "fmt"
 "io"
 "log"
+"net"
 "net/http"
+"net/smtp"
+"strconv"
 "strings"
 "sync"
 "time"
@@ -85,6 +88,7 @@ type PushConfig struct {
 Provider     string `json:"provider"`
 APIKey       string `json:"api_key"`
 ProjectID    string `json:"project_id"`
+APIEndpoint  string `json:"api_endpoint"`
 }
 
 type TelegramConfig struct {
@@ -233,15 +237,99 @@ CreatedAt: time.Now().Unix(),
 return s.sendEmailNotification(notification)
 }
 
+// sendEmailNotification delivers a message over SMTP. The notification is only
+// marked sent when the server accepts it for delivery.
 func (s *NotificationService) sendEmailNotification(n *Notification) error {
-// In production, would use SMTP
-log.Printf("Sending email to %s: %s", n.Recipient, n.Subject)
+if s.emailConfig == nil {
+return fmt.Errorf("email not configured")
+}
 
-// Simulate sending
+cfg := s.emailConfig
+if cfg.SMTPHost == "" {
+n.Status = "failed"
+n.Error = "SMTP host is not configured"
+return fmt.Errorf("%s", n.Error)
+}
+
+from := cfg.FromAddress
+if from == "" {
+from = cfg.Username
+}
+if from == "" {
+n.Status = "failed"
+n.Error = "no sender address configured"
+return fmt.Errorf("%s", n.Error)
+}
+
+headers := map[string]string{
+"From":         formatMailbox(cfg.FromName, from),
+"To":           n.Recipient,
+"Subject":      n.Subject,
+"MIME-Version": "1.0",
+}
+
+var body string
+if n.HTMLBody != "" {
+headers["Content-Type"] = "text/html; charset=UTF-8"
+body = n.HTMLBody
+} else {
+headers["Content-Type"] = "text/plain; charset=UTF-8"
+body = n.Body
+}
+
+message := buildMIME(headers, body)
+addr := net.JoinHostPort(cfg.SMTPHost, strconv.Itoa(cfg.SMTPPort))
+
+var auth smtp.Auth
+if cfg.Username != "" {
+auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.SMTPHost)
+}
+
+if err := smtp.SendMail(addr, auth, from, []string{n.Recipient}, []byte(message)); err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return fmt.Errorf("send email: %w", err)
+}
+
 n.Status = "sent"
 n.SentAt = time.Now().Unix()
-
 return nil
+}
+
+// formatMailbox renders a From header, quoting the display name when present.
+// headerSafe strips CR and LF so a value cannot break out of its header and
+// inject additional ones. Every header value passes through here.
+func headerSafe(v string) string {
+v = strings.ReplaceAll(v, "\r", "")
+v = strings.ReplaceAll(v, "\n", "")
+return v
+}
+
+func formatMailbox(name, address string) string {
+name = headerSafe(name)
+address = headerSafe(address)
+if strings.TrimSpace(name) == "" {
+return address
+}
+escaped := strings.ReplaceAll(name, `"`, `\"`)
+return fmt.Sprintf("%q <%s>", escaped, address)
+}
+
+// buildMIME assembles a message from headers and a body.
+func buildMIME(headers map[string]string, body string) string {
+var b strings.Builder
+// A deterministic order keeps the output stable across runs.
+for _, key := range []string{"From", "To", "Subject", "MIME-Version", "Content-Type"} {
+if v, ok := headers[key]; ok {
+b.WriteString(headerSafe(key))
+b.WriteString(": ")
+b.WriteString(headerSafe(v))
+b.WriteString("\r\n")
+}
+}
+b.WriteString("\r\n")
+b.WriteString(body)
+return b.String()
 }
 
 func (s *NotificationService) SendSMS(to, message string) error {
@@ -261,12 +349,67 @@ CreatedAt: time.Now().Unix(),
 return s.sendSMSNotification(notification)
 }
 
+// sendSMSNotification delivers a message through the configured SMS provider
+// endpoint. The notification is only marked sent on a 2xx response.
 func (s *NotificationService) sendSMSNotification(n *Notification) error {
-log.Printf("Sending SMS to %s: %s", n.Recipient, n.Body)
+if s.smsConfig == nil {
+return fmt.Errorf("SMS not configured")
+}
+if strings.TrimSpace(s.smsConfig.APIEndpoint) == "" {
+n.Status = "failed"
+n.Error = "SMS API endpoint is not configured"
+return fmt.Errorf("%s", n.Error)
+}
+if !strings.HasPrefix(s.smsConfig.APIEndpoint, "https://") {
+n.Status = "failed"
+n.Error = "SMS API endpoint must use https"
+return fmt.Errorf("%s", n.Error)
+}
+
+payload := map[string]interface{}{
+"from":    s.smsConfig.FromNumber,
+"to":      n.Recipient,
+"message": n.Body,
+}
+if s.smsConfig.Provider != "" {
+payload["provider"] = s.smsConfig.Provider
+}
+
+data, err := json.Marshal(payload)
+if err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return err
+}
+
+req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, s.smsConfig.APIEndpoint, bytes.NewReader(data))
+if err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return err
+}
+req.Header.Set("Content-Type", "application/json")
+if s.smsConfig.APIKey != "" {
+req.Header.Set("Authorization", "Bearer "+s.smsConfig.APIKey)
+}
+
+resp, err := s.httpClient.Do(req)
+if err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return err
+}
+defer resp.Body.Close()
+
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+n.Status = "failed"
+n.Error = fmt.Sprintf("SMS provider returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+return fmt.Errorf("%s", n.Error)
+}
 
 n.Status = "sent"
 n.SentAt = time.Now().Unix()
-
 return nil
 }
 
@@ -289,12 +432,70 @@ CreatedAt: time.Now().Unix(),
 return s.sendPushNotification(notification)
 }
 
+// sendPushNotification delivers a push message through the configured push
+// provider endpoint. The notification is only marked sent on a 2xx response.
 func (s *NotificationService) sendPushNotification(n *Notification) error {
-log.Printf("Sending push to %s: %s", n.Recipient, n.Subject)
+if s.pushConfig == nil {
+return fmt.Errorf("push not configured")
+}
+if strings.TrimSpace(s.pushConfig.APIEndpoint) == "" {
+n.Status = "failed"
+n.Error = "push API endpoint is not configured"
+return fmt.Errorf("%s", n.Error)
+}
+if !strings.HasPrefix(s.pushConfig.APIEndpoint, "https://") {
+n.Status = "failed"
+n.Error = "push API endpoint must use https"
+return fmt.Errorf("%s", n.Error)
+}
+
+payload := map[string]interface{}{
+"token": n.Recipient,
+"title": n.Subject,
+"body":  n.Body,
+}
+if n.Data != nil {
+payload["data"] = n.Data
+}
+if s.pushConfig.ProjectID != "" {
+payload["project_id"] = s.pushConfig.ProjectID
+}
+
+data, err := json.Marshal(payload)
+if err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return err
+}
+
+req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, s.pushConfig.APIEndpoint, bytes.NewReader(data))
+if err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return err
+}
+req.Header.Set("Content-Type", "application/json")
+if s.pushConfig.APIKey != "" {
+req.Header.Set("Authorization", "Bearer "+s.pushConfig.APIKey)
+}
+
+resp, err := s.httpClient.Do(req)
+if err != nil {
+n.Status = "failed"
+n.Error = err.Error()
+return err
+}
+defer resp.Body.Close()
+
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+n.Status = "failed"
+n.Error = fmt.Sprintf("push provider returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+return fmt.Errorf("%s", n.Error)
+}
 
 n.Status = "sent"
 n.SentAt = time.Now().Unix()
-
 return nil
 }
 
