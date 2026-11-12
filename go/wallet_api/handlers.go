@@ -797,7 +797,7 @@ func executeSend(c *gin.Context, req sendTxReq) {
 		return
 	}
 
-	txHash, err := BroadcastTransaction(ctx, chain.RPCEndpoint, rawTx)
+	txHash, err := BroadcastTransaction(ctx, chain.RPCEndpoint, rawTx, chainID)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "broadcast failed: " + err.Error()})
 		return

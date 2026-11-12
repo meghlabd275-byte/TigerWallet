@@ -170,12 +170,37 @@ func SignEVMTransaction(chainID *big.Int, nonce uint64, to common.Address,
 
 // BroadcastTransaction sends a raw signed transaction to the chain via
 // eth_sendRawTransaction and returns the tx hash.
-func BroadcastTransaction(ctx context.Context, rpcEndpoint, rawTxHex string) (string, error) {
+//
+// expectedChainID is the network the transaction was signed for. It is checked
+// against the node's eth_chainId before anything is sent. A transaction signed
+// for one network and replayed onto another carries a valid signature there, so
+// without this check a misconfigured or malicious endpoint could relay it to a
+// network the user never chose. Pass nil only when the caller has no signing
+// context and therefore nothing to verify.
+func BroadcastTransaction(ctx context.Context, rpcEndpoint, rawTxHex string, expectedChainID *big.Int) (string, error) {
 	client, err := rpc.DialContext(ctx, rpcEndpoint)
 	if err != nil {
 		return "", fmt.Errorf("rpc dial: %w", err)
 	}
 	defer client.Close()
+
+	if expectedChainID != nil {
+		var nodeChainID string
+		if err := client.CallContext(ctx, &nodeChainID, "eth_chainId"); err != nil {
+			// Fail closed: an endpoint that cannot answer eth_chainId cannot be
+			// shown to be the intended network.
+			return "", fmt.Errorf("verify chain id: %w", err)
+		}
+		reported, ok := new(big.Int).SetString(strings.TrimPrefix(nodeChainID, "0x"), 16)
+		if !ok {
+			return "", fmt.Errorf("verify chain id: node returned %q", nodeChainID)
+		}
+		if reported.Cmp(expectedChainID) != 0 {
+			return "", fmt.Errorf(
+				"refusing to broadcast: transaction is signed for chain %s but %s reports chain %s",
+				expectedChainID, rpcEndpoint, reported)
+		}
+	}
 
 	var result string
 	if err := client.CallContext(ctx, &result, "eth_sendRawTransaction", rawTxHex); err != nil {
