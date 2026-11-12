@@ -27,6 +27,7 @@ pub mod gasless;
 pub mod launch_readiness;
 pub mod mpc;
 pub mod ordinals;
+pub mod platform_chain;
 pub mod secure_random;
 pub mod social_recovery;
 pub mod stacks;

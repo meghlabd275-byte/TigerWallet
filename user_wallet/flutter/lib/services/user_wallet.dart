@@ -145,6 +145,22 @@ class UserWalletService {
       post('/api/v1/non_evm/send', {'wallet_id': walletId, 'chain_type': chainType, 'chain_id': chainId, 'to': to, 'value': value});
 
   // ==================== CHAINS / TOKENS ====================
+  /// EIP-155 chain id of TigerSmartChain, the platform's own network.
+  static const int platformChainId = 7710;
+
+  /// Native coin symbol of TigerSmartChain.
+  static const String platformNativeSymbol = 'TGR';
+
+  /// RUSD stablecoin - genesis predeploy, fixed by consensus.
+  static const String rusdAddress = '0x0000000000000000000000000000000000007710';
+
+  /// WTGR wrapped-native token - genesis predeploy, fixed by consensus.
+  static const String wtgrAddress = '0x0000000000000000000000000000000000007711';
+
+  /// GET /platform/tokens -> the platform's own assets (TGR, WTGR, RUSD) with a
+  /// live USD price each. Public, so it also works before sign-in.
+  Future<Map<String, dynamic>?> getPlatformTokens() => get('/api/v1/platform/tokens');
+
   Future<Map<String, dynamic>?> getChains() => get('/api/v1/chains');
   Future<Map<String, dynamic>?> getChain(int id) => get('/api/v1/chains/$id');
   Future<Map<String, dynamic>?> getNetworkStatus() => get('/api/v1/network-status');

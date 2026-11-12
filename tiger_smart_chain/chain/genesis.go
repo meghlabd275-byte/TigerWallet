@@ -78,6 +78,13 @@ func BuildGenesis(cfg *Config) (*core.Genesis, error) {
 		alloc[addr] = acct
 	}
 
+	// Platform tokens (RUSD stablecoin, WTGR wrapped native) are committed
+	// into the genesis state so every client knows their addresses from
+	// block 0 without a deployment manifest.
+	if err := ApplyPredeploys(alloc, cfg); err != nil {
+		return nil, err
+	}
+
 	extra, err := validatorExtraData(cfg.Validators)
 	if err != nil {
 		return nil, err
@@ -147,12 +154,21 @@ func validatorExtraData(validators []Validator) ([]byte, error) {
 
 // ChainConfig returns the EVM rule set activated on TigerSmartChain.
 //
-// Every fork up to London is active from block zero, which is what gives the
-// chain EIP-155 replay protection, EIP-1559 fee markets and the full modern
-// EVM opcode set from the first block. The chain is deliberately kept
-// pre-merge: TigerSmartChain is a proof-of-authority network operated by the
-// TigerWallet validator set, and it must never attempt to follow the Ethereum
-// proof-of-stake beacon chain.
+// Every block-based fork up to London is active from block zero, which is what
+// gives the chain EIP-155 replay protection, EIP-1559 fee markets and the
+// Berlin/London opcode set from the first block.
+//
+// The chain is deliberately kept pre-merge. TigerSmartChain is a
+// proof-of-authority network operated by the TigerWallet validator set, and it
+// must never attempt to follow the Ethereum proof-of-stake beacon chain.
+//
+// That choice fixes the EVM target of the genesis predeploys: in the EVM
+// specification Shanghai and Cancun are *merge* forks, so a pre-merge chain
+// executes neither, and an opcode introduced by them (PUSH0, from EIP-3855) is
+// invalid. contracts/RUSD.sol and contracts/WTGR.sol are therefore compiled with
+// `--evm-version london` and contain no post-London opcode. See the SOLC_FLAGS
+// line in the Makefile: changing the EVM target there without changing this
+// function would produce predeploy bytecode the chain cannot execute.
 func ChainConfig(cfg *Config) *params.ChainConfig {
 	zero := big.NewInt(0)
 	return &params.ChainConfig{

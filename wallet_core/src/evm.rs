@@ -206,7 +206,54 @@ pub fn get_evm_chains() -> Vec<EvmChain> {
             native_token: "0x0000000000000000000000000000000000000000".to_string(),
             gas_oracle: "".to_string(),
         },
+        platform_chain::tiger_smart_chain(),
     ]
+}
+
+/// TigerSmartChain - the platform's own EVM network, chain id 7710.
+///
+/// It is described here rather than as a literal in the list above because its
+/// endpoint is not a public constant: the node is operated by the platform, so
+/// the URL comes from `TSC_RPC_URL`. When that variable is unset the entry is
+/// still returned, with an empty `rpc_url`, so a client can display the chain
+/// and report that it is unconfigured. An RPC call against an empty URL fails
+/// loudly instead of reaching an unrelated host.
+pub mod platform_chain {
+    use super::EvmChain;
+
+    /// EIP-155 chain id of TigerSmartChain mainnet.
+    pub const CHAIN_ID: u64 = 7710;
+
+    /// Native coin symbol.
+    pub const NATIVE_SYMBOL: &str = "TGR";
+
+    /// Environment variable holding the JSON-RPC endpoint.
+    pub const RPC_ENV: &str = "TSC_RPC_URL";
+
+    /// RUSD stablecoin - genesis predeploy, fixed by consensus.
+    pub const RUSD_ADDRESS: &str = "0x0000000000000000000000000000000000007710";
+
+    /// WTGR wrapped-native token - genesis predeploy, fixed by consensus.
+    pub const WTGR_ADDRESS: &str = "0x0000000000000000000000000000000000007711";
+
+    /// Returns the TigerSmartChain entry, reading the endpoint from the
+    /// environment.
+    pub fn tiger_smart_chain() -> EvmChain {
+        EvmChain {
+            chain_id: CHAIN_ID,
+            name: "TigerSmartChain".to_string(),
+            symbol: NATIVE_SYMBOL.to_string(),
+            decimals: 18,
+            rpc_url: std::env::var(RPC_ENV).unwrap_or_default(),
+            // No explorer is bundled: the platform runs its own, and a guessed
+            // URL would send users to a page that does not exist.
+            explorer_url: String::new(),
+            explorer_api: String::new(),
+            // WTGR is the wrapped native token, and it is a genesis predeploy.
+            native_token: WTGR_ADDRESS.to_string(),
+            gas_oracle: String::new(),
+        }
+    }
 }
 
 /// Get chain by ID
@@ -593,5 +640,45 @@ mod tests {
         
         let bsc = get_chain_by_id(56).unwrap();
         assert_eq!(bsc.name, "BNB Smart Chain");
+    }
+
+    #[test]
+    fn test_tiger_smart_chain_is_registered() {
+        let tsc = get_chain_by_id(platform_chain::CHAIN_ID).expect("TigerSmartChain is listed");
+        assert_eq!(tsc.chain_id, 7710);
+        assert_eq!(tsc.name, "TigerSmartChain");
+        assert_eq!(tsc.symbol, "TGR");
+        assert_eq!(tsc.decimals, 18);
+        assert_eq!(tsc.native_token, platform_chain::WTGR_ADDRESS);
+        assert!(tsc.explorer_url.is_empty(), "no explorer is invented");
+    }
+
+    #[test]
+    fn test_tiger_smart_chain_endpoint_comes_from_env() {
+        let previous = std::env::var(platform_chain::RPC_ENV).ok();
+
+        std::env::remove_var(platform_chain::RPC_ENV);
+        let unset = platform_chain::tiger_smart_chain();
+        assert!(
+            unset.rpc_url.is_empty(),
+            "an unconfigured node must not resolve to a default host"
+        );
+
+        std::env::set_var(platform_chain::RPC_ENV, "http://tsc.internal:8545");
+        let configured = platform_chain::tiger_smart_chain();
+        assert_eq!(configured.rpc_url, "http://tsc.internal:8545");
+
+        // The manager must pick the entry up, so callers that look chains up by
+        // id get the configured endpoint.
+        let manager = EvmNetworkManager::new();
+        let managed = manager
+            .get_chain(platform_chain::CHAIN_ID)
+            .expect("manager knows TigerSmartChain");
+        assert_eq!(managed.rpc_url, "http://tsc.internal:8545");
+
+        match previous {
+            Some(v) => std::env::set_var(platform_chain::RPC_ENV, v),
+            None => std::env::remove_var(platform_chain::RPC_ENV),
+        }
     }
 }

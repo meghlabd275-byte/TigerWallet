@@ -454,6 +454,19 @@ var evmMainnet = []ChainConfig{
 		ID: 7700, Name: "Canto", Symbol: "CANTO", RPCEndpoint: "https://canto.slingshot.finance", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://www.oklink.com/canto", ExplorerURL: "https://www.oklink.com/canto", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false, RPCAlternates: []string{"https://canto-rpc.ansybl.io", "https://mainnode.plexnode.org:8545", "https://canto.gravitychain.io/"},
 	},
 	{
+		// TigerSmartChain is the platform's own proof-of-authority network.
+		// Its genesis carries the RUSD stablecoin and the WTGR wrapped-native
+		// token as predeploys, so those addresses are fixed by consensus and
+		// are the same on every node. RUSD and WTGR are registered as
+		// first-class tokens in defaultTokenRegistry.
+		//
+		// No endpoint is bundled: the platform operates the node, so there is no
+		// public URL to ship. The operator sets TSC_RPC_URL (or the per-chain
+		// CHAIN_7710_RPC), and until then the chain is listed but reports as
+		// unreachable rather than dialling a guessed host.
+		ID: 7710, Name: "TigerSmartChain", Symbol: "TGR", RPCEndpoint: "", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "", ExplorerURL: "", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
+	},
+	{
 		ID: 7778, Name: "Orenium Mainnet Protocol", Symbol: "ORE", RPCEndpoint: "https://validator-mainnet.orenium.org", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://oreniumscan.org", ExplorerURL: "https://oreniumscan.org", ChainType: "evm", Decimals: 18, CoinType: 60, IsTestnet: false,
 	},
 	{
@@ -602,4 +615,4 @@ var evmMainnet = []ChainConfig{
 	},
 }
 
-const evmMainnetCount = 196
+const evmMainnetCount = 197

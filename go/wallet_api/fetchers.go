@@ -218,6 +218,14 @@ func decodeStringOrBytes(data []byte) string {
 }
 
 // FetchTokenBalances fetches balances for a list of known ERC-20 tokens.
+// FetchTokenBalances reads the ERC-20 balance of every requested token and
+// values it in USD.
+//
+// The USD price comes from the shared price feed (median of the public
+// exchanges, on-chain pool fallback, declared peg for the platform
+// stablecoin). A token whose price cannot be obtained is still returned with
+// its balance and a zero USDPrice, so a client can show the holding and omit
+// the fiat value rather than display a wrong one.
 func FetchTokenBalances(ctx context.Context, endpoint string, holder common.Address, tokens []TokenInfo) []TokenBalance {
 	var out []TokenBalance
 	for _, t := range tokens {
@@ -231,6 +239,10 @@ func FetchTokenBalances(ctx context.Context, endpoint string, holder common.Addr
 			dec = 18
 		}
 		human := weiToFloat(bal, dec)
+		price := t.USDPrice
+		if price <= 0 {
+			price = priceForSymbol(ctx, t.Symbol)
+		}
 		out = append(out, TokenBalance{
 			Contract: t.Contract,
 			Symbol:   t.Symbol,
@@ -238,8 +250,8 @@ func FetchTokenBalances(ctx context.Context, endpoint string, holder common.Addr
 			Decimals: dec,
 			Balance:  bal.String(),
 			BalanceF: human,
-			USDPrice: t.USDPrice,
-			USDValue: human * t.USDPrice,
+			USDPrice: price,
+			USDValue: human * price,
 			Logo:     t.Logo,
 		})
 	}

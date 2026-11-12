@@ -51,13 +51,36 @@ func initSupportedChains() {
 	}
 }
 
+// platformChainRPCEnv returns the dedicated environment variable holding the
+// JSON-RPC endpoint for a chain the platform operates itself. These networks
+// have no public URL to bundle in the registry, so the operator supplies one
+// under a named variable rather than the generic CHAIN_<id>_RPC.
+func platformChainRPCEnv(id int64) string {
+	switch id {
+	case tigerSmartChainID:
+		return "TSC_RPC_URL"
+	case tigerSmartChainTestnetID:
+		return "TSC_RPC_URL_TESTNET"
+	}
+	return ""
+}
+
 // chainByID returns a chain config or nil, applying env overrides for RPC and
 // explorer. Every chain in the static registry is a verified mainnet.
+//
+// The copy is returned by value: callers must never be able to mutate the
+// process-wide SupportedChains map, which is read concurrently by every
+// request handler.
 func chainByID(id int64) *ChainConfig {
 	initSupportedChains()
 	c, ok := SupportedChains[id]
 	if !ok {
 		return nil
+	}
+	if env := platformChainRPCEnv(id); env != "" {
+		if v := envOr(env, ""); v != "" {
+			c.RPCEndpoint = v
+		}
 	}
 	if v := envOr(fmt.Sprintf("CHAIN_%d_RPC", id), ""); v != "" {
 		c.RPCEndpoint = v
@@ -71,11 +94,19 @@ func chainByID(id int64) *ChainConfig {
 // listSupportedChains returns all active chains sorted by chain id. It is the
 // single source of truth for the public GET /api/v1/chains endpoint and is
 // consumed by every frontend (web/desktop/android/ios/extension).
+//
+// Each entry is resolved through chainByID so the operator's environment
+// overrides (CHAIN_<id>_RPC, and the dedicated platform variables such as
+// TSC_RPC_URL) are reflected in what clients receive. Without this a chain the
+// platform operates itself would be advertised with an empty endpoint and
+// every client would treat it as unreachable.
 func listSupportedChains() []ChainConfig {
 	initSupportedChains()
 	out := make([]ChainConfig, 0, len(SupportedChains))
-	for _, c := range SupportedChains {
-		out = append(out, c)
+	for id := range SupportedChains {
+		if c := chainByID(id); c != nil {
+			out = append(out, *c)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out

@@ -140,6 +140,11 @@ object UserWalletApiService {
 
     // ==================== Chain maps (mirror web services/api.ts) ====================
 
+    companion object {
+        /** EIP-155 chain id of TigerSmartChain, the platform's own network. */
+        const val PLATFORM_CHAIN_ID = 7710
+    }
+
     val CHAIN_IDS: Map<String, Int> = mapOf(
         "ethereum" to 1,
         "bsc" to 56,
@@ -147,7 +152,10 @@ object UserWalletApiService {
         "arbitrum" to 42161,
         "optimism" to 10,
         "base" to 8453,
-        "avalanche" to 43114
+        "avalanche" to 43114,
+        "tiger" to PLATFORM_CHAIN_ID,
+        "tigersmartchain" to PLATFORM_CHAIN_ID,
+        "tsc" to PLATFORM_CHAIN_ID
     )
 
     val CHAIN_SYMBOLS: Map<Int, String> = mapOf(
@@ -157,7 +165,8 @@ object UserWalletApiService {
         42161 to "ETH",
         10 to "ETH",
         8453 to "ETH",
-        43114 to "AVAX"
+        43114 to "AVAX",
+        PLATFORM_CHAIN_ID to "TGR"
     )
 
     /** Block explorer tx base URLs (mirror web TxSubmittedBanner EXPLORERS). */
@@ -187,7 +196,10 @@ object UserWalletApiService {
         ChainOption(137, "Polygon", "MATIC"),
         ChainOption(42161, "Arbitrum", "ETH"),
         ChainOption(10, "Optimism", "ETH"),
-        ChainOption(8453, "Base", "ETH")
+        ChainOption(8453, "Base", "ETH"),
+        // The platform's own network. TGR is its native coin; RUSD and WTGR are
+        // genesis predeploys on it.
+        ChainOption(PLATFORM_CHAIN_ID, "TigerSmartChain", "TGR")
     )
 
     /**
@@ -954,6 +966,44 @@ object UserWalletApiService {
         val coinType: Int?,
         val isTestnet: Boolean?
     )
+
+    /** A first-class platform asset, as reported by GET /platform/tokens. */
+    data class PlatformToken(
+        val symbol: String,
+        val name: String,
+        val chainId: Int,
+        val decimals: Int,
+        val contract: String?,
+        val isNative: Boolean,
+        val standard: String,
+        val usdPrice: Double,
+        val usdPriceSource: String,
+        val peggedUsd: Boolean
+    )
+
+    /**
+     * The platform's own assets (TGR, WTGR, RUSD) with a live USD price each.
+     * Public, so it also works before sign-in. A price of 0.0 with source
+     * "unavailable" means no source answered: omit the fiat line rather than
+     * show a wrong number.
+     */
+    fun getPlatformTokens(): List<PlatformToken> {
+        val req = requestBuilder("/platform/tokens").get().build()
+        return executeList(req, "tokens").map {
+            PlatformToken(
+                symbol = it.optString("symbol"),
+                name = it.optString("name"),
+                chainId = it.optInt("chain_id"),
+                decimals = it.optInt("decimals"),
+                contract = it.optString("contract").ifEmpty { null },
+                isNative = it.optBoolean("is_native"),
+                standard = it.optString("standard"),
+                usdPrice = it.optDouble("usd_price", 0.0),
+                usdPriceSource = it.optString("usd_price_source"),
+                peggedUsd = it.optBoolean("pegged_usd")
+            )
+        }
+    }
 
     fun getChains(): List<ChainInfo> {
         val req = requestBuilder("/chains").get().build()

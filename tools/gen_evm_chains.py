@@ -108,6 +108,38 @@ MANUAL_CHAINS = [
     },
 ]
 
+# Chains the platform operates itself. They are not in the upstream registry
+# (nobody else runs them), so they cannot be resolved by name and must be
+# merged into the emitted set explicitly. Keeping them here rather than only in
+# the generated file means a regeneration from a clean checkout still produces
+# a registry that contains them.
+PLATFORM_CHAINS = [
+    {
+        "chainId": 7710,
+        "name": "TigerSmartChain",
+        "symbol": "TGR",
+        # Deliberately empty. The platform operates this node, so there is no
+        # public URL to bundle; shipping one would make the wallet dial a host
+        # nobody chose. The operator sets TSC_RPC_URL (or CHAIN_7710_RPC), and
+        # until then the chain is listed but reports as unreachable.
+        "rpc": "",
+        "explorer": "",
+        "coinType": 60,
+        "comment": [
+            "TigerSmartChain is the platform's own proof-of-authority network.",
+            "Its genesis carries the RUSD stablecoin and the WTGR wrapped-native",
+            "token as predeploys, so those addresses are fixed by consensus and",
+            "are the same on every node. RUSD and WTGR are registered as",
+            "first-class tokens in defaultTokenRegistry.",
+            "",
+            "No endpoint is bundled: the platform operates the node, so there is no",
+            "public URL to ship. The operator sets TSC_RPC_URL (or the per-chain",
+            "CHAIN_7710_RPC), and until then the chain is listed but reports as",
+            "unreachable rather than dialling a guessed host.",
+        ],
+    },
+]
+
 # The registry uses these slugs for chains whose display name differs.
 NAME_OVERRIDES = {
     "polygon-pos": "Polygon PoS",
@@ -303,6 +335,27 @@ def main():
             )
         emitted[chain_id] = entry
         added.append((chain_id, display))
+
+    for chain in PLATFORM_CHAINS:
+        chain_id = chain["chainId"]
+        if chain_id in emitted:
+            continue
+        entry = render(
+            chain_id,
+            chain["name"],
+            chain["symbol"],
+            chain["rpc"],
+            "m/44'/60'/0'/0/0",
+            chain["explorer"],
+            "evm",
+            18,
+            chain["coinType"],
+            [],
+        )
+        if chain.get("comment"):
+            comment = "\n".join("\t\t// " + line for line in chain["comment"])
+            entry = "\t{\n" + comment + "\n" + entry.split("{\n", 1)[1]
+        emitted[chain_id] = entry
 
     ordered = [emitted[cid] for cid in sorted(emitted)]
 

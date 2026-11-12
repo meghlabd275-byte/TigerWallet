@@ -469,7 +469,11 @@ func handleBalance(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "rpc error: " + err.Error()})
 		return
 	}
-	ethPrice := FetchETHPrice(ctx)
+	// The fiat value is computed from the price of the chain's own native
+	// symbol. Valuing every chain at the ETH price (as this previously did)
+	// reported a BNB, POL, AVAX or TGR balance as if it were ether, which is
+	// simply a wrong number. When no price is available the value is 0 and the
+	// client omits the fiat line instead of showing a fabricated one.
 	human := weiToFloat(bal, 18)
 	result := BalanceResult{
 		ChainID:    chainID,
@@ -478,7 +482,7 @@ func handleBalance(c *gin.Context) {
 		Balance:    bal.String(),
 		BalanceWei: bal.String(),
 		BalanceF:   human,
-		USDValue:   human * ethPrice,
+		USDValue:   human * priceForSymbol(ctx, chain.Symbol),
 	}
 	_ = store.SetCache(ctx, cacheK, result, 30*time.Second)
 	c.JSON(http.StatusOK, result)
@@ -865,19 +869,29 @@ func handlePrice(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	cacheK := store.cacheKey("price", coinID)
-	var cached CoinGeckoPrice
-	if store.GetCache(ctx, cacheK, &cached) == nil {
-		c.JSON(http.StatusOK, cached)
+	// The price feed aggregates several independent exchanges and takes the
+	// median, so a single provider outage cannot produce a wrong quote. It also
+	// resolves assets a single-source lookup could not - TGR and WTGR through
+	// the on-chain pool, RUSD through its declared redemption peg.
+	quote := cachedPriceQuote(ctx, coinID)
+	if !quote.Available() {
+		c.JSON(http.StatusBadGateway, gin.H{
+			"error":  "no price source available for " + coinID,
+			"symbol": quote.Symbol,
+		})
 		return
 	}
-	p, err := FetchTokenPrice(ctx, coinID)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-	_ = store.SetCache(ctx, cacheK, p, 60*time.Second)
-	c.JSON(http.StatusOK, p)
+	c.JSON(http.StatusOK, quote)
+}
+
+// handlePlatformTokens returns the platform assets (TGR, WTGR, RUSD) with a
+// live USD price each. Public and unauthenticated, so a client can show the
+// platform assets before a user has signed in.
+func handlePlatformTokens(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 12*time.Second)
+	defer cancel()
+	toks := platformTokens(ctx)
+	c.JSON(http.StatusOK, gin.H{"tokens": toks, "count": len(toks)})
 }
 
 func handleSupportedChains(c *gin.Context) {

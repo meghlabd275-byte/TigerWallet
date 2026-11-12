@@ -696,7 +696,10 @@ class TigerWalletApp {
             { id: 42161, name: 'Arbitrum', symbol: 'ETH' },
             { id: 10, name: 'Optimism', symbol: 'ETH' },
             { id: 8453, name: 'Base', symbol: 'ETH' },
-            { id: 43114, name: 'Avalanche', symbol: 'AVAX' }
+            { id: 43114, name: 'Avalanche', symbol: 'AVAX' },
+            // TigerSmartChain, the platform's own network. Listed so a user can
+            // still see and select it when the backend is unreachable.
+            { id: 7710, name: 'TigerSmartChain', symbol: 'TGR' }
         ];
         
         this.renderNetworks();

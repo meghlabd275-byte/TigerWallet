@@ -38,6 +38,7 @@ at runtime — they are never embedded in source.
 | Database env vars | PostgreSQL (encrypted seeds, users, tx log) |
 | Redis env vars | Session/cache |
 | `COINGECKO_API_KEY`, `ETHERSCAN_API_KEY` | Market/explorer data |
+| `TSC_RPC_URL` | TigerSmartChain JSON-RPC endpoint. TigerSmartChain is the platform's own EVM network (chain id `7710`, testnet `7711`); TGR is its native coin and RUSD/WTGR are genesis predeploys. The registry ships no bundled endpoint because the platform operates the node, so **without this variable the chain is listed but reported as unreachable**. |
 | `REACT_APP_API_URL` (frontend) | Canonical API base (default `http://localhost:8443/api/v1`) |
 | `REACT_APP_GOOGLE_CLIENT_ID` (frontend) | Google OAuth client ID for Drive backup (unset → Drive button disabled) |
 
@@ -149,6 +150,10 @@ for:
 - `ai_agent` — real `eth_gasPrice` via `EVM_RPC_URL`.
 - `go/wallet_api` fetchers — real `eth_getBalance` / `eth_call` /
   `eth_sendRawTransaction` via go-ethereum RPC.
+- `tiger_smart_chain` — the platform's own EVM network. The node image builds
+  from `tiger_smart_chain/Dockerfile` and is wired into `docker-compose.yml` as
+  `tsc-node`; `TSC_GENESIS_SEED` fixes its genesis and `TSC_RPC_URL` points the
+  wallet backends at it.
 - `project_party` — real on-chain launchpad via go-ethereum `ethclient`.
 
 See `GAPS.md` for the fetchers that remain scaffold-only (`go/full_fetchers`).

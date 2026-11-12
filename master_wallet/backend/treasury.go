@@ -47,9 +47,12 @@ func (svc *Service) TreasuryOverview(c *gin.Context) {
 	}
 	chain, _ := chainByID(chainID)
 	var usd float64
-	if p, err := svc.FetchTokenPriceCached(ctx, chainCoinGeckoID(chainID)); err == nil && p != nil {
+	// The native price comes from the shared resolver: CoinGecko for a listed
+	// chain, the live TigerSwap pool for TigerSmartChain. Zero means no source
+	// answered, and the fiat value is then reported as zero rather than faked.
+	if price, _ := svc.nativePriceUSD(ctx, chainID); price > 0 {
 		f, _ := new(big.Float).Quo(new(big.Float).SetInt(bal), big.NewFloat(pow10f(chain.Decimals))).Float64()
-		usd = f * p.USD
+		usd = f * price
 	}
 	// Persist overview snapshot (upsert).
 	_, _ = svc.store.db.Exec(ctx,

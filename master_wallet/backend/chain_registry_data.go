@@ -26,6 +26,9 @@ type defaultChain struct {
 // defaultEVMChains returns the canonical EVM mainnet chains, derived from
 // go/wallet_api/chains_evm_data.go so both services agree on which chains
 // exist. Regenerate with tools/gen_mw_chain_registry.py; do not edit by hand.
+// defaultEVMChains returns the canonical EVM mainnet chains, derived from
+// go/wallet_api/chains_evm_data.go so both services agree on which chains
+// exist. Regenerate with tools/gen_mw_chain_registry.py; do not edit by hand.
 var defaultEVMChains = []defaultChain{
 	{ChainID: 1, Name: "Ethereum Mainnet", Symbol: "ETH", RPCURL: "https://api.mycryptoapi.com/eth", ExplorerURL: "https://etherscan.io", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
 	{ChainID: 2, Name: "Expanse Network", Symbol: "EXP", RPCURL: "https://node.expanse.tech", ExplorerURL: "", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
@@ -174,6 +177,10 @@ var defaultEVMChains = []defaultChain{
 	{ChainID: 7000, Name: "ZetaChain Mainnet", Symbol: "ZETA", RPCURL: "https://zetachain-evm.blockpi.network/v1/rpc/public", ExplorerURL: "https://zetascan.com", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
 	{ChainID: 7341, Name: "Shyft Mainnet", Symbol: "SHYFT", RPCURL: "https://rpc.shyft.network/", ExplorerURL: "https://bx.shyft.network", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
 	{ChainID: 7700, Name: "Canto", Symbol: "CANTO", RPCURL: "https://canto.slingshot.finance", ExplorerURL: "https://www.oklink.com/canto", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
+	// No endpoint is bundled: the platform operates the node, so the operator
+	// supplies TSC_RPC_URL. The entry is still registered so the chain is
+	// selectable, and a read on it fails closed until the URL is set.
+	{ChainID: 7710, Name: "TigerSmartChain", Symbol: "TGR", RPCURL: "", ExplorerURL: "", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
 	{ChainID: 7778, Name: "Orenium Mainnet Protocol", Symbol: "ORE", RPCURL: "https://validator-mainnet.orenium.org", ExplorerURL: "https://oreniumscan.org", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
 	{ChainID: 7897, Name: "arena-z", Symbol: "ETH", RPCURL: "https://rpc.arena-z.gg", ExplorerURL: "https://explorer.arena-z.gg", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},
 	{ChainID: 8017, Name: "iSunCoin Mainnet", Symbol: "ISC", RPCURL: "https://mainnet.isuncoin.com", ExplorerURL: "https://baifa.io/app/chains/8017", Decimals: 18, DerivationPath: "m/44'/60'/0'/0/0"},

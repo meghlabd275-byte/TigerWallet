@@ -15,12 +15,12 @@ import (
 
 // AppConfig holds all runtime configuration loaded from the environment.
 type AppConfig struct {
-	Port            string
-	JWTSecret       string
-	DatabaseURL     string
-	RedisAddr       string
-	RedisPassword   string
-	RedisDB         int
+	Port          string
+	JWTSecret     string
+	DatabaseURL   string
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
 	// CoinGecko + Etherscan API keys for real market/on-chain data.
 	CoinGeckoAPIKey string
 	EtherscanAPIKey string
@@ -30,8 +30,8 @@ type AppConfig struct {
 	TreasuryKeyHex string
 	// Bundler / paymaster endpoints for account abstraction (optional; when
 	// unset, AA endpoints delegate signing to the wallet owner's key).
-	BundlerURL      string
-	PaymasterURL    string
+	BundlerURL   string
+	PaymasterURL string
 	// CORSAllowedOrigins is the browser-origin allowlist for the API and the
 	// WebSocket handshake. Empty means no cross-origin browser access.
 	CORSAllowedOrigins []string
@@ -63,17 +63,17 @@ func LoadConfig() *AppConfig {
 	}
 	redisDB, _ := strconv.Atoi(getEnvDefault("MASTER_WALLET_REDIS_DB", "0"))
 	return &AppConfig{
-		Port:            port,
-		JWTSecret:       jwtSecret,
-		DatabaseURL:     getEnvDefault("MASTER_WALLET_DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
-		RedisAddr:       getEnvDefault("MASTER_WALLET_REDIS_ADDR", "localhost:6379"),
-		RedisPassword:   os.Getenv("MASTER_WALLET_REDIS_PASSWORD"),
-		RedisDB:         redisDB,
-		CoinGeckoAPIKey: os.Getenv("COINGECKO_API_KEY"),
-		EtherscanAPIKey: os.Getenv("ETHERSCAN_API_KEY"),
-		TreasuryKeyHex:  os.Getenv("MASTER_WALLET_TREASURY_KEY_HEX"),
-		BundlerURL:      os.Getenv("MASTER_WALLET_BUNDLER_URL"),
-		PaymasterURL:    os.Getenv("MASTER_WALLET_PAYMASTER_URL"),
+		Port:               port,
+		JWTSecret:          jwtSecret,
+		DatabaseURL:        getEnvDefault("MASTER_WALLET_DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
+		RedisAddr:          getEnvDefault("MASTER_WALLET_REDIS_ADDR", "localhost:6379"),
+		RedisPassword:      os.Getenv("MASTER_WALLET_REDIS_PASSWORD"),
+		RedisDB:            redisDB,
+		CoinGeckoAPIKey:    os.Getenv("COINGECKO_API_KEY"),
+		EtherscanAPIKey:    os.Getenv("ETHERSCAN_API_KEY"),
+		TreasuryKeyHex:     os.Getenv("MASTER_WALLET_TREASURY_KEY_HEX"),
+		BundlerURL:         os.Getenv("MASTER_WALLET_BUNDLER_URL"),
+		PaymasterURL:       os.Getenv("MASTER_WALLET_PAYMASTER_URL"),
 		CORSAllowedOrigins: splitAndTrim(os.Getenv("MASTER_WALLET_CORS_ORIGINS")),
 	}
 }
@@ -88,25 +88,47 @@ func getEnvDefault(key, def string) string {
 // chainRPCEndpoint resolves the JSON-RPC endpoint for a given chain id from the
 // environment. Each chain has its own env var so operators can pin specific
 // node providers. Returns empty string (fail-closed) when unset.
+// chainRPCEndpoint resolves the JSON-RPC URL for a chain id.
+//
+// Resolution order:
+//
+//  1. The chain's dedicated environment variable (ETH_RPC_URL, TSC_RPC_URL, …).
+//     An operator running a private or rate-limited node sets this.
+//  2. The RPC URL carried by the canonical chain registry entry. Every seeded
+//     chain publishes a real public endpoint, so a chain works out of the box
+//     instead of returning "RPC not configured" until an env var is added.
+//  3. Empty. Callers treat that as "this chain cannot be reached" and answer
+//     503; nothing is ever dialled that was not configured.
 func chainRPCEndpoint(chainID int64) string {
 	// Map chain id -> env var holding the RPC URL.
 	envVars := map[int64]string{
-		1:          "ETH_RPC_URL",
-		56:         "BSC_RPC_URL",
-		137:        "POLYGON_RPC_URL",
-		42161:      "ARBITRUM_RPC_URL",
-		10:         "OPTIMISM_RPC_URL",
-		43114:      "AVALANCHE_RPC_URL",
-		8453:       "BASE_RPC_URL",
-		42220:      "CELO_RPC_URL",
-		250:        "FANTOM_RPC_URL",
-		25:         "CRONOS_RPC_URL",
-		59144:      "LINEA_RPC_URL",
-		534352:     "SCROLL_RPC_URL",
-		11155111:   "ETH_SEPOLIA_RPC_URL",
+		1:                 "ETH_RPC_URL",
+		56:                "BSC_RPC_URL",
+		137:               "POLYGON_RPC_URL",
+		42161:             "ARBITRUM_RPC_URL",
+		10:                "OPTIMISM_RPC_URL",
+		43114:             "AVALANCHE_RPC_URL",
+		8453:              "BASE_RPC_URL",
+		42220:             "CELO_RPC_URL",
+		250:               "FANTOM_RPC_URL",
+		25:                "CRONOS_RPC_URL",
+		59144:             "LINEA_RPC_URL",
+		534352:            "SCROLL_RPC_URL",
+		11155111:          "ETH_SEPOLIA_RPC_URL",
+		tigerSmartChainID: tscRPCEnv,
 	}
 	if envVar, ok := envVars[chainID]; ok {
-		return os.Getenv(envVar)
+		if url := strings.TrimSpace(os.Getenv(envVar)); url != "" {
+			return url
+		}
+	}
+	// Registry fallback: the chain's own published endpoint.
+	if c, ok := chainByID(chainID); ok {
+		for _, rc := range defaultEVMChains {
+			if rc.ChainID == c.ChainID && rc.RPCURL != "" {
+				return rc.RPCURL
+			}
+		}
 	}
 	return ""
 }

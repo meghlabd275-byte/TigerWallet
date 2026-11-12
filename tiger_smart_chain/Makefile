@@ -11,9 +11,24 @@ GOFLAGS   ?=
 LDFLAGS   := -checklinkname=0
 BIN       := bin/tscnode
 
-.PHONY: all build test test-short vet fmt clean run-local
+# Solidity compiler used for the genesis predeploys. Override with
+# `make contracts SOLC=/path/to/solc` or by exporting SOLC.
+SOLC      ?= solc
+SOLC_FLAGS := --optimize --optimize-runs 200 --evm-version london \
+              --bin-runtime --abi --storage-layout
+
+.PHONY: all build test test-short vet fmt clean run-local contracts predeploy
 
 all: build
+
+# Compile the genesis predeploy contracts and regenerate the Go bytecode file.
+# Run this after editing anything under contracts/.
+contracts:
+	@command -v $(SOLC) >/dev/null 2>&1 || { echo "solc not found; install solc 0.8.28 or set SOLC="; exit 1; }
+	$(SOLC) $(SOLC_FLAGS) contracts/RUSD.sol contracts/WTGR.sol -o contracts/artifacts --overwrite
+	$(GO) run ./cmd/genpredeploy .
+
+predeploy: contracts
 
 build:
 	$(GO) build $(GOFLAGS) -ldflags='$(LDFLAGS)' -o $(BIN) ./cmd/tscnode

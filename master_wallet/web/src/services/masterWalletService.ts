@@ -33,6 +33,9 @@ const CHAIN_CONFIGS: Record<number, ChainConfig> = {
   42220: { id: 42220, name: 'Celo', symbol: 'CELO', decimals: 18 },
   250: { id: 250, name: 'Fantom', symbol: 'FTM', decimals: 18 },
   25: { id: 25, name: 'Cronos', symbol: 'CRO', decimals: 18 },
+  // TigerSmartChain, the platform's own network (TGR native; RUSD and WTGR are
+  // genesis predeploys).
+  7710: { id: 7710, name: 'TigerSmartChain', symbol: 'TGR', decimals: 18 },
 };
 
 export interface GeneratedWallet {

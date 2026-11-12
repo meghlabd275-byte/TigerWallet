@@ -131,6 +131,11 @@ func main() {
 	// ---- Token asset registry (read-only public) ----
 	r.GET("/api/v1/tokens/registry", handleTokenRegistry)
 
+	// ---- Platform assets: TGR, WTGR and RUSD on TigerSmartChain ----
+	// Public and read-only. The two contract addresses are genesis predeploys,
+	// so a client can validate them before a user has signed in.
+	r.GET("/api/v1/platform/tokens", handlePlatformTokens)
+
 	// ---- Auth routes ----
 	// Rate-limited per IP (throttles brute-force credential guessing). 5/min,
 	// burst 5 — generous for normal use, caps automated attempts.

@@ -43,6 +43,22 @@ type NetworkInfo struct {
 	MinStakeWei    string `json:"minValidatorStakeWei"`
 	MaxValidators  int    `json:"maxValidators"`
 	Treasury       string `json:"treasury"`
+
+	// PlatformTokens are the genesis predeploy addresses every wallet needs in
+	// order to display and trade the platform assets. They are reported by the
+	// node rather than hard coded in each client, so a client can never point at
+	// an address that was never deployed on the network it is connected to.
+	PlatformTokens []PlatformTokenInfo `json:"platformTokens"`
+}
+
+// PlatformTokenInfo describes one genesis predeploy token.
+type PlatformTokenInfo struct {
+	Name     string `json:"name"`
+	Symbol   string `json:"symbol"`
+	Address  string `json:"address"`
+	Decimals int    `json:"decimals"`
+	Owner    string `json:"owner"`
+	Standard string `json:"standard"`
 }
 
 // Info returns the static network parameters, including the EVM chain metadata
@@ -73,7 +89,43 @@ func (api *TSCAPI) Info() (*NetworkInfo, error) {
 		MinStakeWei:    minStake.String(),
 		MaxValidators:  cfg.MaxValidators,
 		Treasury:       cfg.Treasury,
+		PlatformTokens: platformTokens(cfg),
 	}, nil
+}
+
+// platformTokens returns the genesis predeploy tokens for a network. An error
+// from Predeploys can only come from a malformed treasury address, which
+// BuildGenesis has already rejected, so a failure here yields an empty list
+// rather than a broken Info response.
+func platformTokens(cfg *Config) []PlatformTokenInfo {
+	list, err := Predeploys(cfg)
+	if err != nil {
+		return nil
+	}
+	out := make([]PlatformTokenInfo, 0, len(list))
+	for _, p := range list {
+		out = append(out, PlatformTokenInfo{
+			Name:     tokenDisplayName(p.Name),
+			Symbol:   p.Symbol,
+			Address:  p.Address.Hex(),
+			Decimals: int(p.Decimals),
+			Owner:    p.Owner.Hex(),
+			Standard: "ERC-20",
+		})
+	}
+	return out
+}
+
+// tokenDisplayName maps a predeploy contract name to its ERC-20 name.
+func tokenDisplayName(contract string) string {
+	switch contract {
+	case "RUSD":
+		return RUSDName
+	case "WTGR":
+		return WTGRName
+	default:
+		return contract
+	}
 }
 
 // Status reports the live head, sync progress and mempool state.

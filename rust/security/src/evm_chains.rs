@@ -895,6 +895,30 @@ impl ChainRegistry {
             staking_contract: None,
             governance_contract: None,
         });
+
+        // Add TigerSmartChain, the platform's own network. Unlike the chains
+        // above there is no public endpoint to bundle: the node is operated by
+        // the platform, so the URL is read from TSC_RPC_URL and the entry
+        // carries it when present. The wrapped-native token is WTGR, which is a
+        // genesis predeploy (see crate::platform_chain).
+        let tsc_rpc = std::env::var(crate::platform_chain::RPC_ENV)
+            .ok()
+            .map(|u| u.trim().to_string())
+            .filter(|u| !u.is_empty())
+            .into_iter()
+            .collect();
+        chains.insert(crate::platform_chain::CHAIN_ID, ChainConfig {
+            chain_id: crate::platform_chain::CHAIN_ID,
+            name: "TigerSmartChain".to_string(),
+            symbol: crate::platform_chain::NATIVE_SYMBOL.to_string(),
+            wrapped_native: Some(crate::platform_chain::WTGR_ADDRESS.to_string()),
+            decimals: 18,
+            rpc_urls: tsc_rpc,
+            explorers: vec![],
+            bridges: vec![],
+            staking_contract: None,
+            governance_contract: None,
+        });
         
         Self { chains }
     }
@@ -935,6 +959,29 @@ mod tests {
         assert!(registry.get(42161).is_some()); // Arbitrum
         assert!(registry.get(monad::CHAIN_ID).is_some()); // Monad
         assert!(registry.get(berachain::CHAIN_ID).is_some()); // Berachain
+        assert!(registry.get(crate::platform_chain::CHAIN_ID).is_some()); // TigerSmartChain
+    }
+
+    #[test]
+    fn test_tiger_smart_chain_config() {
+        let registry = ChainRegistry::new();
+        let config = registry
+            .get(crate::platform_chain::CHAIN_ID)
+            .expect("TigerSmartChain is registered");
+
+        assert_eq!(config.chain_id, 7710);
+        assert_eq!(config.name, "TigerSmartChain");
+        assert_eq!(config.symbol, "TGR");
+        assert_eq!(config.decimals, 18);
+        // The wrapped native token is the WTGR genesis predeploy, so wrapping
+        // and unwrapping needs no deployment step.
+        assert_eq!(
+            config.wrapped_native.as_deref(),
+            Some(crate::platform_chain::WTGR_ADDRESS)
+        );
+        // No endpoint or explorer is invented for the platform's own chain.
+        assert!(config.explorers.is_empty());
+        assert!(config.bridges.is_empty());
     }
     
     #[test]

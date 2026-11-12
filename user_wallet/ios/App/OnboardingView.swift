@@ -26,7 +26,9 @@ struct OnboardingView: View {
     @State private var createdMnemonic = ""
     @State private var createdId = ""
 
-    // Mirrors the web CHAINS list (Ethereum/BNB/Polygon/Arbitrum/Optimism/Base).
+    // Mirrors the web CHAINS list (Ethereum/BNB/Polygon/Arbitrum/Optimism/Base)
+    // plus TigerSmartChain, the platform's own network. TGR is its native coin;
+    // RUSD and WTGR are genesis predeploys on it.
     private let chains: [(id: Int, name: String, symbol: String)] = [
         (1, "Ethereum", "ETH"),
         (56, "BNB Chain", "BNB"),
@@ -34,6 +36,7 @@ struct OnboardingView: View {
         (42161, "Arbitrum", "ETH"),
         (10, "Optimism", "ETH"),
         (8453, "Base", "ETH"),
+        (TigerPlatform.chainId, "TigerSmartChain", "TGR"),
     ]
 
     var body: some View {

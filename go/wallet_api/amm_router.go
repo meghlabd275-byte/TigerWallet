@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -45,7 +46,23 @@ var v2Routers = map[int64]string{
 	11155111: "0xC532a74256D3Db42D0Bf7a0400fEFDbad7694008", // Uniswap V2 Router02 (Sepolia)
 }
 
+// routerForChain resolves the V2 router for a chain.
+//
+// CHAIN_<id>_ROUTER takes precedence over the built-in table. That is what lets
+// an operator point at a TigerSwap deployment on a chain that has no public
+// router listed here - notably TigerSmartChain, where the router address is
+// chosen by whoever deploys the factory.
+//
+// A chain with no router resolves to the zero address, and every caller treats
+// that as "AMM unavailable" and fails closed. It never falls back to a guessed
+// address.
 func routerForChain(chainID int64) common.Address {
+	if override := strings.TrimSpace(os.Getenv(fmt.Sprintf("CHAIN_%d_ROUTER", chainID))); override != "" {
+		if common.IsHexAddress(override) {
+			return common.HexToAddress(override)
+		}
+		return common.Address{}
+	}
 	if r, ok := v2Routers[chainID]; ok {
 		return common.HexToAddress(r)
 	}

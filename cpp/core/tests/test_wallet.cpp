@@ -239,12 +239,16 @@ void TestChainRegistry() {
     }
     Check("every built-in chain has an id and a symbol", all_have_ids);
 
-    // No built-in chain may ship an endpoint: the operator supplies those.
+    // No built-in chain may ship an endpoint: the operator supplies those. The
+    // single exception is TigerSmartChain, whose entry carries whatever
+    // TSC_RPC_URL holds at the moment it is read, so it is skipped here and
+    // covered by the platform-chain test.
     bool none_have_endpoints = true;
     for (const auto& chain : builtin) {
+        if (chain.chain_id == 7710) continue;
         if (!chain.rpc_url.empty()) none_have_endpoints = false;
     }
-    Check("no built-in chain bundles an RPC endpoint", none_have_endpoints);
+    Check("no public built-in chain bundles an RPC endpoint", none_have_endpoints);
 }
 
 void TestSecureZero() {

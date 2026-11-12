@@ -438,6 +438,9 @@ const WalletAPI = {
   getGasPrice: (chainId) => api(`/gas?chain_id=${chainId}`),
   getTokenPrice: (symbol) => api(`/price?symbol=${encodeURIComponent(symbol)}`),
   getChains: () => api('/chains'),
+  // The platform's own assets (TGR, WTGR, RUSD) with a live USD price each.
+  // Public, so it also works before sign-in.
+  getPlatformTokens: () => api('/platform/tokens'),
   getNetworkStatus: (chainId) =>
     api(`/network-status?chain_id=${chainId}`),
 

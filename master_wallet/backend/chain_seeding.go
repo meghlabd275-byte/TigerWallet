@@ -46,6 +46,51 @@ func seedDefaultUserChains(ctx context.Context, s *Store) {
 		log.Printf("Seeded %d EVM chains into user_chains_evm", inserted)
 	}
 
+	// Seed the platform assets (RUSD, WTGR) on TigerSmartChain. They are genesis
+	// predeploys, so their addresses are fixed by consensus and the same on every
+	// node - no deployment manifest is needed and no operator can forget them.
+	// They are seeded per master wallet only when that wallet has none yet, so an
+	// operator who hid a token keeps it hidden across restarts.
+	var tokenCount int
+	if err := s.DB().QueryRow(ctx, `SELECT COUNT(*) FROM user_tokens`).Scan(&tokenCount); err != nil {
+		log.Printf("WARN: seed platform tokens count: %v", err)
+	} else if tokenCount == 0 {
+		var walletIDs []string
+		rows, err := s.DB().Query(ctx, `SELECT id::text FROM master_wallets`)
+		if err != nil {
+			log.Printf("WARN: seed platform tokens: list master wallets: %v", err)
+		} else {
+			for rows.Next() {
+				var id string
+				if err := rows.Scan(&id); err == nil {
+					walletIDs = append(walletIDs, id)
+				}
+			}
+			rows.Close()
+		}
+		seeded := 0
+		for _, walletID := range walletIDs {
+			for _, tok := range platformTokensStatic() {
+				if tok.IsNative {
+					continue // the native coin is not an ERC-20 entry
+				}
+				if _, err := s.DB().Exec(ctx, `
+					INSERT INTO user_tokens (master_wallet_id, chain_id, contract_address, symbol,
+						name, decimals, logo_uri, is_native, is_active)
+					VALUES ($1,$2,$3,$4,$5,$6,'',FALSE,TRUE)
+					ON CONFLICT (master_wallet_id, chain_id, contract_address) DO NOTHING`,
+					walletID, tok.ChainID, tok.Contract, tok.Symbol, tok.Name, tok.Decimals); err != nil {
+					log.Printf("WARN: seed platform token %s for %s: %v", tok.Symbol, walletID, err)
+					continue
+				}
+				seeded++
+			}
+		}
+		if seeded > 0 {
+			log.Printf("Seeded %d platform token entries (RUSD, WTGR) on TigerSmartChain", seeded)
+		}
+	}
+
 	// Seed non-EVM chains.
 	var nonevmCount int
 	if err := s.DB().QueryRow(ctx, `SELECT COUNT(*) FROM user_chains_nonevm`).Scan(&nonevmCount); err != nil {

@@ -22,6 +22,11 @@ const HEALTH_URL = (API_BASE_URL.replace(/\/api\/v1\/?$/, '') || 'http://localho
 // Chain id map for the human-readable network keys used by the UI. The backend
 // derives the native symbol from chain_id; we mirror that mapping client-side
 // for display only.
+//
+// TigerSmartChain (7710) is the platform's own network, so its native coin TGR
+// and its two genesis predeploys (WTGR, RUSD) are always available.
+const PLATFORM_CHAIN_ID = 7710;
+
 const CHAIN_IDS: Record<string, number> = {
   ethereum: 1,
   bsc: 56,
@@ -30,6 +35,9 @@ const CHAIN_IDS: Record<string, number> = {
   optimism: 10,
   base: 8453,
   avalanche: 43114,
+  tiger: PLATFORM_CHAIN_ID,
+  tigersmartchain: PLATFORM_CHAIN_ID,
+  tsc: PLATFORM_CHAIN_ID,
 };
 
 const CHAIN_SYMBOLS: Record<number, string> = {
@@ -40,6 +48,7 @@ const CHAIN_SYMBOLS: Record<number, string> = {
   10: 'ETH',
   8453: 'ETH',
   43114: 'AVAX',
+  [PLATFORM_CHAIN_ID]: 'TGR',
 };
 
 function chainIdFor(network: string): number {
@@ -80,6 +89,22 @@ export interface BalanceResult {
   balance_wei: string;
   balance_f: number;
   usd_value: number;
+}
+
+// A first-class platform asset (TGR, WTGR, RUSD) on TigerSmartChain, as
+// reported by the public GET /api/v1/platform/tokens endpoint.
+export interface PlatformToken {
+  symbol: string;
+  name: string;
+  chain_id: number;
+  decimals: number;
+  contract?: string;
+  is_native: boolean;
+  standard: string;
+  usd_price: number;
+  usd_price_source: string;
+  pegged_usd: boolean;
+  is_platform: boolean;
 }
 
 export interface TransactionRecord {
@@ -270,18 +295,26 @@ class ApiService {
     const results = await Promise.allSettled(
       wallets.map((w) =>
         this.client
-          .get<{ address: string; balance_wei: string; chain_id: number }>(
-            `/balance?address=${w.address}&chain_id=${w.chain_id}`,
-          )
+          .get<{
+            address: string;
+            balance_wei: string;
+            chain_id: number;
+            symbol?: string;
+            balance_f?: number;
+            usd_value?: number;
+          }>(`/balance?address=${w.address}&chain_id=${w.chain_id}`)
           .then((r) => r.data)
+          // The server is the authority on symbol and fiat value: it prices the
+          // asset through the aggregator. The local map is only a fallback for a
+          // response that predates those fields.
           .then((b) => ({
             wallet_id: w.id,
             chain_id: b.chain_id,
-            symbol: symbolFor(b.chain_id),
+            symbol: b.symbol || symbolFor(b.chain_id),
             address: b.address,
             balance_wei: b.balance_wei,
-            balance_f: weiToFloat(b.balance_wei),
-            usd_value: 0,
+            balance_f: typeof b.balance_f === 'number' ? b.balance_f : weiToFloat(b.balance_wei),
+            usd_value: b.usd_value || 0,
           })),
       ),
     );
@@ -539,6 +572,15 @@ class ApiService {
 
   async getPrice(coin = 'eth'): Promise<{ price: number }> {
     return this.getTokenPrice(coin);
+  }
+
+  // GET /platform/tokens -> the platform's own assets with a live USD price
+  // each. Public, so it also works before sign-in. A price of 0 with source
+  // "unavailable" means no source answered; callers must omit the fiat line
+  // rather than show a wrong number.
+  async getPlatformTokens(): Promise<PlatformToken[]> {
+    const { data } = await this.client.get<{ tokens: PlatformToken[] }>('/platform/tokens');
+    return data.tokens || [];
   }
 
   async getChains(): Promise<{ chains: unknown[] }> {

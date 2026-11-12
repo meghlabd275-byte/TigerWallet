@@ -92,8 +92,18 @@ func TestNonEVMChainCount50(t *testing.T) {
 }
 
 func TestEVMChainsHaveRPC(t *testing.T) {
-	// All EVM chains except possibly testnet-only should have a non-empty RPC.
+	// Every EVM chain publishes a real endpoint so it works out of the box.
+	// TigerSmartChain is the deliberate exception: the platform runs that
+	// node, so there is no public URL to ship and the operator supplies
+	// TSC_RPC_URL. Bundling one would make the wallet dial a host nobody
+	// chose. It is the only chain allowed to be endpoint-less.
 	for i, c := range defaultEVMChains {
+		if c.ChainID == tigerSmartChainID {
+			if c.RPCURL != "" {
+				t.Errorf("TigerSmartChain bundles an RPC endpoint: %q", c.RPCURL)
+			}
+			continue
+		}
 		if c.RPCURL == "" {
 			t.Errorf("EVM chain %d (%s) has empty RPC URL", i, c.Name)
 		}

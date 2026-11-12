@@ -35,6 +35,50 @@ services:
       timeout: 5s
       retries: 5
 
+  # TigerSmartChain node — the platform's own EVM network (chain id 7710).
+  # Native coin TGR. The genesis block carries the RUSD stablecoin and the WTGR
+  # wrapped-native token as predeploys, so those addresses are fixed by
+  # consensus and every wallet client knows them without a deployment step.
+  #
+  # The node initialises its own genesis on first start from the chain id and
+  # validator set below, then runs the JSON-RPC endpoint the wallet backends
+  # read. Chain data lives in a named volume so a container replacement does not
+  # discard the chain.
+  tsc-node:
+    build:
+      context: ./tiger_smart_chain
+      dockerfile: Dockerfile
+    container_name: tigerwallet-tsc-node
+    ports:
+      - "8545:8545"
+      - "8546:8546"
+    volumes:
+      - tsc_data:/data
+    environment:
+      # The seed fixes the genesis block, so every node on the network derives
+      # the identical chain. Changing it on a running network forks it.
+      TSC_GENESIS_SEED: "${TSC_GENESIS_SEED:?TSC_GENESIS_SEED must be set - it determines the genesis block every node must agree on}"
+      TSC_CHAIN_ID: "7710"
+      TSC_VALIDATORS: "${TSC_VALIDATORS:-1}"
+      # When unset the entrypoint derives the signing key from the seed, which
+      # is what a single-node deployment needs.
+      TSC_VALIDATOR_KEY: "${TSC_VALIDATOR_KEY:-}"
+      TSC_MINE: "${TSC_MINE:-true}"
+    healthcheck:
+      # A JSON-RPC probe, so the healthcheck reflects whether the node can
+      # actually answer clients rather than merely whether the process exists.
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS -X POST -H 'Content-Type: application/json'
+          --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
+          http://127.0.0.1:8545 | grep -q '0x1e1e'
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
   # TigerWallet Wallet API — canonical backend (Go). Real BIP-39/32/44 HD
   # wallet, secp256k1 signing, EVM broadcast, on-chain fetchers, PostgreSQL
   # persistence, Redis cache.
@@ -62,10 +106,16 @@ services:
       CARD_SERVICE_URL: "http://card-service:8457"
       FIAT_RAMP_SERVICE_URL: "http://fiat-ramp-service:8451"
       P2P_SERVICE_URL: "http://p2p-service:8475"
+      # TigerSmartChain is the platform's own network. TGR is its native coin
+      # and RUSD/WTGR are genesis predeploys, so the wallet needs the endpoint to
+      # serve balances, sends and swaps for them.
+      TSC_RPC_URL: "http://tsc-node:8545"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      tsc-node:
         condition: service_healthy
     restart: unless-stopped
 
@@ -1383,6 +1433,9 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  # TigerSmartChain chain database and keystore. Persisted so replacing the
+  # container does not resync the chain from genesis.
+  tsc_data:
 
 networks:
   default:

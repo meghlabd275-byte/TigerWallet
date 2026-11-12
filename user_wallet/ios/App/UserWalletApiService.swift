@@ -8,6 +8,36 @@ import Foundation
 // signing + broadcast, AES-256-GCM encrypted-seed persistence (PostgreSQL
 // + Redis). No stubs, no fabricated data.
 
+// The platform's own network and the assets it issues. Kept in one place so a
+// chain id or a predeploy address is never retyped elsewhere.
+enum TigerPlatform {
+    /// EIP-155 chain id of TigerSmartChain mainnet.
+    static let chainId = 7710
+    /// Native coin symbol.
+    static let nativeSymbol = "TGR"
+    /// RUSD stablecoin - genesis predeploy, fixed by consensus.
+    static let rusdAddress = "0x0000000000000000000000000000000000007710"
+    /// WTGR wrapped-native token - genesis predeploy, fixed by consensus.
+    static let wtgrAddress = "0x0000000000000000000000000000000000007711"
+}
+
+/// A first-class platform asset as reported by GET /api/v1/platform/tokens.
+struct PlatformToken: Codable, Identifiable {
+    let symbol: String
+    let name: String
+    let chain_id: Int
+    let decimals: Int
+    let contract: String?
+    let is_native: Bool
+    let standard: String
+    let usd_price: Double
+    let usd_price_source: String
+    let pegged_usd: Bool
+    let is_platform: Bool
+
+    var id: String { symbol }
+}
+
 enum WalletAPIError: Error, LocalizedError {
     case invalidURL
     case unauthorized
@@ -445,6 +475,20 @@ final class UserWalletApiService {
     func getChains() async throws -> [ChainInfo] {
         let res: ChainListResponse = try await request("/chains")
         return res.chains
+    }
+
+    // GET /platform/tokens -> the platform's own assets (TGR, WTGR, RUSD) with a
+    // live USD price each. Public, so it also works before sign-in. The price is
+    // left at 0 with usd_price_source "unavailable" when no source answered;
+    // callers must omit the fiat line rather than show a wrong number.
+    struct PlatformTokenList: Codable {
+        let tokens: [PlatformToken]
+        let count: Int
+    }
+
+    func getPlatformTokens() async throws -> [PlatformToken] {
+        let res: PlatformTokenList = try await request("/platform/tokens")
+        return res.tokens
     }
 
     struct NetworkStatus: Codable {

@@ -33,6 +33,14 @@ var defaultTokenRegistry = map[int64][]TokenInfo{
 		{Contract: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063", Symbol: "DAI", Name: "Dai", Decimals: 18, ChainID: 137},
 		{Contract: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", Symbol: "WETH", Name: "Wrapped Ether", Decimals: 18, ChainID: 137},
 	},
+	// TigerSmartChain (chain 7710). RUSD and WTGR are genesis predeploys, so
+	// these addresses are fixed by consensus and identical on every node. TGR
+	// itself is the native coin and is not an ERC-20 entry; the token registry
+	// lists only contracts.
+	7710: {
+		{Contract: "0x0000000000000000000000000000000000007710", Symbol: "RUSD", Name: "Royal Tiger USD", Decimals: 18, ChainID: 7710},
+		{Contract: "0x0000000000000000000000000000000000007711", Symbol: "WTGR", Name: "Wrapped TGR", Decimals: 18, ChainID: 7710},
+	},
 	42161: { // Arbitrum
 		{Contract: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", Symbol: "USDC", Name: "USD Coin", Decimals: 6, ChainID: 42161},
 		{Contract: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", Symbol: "USDT", Name: "Tether USD", Decimals: 6, ChainID: 42161},

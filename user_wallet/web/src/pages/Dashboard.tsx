@@ -2,7 +2,7 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { api, BalanceResult } from '../services/api';
+import { api, BalanceResult, PlatformToken } from '../services/api';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -10,12 +10,19 @@ export default function Dashboard() {
   const [balances, setBalances] = React.useState<BalanceResult[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [livePrices, setLivePrices] = React.useState<Record<string, { symbol: string; last_price: number; change_24h_pct: number }>>({});
+  const [platformTokens, setPlatformTokens] = React.useState<PlatformToken[]>([]);
 
   React.useEffect(() => {
     api.getBalances().then((data) => {
       setBalances(data.balances || []);
       setLoading(false);
     }).catch(() => setLoading(false));
+  }, []);
+
+  // The platform's own assets (TGR, WTGR, RUSD) on TigerSmartChain. Public, so
+  // this renders before a user has signed in as well.
+  React.useEffect(() => {
+    api.getPlatformTokens().then(setPlatformTokens).catch(() => setPlatformTokens([]));
   }, []);
 
   // Public live price feed (WebSocket /api/v1/ws) — real server-pushed tickers.
@@ -44,6 +51,40 @@ export default function Dashboard() {
               ({Number(t.change_24h_pct) >= 0 ? '+' : ''}{Number(t.change_24h_pct).toFixed(2)}%)
             </span>
           ))}
+        </div>
+      )}
+
+      {platformTokens.length > 0 && (
+        <div className="balances-list">
+          <h2>TigerSmartChain Assets</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Contract</th>
+                <th>Price (USD)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {platformTokens.map((t) => (
+                <tr key={t.symbol}>
+                  <td>{t.symbol} — {t.name}</td>
+                  <td>{t.is_native ? 'native coin' : t.standard}</td>
+                  <td className="mono">
+                    {t.contract ? `${t.contract.slice(0, 10)}…${t.contract.slice(-6)}` : '—'}
+                  </td>
+                  <td>
+                    {/* A price of 0 means no source answered; showing "$0.00" would
+                        be a wrong number, so the row says so instead. */}
+                    {t.usd_price > 0
+                      ? `$${t.usd_price.toLocaleString('en-US', { maximumFractionDigits: 6 })}`
+                      : 'unavailable'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

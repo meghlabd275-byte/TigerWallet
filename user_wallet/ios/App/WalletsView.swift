@@ -105,6 +105,7 @@ struct WatchOnlyView: View {
                         Text("Arbitrum").tag(42161)
                         Text("Optimism").tag(10)
                         Text("Base").tag(8453)
+                        Text("TigerSmartChain").tag(TigerPlatform.chainId)
                     }
                 }
                 if let error = error {
@@ -201,6 +202,7 @@ struct AddWalletView: View {
                         Text("Arbitrum").tag(42161)
                         Text("Optimism").tag(10)
                         Text("Base").tag(8453)
+                        Text("TigerSmartChain").tag(TigerPlatform.chainId)
                     }
                 }
                 Section("Security") {

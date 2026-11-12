@@ -350,14 +350,15 @@ func (svc *Service) GetMasterWalletBalance(c *gin.Context) {
 	trows.Close()
 	tokenBals := FetchTokenBalances(ctx, rpc, addr, tokens)
 
-	// Native price for USD value.
+	// Native price for the USD value. TigerSmartChain resolves through the live
+	// TigerSwap pool; every other chain through the cached exchange lookup.
 	var usdValue float64
-	if p, err := svc.FetchTokenPriceCached(ctx, chainCoinGeckoID(chainID)); err == nil && p != nil {
+	if price, _ := svc.nativePriceUSD(ctx, chainID); price > 0 {
 		f, _ := new(big.Float).Quo(
 			new(big.Float).SetInt(nativeBal),
 			big.NewFloat(pow10f(chain.Decimals)),
 		).Float64()
-		usdValue = f * p.USD
+		usdValue = f * price
 	}
 
 	resp := gin.H{

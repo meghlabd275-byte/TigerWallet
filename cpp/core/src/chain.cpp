@@ -2,14 +2,18 @@
 
 #include "chain.hpp"
 
+#include "platform_chain.hpp"
+
 #include <algorithm>
 
 namespace tigerwallet {
 
 std::vector<ChainConfig> BuiltinChains() {
     // Chain ids, native symbols and public explorer base URLs. No RPC endpoint
-    // is bundled; the operator configures one per chain.
-    return {
+    // is bundled; the operator configures one per chain. The one exception is
+    // TigerSmartChain, the platform's own network: it has no public endpoint to
+    // bundle either, so its entry carries whatever TSC_RPC_URL holds.
+    std::vector<ChainConfig> chains = {
         {1, "Ethereum", "ETH", 18, "https://etherscan.io", "", true, true},
         {56, "BNB Smart Chain", "BNB", 18, "https://bscscan.com", "", true, true},
         {137, "Polygon", "POL", 18, "https://polygonscan.com", "", true, true},
@@ -41,6 +45,8 @@ std::vector<ChainConfig> BuiltinChains() {
         {17000, "Holesky", "ETH", 18, "https://holesky.etherscan.io", "", true, true},
         {11155111, "Sepolia", "ETH", 18, "https://sepolia.etherscan.io", "", true, true},
     };
+    chains.push_back(platform_chain::ChainConfigEntry());
+    return chains;
 }
 
 ChainRegistry::ChainRegistry() {

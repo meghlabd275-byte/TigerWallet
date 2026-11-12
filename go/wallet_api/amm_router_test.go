@@ -288,6 +288,7 @@ func TestStaticChainRegistryEntriesHaveRPC(t *testing.T) {
 		9000008400: true, // NEM           (NEM_API)
 		9000009200: true, // LBRY Credits  (LBRY_API)
 		9000009300: true, // Bitcoin Gold  (BTG_API)
+		7710:       true, // TigerSmartChain (TSC_RPC_URL) - the platform runs this node
 	}
 	for _, c := range append(append([]ChainConfig{}, evmMainnet...), nonEVMMainnet...) {
 		if c.RPCEndpoint != "" {
