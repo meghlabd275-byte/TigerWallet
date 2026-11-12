@@ -51,6 +51,39 @@ services:
           cpus: '0.5'
           memory: 512M
 
+  # Canonical wallet backend (Go). Real BIP-39/32/44 HD derivation, secp256k1
+  # signing, EVM broadcast and on-chain fetchers, PostgreSQL persistence. The
+  # wallet-service below is a thin reverse proxy onto this process, so the stack
+  # is not functional without it.
+  wallet-api:
+    build:
+      context: ./go/wallet_api
+      dockerfile: Dockerfile
+    container_name: tigerwallet-wallet-api
+    ports:
+      - "8443:8443"
+    environment:
+      - WALLET_API_PORT=8443
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/tigerwallet?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+      - COINGECKO_API_KEY=${COINGECKO_API_KEY:-}
+      # TigerSmartChain is the platform's own network. TGR is its native coin and
+      # RUSD/WTGR are genesis predeploys, so balances, sends and swaps for them
+      # need this endpoint.
+      - TSC_RPC_URL=http://tsc-node:8545
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      tsc-node:
+        condition: service_healthy
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
   # Listing Service
   listing-service:
     build:
@@ -132,9 +165,14 @@ services:
       - DB_NAME=tigerwallet_wallet
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # This service is a reverse proxy to the canonical wallet backend; without
+      # the target it would forward to localhost inside its own container, where
+      # nothing listens.
+      - WALLET_API_URL=http://wallet-api:8443
     depends_on:
       - postgres
       - redis
+      - wallet-api
     networks:
       - tigerwallet
     restart: unless-stopped
@@ -221,11 +259,21 @@ services:
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_MULTIPLE_DATABASES=tigerwallet,tigerwallet_listing,tigerwallet_wallet,tigerwallet_swap,tigerwallet_staking,tigerwallet_bots,tigerwallet_nft
+      # The database the image itself creates. The other per-service databases
+      # are created by the init script below: the image ignores any
+      # multi-database variable, so without that script every service whose
+      # DB_NAME differs from this one cannot connect.
+      - POSTGRES_DB=tigerwallet
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-databases.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d tigerwallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - tigerwallet
     restart: unless-stopped
@@ -336,6 +384,44 @@ services:
   # BLOCKCHAIN NODES
   # ============================================
 
+  # TigerSmartChain - the platform's own EVM network. TGR is the native coin;
+  # RUSD and WTGR are genesis predeploys. The wallet backend reads this node
+  # through TSC_RPC_URL.
+  tsc-node:
+    build:
+      context: ./tiger_smart_chain
+      dockerfile: Dockerfile
+    container_name: tigerwallet-tsc-node
+    ports:
+      - "8555:8545"
+      - "8556:8546"
+    volumes:
+      - tsc_data:/data
+    environment:
+      # Fixes the genesis block, so every node on the network derives an
+      # identical chain. Changing it on a running network forks it.
+      - TSC_GENESIS_SEED=${TSC_GENESIS_SEED:?TSC_GENESIS_SEED must be set - it determines the genesis block every node must agree on}
+      - TSC_CHAIN_ID=7710
+      - TSC_VALIDATORS=${TSC_VALIDATORS:-1}
+      - TSC_VALIDATOR_KEY=${TSC_VALIDATOR_KEY:-}
+      - TSC_MINE=${TSC_MINE:-true}
+    healthcheck:
+      # A JSON-RPC probe, so health reflects whether the node can answer clients
+      # rather than merely whether the process is running.
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS -X POST -H 'Content-Type: application/json'
+          --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
+          http://127.0.0.1:8545 | grep -q '0x1e1e'
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - tigerwallet
+    restart: unless-stopped
+
   ethereum-node:
     image: ethereum/client-go:latest
     container_name: tigerwallet-ethereum-node
@@ -376,5 +462,6 @@ volumes:
   postgres_data:
   redis_data:
   ipfs_data:
+  tsc_data:
   prometheus_data:
   grafana_data:
