@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
-use crate::{Fetcher, FetcherConfig, FetcherMetrics, FetcherState, FetcherType, FetchParams, FetchResult};
+use tiger_fetcher::{
+    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherMetrics, FetcherState,
+    FetcherStatus, FetcherType,
+};
 
 /// Blockchain data fetcher for EVM and non-EVM chains
 pub struct BlockchainFetcher {

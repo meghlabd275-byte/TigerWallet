@@ -41,12 +41,13 @@ impl FetcherCache {
         // Try Redis first
         {
             let redis = self.redis.read().await;
-            if let Some(ref conn) = *redis {
-                if let Ok(value) = conn.get(key).await {
-                    if let Ok(data) = value {
-                        debug!("Cache hit (Redis): {}", key);
-                        return Ok(serde_json::from_slice(&data)?);
-                    }
+            if let Some(conn) = redis.as_ref() {
+                let mut conn = conn.clone();
+                // redis 0.24 returns RedisResult<Option<Vec<u8>>> from GET, so the
+                // value must be read as Option<Vec<u8>> and unwrapped explicitly.
+                if let Ok(Some(data)) = conn.get::<_, Option<Vec<u8>>>(key).await {
+                    debug!("Cache hit (Redis): {}", key);
+                    return Ok(serde_json::from_slice(&data)?);
                 }
             }
         }
@@ -71,8 +72,9 @@ impl FetcherCache {
         // Try Redis first
         {
             let redis = self.redis.read().await;
-            if let Some(ref conn) = *redis {
-                let _: () = conn.set_ex(key, data, ttl_seconds as usize).await?;
+            if let Some(conn) = redis.as_ref() {
+                let mut conn = conn.clone();
+                let _: () = conn.set_ex(key, data, ttl_seconds).await?;
                 debug!("Cached (Redis): {} ({}s)", key, ttl_seconds);
             }
         }
@@ -102,7 +104,8 @@ impl FetcherCache {
         // Delete from Redis
         {
             let redis = self.redis.read().await;
-            if let Some(ref conn) = *redis {
+            if let Some(conn) = redis.as_ref() {
+                let mut conn = conn.clone();
                 let _: () = conn.del(key).await?;
             }
         }
@@ -121,7 +124,8 @@ impl FetcherCache {
         // Check Redis
         {
             let redis = self.redis.read().await;
-            if let Some(ref conn) = *redis {
+            if let Some(conn) = redis.as_ref() {
+                let mut conn = conn.clone();
                 if let Ok(exists) = conn.exists(key).await {
                     if exists {
                         return true;

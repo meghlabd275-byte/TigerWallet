@@ -18,7 +18,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 // ============ ERROR TYPES ============
@@ -348,7 +348,7 @@ async fn fetch_data(
     }
 
     // Get fetcher config from database
-    let config = sqlx::query_as::<_, (Uuid, String, String, String, u32, u32, u32, bool)>(
+    let config = sqlx::query_as::<_, (Uuid, String, String, String, i32, i32, i32, bool)>(
         "SELECT id, product, fetcher, endpoint, timeout_ms, retry_count, cache_ttl_seconds, is_active 
          FROM fetcher_configs 
          WHERE product = $1 AND fetcher = $2 AND is_active = true"
@@ -393,7 +393,7 @@ async fn fetch_data(
             }
 
             // Update metrics in Redis
-            let mut conn = state.redis.get_async().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let mut conn = state.redis.get_async_connection().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             let _: () = conn.incr("fetcher:requests:success", 1).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
             Ok(Json(FetcherResponse {
@@ -405,7 +405,7 @@ async fn fetch_data(
         }
         Err(e) => {
             // Update error metrics
-            let mut conn = state.redis.get_async().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let mut conn = state.redis.get_async_connection().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             let _: () = conn.incr("fetcher:requests:failed", 1).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -417,7 +417,7 @@ async fn get_fetcher_config(
     State(state): State<Arc<AppState>>,
     Path((product, fetcher)): Path<(String, String)>,
 ) -> Result<Json<Vec<FetcherConfig>>, (StatusCode, String)> {
-    let configs = sqlx::query_as::<_, (Uuid, String, String, String, u32, u32, u32, bool, Option<String>)>(
+    let configs = sqlx::query_as::<_, (Uuid, String, String, String, i32, i32, i32, bool, Option<String>)>(
         "SELECT id, product, fetcher, endpoint, timeout_ms, retry_count, cache_ttl_seconds, is_active, config_data 
          FROM fetcher_configs 
          WHERE product = $1 AND fetcher = $2"
@@ -433,9 +433,9 @@ async fn get_fetcher_config(
         product: serde_json::from_str(&c.1).unwrap_or(WhiteLevelProduct::MasterWallet),
         fetcher: serde_json::from_str(&c.2).unwrap_or(FetcherType::Prices),
         endpoint: c.3,
-        timeout_ms: c.4,
-        retry_count: c.5,
-        cache_ttl_seconds: c.6,
+        timeout_ms: c.4.max(0) as u32,
+        retry_count: c.5.max(0) as u32,
+        cache_ttl_seconds: c.6.max(0) as u32,
         is_active: c.7,
         config_data: c.8,
     }).collect();
@@ -444,7 +444,7 @@ async fn get_fetcher_config(
 }
 
 async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let mut conn = state.redis.get_async().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let mut conn = state.redis.get_async_connection().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let requests_success: i64 = conn.get("fetcher:requests:success").await.unwrap_or(0);
     let requests_failed: i64 = conn.get("fetcher:requests:failed").await.unwrap_or(0);
@@ -510,14 +510,14 @@ async fn check_permission(
 }
 
 async fn conn_get(client: &redis::Client, key: &str) -> Option<bool> {
-    let mut conn = client.get_async().await.ok()?;
+    let mut conn = client.get_async_connection().await.ok()?;
     let val: String = conn.get(key).await.ok()?;
     val.parse().ok()
 }
 
-async fn conn_set(client: &redis::Client, key: &str, value: bool, ttl: i64) -> Result<(), redis::RedisError> {
-    let mut conn = client.get_async().await?;
-    let _: () = conn.set_ex(key, value, ttl).await
+async fn conn_set(client: &redis::Client, key: &str, value: bool, ttl: u64) -> Result<(), redis::RedisError> {
+    let mut conn = client.get_async_connection().await?;
+    conn.set_ex(key, value, ttl).await
 }
 
 // ============ MAIN ============
@@ -552,7 +552,7 @@ async fn main() {
         .expect("Failed to connect to Redis");
 
     // Test Redis connection
-    redis.get_async().await.expect("Failed to ping Redis");
+    redis.get_async_connection().await.expect("Failed to ping Redis");
     info!("Redis connected");
 
     // Initialize state
@@ -581,9 +581,13 @@ async fn main() {
 
     let port = std::env::var("FETCHER_PORT").unwrap_or_else(|_| "8093".to_string());
     
-    let addr = format!("0.0.0.0:{}", port);
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port)
+        .parse()
+        .expect("FETCHER_PORT must be a valid port number");
     info!("Starting server on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .expect("server failed");
 }

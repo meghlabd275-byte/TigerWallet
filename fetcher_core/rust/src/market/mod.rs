@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
-use crate::{Fetcher, FetcherConfig, FetcherMetrics, FetcherState, FetcherType, FetchParams, FetchResult};
+use tiger_fetcher::{
+    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherMetrics, FetcherState,
+    FetcherStatus, FetcherType,
+};
 
 /// Market data fetcher for prices, order books, and trading data
 pub struct MarketFetcher {

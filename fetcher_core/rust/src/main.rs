@@ -15,7 +15,10 @@ mod market;
 use blockchain::BlockchainFetcher;
 use cache::FetcherCache;
 use market::MarketFetcher;
-use crate::{Fetcher, FetcherConfig, FetcherManager, FetcherState, FetcherType, FetchParams};
+use tiger_fetcher::{
+    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherManager, FetcherMetrics,
+    FetcherState, FetcherStatus, FetcherType,
+};
 
 /// CLI arguments
 #[derive(Parser, Debug)]
@@ -39,14 +42,15 @@ struct Args {
 }
 
 /// Main fetcher service
+#[derive(Clone)]
 pub struct FetcherService {
-    fetchers: RwLock<std::collections::HashMap<FetcherType, Arc<dyn Fetcher>>>,
+    fetchers: Arc<RwLock<std::collections::HashMap<FetcherType, Arc<dyn Fetcher>>>>,
     cache: Arc<FetcherCache>,
     config: FetcherConfig,
 }
 
 impl FetcherService {
-    pub fn new(redis_url: &str, enable_memory_fallback: bool) -> Result<Self> {
+    pub async fn new(redis_url: &str, enable_memory_fallback: bool) -> Result<Self> {
         let cache = Arc::new(FetcherCache::new(enable_memory_fallback));
         
         // Try to connect to Redis
@@ -58,7 +62,7 @@ impl FetcherService {
         }
 
         Ok(Self {
-            fetchers: RwLock::new(std::collections::HashMap::new()),
+            fetchers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             cache,
             config: FetcherConfig::default(),
         })
@@ -89,7 +93,7 @@ impl FetcherManager for FetcherService {
     async fn register_fetcher(&self, fetcher: Arc<dyn Fetcher>) -> Result<()> {
         let mut fetchers = self.fetchers.write().await;
         let fetcher_type = fetcher.fetcher_type();
-        fetchers.insert(fetcher_type, fetcher);
+        fetchers.insert(fetcher_type.clone(), fetcher);
         info!("Registered fetcher: {:?}", fetcher_type);
         Ok(())
     }
@@ -107,7 +111,7 @@ impl FetcherManager for FetcherService {
     }
 
     async fn fetch(&self, fetcher_type: FetcherType, params: FetchParams) -> Result<FetchResult> {
-        let fetcher = self.get_fetcher(fetcher_type).await
+        let fetcher = self.get_fetcher(fetcher_type.clone()).await
             .ok_or_else(|| anyhow::anyhow!("Fetcher not found: {:?}", fetcher_type))?;
         
         fetcher.fetch(params).await
