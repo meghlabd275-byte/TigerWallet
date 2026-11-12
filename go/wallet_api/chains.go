@@ -58,9 +58,9 @@ func initSupportedChains() {
 func platformChainRPCEnv(id int64) string {
 	switch id {
 	case tigerSmartChainID:
-		return "TSC_RPC_URL"
+		return tscRPCEnv
 	case tigerSmartChainTestnetID:
-		return "TSC_RPC_URL_TESTNET"
+		return tscRPCEnvTestnet
 	}
 	return ""
 }
@@ -77,13 +77,21 @@ func chainByID(id int64) *ChainConfig {
 	if !ok {
 		return nil
 	}
+	// The dedicated platform variable wins over the generic CHAIN_<id>_RPC: it is
+	// the documented contract for a network the platform operates itself, and it
+	// is the only one a single-node deployment sets. An operator who prefers the
+	// generic form simply leaves the dedicated one unset.
+	set := false
 	if env := platformChainRPCEnv(id); env != "" {
 		if v := envOr(env, ""); v != "" {
 			c.RPCEndpoint = v
+			set = true
 		}
 	}
-	if v := envOr(fmt.Sprintf("CHAIN_%d_RPC", id), ""); v != "" {
-		c.RPCEndpoint = v
+	if !set {
+		if v := envOr(fmt.Sprintf("CHAIN_%d_RPC", id), ""); v != "" {
+			c.RPCEndpoint = v
+		}
 	}
 	if v := envOr(fmt.Sprintf("CHAIN_%d_EXPLORER", id), ""); v != "" {
 		c.ExplorerAPI = v

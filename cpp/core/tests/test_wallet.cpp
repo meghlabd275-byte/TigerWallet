@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "chain.hpp"
 #include "crypto.hpp"
 #include "mempool.hpp"
+#include "platform_chain.hpp"
 #include "wallet.hpp"
 
 using namespace tigerwallet;
@@ -196,6 +198,19 @@ void TestMempool() {
 
 void TestChainRegistry() {
     std::cout << "chain registry\n";
+
+    // TigerSmartChain's entry carries whatever TSC_RPC_URL holds, so the
+    // registry contents depend on the ambient environment. An operator running
+    // the platform's own node sets that variable, which means these assertions
+    // would otherwise fail in exactly the deployment they matter most for.
+    // Clear it for the duration so the test states its own preconditions, then
+    // restore it so nothing downstream observes the change.
+    const char* saved_tsc_rpc = std::getenv(platform_chain::kRpcEnv);
+    const bool had_tsc_rpc = saved_tsc_rpc != nullptr;
+    const std::string saved_tsc_rpc_value =
+        had_tsc_rpc ? std::string(saved_tsc_rpc) : std::string();
+    unsetenv(platform_chain::kRpcEnv);
+
     ChainRegistry registry;
 
     const auto ethereum = registry.Get(1);
@@ -249,6 +264,12 @@ void TestChainRegistry() {
         if (!chain.rpc_url.empty()) none_have_endpoints = false;
     }
     Check("no public built-in chain bundles an RPC endpoint", none_have_endpoints);
+
+    if (had_tsc_rpc) {
+        setenv(platform_chain::kRpcEnv, saved_tsc_rpc_value.c_str(), 1);
+    } else {
+        unsetenv(platform_chain::kRpcEnv);
+    }
 }
 
 void TestSecureZero() {

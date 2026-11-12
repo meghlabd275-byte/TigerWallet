@@ -42,6 +42,12 @@ const (
 
 	// tgrNativeSymbol is the native coin symbol of TigerSmartChain.
 	tgrNativeSymbol = "TGR"
+
+	// tscRPCEnv and tscRPCEnvTestnet name the environment variables holding the
+	// JSON-RPC endpoints of the platform's own chain. They are named here so the
+	// registry and the tests agree on the contract.
+	tscRPCEnv        = "TSC_RPC_URL"
+	tscRPCEnvTestnet = "TSC_RPC_URL_TESTNET"
 )
 
 // PlatformToken describes a first-class platform asset. It carries the metadata

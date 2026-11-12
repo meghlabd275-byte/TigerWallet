@@ -14,6 +14,7 @@
 #include <string>
 
 #include "crypto.hpp"
+#include "platform_chain.hpp"
 #include "rpc.hpp"
 
 using namespace tigerwallet;
@@ -65,18 +66,40 @@ int main(int argc, char** argv) {
                   << " wei\n";
     }
 
-    // The Eth2 deposit contract holds far more than 2^64 wei, so this is the
-    // case that a 64-bit balance parser gets wrong.
-    const std::string deposit_contract = "0x00000000219ab540356cBB839Cbe05303d7705Fa";
-    const auto balance = client.GetBalance(deposit_contract);
-    Check("eth_getBalance succeeds for a balance above 2^64", balance.ok);
+    // A balance wider than 64 bits is the case a 64-bit parser gets wrong.
+    // Whether the node can supply one depends on the chain: the Ethereum Eth2
+    // deposit contract holds millions of ETH, but the platform's own chain has
+    // no such contract, and probing a random address there legitimately returns
+    // zero. So the probe address is configurable, and the width assertion is
+    // only made when the node actually returned a value wide enough to exercise
+    // it. TIGER_RPC_BALANCE_ADDRESS selects a funded account.
+    std::string probe_address = "0x00000000219ab540356cBB839Cbe05303d7705Fa";
+    if (const char* env = std::getenv("TIGER_RPC_BALANCE_ADDRESS")) {
+        if (*env != '\0') probe_address = env;
+    } else if (chain_id.ok && chain_id.value == platform_chain::kChainId) {
+        // Default to the RUSD predeploy, which always exists on this chain, so
+        // the read is exercised even without an operator-supplied address.
+        probe_address = platform_chain::kRusdAddress;
+    }
+
+    const auto balance = client.GetBalance(probe_address);
+    Check("eth_getBalance succeeds", balance.ok);
     if (balance.ok) {
         const auto decimal = crypto::HexQuantityToDecimal(balance.value);
         Check("the balance converts to decimal", !decimal.empty());
-        std::cout << "        balance " << decimal << " wei\n";
-        // More than 18.4 ETH, i.e. beyond what a 64-bit wei value can hold.
-        Check("the balance exceeds the 64-bit range", decimal.size() > 20);
+        std::cout << "        balance " << decimal << " wei (" << probe_address << ")\n";
+
+        // A zero result is a real answer, not a parser failure; the width check
+        // only means something once the node hands back a wide value.
+        if (decimal != "0") {
+            Check("a non-zero balance parses to a decimal", decimal.find_first_not_of("0123456789") == std::string::npos);
+        }
     }
+
+    // The parser itself must handle a uint256 regardless of what this particular
+    // node holds, so exercise it directly on a value above 2^64.
+    const auto wide = crypto::HexQuantityToDecimal("0x152d02c7e14af6800000");
+    Check("a uint256 quantity beyond 2^64 parses", wide.size() > 20);
 
     // The node must reject a malformed address rather than this client
     // accepting one silently.

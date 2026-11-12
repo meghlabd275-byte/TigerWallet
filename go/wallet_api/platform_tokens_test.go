@@ -180,13 +180,27 @@ func TestPlatformChainBundlesNoEndpoint(t *testing.T) {
                 }
         }
 
-        // With no override the resolved endpoint stays empty.
+        // With no override the resolved endpoint stays empty. Both the generic
+        // and the platform-specific variable are cleared, because either can
+        // supply the endpoint and an operator running the platform's own node
+        // will have set the latter. Without this the assertion fails in exactly
+        // the deployment it describes.
         t.Setenv("CHAIN_7710_RPC", "")
+        t.Setenv(tscRPCEnv, "")
         if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "" {
                 t.Fatalf("resolved endpoint with no configuration = %q, want empty", got.RPCEndpoint)
         }
 
-        // The operator's override is honoured when they do set one.
+        // The platform-specific variable takes precedence when both are set, so
+        // the documented TSC_RPC_URL contract is what an operator relies on.
+        t.Setenv("CHAIN_7710_RPC", "http://generic.internal:8545")
+        t.Setenv(tscRPCEnv, "http://tsc.internal:8545")
+        if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "http://tsc.internal:8545" {
+                t.Fatalf("resolved endpoint = %q, want %s to take precedence", got.RPCEndpoint, tscRPCEnv)
+        }
+
+        // The generic override is honoured when the platform one is unset.
+        t.Setenv(tscRPCEnv, "")
         t.Setenv("CHAIN_7710_RPC", "http://tsc.internal:8545")
         if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "http://tsc.internal:8545" {
                 t.Fatalf("resolved endpoint = %q, want the configured override", got.RPCEndpoint)
