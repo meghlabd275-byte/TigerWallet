@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./libraries/SafeMath.sol";
+import "../interfaces/ITigerSwapFactory.sol";
+import "../interfaces/ITigerSwapPair.sol";
+
 /**
  * @title TigerSwapRouter
  * @notice Router contract for executing swaps and liquidity operations
@@ -42,6 +46,11 @@ contract TigerSwapRouter {
         uint256 deadline
     ) external ensure(deadline) returns (uint256 amountA, uint256 amountB, uint256 liquidity) {
         (amountA, amountB) = _addLiquidity(tokenA, tokenB, amountADesired, amountBDesired);
+
+        // amountAMin/amountBMin were accepted but never enforced, so a caller
+        // could be filled at an arbitrarily worse ratio than they signed for.
+        require(amountA >= amountAMin, "TigerSwapRouter: INSUFFICIENT_A_AMOUNT");
+        require(amountB >= amountBMin, "TigerSwapRouter: INSUFFICIENT_B_AMOUNT");
         
         // Transfer tokens from user
         TransferHelper.safeTransferFrom(tokenA, msg.sender, pairFor(tokenA, tokenB), amountA);
@@ -351,15 +360,18 @@ contract TigerSwapRouter {
     function _swap(uint256[] memory amounts, address[] memory path, address _to) internal {
         for (uint256 i = 0; i < path.length - 1; i++) {
             (uint112 reserve0, uint112 reserve1,) = ITigerSwapPair(ITigerSwapFactory(factory).getPairAddress(path[i], path[i+1])).getReserves();
-            (uint256 input, uint256 output) = path[i] < path[i+1] 
-                ? (amounts[i], amounts[i+1]) 
-                : (amounts[i+1], amounts[i]);
-            
+            // The amount leaving this hop is always amounts[i + 1]. When the
+            // input token sorts below the output token it is token0 (so the
+            // output is token1); otherwise the input is token1 and the output
+            // is token0. The previous code emitted amounts[i] on the descending
+            // branch, asking the pair for the input amount as the output.
+            bool zeroForOne = path[i] < path[i + 1];
+
             address to = i < path.length - 2 ? ITigerSwapFactory(factory).getPairAddress(path[i+1], path[i+2]) : _to;
-            
+
             ITigerSwapPair(ITigerSwapFactory(factory).getPairAddress(path[i], path[i+1])).swap(
-                path[i] < path[i+1] ? uint256(0) : output,
-                path[i] < path[i+1] ? output : uint256(0),
+                zeroForOne ? uint256(0) : amounts[i + 1],
+                zeroForOne ? amounts[i + 1] : uint256(0),
                 to
             );
         }
@@ -403,23 +415,18 @@ library TransferHelper {
  */
 interface IWETH {
     function deposit() external payable;
+
     function withdraw(uint256) external;
-}
 
-/**
- * @title ITigerSwapFactory
- */
-interface ITigerSwapFactory {
-    function getPairAddress(address, address) external view returns (address);
-    function feeTo() external view returns (address);
-}
+    function totalSupply() external view returns (uint256);
 
-/**
- * @title ITigerSwapPair
- */
-interface ITigerSwapPair {
-    function getReserves() external view returns (uint112, uint112, uint32);
-    function mint(address) external returns (uint256);
-    function burn(address) external returns (uint256, uint256);
-    function swap(uint256, uint256, address) external;
+    function balanceOf(address account) external view returns (uint256);
+
+    function transfer(address to, uint256 value) external returns (bool);
+
+    function allowance(address owner, address spender) external view returns (uint256);
+
+    function approve(address spender, uint256 value) external returns (bool);
+
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
 }

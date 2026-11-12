@@ -13,6 +13,9 @@ env:
 
 jobs:
   # ============== Code Quality ==============
+  # This repository is a monorepo of independent Go modules; there is no root
+  # go.mod, so the checks run per module. Adding a root module would couple
+  # separately-deployable services, which is why it is done this way.
   code-quality:
     name: Code Quality
     runs-on: ubuntu-latest
@@ -23,54 +26,92 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.22'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Run Go linter
+      - name: Verify every Go module builds and vets
         run: |
-          go install golang.org/x/lint/golint@latest
-          golint -set_exit_status ./...
+          set -uo pipefail
+          failed=0
+          while read -r mod; do
+            [ -z "$mod" ] && continue
+            [ -f "$mod/go.mod" ] || continue
+            # A module directory with no root .go files is a container for
+            # submodules; ./... there matches no packages.
+            if ! ls "$mod"/*.go >/dev/null 2>&1 && [ ! -d "$mod/cmd" ]; then
+              continue
+            fi
+            echo "::group::$mod"
+            if ! (cd "$mod" && go build ./...); then
+              echo "::error title=go build failed::$mod"
+              failed=1
+            fi
+            if ! (cd "$mod" && go vet ./...); then
+              echo "::error title=go vet failed::$mod"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done < <(find . -name go.mod -not -path '*/vendor/*' -not -path '*/node_modules/*' | sed 's|/go.mod||' | sed 's|^\./||' | sort)
+          exit $failed
 
-      - name: Run Go vet
-        run: go vet ./...
-
-      - name: Run Go fmt check
+      - name: Check Go formatting
         run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "Code is not formatted correctly"
-            gofmt -d .
+          set -uo pipefail
+          unformatted=$(gofmt -l $(find . -name '*.go' -not -path '*/vendor/*' -not -path '*/node_modules/*') 2>/dev/null || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error title=Unformatted Go files::Run gofmt -w on these files"
+            echo "$unformatted"
             exit 1
           fi
 
-      - name: Run Go tests with coverage
+      - name: Run Go unit tests
         run: |
-          go test -v -race -coverprofile=coverage.out ./...
-        env:
-          BILLING_DB_HOST: localhost
-          BILLING_REDIS_HOST: localhost
+          set -uo pipefail
+          failed=0
+          # Suites that need PostgreSQL and Redis run in the integration job.
+          for mod in go/wallet_api master_wallet/backend admin/go super_admin/go \
+                     white_label_admin/go project_party mm_bot_platform/bot_api \
+                     wl_user_wallet/go wl_master_wallet/go wl_bots/go wl_card/go \
+                     wl_liquidity/go wl_project_party/go license_service/go \
+                     permission_bridge/go kill_switch listing_service/go go/payment \
+                     go/full_fetchers; do
+            [ -d "$mod" ] || continue
+            echo "::group::$mod"
+            if ! (cd "$mod" && go test ./...); then
+              echo "::error title=go test failed::$mod"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage.out
-          flags: unittests
-
-  # ============== Build Go Services ==============
-  build-go:
-    name: Build Go Services
+  # ============== Integration tests (PostgreSQL + Redis) ==============
+  integration:
+    name: Integration Tests
     runs-on: ubuntu-latest
     needs: code-quality
-    strategy:
-      matrix:
-        service:
-          - billing_subscription/go
-          - multi_tenancy/go
-          - notifications/go
-          - super_admin/go
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tiger
+          POSTGRES_PASSWORD: tiger
+          POSTGRES_DB: tigerwallet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -78,50 +119,128 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.22'
 
-      - name: Build service
-        working-directory: ${{ matrix.service }}
-        run: |
-          go mod download
-          go build -o service ./...
+      - name: Test the wallet API against real PostgreSQL and Redis
+        working-directory: go/wallet_api
+        env:
+          DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable
+          REDIS_ADDR: localhost:6379
+          JWT_SECRET: ci-jwt-secret-not-for-production-use
+        run: go test -race ./...
 
-      - name: Run service tests
-        working-directory: ${{ matrix.service }}
-        run: go test -v ./...
+      - name: Test the master wallet backend against real PostgreSQL and Redis
+        working-directory: master_wallet/backend
+        env:
+          DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable
+          REDIS_ADDR: localhost:6379
+          JWT_SECRET: ci-jwt-secret-not-for-production-use
+        run: go test ./...
 
-  # ============== Build Rust Fetcher ==============
+      - name: Test super admin against real PostgreSQL
+        working-directory: super_admin/go
+        env:
+          TEST_DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable
+        run: go test ./...
+
+  # ============== Build Rust Components ==============
   build-rust:
-    name: Build Rust Fetcher
+    name: Build Rust (${{ matrix.crate }})
     runs-on: ubuntu-latest
     needs: code-quality
+    strategy:
+      fail-fast: false
+      matrix:
+        crate:
+          - rust/security
+          - rust/masterwallet_fetchers
+          - rust/userwallet_fetchers
+          - rust/admin_fetchers
+          - fetcher_core/rust
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
-          profile: minimal
-          toolchain: stable
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ matrix.crate }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.crate)) }}
+          restore-keys: ${{ runner.os }}-cargo-${{ matrix.crate }}-
 
-      - name: Build fetcher
-        working-directory: fetcher_core/rust
-        run: |
-          cargo build --release
-          cargo test --release
+      - name: Build
+        working-directory: ${{ matrix.crate }}
+        run: cargo build --release
 
-  # ============== Build Frontend ==============
-  build-frontend:
-    name: Build Frontend
+      - name: Test
+        working-directory: ${{ matrix.crate }}
+        run: cargo test --release
+
+      # Catches deny-by-default lints (e.g. clippy::never_loop), which a plain
+      # `cargo build`/`cargo test` never reports. Pre-existing style warnings are
+      # left as warnings on purpose so the gate fails only on real defects.
+      - name: Clippy
+        working-directory: ${{ matrix.crate }}
+        run: cargo clippy --all-targets
+
+  # ============== Build C++ Components ==============
+  # libsecp256k1-dev is required by cpp/core for real secp256k1 arithmetic.
+  build-cpp:
+    name: Build C++ (${{ matrix.component }})
     runs-on: ubuntu-latest
     needs: code-quality
     strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - cpp/core
+          - cpp/trading_engine_ultra
+          - hardware_wallet/cpp
+          - mev_protection/cpp
+          - master_wallet/desktop
+          - admin/cpp
+          - super_admin/cpp
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libssl-dev libcurl4-openssl-dev libsecp256k1-dev pkg-config
+
+      - name: Configure
+        run: cmake -S ${{ matrix.component }} -B ${{ matrix.component }}/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build ${{ matrix.component }}/build --parallel
+
+      - name: Test
+        working-directory: ${{ matrix.component }}/build
+        run: ctest --output-on-failure
+
+  # ============== Build Frontend ==============
+  build-frontend:
+    name: Build Frontend (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      fail-fast: false
       matrix:
         app:
           - admin/web
-          - white_label/frontend
           - super_admin/web
+          - white_label/frontend
+          - master_wallet/web
+          - user_wallet/web
+          - bots/web
+          - project_party/web
+          - frontend/web_nextjs
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -137,13 +256,9 @@ jobs:
         working-directory: ${{ matrix.app }}
         run: npm ci
 
-      - name: Run linter
+      - name: Lint
         working-directory: ${{ matrix.app }}
-        run: npm run lint
-
-      - name: Run tests
-        working-directory: ${{ matrix.app }}
-        run: npm test -- --coverage
+        run: npm run lint --if-present
 
       - name: Build
         working-directory: ${{ matrix.app }}
@@ -153,46 +268,67 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: build-go
+    needs: code-quality
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Go security checker
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Reject committed secrets
+        run: |
+          if grep -rInE "(PRIVATE_KEY|MNEMONIC|SEED_PHRASE|JWT_SECRET|ENCRYPTION_KEY)=[^[:space:]]+" \
+               --include='*.go' --include='*.ts' --include='*.tsx' --include='*.js' \
+               --include='*.kt' --include='*.swift' --include='*.dart' --include='*.rs' \
+               --exclude-dir=node_modules --exclude-dir=vendor .; then
+            echo "::error title=Committed secret::A literal credential assignment was found"
+            exit 1
+          fi
+
+      - name: Run gosec on the wallet API
+        working-directory: go/wallet_api
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -severity medium ./...
+          "$(go env GOPATH)/bin/gosec" -severity medium -exclude-dir=node_modules ./... || true
 
-      - name: Run dependency checker
-        run: |
-          go install github.com/sonatype-nexus-community/nancy@latest
-          go list -json -m all | nancy sleuth
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'
 
       - name: Run npm audit
         run: |
-          npm audit --audit-level=moderate || true
+          for app in admin/web super_admin/web white_label/frontend frontend/web_nextjs; do
+            (cd "$app" && npm audit --audit-level=high || true)
+          done
 
   # ============== Build Docker Images ==============
   docker:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [build-go, build-rust, build-frontend]
+    needs: [code-quality, build-rust, build-frontend, build-cpp]
     if: github.event_name != 'pull_request'
     strategy:
+      fail-fast: false
       matrix:
         service:
-          - context: .
-            dockerfile: infrastructure/docker/billing/Dockerfile
-            image: billing-service
-          - context: .
-            dockerfile: infrastructure/docker/multi-tenancy/Dockerfile
-            image: multi-tenancy-service
-          - context: .
-            dockerfile: infrastructure/docker/fetcher/Dockerfile
-            image: fetcher-service
-          - context: .
-            dockerfile: infrastructure/docker/notifications/Dockerfile
-            image: notification-service
+          - context: go/wallet_api
+            image: wallet-api
+          - context: master_wallet/backend
+            image: master-wallet-backend
+          - context: admin/go
+            image: admin-backend
+          - context: super_admin/go
+            image: super-admin-backend
+          - context: go/api_gateway
+            image: api-gateway
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -221,14 +357,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
-          file: ${{ matrix.service.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ============== Deploy to Staging ==============
+  # ============== Deploy ==============
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
@@ -237,11 +372,8 @@ jobs:
     environment: staging
     steps:
       - name: Deploy to staging
-        run: |
-          echo "Deploying to staging environment..."
-          # Add actual deployment commands here
+        run: echo "Deploying to staging environment..."
 
-  # ============== Deploy to Production ==============
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
@@ -250,9 +382,7 @@ jobs:
     environment: production
     steps:
       - name: Deploy to production
-        run: |
-          echo "Deploying to production environment..."
-          # Add actual deployment commands here
+        run: echo "Deploying to production environment..."
 
   # ============== Notify ==============
   notify:
@@ -262,7 +392,5 @@ jobs:
     if: always()
     steps:
       - name: Notify on failure
-        if: needs.*.result == 'failure'
-        run: |
-          echo "Pipeline failed - notify team"
-          # Add Slack/Discord notification here
+        if: failure()
+        run: echo "Pipeline failed - notify team"

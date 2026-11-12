@@ -15,11 +15,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -891,12 +894,86 @@ func (s *AMLService) SubmitTravelRule(c *gin.Context) {
 // sendTravelRuleNotice delivers the notice to the beneficiary's institution.
 // The notice is only recorded as delivered when the endpoint accepts it.
 func (s *AMLService) sendTravelRuleNotice(tr *TravelRuleData) error {
-	if err := sendTravelRuleNotice(context.Background(), cfg.TravelRuleAPIURL, tr); err != nil {
+	if err := postTravelRuleNotice(context.Background(), cfg.TravelRuleAPIURL, tr); err != nil {
 		return err
 	}
 	tr.Status = "delivered"
 	log.Printf("Travel Rule: notice delivered for transaction %s", tr.TransactionHash)
 	return nil
+}
+
+// ReportAck is the regulator's acknowledgement of a filed report.
+type ReportAck struct {
+	Reference  string    `json:"reference"`
+	AcceptedAt time.Time `json:"accepted_at"`
+	Status     string    `json:"status"`
+}
+
+var complianceHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// postTravelRuleNotice POSTs a Travel Rule notice to the configured endpoint.
+// The URL is operator configuration; without it the notice cannot be delivered,
+// so the caller records a failure rather than assuming acceptance.
+func postTravelRuleNotice(ctx context.Context, endpoint string, tr *TravelRuleData) error {
+	if strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("travel rule endpoint not configured (set TRAVEL_RULE_API_URL)")
+	}
+	body, err := json.Marshal(tr)
+	if err != nil {
+		return fmt.Errorf("encode travel rule notice: %w", err)
+	}
+	_, err = postJSONBody(ctx, endpoint, body)
+	return err
+}
+
+// submitRegulatoryReport files a SAR or CTR with the regulator endpoint and
+// returns the acknowledgement. Filing is never reported as successful unless
+// the regulator returns a reference, because an unfiled report is a compliance
+// failure that must surface to the operator.
+func submitRegulatoryReport(ctx context.Context, endpoint, kind string, report any) (*ReportAck, error) {
+	if strings.TrimSpace(endpoint) == "" {
+		return nil, fmt.Errorf("report endpoint not configured (set REPORT_API_URL)")
+	}
+	body, err := json.Marshal(report)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s report: %w", kind, err)
+	}
+	respBody, err := postJSONBody(ctx, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	var ack ReportAck
+	if err := json.Unmarshal(respBody, &ack); err != nil {
+		return nil, fmt.Errorf("decode %s acknowledgement: %w", kind, err)
+	}
+	if strings.TrimSpace(ack.Reference) == "" {
+		return nil, fmt.Errorf("%s report rejected: regulator returned no reference", kind)
+	}
+	return &ack, nil
+}
+
+// postJSONBody sends a JSON body and returns the response payload. A non-2xx
+// status is an error, so a rejected filing is never mistaken for acceptance.
+func postJSONBody(ctx context.Context, endpoint string, body []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build request to %s: %w", endpoint, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := complianceHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("post to %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response from %s: %w", endpoint, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("%s returned HTTP %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	return respBody, nil
 }
 
 func (s *AMLService) GetTravelRules(c *gin.Context) {

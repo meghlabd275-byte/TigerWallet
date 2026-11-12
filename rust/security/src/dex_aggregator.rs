@@ -668,7 +668,7 @@ impl DEXAggregator {
         let mut pools = self.pools.write().unwrap();
         
         pools.entry(key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(pool);
     }
     

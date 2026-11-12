@@ -263,22 +263,21 @@ impl TransactionAnalyzer {
             report.risk_score += 20;
         }
 
-        if self.config.enable_phishing_check {
-            if is_phishing_address(&tx.to) {
+        if self.config.enable_phishing_check && is_phishing_address(&tx.to) {
                 report.is_malicious = true;
                 report.risk_score += 100;
-                report
-                    .warnings
-                    .push("Recipient address flagged as phishing".to_string());
-            }
+            report
+                .warnings
+                .push("Recipient address flagged as phishing".to_string());
         }
 
-        if self.config.enable_honeypot_check {
-            if tx.to.chars().take(2).collect::<String>() == "0x" && tx.data.len() > 2 {
-                report
-                    .warnings
-                    .push("Interacting with contract - verify code".to_string());
-            }
+        if self.config.enable_honeypot_check
+            && tx.to.chars().take(2).collect::<String>() == "0x"
+            && tx.data.len() > 2
+        {
+            report
+                .warnings
+                .push("Interacting with contract - verify code".to_string());
         }
 
         report.risk_level = if report.risk_score > 50 {
@@ -362,7 +361,7 @@ pub fn secure_hash(data: &[u8]) -> [u8; 32] {
     hasher.update(data);
     let first_hash = hasher.finalize();
     let mut hasher = Sha256::new();
-    hasher.update(&first_hash);
+    hasher.update(first_hash);
     hasher.finalize().into()
 }
 

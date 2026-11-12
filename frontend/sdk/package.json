@@ -1,5 +1,5 @@
 {
-  "name": "@tigerswap/sdk",
+  "name": "@tigerwallet/sdk",
   "version": "1.0.0",
   "description": "TigerSwap TypeScript SDK",
   "main": "dist/index.js",

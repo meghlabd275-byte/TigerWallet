@@ -3,19 +3,53 @@ name: Launch Readiness
 on:
   pull_request:
   push:
-    branches: [ main, work ]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  web-and-sdk:
+  # The launch gate fails if the canonical backends do not compile, if the
+  # wallet API test suite regresses, if the contracts do not build, or if a
+  # mock or a literal secret has been committed to a production path.
+  canonical-backends:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-go@v5
         with:
-          node-version: '20'
-      - run: npm ci || npm install
-      - run: npm test --workspaces --if-present
-      - run: npm run build --workspace frontend/web_nextjs
+          go-version: '1.22'
+      - name: Build and vet the canonical backends
+        run: |
+          set -uo pipefail
+          failed=0
+          for mod in go/wallet_api master_wallet/backend admin/go super_admin/go \
+                     white_label_admin/go project_party mm_bot_platform/bot_api; do
+            echo "::group::$mod"
+            if ! (cd "$mod" && go build ./... && go vet ./...); then
+              echo "::error title=Build or vet failed::$mod"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+      - name: Run the wallet API test suite
+        working-directory: go/wallet_api
+        run: go test ./...
+
+  smart-chain:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tiger_smart_chain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      # The Makefile owns the linker flags; go-ethereum v1.13.x needs
+      # -checklinkname=0 to link against Go 1.23 and later.
+      - run: make build
+      - run: make vet
+      - run: make test
 
   contracts:
     runs-on: ubuntu-latest
@@ -27,35 +61,43 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      # The legacy Hardhat tree (contracts/) and the canonical ERC-4337
+      # account-abstraction tree (account_abstraction/ + test_aa/) are separate
+      # projects in one directory. Hardhat only owns the former.
       - run: npm ci || npm install
       - run: npm run compile
-      - run: npm test
 
-  go:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - run: go test ./...
-        working-directory: admin_platform/go
+      # The account-abstraction suite is Foundry-based, so `npm test` finds no
+      # tests and silently reports success. Install the Foundry dependencies
+      # (lib/ is gitignored) and run the real suite.
+      - run: git clone --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+      - run: forge build --sizes
+      - run: forge test -vv
+
+      # TigerSwap DEX tree (contracts/ + test/CoreTest.sol) is a separate
+      # Foundry source root with its own profile.
+      - run: forge test --profile dex -vv
 
   rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --manifest-path core/rust/wallet_service/Cargo.toml
       - run: cargo test --manifest-path rust/security/Cargo.toml
+      - run: cargo test --manifest-path rust/masterwallet_fetchers/Cargo.toml
 
   security-static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reject API gateway wallet/market mocks
+      - name: Reject fabricated market data in the gateway
         run: |
-          ! rg -n "For now, return mock data|Generate mock chart data|Generate mock history|Mnemonic:\\s+generateMnemonic|price := \"2500\\.00\"|Simulate price updates|price_update" api_gateway/go/gateway_v1/main.go
-      - name: Reject obvious committed secrets
+          ! grep -rInE "For now, return mock data|Generate mock chart data|Generate mock history|Simulate price updates" \
+              --include='*.go' go/ master_wallet/ admin/ super_admin/
+      - name: Reject committed secrets
         run: |
-          ! rg -n "(PRIVATE_KEY|MNEMONIC|SEED_PHRASE|JWT_SECRET|ENCRYPTION_KEY)=[^[:space:]]+" -g '!node_modules' -g '!*.lock' .
+          ! grep -rInE "(PRIVATE_KEY|MNEMONIC|SEED_PHRASE|JWT_SECRET|ENCRYPTION_KEY)=[^[:space:]]+" \
+              --include='*.go' --include='*.rs' --include='*.ts' --include='*.tsx' \
+              --exclude-dir=node_modules --exclude-dir=vendor .

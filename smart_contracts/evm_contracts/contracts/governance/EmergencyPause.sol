@@ -14,7 +14,7 @@ contract EmergencyPause {
     
     event Paused(string reason);
     event Unpaused();
-    EmergencyActivated(string reason);
+    event EmergencyActivated(string reason);
     
     modifier whenNotPaused() {
         require(!paused, "Paused");
@@ -40,7 +40,7 @@ contract EmergencyPause {
     function activateEmergency(string memory reason) external {
         emergencyActive = true;
         paused = true;
-        emit emergencyActivated(reason);
+        emit EmergencyActivated(reason);
     }
     
     function deactivateEmergency() external {

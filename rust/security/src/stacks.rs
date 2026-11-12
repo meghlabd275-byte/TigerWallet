@@ -1817,11 +1817,11 @@ mod tests {
         let mut context = Context::from_waker(&waker);
         let mut future = Box::pin(future);
 
-        loop {
-            match future.as_mut().poll(&mut context) {
-                Poll::Ready(output) => return output,
-                Poll::Pending => panic!("future is pending; this test must not await I/O"),
-            }
+        // Poll exactly once: the guards under test resolve immediately, so a
+        // Pending result means the test would be awaiting I/O and must fail.
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("future is pending; this test must not await I/O"),
         }
     }
 }

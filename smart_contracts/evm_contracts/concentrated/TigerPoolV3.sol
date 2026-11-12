@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import "../libraries/SafeMath.sol";
 import "../interfaces/ITigerSwapFactory.sol";
 
@@ -761,22 +763,3 @@ contract TigerPoolV3 {
 }
 
 // ============== Mock ERC20 Interface ==============
-
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
-
-// ============== Callback Interface ==============
-
-interface ITigerFlashCallback {
-    function tigerFlashCallback(
-        address sender,
-        uint256 amount0,
-        uint256 amount1,
-        uint256 fee0,
-        uint256 fee1,
-        bytes calldata data
-    ) external;
-}

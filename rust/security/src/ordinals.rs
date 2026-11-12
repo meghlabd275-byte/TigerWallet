@@ -8,7 +8,7 @@
 //! - BRC-20 token deployment, minting, and transfer
 //! - PSBT (Partially Signed Bitcoin Transaction) signing
 //! - Ordinal wallet derivation
-//! -Satellite inscription support
+//! - Satellite inscription support
 //! 
 //! Security:
 //! - All signing done locally with secure key derivation
@@ -615,7 +615,7 @@ impl BRC20Store {
     pub fn update_balance(&mut self, ticker: &str, address: &str, balance: BRC20Balance) {
         self.balances
             .entry(ticker.to_string())
-            .or_insert_with(HashMap::new)
+            .or_default()
             .insert(address.to_string(), balance);
     }
 }
@@ -644,7 +644,7 @@ impl OrdinalsIndexer {
     pub async fn get_inscription(&self, id: &str) -> Result<Inscription, OrdinalsError> {
         // Call indexer API
         let response = self.client
-            .get(&format!("{}/inscription/{}", self.rpc_url, id))
+            .get(format!("{}/inscription/{}", self.rpc_url, id))
             .send()
             .await
             .map_err(|e| OrdinalsError::Network(e.to_string()))?;
@@ -664,7 +664,7 @@ impl OrdinalsIndexer {
         address: &str,
     ) -> Result<BRC20Balance, OrdinalsError> {
         let response = self.client
-            .get(&format!(
+            .get(format!(
                 "{}/brc-20/balance/{}?address={}",
                 self.rpc_url, ticker, address
             ))
@@ -686,7 +686,7 @@ impl OrdinalsIndexer {
         address: &str,
     ) -> Result<Vec<InscriptionResult>, OrdinalsError> {
         let response = self.client
-            .get(&format!("{}/inscriptions/{}", self.rpc_url, address))
+            .get(format!("{}/inscriptions/{}", self.rpc_url, address))
             .send()
             .await
             .map_err(|e| OrdinalsError::Network(e.to_string()))?;

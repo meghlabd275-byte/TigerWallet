@@ -54,7 +54,7 @@ contract TigerWalletAAFactoryTest is Test {
         // Call validateUserOp as the entrypoint
         PackedUserOperation memory op = _emptyOp(address(account), sig);
         vm.prank(address(entryPoint));
-        uint256 vd = account.validateUserOp(op, ethHash, 0);
+        uint256 vd = account.validateUserOp(op, userOpHash, 0);
         assertEq(vd, 0, "owner sig must validate");
     }
 
@@ -68,7 +68,7 @@ contract TigerWalletAAFactoryTest is Test {
 
         PackedUserOperation memory op = _emptyOp(address(account), sig);
         vm.prank(address(entryPoint));
-        uint256 vd = account.validateUserOp(op, ethHash, 0);
+        uint256 vd = account.validateUserOp(op, userOpHash, 0);
         assertEq(vd, 1, "non-owner sig must fail");
     }
 

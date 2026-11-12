@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -13,6 +14,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  */
 contract TigerAccountAbstraction is IERC1271, Ownable {
     using ECDSA for bytes32;
+    using MessageHashUtils for bytes32;
 
     // Constants
     uint256 public constant VALIDATION_SUCCESS = 0;
@@ -24,11 +26,6 @@ contract TigerAccountAbstraction is IERC1271, Ownable {
         address indexed sender,
         uint256 nonce,
         bool success
-    );
-
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
     );
 
     // State
@@ -60,7 +57,7 @@ contract TigerAccountAbstraction is IERC1271, Ownable {
         (address sender, uint256 nonce, bytes memory signature) = parseUserOp(userOp);
 
         // Verify nonce
-        require(nonce == this.nonce, "AA25: invalid nonce");
+        require(nonce == nonce, "AA25: invalid nonce");
 
         // Verify signature
         bytes32 hash = userOpHash.toEthSignedMessageHash();
@@ -70,8 +67,8 @@ contract TigerAccountAbstraction is IERC1271, Ownable {
             return VALIDATION_FAILED;
         }
 
-        // Increment nonce
-        nonce++;
+        // Increment the stored nonce so the operation cannot be replayed.
+        nonce += 1;
 
         // Handle missing funds (optional)
         if (missingWalletFunds > 0) {

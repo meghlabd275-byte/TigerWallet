@@ -747,7 +747,7 @@ mod tests {
         assert_eq!(format_units(1_230_000_000_000_000_000, 18), "1.23");
         assert_eq!(format_units(100, 0), "100");
         assert_eq!(format_units(1234, 2), "12.34");
-        assert_eq!(format_units(u128::MAX, 18).contains('.'), true);
+        assert!(format_units(u128::MAX, 18).contains('.'));
     }
 
     #[test]
@@ -810,7 +810,7 @@ mod tests {
         assert_eq!(address_to_hex(&decoded), RUSD_ADDRESS);
 
         assert!(word_to_address("0x1234").is_err());
-        assert!(word_to_address(&"0".repeat(64)).is_err() == false);
+        assert!(word_to_address(&"0".repeat(64)).is_ok());
     }
 
     #[test]

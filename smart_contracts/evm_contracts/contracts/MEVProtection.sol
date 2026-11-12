@@ -88,12 +88,12 @@ contract TigerMEVProtection is Ownable {
         require(msg.value >= txs.length * 0.001 ether, "MEV: insufficient fee");
 
         // Verify signature from sender
-        bytes32 dataHash = keccak256(abi.encodePacked(txs, isPrivate));
+        bytes32 dataHash = keccak256(abi.encode(txs, isPrivate));
         address recovered = dataHash.recover(signature);
         require(recovered == msg.sender, "MEV: invalid signature");
 
         // Create bundle hash
-        bundleHash = keccak256(abi.encodePacked(txs, block.timestamp, msg.sender));
+        bundleHash = keccak256(abi.encode(txs, block.timestamp, msg.sender));
 
         // Store bundle info
         bytes32[] memory hashes = new bytes32[](txs.length);

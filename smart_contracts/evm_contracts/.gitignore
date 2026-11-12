@@ -6,3 +6,10 @@ cache/
 # OpenZeppelin contracts are fetched on demand with
 # `forge install OpenZeppelin/openzeppelin-contracts --no-git`.
 lib/
+
+# Hardhat build artifacts
+artifacts/
+typechain-types/
+
+# Foundry profile output (see [profile.dex] in foundry.toml)
+out-dex/

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./Pair.sol";
+import "./libraries/SafeMath.sol";
 
 /**
  * @title TigerSwapFactory

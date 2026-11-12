@@ -16,3 +16,18 @@ test = "test_aa"
 script = "script_aa"
 
 # See more config options https://book.getfoundry.sh/reference/config.html
+
+# The TigerSwap DEX tree (contracts/, interfaces/, test/) is a separate source
+# root from the ERC-4337 stack, so it needs its own profile:
+#   FOUNDRY_PROFILE=dex forge test
+# Both profiles run in CI. The interface collisions that previously forced the
+# DEX tree to be excluded (duplicate ITigerSwap* and IERC20 declarations) are
+# fixed, so this suite now compiles and runs.
+[profile.dex]
+src = "contracts"
+out = "out-dex"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc_version = "0.8.28"
+evm_version = "cancun"

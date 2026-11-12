@@ -83,11 +83,11 @@ contract TigerMEVProtection is Ownable {
         require(txs.length > 0, "MEV: empty");
         require(msg.value >= txs.length * 0.001 ether, "MEV: fee");
 
-        bytes32 dataHash = keccak256(abi.encodePacked(txs, isPrivate));
+        bytes32 dataHash = keccak256(abi.encode(txs, isPrivate));
         address recovered = dataHash.recover(signature);
         require(recovered == msg.sender, "MEV: sig");
 
-        bundleHash = keccak256(abi.encodePacked(txs, block.timestamp, msg.sender));
+        bundleHash = keccak256(abi.encode(txs, block.timestamp, msg.sender));
 
         bytes32[] memory hashes = new bytes32[](txs.length);
         for (uint256 i = 0; i < txs.length; i++) {

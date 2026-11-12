@@ -180,12 +180,11 @@ mod tests {
             data: vec![1],
             signature: vec![1],
         };
-        assert_eq!(
+        assert!(
             relayer
                 .validate_request(&req, "consumer-onboarding", 1)
                 .unwrap()
-                .sponsored,
-            true
+                .sponsored
         );
         let mut high = req.clone();
         high.gas = 101;

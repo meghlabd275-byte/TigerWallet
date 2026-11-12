@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "../libraries/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import "./libraries/SafeMath.sol";
 import "../interfaces/ITigerSwapPair.sol";
 import "../interfaces/ITigerSwapFactory.sol";
 
@@ -38,6 +40,7 @@ contract TigerSwapPair {
     // Liquidity token tracking
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
 
     // Constant product k
     uint256 private kLast;
@@ -54,6 +57,8 @@ contract TigerSwapPair {
     );
     event Sync(uint112 reserve0, uint112 reserve1);
     event Initialized(address indexed token0, address indexed token1);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
 
     modifier onlyWhileUnlocked() {
         require(!isLocked, "TigerSwap: LOCKED");
@@ -136,7 +141,7 @@ contract TigerSwapPair {
      * @notice Update k last value for fee calculation
      */
     function _updateK() private {
-        kLast = reserve0 * reserve1;
+        kLast = uint256(reserve0) * uint256(reserve1);
     }
 
     // ==================== PUBLIC FUNCTIONS ====================
@@ -285,12 +290,38 @@ contract TigerSwapPair {
             if (kLast != 0) kLast = 0;
         }
     }
-}
 
-// Minimal ERC20 interface
-interface IERC20 {
-    function balanceOf(address) external view returns (uint256);
-    function transfer(address, uint256) external returns (bool);
+    // ==================== LP TOKEN (ERC20) ====================
+
+    function transfer(address to, uint256 value) external returns (bool) {
+        _transfer(msg.sender, to, value);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 value) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) {
+            require(allowed >= value, "TigerSwap: INSUFFICIENT_ALLOWANCE");
+            allowance[from][msg.sender] = allowed - value;
+        }
+        _transfer(from, to, value);
+        return true;
+    }
+
+    function approve(address spender, uint256 value) external returns (bool) {
+        allowance[msg.sender][spender] = value;
+        emit Approval(msg.sender, spender, value);
+        return true;
+    }
+
+    function _transfer(address from, address to, uint256 value) internal {
+        require(to != address(0), "TigerSwap: ZERO_ADDRESS");
+        uint256 bal = balanceOf[from];
+        require(bal >= value, "TigerSwap: INSUFFICIENT_BALANCE");
+        balanceOf[from] = bal - value;
+        balanceOf[to] += value;
+        emit Transfer(from, to, value);
+    }
 }
 
 // Math library
