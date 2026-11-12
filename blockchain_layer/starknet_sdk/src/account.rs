@@ -45,20 +45,12 @@ impl Account {
         let key_pair = KeyPair::from_private_key(private_key)
             .map_err(|e| AccountError::Signing(e.to_string()))?;
         
-        // Derive address from public key based on account type
-        let address = match account_type {
-            AccountType::OpenZeppelin | AccountType::Generic => {
-                StarknetAddress::from_public_key(&key_pair.public_key())
-            }
-            AccountType::ArgentX => {
-                // Argent X uses different address derivation
-                StarknetAddress::from_public_key(&key_pair.public_key())
-            }
-            AccountType::Braavos => {
-                // Braavos uses proxy pattern
-                StarknetAddress::from_public_key(&key_pair.public_key())
-            }
-        };
+        // The address is the hash of the account class and its constructor
+        // arguments, so it depends on the class hash rather than the account
+        // type alone. Every type here uses the single-public-key constructor
+        // layout, so they share one derivation and differ only by class hash.
+        let address = StarknetAddress::from_public_key(&key_pair.public_key(), &class_hash)
+            .map_err(|e| AccountError::Signing(e.to_string()))?;
         
         Ok(Self {
             address,
@@ -190,14 +182,22 @@ impl Account {
         let provider = self.provider.as_ref()
             .ok_or(AccountError::NoProvider)?;
         
-        // Build deploy account transaction
+        // The deploy hash commits to the address, so derive it here from the
+        // class hash and salt rather than leaving the transaction to guess. A
+        // zero salt keeps the address reproducible across retries.
+        let salt = [0u8; 32];
+        let address = StarknetAddress::from_public_key(&self.key_pair.public_key(), &self.class_hash)
+            .map_err(|e| AccountError::Signing(e.to_string()))?;
         let mut deploy = DeployAccountTransaction::new(
+            address,
             self.class_hash,
+            salt,
             vec![self.key_pair.public_key()], // Constructor: public key
         );
         
         // Sign
-        deploy.sign(&self.key_pair);
+        deploy.sign(&self.key_pair)
+            .map_err(|e| AccountError::Signing(e.to_string()))?;
         
         // Send
         provider.add_deploy_account_transaction(deploy)

@@ -4,6 +4,46 @@
 
 use std::fmt;
 use hex;
+use starknet_crypto::{pedersen_hash, FieldElement};
+
+/// The `STARKNET_CONTRACT_ADDRESS` felt. Starknet mixes this domain separator
+/// into every contract address so a hash of one kind cannot be reinterpreted as
+/// an address of another.
+fn contract_address_prefix() -> Result<FieldElement, AddressError> {
+    FieldElement::from_hex_be("0x535441524b4e45545f434f4e54524143545f41444452455353")
+        .map_err(|_| AddressError::InvalidFormat)
+}
+
+/// Reject bytes at or above the field modulus, which are not valid felts.
+fn field_from_bytes(bytes: &[u8; 32]) -> Result<FieldElement, AddressError> {
+    FieldElement::from_bytes_be(bytes).map_err(|_| AddressError::TooLong)
+}
+
+/// Starknet's `compute_hash_on_elements`: a Pedersen chain seeded and terminated
+/// with the element count, so `[a, b]` and `[b, a]` differ and a list cannot
+/// collide with its own concatenation.
+fn compute_hash_on_elements(elements: &[FieldElement]) -> FieldElement {
+    let count = FieldElement::from(elements.len() as u64);
+    let mut hash = count;
+    for element in elements {
+        hash = pedersen_hash(&hash, element);
+    }
+    pedersen_hash(&hash, &count)
+}
+
+/// Starknet's `calculate_contract_address`: the address a contract will have
+/// once deployed, so it can be known before deployment and is unchanged after.
+pub fn compute_contract_address(
+    salt: FieldElement,
+    deployer: FieldElement,
+    class_hash: FieldElement,
+    constructor_calldata_hash: FieldElement,
+) -> Result<FieldElement, AddressError> {
+    let hash = pedersen_hash(&contract_address_prefix()?, &deployer);
+    let hash = pedersen_hash(&hash, &salt);
+    let hash = pedersen_hash(&hash, &class_hash);
+    Ok(pedersen_hash(&hash, &constructor_calldata_hash))
+}
 
 /// Starknet Address (Felt252)
 #[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -61,18 +101,28 @@ impl StarknetAddress {
         Self { value, is_contract }
     }
     
-    /// Create from Starknet public key
-    pub fn from_public_key(public_key: &[u8; 32]) -> Self {
-        use sha3::{Keccak256, Digest};
-        
-        let mut hasher = Keccak256::new();
-        hasher.update(b"starknet");
-        hasher.update(public_key);
-        let result = hasher.finalize();
-        
-        let mut value = [0u8; 32];
-        value.copy_from_slice(&result);
-        Self { value, is_contract: false }
+    /// Derive the account address for a single-signer account.
+    ///
+    /// Starknet accounts have no fixed address: an address is the hash of the
+    /// account class plus its constructor arguments, which is why it can be
+    /// computed before deployment and stays the same afterwards. This applies
+    /// the standard formula with an empty salt and the single `public_key`
+    /// constructor argument used by the OpenZeppelin and Argent account classes,
+    /// so the caller must supply that class's real hash. Deriving from the
+    /// public key alone, as this used to, produced an address that no Starknet
+    /// node would ever agree with.
+    pub fn from_public_key(
+        public_key: &[u8; 32],
+        class_hash: &[u8; 32],
+    ) -> Result<Self, AddressError> {
+        let calldata_hash = compute_hash_on_elements(&[field_from_bytes(public_key)?]);
+        let value = compute_contract_address(
+            FieldElement::ZERO,
+            FieldElement::ZERO,
+            field_from_bytes(class_hash)?,
+            calldata_hash,
+        )?;
+        Ok(Self { value: value.to_bytes_be(), is_contract: true })
     }
     
     /// Get as hex string (0x...)
@@ -228,5 +278,122 @@ impl StarknetChainId {
 impl Default for StarknetChainId {
     fn default() -> Self {
         StarknetChainId::Mainnet
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fe(hex: &str) -> FieldElement {
+        FieldElement::from_hex_be(hex).unwrap()
+    }
+
+    /// The canonical Pedersen vector published with starknet-crypto. This pins
+    /// the hash the address formula is built on, so a wrong primitive is caught
+    /// here rather than as an address that only fails against a live node.
+    #[test]
+    fn pedersen_hash_matches_canonical_vector() {
+        let x = fe("0x03d937c035c878245caf64531a5756109c53068da139362728feb561405371cb");
+        let y = fe("0x0208a0a10250e382e1e4bbe2880906c2791bf6275695e02fbbc6aeff9cd8b31a");
+        let expected = fe("0x030e480bed5fe53fa909cc0f8c4d99b8f9f2c016be4c41e13a4848797979c662");
+        assert_eq!(pedersen_hash(&x, &y), expected);
+    }
+
+    /// `compute_hash_on_elements` seeds and terminates with the element count,
+    /// which is what stops `[a, b]` colliding with `[b, a]`.
+    #[test]
+    fn element_hash_is_order_sensitive() {
+        let a = fe("0x1");
+        let b = fe("0x2");
+        assert_ne!(
+            compute_hash_on_elements(&[a, b]),
+            compute_hash_on_elements(&[b, a])
+        );
+    }
+
+    /// An empty calldata list must still hash, and to the hash of the count
+    /// alone rather than to zero.
+    #[test]
+    fn element_hash_of_empty_list_is_not_zero() {
+        let empty = compute_hash_on_elements(&[]);
+        assert_ne!(empty, FieldElement::ZERO);
+        assert_eq!(empty, pedersen_hash(&FieldElement::ZERO, &FieldElement::ZERO));
+    }
+
+    #[test]
+    fn account_address_is_deterministic_and_contract_flagged() {
+        let key = [7u8; 32];
+        let class_hash = [6u8; 32];
+        let a = StarknetAddress::from_public_key(&key, &class_hash).unwrap();
+        let b = StarknetAddress::from_public_key(&key, &class_hash).unwrap();
+        assert_eq!(a, b);
+        assert!(a.is_contract(), "an account address is a deployed contract");
+        assert_ne!(a.to_felt252(), [0u8; 32]);
+    }
+
+    /// The class hash is part of the address, so two account classes with the
+    /// same key land on different addresses. Ignoring it was the old bug.
+    #[test]
+    fn account_address_depends_on_class_hash() {
+        let key = [7u8; 32];
+        let one = StarknetAddress::from_public_key(&key, &[1u8; 32]).unwrap();
+        let two = StarknetAddress::from_public_key(&key, &[2u8; 32]).unwrap();
+        assert_ne!(one, two);
+    }
+
+    #[test]
+    fn account_address_differs_per_key() {
+        let class_hash = [6u8; 32];
+        let a = StarknetAddress::from_public_key(&[1u8; 32], &class_hash).unwrap();
+        let b = StarknetAddress::from_public_key(&[2u8; 32], &class_hash).unwrap();
+        assert_ne!(a, b);
+    }
+
+    /// The address must land inside the field. The field modulus is just under
+    /// 2^252, so the top four bits of a valid felt are always clear.
+    #[test]
+    fn account_address_is_within_the_field() {
+        let addr = StarknetAddress::from_public_key(&[3u8; 32], &[4u8; 32]).unwrap();
+        assert_eq!(addr.to_felt252()[0] & 0xF0, 0x00);
+    }
+
+    /// Bytes at or above the modulus are not felts and must be rejected rather
+    /// than silently reduced.
+    #[test]
+    fn rejects_out_of_field_class_hash() {
+        // 0x0909... is just above the modulus 0x0800...011, so it is not a felt.
+        assert!(StarknetAddress::from_public_key(&[1u8; 32], &[9u8; 32]).is_err());
+    }
+
+    #[test]
+    fn contract_address_is_stable_for_fixed_inputs() {
+        let addr = compute_contract_address(
+            FieldElement::ZERO,
+            FieldElement::ZERO,
+            fe("0x1"),
+            fe("0x2"),
+        )
+        .unwrap();
+        assert_eq!(
+            addr,
+            compute_contract_address(
+                FieldElement::ZERO,
+                FieldElement::ZERO,
+                fe("0x1"),
+                fe("0x2"),
+            )
+            .unwrap()
+        );
+        assert_ne!(
+            addr,
+            compute_contract_address(
+                FieldElement::ZERO,
+                FieldElement::ZERO,
+                fe("0x1"),
+                fe("0x3"),
+            )
+            .unwrap()
+        );
     }
 }

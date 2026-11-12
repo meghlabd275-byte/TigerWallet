@@ -1,7 +1,8 @@
 //! Starknet Cryptography
 //!
-//! Real Stark-curve ECDSA via the audited `starknet-crypto` crate (sign/verify),
-//! plus Blake2 address derivation helpers. No fabricated signature math.
+//! Real Stark-curve ECDSA via the audited `starknet-crypto` crate (sign/verify).
+//! Address derivation lives in [`crate::address`], which uses the same crate's
+//! Pedersen hash. No fabricated signature or address math.
 
 use starknet_crypto::{
     get_public_key as sn_get_public_key, sign as sn_sign, verify as sn_verify,
@@ -130,17 +131,6 @@ impl fmt::Display for CryptoError {
 
 impl std::error::Error for CryptoError {}
 
-/// Derive an account address from a public key (Blake2-256).
-pub fn derive_account_address(public_key: &[u8; 32]) -> [u8; 32] {
-    use blake2::{Blake2s256, Digest};
-    let mut hasher = Blake2s256::new();
-    hasher.update(public_key);
-    let result = hasher.finalize();
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&result);
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,12 +160,5 @@ mod tests {
         let s2 = kp.sign(&[1u8; 32]).unwrap();
         assert_eq!(s1.r, s2.r);
         assert_eq!(s1.s, s2.s);
-    }
-
-    #[test]
-    fn test_address_derivation_is_deterministic() {
-        let addr1 = derive_account_address(&[1u8; 32]);
-        let addr2 = derive_account_address(&[1u8; 32]);
-        assert_eq!(addr1, addr2);
     }
 }

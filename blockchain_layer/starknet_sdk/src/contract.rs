@@ -180,7 +180,12 @@ impl FunctionCallBuilder {
     }
 }
 
-/// Compute Starknet function selector (keccak256)
+/// Compute a Starknet function selector.
+///
+/// A selector is the low 250 bits of the Keccak-256 of the function name. The
+/// mask is not cosmetic: the unmasked hash of `transfer` starts with 0xb4, a
+/// different value from the canonical 0x83afd3f4..., so an unmasked selector
+/// never matches a real entry point.
 pub fn compute_selector(name: &str) -> [u8; 32] {
     use sha3::{Keccak256, Digest};
     
@@ -190,6 +195,7 @@ pub fn compute_selector(name: &str) -> [u8; 32] {
     
     let mut selector = [0u8; 32];
     selector.copy_from_slice(&hash);
+    selector[0] &= 0x03;
     
     selector
 }
@@ -284,5 +290,42 @@ pub mod addresses {
         };
         
         StarknetAddress::from_hex(addr).ok()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The canonical selector for ERC-20 `transfer`, as produced by the Cairo
+    /// `selector!` macro. Guards the 250-bit mask: without it the leading byte
+    /// is 0xb4 instead of 0x00 and no entry point would ever match. The value is
+    /// written as the canonical felt 0x83afd3f4...; a felt is always 32 bytes,
+    /// so the encoded form keeps the leading zero byte.
+    #[test]
+    fn transfer_selector_matches_canonical_value() {
+        assert_eq!(
+            hex::encode(compute_selector("transfer")),
+            "0083afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e"
+        );
+    }
+
+    /// A selector is a felt, so the top two bits of the first byte are clear.
+    #[test]
+    fn selectors_fit_in_250_bits() {
+        for name in ["transfer", "approve", "balanceOf", "mint", "__execute__"] {
+            assert_eq!(compute_selector(name)[0] & 0xFC, 0x00, "selector for {name}");
+        }
+    }
+
+    #[test]
+    fn different_names_give_different_selectors() {
+        assert_ne!(compute_selector("transfer"), compute_selector("approve"));
+    }
+
+    #[test]
+    fn selector_is_deterministic() {
+        assert_eq!(compute_selector("transfer"), compute_selector("transfer"));
     }
 }

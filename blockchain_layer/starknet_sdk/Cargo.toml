@@ -5,30 +5,17 @@ edition = "2021"
 description = "TigerWallet Starknet SDK - Cairo L2 Blockchain Support"
 
 [dependencies]
-# Cryptography
+# Stark-curve ECDSA and Pedersen hashing. Everything cryptographic in this
+# crate routes through it, so there is one audited implementation.
+starknet-crypto = "0.2"
+# Function selectors are Keccak-256 of the entry point name, masked to 250 bits.
 sha3 = "0.10"
-keccak-hash = "0.10"
-ecdsa = "0.14"
-elliptic-curve = "0.12"
 hex = "0.4"
-base64 = "0.21"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
-async-trait = "0.1"
 tokio = { version = "1.0", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] }
-blake2 = "0.10"
 rand = "0.8"
-zeroize = "1.7"
-
-[dependencies.starknet-crypto]
-version = "0.2"
-optional = true
-
-[features]
-default = ["starknet-crypto"]
-starknet-crypto = ["dep:starknet-crypto"]
 
 [lib]
 name = "tiger_starknet"
