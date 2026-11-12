@@ -180,8 +180,15 @@ def parse_existing(path):
     """Returns {chain_id: raw_entry_text} for entries already in the file."""
     text = open(path, encoding="utf-8").read()
     entries = {}
-    for match in re.finditer(r"\{\s*\n\s*ID:\s*(\d+),(.*?)\n\s*\},", text, re.S):
-        entries[int(match.group(1))] = match.group(0)
+    for match in re.finditer(r"(\t*)\{\s*\n\s*ID:\s*(\d+),", text):
+        end = text.find("\t},", match.end())
+        if end == -1:
+            continue
+        # Keep the entry exactly as written, indentation included. Slicing the
+        # original text from the match start (which covers the leading tabs)
+        # avoids re-assembling the entry from regex groups, which is how the
+        # indentation was being lost on regeneration.
+        entries[int(match.group(2))] = text[match.start():end + len("\t},")]
     return entries, text
 
 
@@ -353,7 +360,10 @@ def main():
             [],
         )
         if chain.get("comment"):
-            comment = "\n".join("\t\t// " + line for line in chain["comment"])
+            # rstrip each line so an empty comment line is a bare "//"
+            # rather than "// " with a trailing space, which would make the
+            # regenerated file differ from a gofmt-formatted one.
+            comment = "\n".join(("\t\t// " + line).rstrip() for line in chain["comment"])
             entry = "\t{\n" + comment + "\n" + entry.split("{\n", 1)[1]
         emitted[chain_id] = entry
 
