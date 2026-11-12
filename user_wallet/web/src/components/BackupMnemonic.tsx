@@ -31,6 +31,13 @@ declare global {
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
 
+// randomHex returns n bytes of CSPRNG entropy as lowercase hex.
+function randomHex(n: number): string {
+  const buf = new Uint8Array(n);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export default function BackupMnemonic({ mnemonic, walletId, walletPassword, onConfirmed }: Props) {
   const { isDark } = useTheme();
   const [copied, setCopied] = useState(false);
@@ -99,7 +106,7 @@ export default function BackupMnemonic({ mnemonic, walletId, walletPassword, onC
   const uploadToGoogleDrive = (accessToken: string): Promise<string> => {
     const fileName = `tigerwallet-backup-${walletId.slice(0, 8)}-${Date.now()}.txt`;
     const metadata = { name: fileName, mimeType: 'text/plain' };
-    const boundary = 'uaboundary' + Math.random().toString(16).slice(2);
+    const boundary = 'uaboundary' + randomHex(16);
     const body =
       `--${boundary}\r\n` +
       'Content-Type: application/json; charset=UTF-8\r\n\r\n' +

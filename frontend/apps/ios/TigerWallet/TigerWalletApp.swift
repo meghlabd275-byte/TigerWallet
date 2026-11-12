@@ -374,13 +374,40 @@ struct ReceiveView: View {
 }
 
 // MARK: - QR Code View
+//
+// Renders a real, scannable QR symbol through CoreImage's CIQRCodeGenerator.
+// The previous implementation drew a static SF Symbol, which cannot be scanned.
 struct QRCodeView: View {
     let address: String
-    
+
     var body: some View {
-        Image(systemName: "qrcode")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
+        Group {
+            if let image = Self.qrImage(from: address) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                // Only reachable if CoreImage cannot render, never a placeholder.
+                Text("QR unavailable")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityLabel("QR code for \(address)")
+    }
+
+    static func qrImage(from string: String) -> UIImage? {
+        guard !string.isEmpty, let data = string.data(using: .utf8) else { return nil }
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = data
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        // Scale up so modules stay crisp; interpolation is disabled above.
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
+        let context = CIContext()
+        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
     }
 }
 

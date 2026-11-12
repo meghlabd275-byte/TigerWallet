@@ -2,6 +2,7 @@
 name = "tiger-fetcher"
 version = "1.0.0"
 edition = "2021"
+rust-version = "1.85"
 description = "High-performance data fetcher for TigerWallet"
 authors = ["TigerWallet Team"]
 license = "MIT"

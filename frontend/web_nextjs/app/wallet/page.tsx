@@ -206,8 +206,16 @@ export default function TigerWallet() {
   const getOrCreateDeviceId = (): string => {
     if (typeof window === 'undefined') return 'server';
     let id = localStorage.getItem('tw_device_id');
-    if (!id) {
-      id = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    // The guest endpoint requires an RFC-4122 UUID: the device id is the only
+    // credential that resumes an anonymous account, so it must be unguessable
+    // (CSPRNG, not Math.random) and correctly formatted.
+    if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      const buf = new Uint8Array(16);
+      crypto.getRandomValues(buf);
+      buf[6] = (buf[6] & 0x0f) | 0x40;
+      buf[8] = (buf[8] & 0x3f) | 0x80;
+      const hex = Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
+      id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
       localStorage.setItem('tw_device_id', id);
     }
     return id;

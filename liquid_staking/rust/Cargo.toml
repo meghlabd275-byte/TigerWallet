@@ -2,6 +2,7 @@
 name = "tiger-liquid-staking"
 version = "1.0.0"
 edition = "2021"
+rust-version = "1.85"
 description = "TigerWallet Liquid Staking Token - PSOL equivalent"
 authors = ["TigerWallet"]
 license = "MIT"
