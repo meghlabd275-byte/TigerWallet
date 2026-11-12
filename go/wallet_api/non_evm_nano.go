@@ -20,19 +20,26 @@ import (
 
 var nanoAlphabet = "13456789abcdefghijkmnopqrstuwxyz"
 
+// nanoBase32Enc encodes with the Nano ledger's own base32: the value is
+// left-padded to a multiple of 5 bits, so 32 bytes always produce exactly 52
+// characters. The canonical burn address
+// nano_1111111111111111111111111111111111111111111111111111hifc8npp is the
+// regression vector for this.
 func nanoBase32Enc(b []byte) string {
-	var acc uint32
-	bits := 0
-	var out strings.Builder
-	for _, x := range b {
-		acc = (acc << 8) | uint32(x)
-		bits += 8
-		for bits >= 5 {
-			bits -= 5
-			out.WriteByte(nanoAlphabet[(acc>>bits)&31])
-		}
+	pad := (5 - (len(b)*8)%5) % 5
+	total := len(b)*8 + pad
+	value := new(big.Int).SetBytes(b)
+	value.Lsh(value, uint(pad))
+	out := make([]byte, total/5)
+	mask := big.NewInt(31)
+	tmp := new(big.Int)
+	for i := 0; i < len(out); i++ {
+		shift := total - 5*(i+1)
+		tmp.Rsh(value, uint(shift))
+		tmp.And(tmp, mask)
+		out[i] = nanoAlphabet[tmp.Int64()]
 	}
-	return out.String()
+	return string(out)
 }
 
 func nanoBase32Dec(s string) ([]byte, error) {
@@ -78,7 +85,7 @@ func NanoAddressFor(seed []byte, path, chainType string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h, err := blake2b.New256(nil)
+	h, err := blake2b.New(5, nil)
 	if err != nil {
 		return "", err
 	}
@@ -86,7 +93,7 @@ func NanoAddressFor(seed []byte, path, chainType string) (string, error) {
 	d := h.Sum(nil)
 	rev := make([]byte, 5)
 	for i := 0; i < 5; i++ {
-		rev[i] = d[31-i]
+		rev[i] = d[4-i]
 	}
 	return prefix + nanoBase32Enc(pub) + nanoBase32Enc(rev), nil
 }

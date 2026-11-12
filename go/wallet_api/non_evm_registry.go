@@ -59,6 +59,18 @@ const (
 	familyGraphene       nonEvmFamily = "graphene"  // steem/hive/bitshares
 	familyNEM            nonEvmFamily = "nem"       // nem/symbol
 	familySiacoin        nonEvmFamily = "siacoin"
+	familyStarknet       nonEvmFamily = "starknet"
+	familyMonero         nonEvmFamily = "monero"
+	familyArweave        nonEvmFamily = "arweave"
+	familyStacks         nonEvmFamily = "stacks"
+	familyMina           nonEvmFamily = "mina"
+	familyErgo           nonEvmFamily = "ergo"
+	familyNEO            nonEvmFamily = "neo"
+	// familyUnsupported marks registry chains whose address scheme needs
+	// data this backend cannot obtain offline. They resolve to a named
+	// family so the failure message names the chain, and every operation on
+	// them fails closed instead of emitting a plausible-looking value.
+	familyUnsupported    nonEvmFamily = "unsupported"
 )
 
 // utxoParams parameterizes one UTXO-family chain.
@@ -104,6 +116,11 @@ var utxoTable = map[string]utxoParams{
 	"stratis":      {[]byte{0x3f}, false},
 	"omni":         {[]byte{0x00}, false},
 	"counterparty": {[]byte{0x00}, false},
+	// Decred mainnet PubKeyHashAddrID is the two-byte prefix 0x073f
+	// (dcrd chaincfg/mainnetparams.go). Primecoin uses the single byte 23
+	// (primecoin src/base58.h, "starts with A").
+	"decred":    {[]byte{0x07, 0x3f}, false},
+	"primecoin": {[]byte{0x17}, false},
 }
 
 // cosmosIDPrefix resolves the bech32 HRP for the 23 Cosmos-family chains by
@@ -118,6 +135,7 @@ var cosmosIDPrefix = map[int64]string{
 	9000026317: "osmo",
 	9000049823: "dydx",
 	9000073741: "sei",
+	9000009016: "akash",
 	9000041857: "kujira",
 	9000012099: "stride",
 	9000090063: "neutron",
@@ -241,6 +259,32 @@ func nonEvmResolve(chainType string, chainID int64) (nonEvmFamily, string, error
 		return familyNEM, ct, nil
 	case "siacoin":
 		return familySiacoin, ct, nil
+
+	case "starknet":
+		return familyStarknet, ct, nil
+	case "monero":
+		return familyMonero, ct, nil
+	case "arweave":
+		return familyArweave, ct, nil
+	case "stacks":
+		return familyStacks, ct, nil
+	case "mina":
+		return familyMina, ct, nil
+	case "ergo":
+		return familyErgo, ct, nil
+	case "neo":
+		return familyNEO, ct, nil
+	case "wakt":
+		return familyNano, ct, nil
+	case "akash":
+		return familyCosmos, "akash", nil
+
+	// Registry chains whose address scheme is not derivable offline. They
+	// resolve to familyUnsupported so the error names the chain; no caller
+	// ever receives a fabricated address, signature, or transaction.
+	case "hyperliquid", "supra", "iota", "kadena", "chia", "handshake",
+		"lisk", "nexus", "ark", "aion", "nuls", "pascalcoin", "signum":
+		return familyUnsupported, ct, nil
 	}
 	return familyUnknown, ct, fmt.Errorf("unsupported non-EVM chain %q — route fails closed rather than fabricating a result", ct)
 }
@@ -264,6 +308,10 @@ func normChainType(s string) string {
 		return "terra"
 	case "pi", "pinetwork":
 		return "pi"
+	case "neo n3", "neo3", "neo legacy":
+		return "neo"
+	case "signum (burstcoin)", "burstcoin":
+		return "signum"
 	}
 	return lower
 }

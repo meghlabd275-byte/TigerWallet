@@ -289,6 +289,19 @@ func TestStaticChainRegistryEntriesHaveRPC(t *testing.T) {
 		9000009200: true, // LBRY Credits  (LBRY_API)
 		9000009300: true, // Bitcoin Gold  (BTG_API)
 		7710:       true, // TigerSmartChain (TSC_RPC_URL) - the platform runs this node
+
+		// Registry-expansion chains with no public endpoint that answered a
+		// probe. Each keeps an empty RPCEndpoint so the client fails closed
+		// instead of being pointed at a dead or hostile host; the operator
+		// supplies one through CHAIN_<ID>_RPC or the admin_chain_config table.
+		9000009007: true, // Mina Protocol  (MINA_API)
+		9000009011: true, // Handshake      (HNS_API)
+		9000009012: true, // Wakt Chain     (WAKT_API)
+		9000009019: true, // Chia Network   (CHIA_API)
+		9000009020: true, // Nexus          (NEXUS_API)
+		9000009022: true, // Aion           (AION_API)
+		9000009023: true, // NULS           (NULS_API)
+		9000009024: true, // PascalCoin     (PASC_API)
 	}
 	for _, c := range append(append([]ChainConfig{}, evmMainnet...), nonEVMMainnet...) {
 		if c.RPCEndpoint != "" {

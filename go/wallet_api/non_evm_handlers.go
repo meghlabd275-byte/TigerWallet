@@ -135,6 +135,26 @@ func nonEvmAddressFor(family nonEvmFamily, ct string, chainID int64, seed []byte
 		return siacoinAddress(seed, path)
 	case familyMultiversX:
 		return MultiversXAddress(seed, path)
+	case familyStarknet:
+		// A Starknet account address is a contract address whose class hash
+		// selects the account implementation, so it is configured rather than
+		// guessed; see StarknetAddressForChain.
+		return StarknetAddressForChain(ct, seed, path)
+	case familyMonero:
+		return MoneroAddressFromSeed(seed, path)
+	case familyStacks:
+		return StacksAddress(seed, path)
+	case familyMina:
+		return MinaAddress(seed, path)
+	case familyErgo:
+		return ErgoP2PKAddress(seed, path)
+	case familyNEO:
+		return NEOAddress(seed, path)
+	case familyArweave:
+		// Arweave addresses come from an RSA-4096 public key, which needs a
+		// generated key pair rather than an HD derivation; fail closed here
+		// and expose ArweaveAddressFromModulus for callers that hold one.
+		return "", errors.New("arweave: an address is Base64URL(SHA-256(512-byte RSA-4096 modulus)); derive it from the wallet key with ArweaveAddressFromModulus — no HD scheme exists to fabricate")
 	case familyTezos:
 		return TezosAddress(seed, path)
 	case familyCardano:
@@ -209,6 +229,20 @@ func handleNonEvmSign(c *gin.Context) {
 		sig, pub, err = NervosSign(seed, wallet.DerivationPath, []byte(req.Message))
 	case familyFilecoin:
 		sig, pub, err = FilSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyStarknet:
+		sig, pub, err = StarknetSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyMonero:
+		sig, pub, err = MoneroSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyErgo:
+		sig, pub, err = ErgoSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyStacks:
+		sig, pub, err = StacksSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyNEO:
+		sig, pub, err = NEOSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyMina:
+		sig, pub, err = edSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case familyUnsupported:
+		err = nonEvmExtraNotFeasible(family, ct)
 	case familySubstrate:
 		sig, pub, err = substrateSign(seed, wallet.DerivationPath, []byte(req.Message), req.Prefix)
 	case familyGraphene, familyNEM, familySiacoin:
@@ -265,6 +299,21 @@ func handleNonEvmSend(c *gin.Context) {
 func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req nonEvmSendReq, seed []byte, path string) (raw, txHash, famStr string, err error) {
 	famStr = string(family)
 	switch family {
+	case familyStarknet, familyMonero, familyArweave, familyMina, familyUnsupported:
+		// These chains need a signed-payload format that depends on node state
+		// (Starknet nonce + class hash, Monero ring members, Mina zkApp
+		// account, Arweave RSA signing) or have no offline address scheme at
+		// all. Broadcast is fail-closed: the backend never returns a
+		// plausible-looking transaction it did not really build.
+		return "", "", famStr, nonEvmExtraNotFeasible(family, ct)
+	case familyStacks, familyNEO, familyErgo:
+		// Message signing is real for these chains (see the sign dispatch);
+		// building a spend transaction additionally needs the chain's own
+		// serialization rules (Stacks clarity post-conditions, the NEO VM
+		// script build, Ergo box selection), which this backend does not
+		// implement. Fail closed rather than emitting an envelope no node
+		// would accept.
+		return "", "", famStr, errors.New(string(family) + ": transaction building needs the chain's own serializer, which is not implemented here — message signing remains available; fail-closed rather than emitting a transaction no node accepts")
 	case familyUTXO:
 		if len(req.UTXOInputs) == 0 && len(req.BitcoinInputs) > 0 {
 			for _, x := range req.BitcoinInputs {
