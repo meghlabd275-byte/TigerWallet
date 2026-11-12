@@ -248,8 +248,12 @@ func TestMinaAndErgoAndWaktFormats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ergo base58: %v", err)
 	}
-	if len(ergoRaw) != 1+32+4 || ergoRaw[0] != 0x01 {
-		t.Fatalf("ergo P2PK address must be type 0x01 + 32-byte hash + checksum, got len=%d type=0x%02x", len(ergoRaw), ergoRaw[0])
+	// Ergo P2PK addresses embed the compressed public key, so the payload is
+	// 1 type byte + 33 key bytes + 4 checksum bytes. The previous expectation
+	// (1 + 32) described a hash-of-script address, which is not what Ergo
+	// wallets produce.
+	if len(ergoRaw) != 1+33+4 || ergoRaw[0] != 0x01 {
+		t.Fatalf("ergo P2PK address must be type 0x01 + 33-byte key + checksum, got len=%d type=0x%02x", len(ergoRaw), ergoRaw[0])
 	}
 
 	wakt, err := blake2bNanoAddress(seed, "m/44'/1017'/0'", "wakt_")

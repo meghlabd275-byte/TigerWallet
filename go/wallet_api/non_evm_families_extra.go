@@ -452,32 +452,39 @@ func blake2bNanoAddress(seed []byte, path, prefix string) (string, error) {
 // Ergo
 // ---------------------------------------------------------------------------
 
-// ErgoP2PKAddress derives an Ergo P2PK address: the P2PK script
-// (OP_PUSHBYTES_33 || compressed key || SigmaProp) is hashed with Blake2b-256,
-// prefixed with the P2PK address type byte, and Base58-encoded with a 4-byte
-// Blake2b-256 checksum.
+// ErgoP2PKAddress derives an Ergo P2PK address. Ergo P2PK addresses embed the
+// compressed public key directly rather than a hash of the P2PK script:
+//
+//	Base58(0x01 || compressed_pubkey(33) || blake2b256(...)[:4])
+//
+// The address commits to the key, and the matching ErgoTree (0008cd<key>) is
+// what the node evaluates. Hashing the script instead yields a 37-byte payload
+// that decodes to a different key and that no Ergo wallet recognises.
 func ErgoP2PKAddress(seed []byte, path string) (string, error) {
 	priv, err := hdDerive(seed, path)
 	if err != nil {
 		return "", err
 	}
-	pub := priv.PublicKey
-	x := make([]byte, 32)
-	pub.X.FillBytes(x)
-	compressed := append([]byte{0x02 + byte(pub.Y.Bit(0))}, x...)
-	script := append(append([]byte{0xcd}, compressed...), 0x00)
-	h, err := blake2b.New256(nil)
-	if err != nil {
-		return "", err
-	}
-	h.Write(script)
-	payload := append([]byte{0x01}, h.Sum(nil)...)
+	compressed := crypto.CompressPubkey(&priv.PublicKey)
+	payload := append([]byte{0x01}, compressed...)
 	chk, err := blake2b.New256(nil)
 	if err != nil {
 		return "", err
 	}
 	chk.Write(payload)
 	return base58Encode(append(payload, chk.Sum(nil)[:4]...)), nil
+}
+
+// ErgoErgoTree returns the P2PK ErgoTree the address above commits to:
+// 0008 (P2PK constant) || cd (push 33 bytes) || compressed key.
+func ErgoErgoTree(seed []byte, path string) ([]byte, error) {
+	priv, err := hdDerive(seed, path)
+	if err != nil {
+		return nil, err
+	}
+	compressed := crypto.CompressPubkey(&priv.PublicKey)
+	tree := append([]byte{0x00, 0x08, 0xcd}, compressed...)
+	return tree, nil
 }
 
 // ---------------------------------------------------------------------------
