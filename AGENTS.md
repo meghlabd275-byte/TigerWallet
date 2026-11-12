@@ -1475,3 +1475,57 @@
   Dockerfile command and smoke-started (api-gateway /health 200 + /ready
   {"status":"ready"}; wallet-service /health 200; the fail-closed services exit
   with a named missing-secret error, which is correct).
+
+## Session 42 (2026-11-11/12) — TigerSmartChain integration hardened (4 commits to main)
+- SANDBOX TOOLCHAIN: Go 1.24.5 at /tmp/goroot/go (GOPATH=/tmp/gopath,
+  GOMODCACHE=/tmp/gomodcache, GOFLAGS=-mod=mod). PostgreSQL 17 + Redis installed
+  via sudo apt; test PG on port 55432 (pg_ctl -D /tmp/pgdata), Redis 56379.
+  Docker daemon needs root here, so compose was validated with
+  `docker compose config` and services smoke-started as bare binaries.
+- TSC CHAIN ID IS 7710 — RECONCILED, DO NOT CHANGE. TigerWallet is consistent at
+  7710 across Go (wallet_api platform_tokens.go, master_wallet backend),
+  C++ (cpp/core platform_chain.hpp kChainId), Rust (rust/security CHAIN_ID,
+  wallet_core/src/evm.rs), TS (user_wallet/web), Dart/Kotlin/Swift, and
+  tools/gen_evm_chains.py. The TSC node defaults to 7710
+  (tiger_smart_chain/chain/config.go DefaultChainID, docker-entrypoint.sh).
+  The UPSTREAM TigerSmartChain repo is INTERNALLY INCONSISTENT: README/AGENTS.md/
+  explorer say 6666, its TS SDK declares TIGER_MAINNET=1, frontend example says
+  9001, and its own RPC handler returns 0x1. Since the node honours TSC_CHAIN_ID
+  and the wallet's RUSD/WTGR predeploy addresses are fixed at 0x...7710/0x...7711,
+  7710 is authoritative for the wallet. An operator deploying upstream's node
+  MUST start it with TSC_CHAIN_ID=7710 (or the wallet warns at startup and
+  refuses to broadcast).
+- PRE-BROADCAST CHAIN GUARD (commit 5954c0a): BroadcastTransaction
+  (go/wallet_api/wallet_engine.go) now takes expectedChainID, reads eth_chainId
+  and refuses on mismatch or when the endpoint cannot answer, BEFORE
+  eth_sendRawTransaction. Closes a real cross-chain replay hole: the tx was
+  signed with the registry chain id and sent to whatever RPC that entry held,
+  with no comparison. Tests: wallet_engine_chainid_test.go (mismatch/match/
+  unverifiable + a live-node test gated on TSC_RPC_URL).
+- STARTUP CHAIN CHECK (commits eb70681, 9dab527): go/wallet_api/
+  platform_chain_check.go — verifyPlatformChain reads eth_chainId once at boot,
+  logs confirmation or a warning naming both ids + remediation. Reports only,
+  never blocks startup. platformChainEndpoint() resolves via chainByID so it
+  checks the SAME endpoint the send path uses (do not re-implement precedence).
+  Tests: platform_chain_check_test.go (6 tests, log-capture based).
+- TSC-WALLET E2E LIVE-VERIFIED (real node on :8604, chain 0x1e1e):
+  wallet_api boots + migrates 42 tables + /health/ready = ready; GET
+  /api/v1/chains resolves 7710 to the live node; authenticated
+  /balance?address=&chain_id=7710 returned 200,000,000 TGR read from the node;
+  RUSD predeploy (0x...7710) answers name()="Royal Tiger USD", symbol()="RUSD",
+  decimals()=18; WTGR (0x...7711) has deployed code. /api/v1/platform/tokens
+  returns TGR (native), WTGR, RUSD with honest pricing (RUSD pegged_usd=true
+  source=declared_peg, others usd_price_source=unavailable — never fabricated).
+- COMPOSE FIXES (commit 4131f06, deployments/docker/docker-compose.yml):
+  (1) POSTGRES_MULTIPLE_DATABASES is NOT read by the official postgres image, so
+  only POSTGRES_DB was created and 5 of 6 services pointed at missing DBs. New
+  deployments/docker/init-databases.sh creates all six, is idempotent, and
+  refuses unsafe names (verified live: all 6 created/owned by tigerwallet,
+  re-run is a no-op, SQL-injection-shaped name rejected). (2) wallet-service had
+  no WALLET_API_URL so it proxied to localhost inside its own container, and the
+  stack had NO wallet-api service — added it and pointed the proxy at it.
+  (3) added tsc-node (host ports 8555/8556 because 8545/8546 are taken by
+  ethereum-node) with a JSON-RPC healthcheck + TSC_RPC_URL wiring.
+- Open on the TSC side (not wallet blockers): upstream repo's own chain-id
+  inconsistency above; exotic non-EVM broadcast still limited to
+  BTC/LTC/Solana/Cosmos families (fail-closed elsewhere).
