@@ -204,9 +204,13 @@ func handleCreateWallet(c *gin.Context) {
 	if req.ChainID == 0 {
 		req.ChainID = 1
 	}
-	chain := evmChainByChainID(req.ChainID)
+	chain := chainByID(req.ChainID)
 	if chain == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported chain"})
+		return
+	}
+	if !chain.IsEVM() {
+		createNonEvmWallet(c, req, chain)
 		return
 	}
 

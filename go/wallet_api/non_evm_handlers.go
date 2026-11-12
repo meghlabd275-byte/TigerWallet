@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
@@ -616,3 +618,113 @@ func lookupEndpoint(chainID int64, ct string) string {
 	}
 	return ""
 }
+
+// ---------- non-EVM wallet creation ----------
+
+// createNonEvmWallet derives and persists a wallet for a non-EVM chain. It is
+// reached from handleCreateWallet once the requested chain is known not to be
+// EVM. The derivation path comes from the chain registry so the same mnemonic
+// always restores the same address, and the path is persisted verbatim so
+// /non_evm/* signing and address re-derivation use it later.
+func createNonEvmWallet(c *gin.Context, req createWalletReq, chain *ChainConfig) {
+	family, ct, err := nonEvmResolve(chain.ChainType, chain.ID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	mnemonic := strings.TrimSpace(req.Mnemonic)
+	if mnemonic == "" {
+		bits := req.EntropyBits
+		if bits == 0 {
+			bits = 256
+		}
+		m, err := GenerateMnemonic(bits)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate mnemonic"})
+			return
+		}
+		mnemonic = m
+	} else if !ValidateMnemonic(mnemonic) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mnemonic (BIP-39 checksum failed)"})
+		return
+	}
+
+	path := strings.TrimSpace(chain.DerivationPath)
+	if path == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "chain " + chain.Name + " has no registered derivation path",
+		})
+		return
+	}
+	if req.AccountIndex > 0 {
+		path = withAccountIndex(path, req.AccountIndex)
+	}
+
+	seed := MnemonicToSeed(mnemonic, "")
+	address, err := nonEvmAddressFor(family, ct, chain.ID, seed, path, 0)
+	if err != nil {
+		// Arweave, TON, Aleo, Hedera and Flow have no HD address scheme; they
+		// report a descriptive error rather than a fabricated address.
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if address == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "derivation produced an empty address"})
+		return
+	}
+
+	encSeed, err := EncryptSeed(seed, req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to encrypt seed"})
+		return
+	}
+
+	uid, _ := uuid.Parse(getUserID(c))
+	label := req.Label
+	if label == "" {
+		label = chain.Name + " Wallet"
+	}
+
+	w := &WalletRecord{
+		UserID:         uid,
+		Label:          label,
+		ChainID:        chain.ID,
+		Address:        address,
+		EncryptedSeed:  encSeed,
+		DerivationPath: path,
+		AccountIndex:   req.AccountIndex,
+		IsPrimary:      false,
+	}
+	if err := store.SaveWallet(c.Request.Context(), w); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save wallet"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, walletResp{
+		ID:             w.ID.String(),
+		Label:          w.Label,
+		ChainID:        w.ChainID,
+		Address:        address,
+		DerivationPath: w.DerivationPath,
+		Mnemonic:       mnemonic,
+	})
+}
+
+// withAccountIndex replaces the trailing index of a BIP-44 path so a caller can
+// request account N. Non-EVM paths are written with a mix of hardened (') and
+// plain segments, so only the final element is touched.
+func withAccountIndex(path string, index int) string {
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 {
+		return path
+	}
+	last := parts[len(parts)-1]
+	if strings.HasSuffix(last, "'") {
+		parts[len(parts)-1] = strconv.Itoa(index) + "'"
+	} else {
+		parts[len(parts)-1] = strconv.Itoa(index)
+	}
+	return strings.Join(parts, "/")
+}
+

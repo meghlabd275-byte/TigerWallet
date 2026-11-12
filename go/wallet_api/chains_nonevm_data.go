@@ -64,10 +64,10 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000000501, Name: "Solana", Symbol: "SOL", RPCEndpoint: "https://api.mainnet-beta.solana.com", DerivationPath: "m/44'/501'/0'/0'/0'", ExplorerAPI: "https://solscan.io", ExplorerURL: "https://solscan.io", ChainType: "solana", Decimals: 9, CoinType: 501, IsTestnet: false,
 	},
 	{
-		ID: 9000000637, Name: "Aptos", Symbol: "APT", RPCEndpoint: "https://fullnode.mainnet.aptoslabs.com", DerivationPath: "m/44'/637'/0'/0/0", ExplorerAPI: "https://aptoscan.com", ExplorerURL: "https://aptoscan.com", ChainType: "aptos", Decimals: 8, CoinType: 637, IsTestnet: false,
+		ID: 9000000637, Name: "Aptos", Symbol: "APT", RPCEndpoint: "https://fullnode.mainnet.aptoslabs.com", DerivationPath: "m/44'/637'/0'/0'/0'", ExplorerAPI: "https://aptoscan.com", ExplorerURL: "https://aptoscan.com", ChainType: "aptos", Decimals: 8, CoinType: 637, IsTestnet: false,
 	},
 	{
-		ID: 9000000784, Name: "Sui", Symbol: "SUI", RPCEndpoint: "https://fullnode.mainnet.sui.io", DerivationPath: "m/44'/784'/0'/0/0", ExplorerAPI: "https://suiscan.xyz", ExplorerURL: "https://suiscan.xyz", ChainType: "sui", Decimals: 9, CoinType: 784, IsTestnet: false,
+		ID: 9000000784, Name: "Sui", Symbol: "SUI", RPCEndpoint: "https://fullnode.mainnet.sui.io", DerivationPath: "m/44'/784'/0'/0'/0'", ExplorerAPI: "https://suiscan.xyz", ExplorerURL: "https://suiscan.xyz", ChainType: "sui", Decimals: 9, CoinType: 784, IsTestnet: false,
 	},
 	{
 		ID: 9000000607, Name: "TON", Symbol: "TON", RPCEndpoint: "https://toncenter.com/api/v2/jsonRPC", DerivationPath: "m/44'/607'/0'/0/0", ExplorerAPI: "https://tonscan.org", ExplorerURL: "https://tonscan.org", ChainType: "ton", Decimals: 9, CoinType: 607, IsTestnet: false,
@@ -148,10 +148,10 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000000434, Name: "Kusama", Symbol: "KSM", RPCEndpoint: "https://kusama-rpc.polkadot.io", DerivationPath: "m/44'/434'/0'/0/0", ExplorerAPI: "https://kusama.subscan.io", ExplorerURL: "https://kusama.subscan.io", ChainType: "polkadot", Decimals: 12, CoinType: 434, IsTestnet: false,
 	},
 	{
-		ID: 9000000397, Name: "NEAR", Symbol: "NEAR", RPCEndpoint: "https://rpc.mainnet.near.org", DerivationPath: "m/44'/397'/0'/0/0", ExplorerAPI: "https://nearblocks.io", ExplorerURL: "https://nearblocks.io", ChainType: "near", Decimals: 24, CoinType: 397, IsTestnet: false,
+		ID: 9000000397, Name: "NEAR", Symbol: "NEAR", RPCEndpoint: "https://rpc.mainnet.near.org", DerivationPath: "m/44'/397'/0'", ExplorerAPI: "https://nearblocks.io", ExplorerURL: "https://nearblocks.io", ChainType: "near", Decimals: 24, CoinType: 397, IsTestnet: false,
 	},
 	{
-		ID: 9000000283, Name: "Algorand", Symbol: "ALGO", RPCEndpoint: "https://mainnet-api.algonode.cloud", DerivationPath: "m/44'/283'/0'/0/0", ExplorerAPI: "https://lora.algokit.io/mainnet", ExplorerURL: "https://lora.algokit.io/mainnet", ChainType: "algorand", Decimals: 6, CoinType: 283, IsTestnet: false,
+		ID: 9000000283, Name: "Algorand", Symbol: "ALGO", RPCEndpoint: "https://mainnet-api.algonode.cloud", DerivationPath: "m/44'/283'/0'/0'/0'", ExplorerAPI: "https://lora.algokit.io/mainnet", ExplorerURL: "https://lora.algokit.io/mainnet", ChainType: "algorand", Decimals: 6, CoinType: 283, IsTestnet: false,
 	},
 	{
 		ID: 9000001815, Name: "Cardano", Symbol: "ADA", RPCEndpoint: "https://cardano-mainnet.blockfrost.io/api/v0", DerivationPath: "m/1852'/1815'/0'/0/0", ExplorerAPI: "https://cardanoscan.io", ExplorerURL: "https://cardanoscan.io", ChainType: "cardano", Decimals: 6, CoinType: 1815, IsTestnet: false,
@@ -160,13 +160,13 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000000144, Name: "XRP Ledger", Symbol: "XRP", RPCEndpoint: "https://xrplcluster.com", DerivationPath: "m/44'/144'/0'/0/0", ExplorerAPI: "https://livenet.xrpl.org", ExplorerURL: "https://livenet.xrpl.org", ChainType: "ripple", Decimals: 6, CoinType: 144, IsTestnet: false,
 	},
 	{
-		ID: 9000000148, Name: "Stellar", Symbol: "XLM", RPCEndpoint: "https://horizon.stellar.org", DerivationPath: "m/44'/148'/0'/0/0", ExplorerAPI: "https://stellar.expert/explorer/public", ExplorerURL: "https://stellar.expert/explorer/public", ChainType: "stellar", Decimals: 7, CoinType: 148, IsTestnet: false,
+		ID: 9000000148, Name: "Stellar", Symbol: "XLM", RPCEndpoint: "https://horizon.stellar.org", DerivationPath: "m/44'/148'/0'", ExplorerAPI: "https://stellar.expert/explorer/public", ExplorerURL: "https://stellar.expert/explorer/public", ChainType: "stellar", Decimals: 7, CoinType: 148, IsTestnet: false,
 	},
 	{
 		ID: 9000003030, Name: "Hedera", Symbol: "HBAR", RPCEndpoint: "https://mainnet.mirrornode.hedera.com", DerivationPath: "m/44'/3030'/0'/0/0", ExplorerAPI: "https://hashscan.io/mainnet", ExplorerURL: "https://hashscan.io/mainnet", ChainType: "hedera", Decimals: 8, CoinType: 3030, IsTestnet: false,
 	},
 	{
-		ID: 9000001729, Name: "Tezos", Symbol: "XTZ", RPCEndpoint: "https://mainnet.api.tez.ie", DerivationPath: "m/44'/1729'/0'/0/0", ExplorerAPI: "https://tzkt.io", ExplorerURL: "https://tzkt.io", ChainType: "tezos", Decimals: 6, CoinType: 1729, IsTestnet: false,
+		ID: 9000001729, Name: "Tezos", Symbol: "XTZ", RPCEndpoint: "https://mainnet.api.tez.ie", DerivationPath: "m/44'/1729'/0'/0'", ExplorerAPI: "https://tzkt.io", ExplorerURL: "https://tzkt.io", ChainType: "tezos", Decimals: 6, CoinType: 1729, IsTestnet: false,
 	},
 	{
 		ID: 9000000539, Name: "Flow", Symbol: "FLOW", RPCEndpoint: "https://rest-mainnet.onflow.org", DerivationPath: "m/44'/539'/0'/0/0", ExplorerAPI: "https://flowscan.org", ExplorerURL: "https://flowscan.org", ChainType: "flow", Decimals: 8, CoinType: 539, IsTestnet: false,
@@ -175,7 +175,7 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000111111, Name: "Kaspa", Symbol: "KAS", RPCEndpoint: "https://api.kaspa.org", DerivationPath: "m/44'/111111'/0'/0/0", ExplorerAPI: "https://kaspa.fyi", ExplorerURL: "https://kaspa.fyi", ChainType: "kaspa", Decimals: 2, CoinType: 111111, IsTestnet: false,
 	},
 	{
-		ID: 9000000165, Name: "Nano", Symbol: "XNO", RPCEndpoint: "https://node.somenano.com/api", DerivationPath: "m/44'/165'/0'/0/0", ExplorerAPI: "https://nanolooker.com", ExplorerURL: "https://nanolooker.com", ChainType: "nano", Decimals: 30, CoinType: 165, IsTestnet: false,
+		ID: 9000000165, Name: "Nano", Symbol: "XNO", RPCEndpoint: "https://node.somenano.com/api", DerivationPath: "m/44'/165'/0'", ExplorerAPI: "https://nanolooker.com", ExplorerURL: "https://nanolooker.com", ChainType: "nano", Decimals: 30, CoinType: 165, IsTestnet: false,
 	},
 	{
 		ID: 9000000195, Name: "Tron", Symbol: "TRX", RPCEndpoint: "https://api.trongrid.io", DerivationPath: "m/44'/195'/0'/0/0", ExplorerAPI: "https://tronscan.org", ExplorerURL: "https://tronscan.org", ChainType: "tron", Decimals: 6, CoinType: 195, IsTestnet: false,
@@ -184,10 +184,10 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000000818, Name: "VeChain", Symbol: "VET", RPCEndpoint: "https://mainnet.vechain.org", DerivationPath: "m/44'/818'/0'/0/0", ExplorerAPI: "https://explore.vechain.org", ExplorerURL: "https://explore.vechain.org", ChainType: "vechain", Decimals: 18, CoinType: 818, IsTestnet: false,
 	},
 	{
-		ID: 9005741564, Name: "Waves", Symbol: "WAVES", RPCEndpoint: "https://nodes.wavesnodes.com", DerivationPath: "m/44'/5741564'/0'/0/0", ExplorerAPI: "https://wavesexplorer.com", ExplorerURL: "https://wavesexplorer.com", ChainType: "waves", Decimals: 8, CoinType: 5741564, IsTestnet: false,
+		ID: 9005741564, Name: "Waves", Symbol: "WAVES", RPCEndpoint: "https://nodes.wavesnodes.com", DerivationPath: "m/44'/5741564'/0'/0'/0'", ExplorerAPI: "https://wavesexplorer.com", ExplorerURL: "https://wavesexplorer.com", ChainType: "waves", Decimals: 8, CoinType: 5741564, IsTestnet: false,
 	},
 	{
-		ID: 9000000508, Name: "Elrond", Symbol: "EGLD", RPCEndpoint: "https://api.elrond.com", DerivationPath: "m/44'/508'/0'/0/0", ExplorerAPI: "https://explorer.multiversx.com", ExplorerURL: "https://explorer.multiversx.com", ChainType: "elrond", Decimals: 18, CoinType: 508, IsTestnet: false,
+		ID: 9000000508, Name: "Elrond", Symbol: "EGLD", RPCEndpoint: "https://api.elrond.com", DerivationPath: "m/44'/508'/0'/0'", ExplorerAPI: "https://explorer.multiversx.com", ExplorerURL: "https://explorer.multiversx.com", ChainType: "elrond", Decimals: 18, CoinType: 508, IsTestnet: false,
 	},
 	{
 		ID: 9000000313, Name: "Zilliqa", Symbol: "ZIL", RPCEndpoint: "https://api.zilliqa.com", DerivationPath: "m/44'/313'/0'/0/0", ExplorerAPI: "https://devex.zilliqa.com", ExplorerURL: "https://devex.zilliqa.com", ChainType: "zilliqa", Decimals: 12, CoinType: 313, IsTestnet: false,
@@ -205,7 +205,7 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000000309, Name: "Nervos CKB", Symbol: "CKB", RPCEndpoint: "https://mainnet.ckb.dev/rpc", DerivationPath: "m/44'/309'/0'/0/0", ExplorerAPI: "https://explorer.nervos.org", ExplorerURL: "https://explorer.nervos.org", ChainType: "nervos", Decimals: 8, CoinType: 309, IsTestnet: false,
 	},
 	{
-		ID: 9000004242, Name: "Pi Network", Symbol: "PI", RPCEndpoint: "", DerivationPath: "m/44'/4242'/0'/0/0", ExplorerAPI: "https://blockexplorer.minepi.com", ExplorerURL: "https://blockexplorer.minepi.com", ChainType: "pi", Decimals: 8, CoinType: 4242, IsTestnet: false,
+		ID: 9000004242, Name: "Pi Network", Symbol: "PI", RPCEndpoint: "", DerivationPath: "m/44'/314159'/0'", ExplorerAPI: "https://blockexplorer.minepi.com", ExplorerURL: "https://blockexplorer.minepi.com", ChainType: "pi", Decimals: 8, CoinType: 4242, IsTestnet: false,
 	},
 	// Added with the registry expansion. Coin types are the SLIP-44 values each
 	// chain registers; the chain types below route to a real SDK family in
@@ -235,7 +235,7 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000007900, Name: "Mantra", Symbol: "OM", RPCEndpoint: "https://api.mantrachain.io", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://api.mantrachain.io", ExplorerURL: "https://explorer.mantrachain.io", ChainType: "cosmos", Decimals: 6, CoinType: 118, IsTestnet: false,
 	},
 	{
-		ID: 9000008000, Name: "Banano", Symbol: "BAN", RPCEndpoint: "https://kaliumapi.appditto.com/api", DerivationPath: "m/44'/198'/0'/0/0", ExplorerAPI: "https://creeper.banano.cc", ExplorerURL: "https://creeper.banano.cc", ChainType: "banano", Decimals: 30, CoinType: 198, IsTestnet: false,
+		ID: 9000008000, Name: "Banano", Symbol: "BAN", RPCEndpoint: "https://kaliumapi.appditto.com/api", DerivationPath: "m/44'/198'/0'", ExplorerAPI: "https://creeper.banano.cc", ExplorerURL: "https://creeper.banano.cc", ChainType: "banano", Decimals: 30, CoinType: 198, IsTestnet: false,
 	},
 	{
 		ID: 9000008100, Name: "Steem", Symbol: "STEEM", RPCEndpoint: "https://api.steemit.com", DerivationPath: "m/44'/135'/0'/0'/0'", ExplorerAPI: "https://api.steemit.com", ExplorerURL: "https://steemscan.com", ChainType: "steem", Decimals: 3, CoinType: 135, IsTestnet: false,
@@ -310,9 +310,6 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000009008, Name: "Decred", Symbol: "DCR", RPCEndpoint: "https://dcrdata.decred.org/api/block/best", DerivationPath: "m/44'/42'/0'/0/0", ExplorerAPI: "https://dcrdata.decred.org/api", ExplorerURL: "https://dcrdata.decred.org", ChainType: "decred", Decimals: 8, CoinType: 42, IsTestnet: false,
 	},
 	{
-		ID: 9000009009, Name: "Lisk (legacy)", Symbol: "LSK", RPCEndpoint: "https://service.lisk.com", DerivationPath: "m/44'/134'/0'/0/0", ExplorerAPI: "https://service.lisk.com", ExplorerURL: "https://blockscout.lisk.com", ChainType: "lisk", Decimals: 8, CoinType: 134, IsTestnet: false,
-	},
-	{
 		ID: 9000009010, Name: "Ergo", Symbol: "ERG", RPCEndpoint: "https://api.ergoplatform.com/api/v1", DerivationPath: "m/44'/429'/0'/0/0", ExplorerAPI: "https://api.ergoplatform.com", ExplorerURL: "https://explorer.ergoplatform.com", ChainType: "ergo", Decimals: 9, CoinType: 429, IsTestnet: false,
 	},
 	{
@@ -325,16 +322,10 @@ var nonEVMMainnet = []ChainConfig{
 		ID: 9000009013, Name: "Primecoin", Symbol: "XPM", RPCEndpoint: "https://chainz.cryptoid.info/xpm/api.dws", DerivationPath: "m/44'/0'/0'/0/0", ExplorerAPI: "", ExplorerURL: "https://xpm.fyi", ChainType: "primecoin", Decimals: 8, CoinType: 0, IsTestnet: false,
 	},
 	{
-		ID: 9000009014, Name: "Hyperliquid", Symbol: "HYPE", RPCEndpoint: "https://api.hyperliquid.xyz/info", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://api.hyperliquid.xyz/info", ExplorerURL: "https://app.hyperliquid.xyz/explorer", ChainType: "hyperliquid", Decimals: 18, CoinType: 60, IsTestnet: false,
-	},
-	{
 		ID: 9000009015, Name: "Supra", Symbol: "SUPRA", RPCEndpoint: "https://rpc-mainnet.supra.com", DerivationPath: "m/44'/60'/0'/0/0", ExplorerAPI: "https://rpc-mainnet.supra.com", ExplorerURL: "https://suprascan.io", ChainType: "supra", Decimals: 8, CoinType: 60, IsTestnet: false,
 	},
 	{
 		ID: 9000009016, Name: "Akash Network", Symbol: "AKT", RPCEndpoint: "https://api.akash.network", DerivationPath: "m/44'/118'/0'/0/0", ExplorerAPI: "https://api.akash.network", ExplorerURL: "https://explorer.akash.network", ChainType: "akash", Decimals: 6, CoinType: 118, IsTestnet: false,
-	},
-	{
-		ID: 9000009017, Name: "IOTA (EVM)", Symbol: "IOTA", RPCEndpoint: "https://api.evm.iota.org", DerivationPath: "m/44'/4218'/0'/0/0", ExplorerAPI: "https://api.evm.iota.org", ExplorerURL: "https://explorer.evm.iota.org", ChainType: "iota", Decimals: 18, CoinType: 4218, IsTestnet: false,
 	},
 	{
 		ID: 9000009018, Name: "Kadena", Symbol: "KDA", RPCEndpoint: "https://api.chainweb.com", DerivationPath: "m/44'/626'/0'/0/0", ExplorerAPI: "https://api.chainweb.com", ExplorerURL: "https://explorer.chainweb.com", ChainType: "kadena", Decimals: 12, CoinType: 626, IsTestnet: false,
@@ -362,4 +353,4 @@ var nonEVMMainnet = []ChainConfig{
 	},
 }
 
-const nonEVMMainnetCount = 116
+const nonEVMMainnetCount = 113
