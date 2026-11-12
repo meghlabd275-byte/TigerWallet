@@ -1529,3 +1529,69 @@
 - Open on the TSC side (not wallet blockers): upstream repo's own chain-id
   inconsistency above; exotic non-EVM broadcast still limited to
   BTC/LTC/Solana/Cosmos families (fail-closed elsewhere).
+
+## Session 43 (2026-11-12) — TigerSwap DEX fund-locking bugs + CI build coverage (commit bbb882d, pushed to main)
+- DEX TREE WAS UNTESTED AND BROKEN. smart_contracts/evm_contracts holds TWO
+  projects: the canonical ERC-4337 stack (account_abstraction/ + test_aa/, run
+  by `forge test`) and the legacy TigerSwap DEX (contracts/ + interfaces/ +
+  test/). foundry.toml deliberately pointed test/script at test_aa/script_aa to
+  avoid interface collisions, so test/CoreTest.sol ran under NEITHER runner
+  (Hardhat has no test/ JS files) — zero DEX coverage. Fixing it exposed 4 real
+  money-path bugs, all now fixed and covered:
+  1. TigerSwapPair had NO ERC20 transfer surface for LP tokens (only
+     balanceOf/totalSupply). Router.removeLiquidity moves LP with
+     safeTransferFrom(pair, user, pair, liquidity) and burn() reads
+     balanceOf[address(this)] -> remove-liquidity ALWAYS reverted and deposited
+     liquidity was permanently stuck. Added transfer/transferFrom/approve/
+     allowance/_transfer + Transfer/Approval events.
+  2. Pair._updateK: `kLast = reserve0 * reserve1` evaluated in uint112 ->
+     overflow panic (0x11) for any pool above ~0.07 tokens. swap() calls
+     _updateK() on every trade, so EVERY swap reverted. Now uint256-cast.
+  3. Router._swap: descending-token branch (path[i] > path[i+1]) passed
+     amounts[i] (the INPUT) as the output amount -> wrong amount requested out.
+     Fixed to always use amounts[i+1]; added testSwapReverseDirection.
+  4. Router.addLiquidity: amountAMin/amountBMin were accepted but NEVER checked
+     (no slippage protection). Now enforced (INSUFFICIENT_A/B_AMOUNT).
+- INTERFACE DEDUP (what made the DEX tree uncompilable): ITigerSwapFactory +
+  ITigerSwapPair were declared BOTH inline in contracts/Router.sol AND in
+  interfaces/*.sol (Pair.sol imports the latter) -> "Identifier already
+  declared". Router.sol now imports the canonical interfaces. Local IERC20 in
+  contracts/Pair.sol + concentrated/TigerPoolV3.sol collided with
+  OpenZeppelin's -> replaced with the OZ import (the local one only had
+  balanceOf/transfer, a strict subset). interfaces/IInterfaces.sol is DEAD
+  (nothing imports it) and still holds duplicate copies — left alone.
+- foundry.toml: new [profile.dex] (src=contracts, test=test, out-dex). Run
+  `forge test --profile dex`. Default profile still runs the AA suite.
+- test/CoreTest.sol REWRITTEN (was stale: referenced nonexistent TigerFactory/
+  TigerPair/TigerRouter, wrong TigerToken ctor, factory.owner() which does not
+  exist). Now 32 tests against the real API, incl. reverse-direction swap and
+  LP allowance/transfer coverage.
+- CI (.github/workflows/launch-readiness.yml): contracts job now runs
+  `forge test --profile dex -vv` in addition to the AA suite.
+- user_wallet/web WAS NOT IN THE CI FRONTEND MATRIX (root cause of unnoticed
+  breakage). Real build failure: package.json had NO eslintConfig, so CRA
+  applied only its minimal baseConfig (plugins: ['react']) which never registers
+  the react-hooks plugin, and every `// eslint-disable-next-line
+  react-hooks/exhaustive-deps` directive failed the production build with
+  "Definition for rule ... was not found". Fix = add the standard
+  `"eslintConfig": {"extends": ["react-app", "react-app/jest"]}`. Added to the
+  ci-cd.yml frontend matrix. (master_wallet/web references the same rule but is
+  Vite-built with no eslint pass, so it is unaffected; admin/super_admin/web
+  have no such directives.)
+- master_wallet/web/index.html was UNTRACKED (Vite's required entry) — a fresh
+  clone could not build it. Now committed. Also gitignored artifacts/,
+  typechain-types/, out-dex/.
+- TOOLCHAIN (sandbox reset): Foundry at ~/.foundry/bin (forge 1.9.0), Go 1.25
+  at /tmp/go (unset the stale GOROOT=/tmp/goroot/go env var or every go command
+  fails), Rust 1.85 at ~/.cargo. NOTE: the AA tree needs the documented
+  `-checklinkname=0` linker flag (Go 1.23+ + go-ethereum v1.13.15 linkname into
+  runtime.stopTheWorld) — owned by tiger_smart_chain/Makefile; the new
+  smart-chain CI job uses the Makefile as the single source of truth.
+- VERIFIED: 31 AA + 32 DEX tests pass; hardhat compile 34 files; forge build;
+  user_wallet/web + master_wallet/web production builds; rust/security 105 tests;
+  security/compliance_aml/go build+vet clean.
+- REMAINING (unchanged, documented elsewhere): 8 signal-only bot types fail
+  closed; bots/PP android/ios/desktop/extension are orphaned shells/copies;
+  extension Google OAuth client_id + FCM google-services.json are deployment
+  config; non-EVM broadcast limited to BTC/LTC/Solana/Cosmos families;
+  EVM tx history needs ETHERSCAN_API_KEY (Blockscout keyless fallback).
