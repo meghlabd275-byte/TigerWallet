@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 )
@@ -46,11 +44,14 @@ func verifyPlatformChain(ctx context.Context, endpoint string) {
 	log.Printf("TigerSmartChain endpoint %s confirmed on chain %d", endpoint, tigerSmartChainID)
 }
 
-// platformChainEndpoint returns the TigerSmartChain RPC endpoint from the
-// environment, preferring the dedicated variable over the generic per-chain one.
+// platformChainEndpoint returns the TigerSmartChain RPC endpoint the wallet will
+// actually send to. It resolves through chainByID so the startup check examines
+// the same value the send path uses, including any admin override applied at
+// boot, rather than a second copy of the precedence rules that could drift.
 func platformChainEndpoint() string {
-	if v := os.Getenv(tscRPCEnv); v != "" {
-		return v
+	c := chainByID(tigerSmartChainID)
+	if c == nil {
+		return ""
 	}
-	return os.Getenv(fmt.Sprintf("CHAIN_%d_RPC", tigerSmartChainID))
+	return c.RPCEndpoint
 }
