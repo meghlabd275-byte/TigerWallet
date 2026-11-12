@@ -54,6 +54,10 @@ func main() {
 		// so admin-added/updated chains are visible immediately at boot.
 		bgCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		applyAdminChainOverrides(bgCtx)
+		// Confirm the configured TigerSmartChain endpoint is the network this
+		// build targets, so a chain-id mismatch is a startup log line rather
+		// than a surprise on a user's first transfer.
+		verifyPlatformChain(bgCtx, platformChainEndpoint())
 		// Bootstrap the first admin from the ADMIN_BOOTSTRAP_EMAIL env so the
 		// admin/wl-admin/master-wallet-admin role can be seeded without a
 		// pre-existing admin (the first user to register with that email is
