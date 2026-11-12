@@ -221,16 +221,23 @@ func TestNEOAddressFormat(t *testing.T) {
 func TestMinaAndErgoAndWaktFormats(t *testing.T) {
 	seed := seedFromMnemonic(t, abandonMnemonic)
 
+	// Mina addresses are Base58Check version 203 over a 35-byte Pallas public
+	// key. The previous expectation here (0x16 0x01) was the test asserting the
+	// same wrong constant as the implementation, so it could never catch the
+	// defect; the layout is now pinned by TestMinaAddressFormatAndVersionByte.
 	mina, err := MinaAddress(seed, "m/44'/12586'/0'/0'")
 	if err != nil {
 		t.Fatalf("mina address: %v", err)
+	}
+	if !strings.HasPrefix(mina, "B62q") {
+		t.Fatalf("mina mainnet address must start with B62q, got %q", mina)
 	}
 	raw, err := base58Decode(mina)
 	if err != nil {
 		t.Fatalf("mina base58: %v", err)
 	}
-	if len(raw) != 2+32+4 || raw[0] != 0x16 || raw[1] != 0x01 {
-		t.Fatalf("mina address must be version 0x16 0x01 + 32-byte key + checksum, got len=%d", len(raw))
+	if len(raw) != 1+35+4 || raw[0] != 203 {
+		t.Fatalf("mina address must be version 203 + 35-byte key + checksum, got len=%d version=%d", len(raw), raw[0])
 	}
 
 	ergo, err := ErgoP2PKAddress(seed, "m/44'/429'/0'/0/0")

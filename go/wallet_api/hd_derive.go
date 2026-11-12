@@ -50,6 +50,35 @@ func hdDerive(seed []byte, path string) (*ecdsa.PrivateKey, error) {
 	return crypto.ToECDSA(parentKey)
 }
 
+// hdDeriveRaw returns the raw 32-byte BIP-32 private key for a path, without
+// the secp256k1 validity check. Non-secp256k1 chains (Mina's Pallas, for
+// example) need the entropy itself and would otherwise be rejected by
+// crypto.ToECDSA when the value is not a valid secp256k1 scalar.
+func hdDeriveRaw(seed []byte, path string) ([]byte, error) {
+	mac := hmac.New(sha512.New, []byte("Bitcoin seed"))
+	mac.Write(seed)
+	I := mac.Sum(nil)
+
+	parentKey := I[:32]
+	parentChain := I[32:]
+
+	segments, err := parsePath(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, idx := range segments {
+		child, childChain, err := ckdPriv(parentKey, parentChain, idx)
+		if err != nil {
+			return nil, err
+		}
+		parentKey = child
+		parentChain = childChain
+	}
+	out := make([]byte, 32)
+	copy(out, parentKey)
+	return out, nil
+}
+
 // parsePath parses a BIP-32 path string like "m/44'/60'/0'/0/0" into indices.
 func parsePath(path string) ([]uint32, error) {
 	path = strings.TrimSpace(path)

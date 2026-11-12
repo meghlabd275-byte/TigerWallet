@@ -13,7 +13,7 @@ package main
 //	           with version 0x35.
 //	arweave  — SHA-256 of the 512-byte RSA-4096 modulus, Base64URL.
 //	stacks   — c32check of hash160(compressed secp256k1 key).
-//	mina     — Base58Check of [0x16, 0x01] || compressed Ed25519 key.
+//	mina     — Base58Check (version 203) of a Pallas curve public key.
 //	blake2b  — Nano-ledger address with the chain's own prefix (e.g. Wakt).
 //	lisk     — SS58 with prefix 28, the pre-L2 lisk-core address format.
 //	ergo     — P2PK address over the secp256k1 key (Base58 + blake2b256).
@@ -402,14 +402,26 @@ func StacksAddress(seed []byte, path string) (string, error) {
 // Mina
 // ---------------------------------------------------------------------------
 
-// MinaAddress derives a Mina address: Base58Check of the 2-byte version
-// prefix [0x16, 0x01] followed by the compressed Ed25519 public key.
+// MinaAddress derives a Mina account address. Mina public keys are Pallas
+// curve points, not Ed25519 keys: the address is Base58Check (version byte 203)
+// of 0x01 || 0x01 || x (little-endian) || y-parity. Deriving the key from an
+// Ed25519 seed would produce a string of the right shape that no Mina node
+// recognises, so the key is derived from the BIP32 entropy as a Pallas scalar.
 func MinaAddress(seed []byte, path string) (string, error) {
-	pub, err := edPubKey(seed, path)
+	k, err := hdDeriveRaw(seed, path)
 	if err != nil {
 		return "", err
 	}
-	return base58checkEncode(append([]byte{0x16, 0x01}, pub...)), nil
+	scalar, err := pallasScalarFromEntropy(k)
+	if err != nil {
+		return "", err
+	}
+	pub, err := pallasPublicKey(scalar)
+	if err != nil {
+		return "", err
+	}
+	payload := append([]byte{203}, pallasEncodePublicKey(pub)...)
+	return base58checkEncode(payload), nil
 }
 
 // ---------------------------------------------------------------------------
