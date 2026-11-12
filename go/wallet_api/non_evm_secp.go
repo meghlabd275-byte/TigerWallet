@@ -304,7 +304,10 @@ func lowS(raw []byte) bool {
 
 // --------------------------- Ripple ---------------------------------------
 
-var rippleAlphabet = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1TuvYx"
+// rippleAlphabet is the canonical XRPL base58 dictionary (58 unique symbols,
+// excluding 0 O I l). It must be exactly 58 characters: base58EncAlphabet
+// indexes it with a value in [0,57].
+var rippleAlphabet = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz"
 
 // XRPAddress computes r.. from account id version 0x00 + hash160(pub-compressed).
 func XRPAddress(seed []byte, path string) (string, error) {
@@ -315,10 +318,20 @@ func XRPAddress(seed []byte, path string) (string, error) {
 	pub := crypto.CompressPubkey(&priv.PublicKey)
 	h := hash160(pub)
 	raw := append([]byte{0x00}, h...)
-	return base58EncAlphabet(append(raw, doubleSHA256(raw)[:4]...), rippleAlphabet), nil
+	addr := base58EncAlphabet(append(raw, doubleSHA256(raw)[:4]...), rippleAlphabet)
+	if addr == "" {
+		return "", fmt.Errorf("xrp: base58 encoding failed")
+	}
+	return addr, nil
 }
 
 func base58EncAlphabet(input []byte, alpha string) string {
+	if len(alpha) != 58 {
+		// A short dictionary would index out of range (mod can be 57) and a
+		// long one would silently emit wrong characters. Refuse rather than
+		// produce a corrupt address.
+		return ""
+	}
 	x := new(big.Int).SetBytes(input)
 	base := big.NewInt(58)
 	mod := new(big.Int)
