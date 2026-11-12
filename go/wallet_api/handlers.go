@@ -120,8 +120,9 @@ func handleRegister(c *gin.Context) {
 // handleGuestAuth provisions an anonymous guest account for the UserWallet app so
 // the user can Create/Import a wallet WITHOUT registering. The client supplies a
 // stable device id; the backend idempotently creates (or re-uses) a guest user and
-// returns a JWT. Guest accounts cannot be logged into via /auth/login (random
-// sentinel password hash), so this is not a privilege-escalation vector.
+// returns a JWT. Guest accounts cannot be logged into via /auth/login (the stored
+// credential is a constant hash of a discarded random value), so this is not a
+// privilege-escalation vector.
 func handleGuestAuth(c *gin.Context) {
 	var req struct {
 		DeviceID string `json:"device_id" binding:"required"`
@@ -130,12 +131,18 @@ func handleGuestAuth(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid device_id is required"})
 		return
 	}
-	// Guest IDs are the credential used to resume an anonymous account. Reject
-	// missing or malformed identifiers rather than silently creating a new
-	// account for every empty request, which permits trivial database exhaustion.
+	// Guest IDs are the credential used to resume an anonymous account, so they
+	// must be stable and unguessable, but they are not required to be UUIDs:
+	// Android sends Settings.Secure.ANDROID_ID (16 hex characters) and some
+	// clients send a 32-character hex digest. Accept any 16-64 character
+	// alphanumeric identifier (optionally with dashes) so every platform works,
+	// while still rejecting empty or trivially short values that would let a
+	// caller enumerate or exhaust accounts.
 	deviceID := strings.TrimSpace(req.DeviceID)
-	if _, err := uuid.Parse(deviceID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "device_id must be a UUID"})
+	if !validDeviceID(deviceID) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "device_id must be 16-64 characters of [A-Za-z0-9-_]",
+		})
 		return
 	}
 	uid, err := store.CreateGuestUser(c.Request.Context(), deviceID)
@@ -149,6 +156,25 @@ func handleGuestAuth(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"user_id": uid, "token": token, "guest": true})
+}
+
+// validDeviceID reports whether a client-supplied device identifier is
+// acceptable as the key of an anonymous guest account. Length is bounded on
+// both sides: a very short value is guessable, and a very long one would let a
+// caller store arbitrary blobs in the users table.
+func validDeviceID(id string) bool {
+	if len(id) < 16 || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func handleLogin(c *gin.Context) {

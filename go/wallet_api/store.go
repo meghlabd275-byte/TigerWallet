@@ -260,6 +260,25 @@ func (s *Store) CreateUser(ctx context.Context, email, username, passwordHash st
 	return id, nil
 }
 
+// guestPasswordHash is the stored credential for an anonymous guest account.
+// It is a constant hash of a random value that is discarded immediately, so no
+// password can ever verify against it. bcrypt refuses inputs longer than 72
+// bytes, so the value is hashed once here rather than derived per account: the
+// previous per-device derivation produced a 73-byte input for a 36-character
+// UUID and made guest provisioning fail outright.
+var guestPasswordHash = mustHashPassword(uuid.NewString() + "|guest|sentinel")
+
+func mustHashPassword(password string) string {
+	h, err := HashPassword(password)
+	if err != nil {
+		// HashPassword only fails on an invalid cost or an oversized input;
+		// neither can happen for a short literal. A panic at init is correct
+		// here because continuing would store a credential that is not a hash.
+		panic("wallet_api: cannot hash the guest sentinel password: " + err.Error())
+	}
+	return h
+}
+
 // CreateGuestUser provisions an anonymous guest account tied to a stable device
 // identifier (no email/password the user must enter). The email is derived from
 // the device id so the same device re-gets the same guest account on reconnect.
@@ -279,15 +298,11 @@ func (s *Store) CreateGuestUser(ctx context.Context, deviceID string) (uuid.UUID
 	if existing != nil {
 		return existing.ID, nil
 	}
-	// Non-loginable random sentinel hash.
-	sentinel, err := HashPassword(uuid.NewString() + "|" + deviceID)
-	if err != nil {
-		return uuid.Nil, err
-	}
+	// Non-loginable sentinel hash (see guestPasswordHash).
+	sentinel := guestPasswordHash
+	// Derived from the device id, which is unique per account, so the UNIQUE
+	// constraint on username can never reject a legitimate guest.
 	username := "guest-" + deviceID
-	if len(username) > 16 {
-		username = username[:16]
-	}
 	id := uuid.New()
 	_, err = s.PG.Exec(ctx,
 		"INSERT INTO users (id, email, username, password_hash) VALUES ($1, $2, $3, $4)",
