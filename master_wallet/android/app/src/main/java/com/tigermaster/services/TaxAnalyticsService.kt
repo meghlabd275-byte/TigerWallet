@@ -378,7 +378,7 @@ class TaxAnalyticsService(private val context: Context) {
      */
     fun exportToJSON(reportId: String): String? {
         val report = getTaxReport(reportId) ?: return null
-        return JSONObject(createTaxReportJson(report)).toString(2)
+        return createTaxReportJson(report).toString(2)
     }
     
     /**

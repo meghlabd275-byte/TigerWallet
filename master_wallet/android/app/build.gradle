@@ -3,6 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Release signing material comes from the operator (gradle properties or the
+// environment) and is never committed.
+def releaseStoreFile = project.findProperty("TIGERWALLET_KEYSTORE") ?: System.getenv("TIGERWALLET_KEYSTORE")
+def releaseStorePassword = project.findProperty("TIGERWALLET_KEYSTORE_PASSWORD") ?: System.getenv("TIGERWALLET_KEYSTORE_PASSWORD")
+def releaseKeyAlias = project.findProperty("TIGERWALLET_KEY_ALIAS") ?: System.getenv("TIGERWALLET_KEY_ALIAS")
+def releaseKeyPassword = project.findProperty("TIGERWALLET_KEY_PASSWORD") ?: System.getenv("TIGERWALLET_KEY_PASSWORD")
+
 android {
     namespace 'com.tigermaster'
     compileSdk 34
@@ -14,15 +21,6 @@ android {
         versionCode 1
         versionName "1.0"
     }
-
-    // Release signing. The keystore is supplied by the operator (gradle
-    // properties or the environment) and is never committed. A release build
-    // without it fails here rather than producing an unsigned artefact that
-    // cannot be published.
-    def releaseStoreFile = project.findProperty("TIGERWALLET_KEYSTORE") ?: System.getenv("TIGERWALLET_KEYSTORE")
-    def releaseStorePassword = project.findProperty("TIGERWALLET_KEYSTORE_PASSWORD") ?: System.getenv("TIGERWALLET_KEYSTORE_PASSWORD")
-    def releaseKeyAlias = project.findProperty("TIGERWALLET_KEY_ALIAS") ?: System.getenv("TIGERWALLET_KEY_ALIAS")
-    def releaseKeyPassword = project.findProperty("TIGERWALLET_KEY_PASSWORD") ?: System.getenv("TIGERWALLET_KEY_PASSWORD")
 
     signingConfigs {
         release {
@@ -40,12 +38,6 @@ android {
             applicationIdSuffix ".debug"
         }
         release {
-            if (!releaseStoreFile) {
-                throw new GradleException(
-                    "Release build requires a signing keystore. Set TIGERWALLET_KEYSTORE, " +
-                    "TIGERWALLET_KEYSTORE_PASSWORD, TIGERWALLET_KEY_ALIAS and " +
-                    "TIGERWALLET_KEY_PASSWORD (gradle properties or environment).")
-            }
             signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
@@ -79,6 +71,9 @@ dependencies {
     // --- AndroidX core / appcompat ---
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    // themes.xml declares a Theme.MaterialComponents parent, which this
+    // library provides. Without it resource linking fails.
+    implementation 'com.google.android.material:material:1.11.0'
 
     // --- Lifecycle (ViewModel + viewModelScope + Compose interop) ---
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
@@ -119,4 +114,20 @@ dependencies {
 
     // --- Firebase Cloud Messaging (PushNotificationService extends FirebaseMessagingService) ---
     implementation 'com.google.firebase:firebase-messaging:23.4.0'
+}
+
+// Fail a release build that has no keystore instead of emitting an unsigned
+// artefact that no store accepts. This is checked against the task graph, so
+// debug builds, unit tests and IDE sync are unaffected.
+gradle.taskGraph.whenReady { graph ->
+    def wantsReleaseArtifact = graph.allTasks.any { t ->
+        def n = t.name.toLowerCase()
+        (n.startsWith("assemble") || n.startsWith("bundle") || n.startsWith("package")) && n.contains("release")
+    }
+    if (wantsReleaseArtifact && !releaseStoreFile) {
+        throw new GradleException(
+            "Release build requires a signing keystore. Set TIGERWALLET_KEYSTORE, " +
+            "TIGERWALLET_KEYSTORE_PASSWORD, TIGERWALLET_KEY_ALIAS and " +
+            "TIGERWALLET_KEY_PASSWORD (gradle properties or environment).")
+    }
 }
