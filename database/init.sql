@@ -129,3 +129,8 @@ CREATE DATABASE tigerwallet_perpetual;
 CREATE DATABASE tigerwallet_leaderboard;
 CREATE DATABASE tigerwallet_fiat;
 CREATE DATABASE tigerwallet_notifications;
+
+-- In-house KYC service database (security/rust/kyc_service).
+-- The service owns its schema and creates the applications, watchlist and
+-- audit tables on boot; this only provides the database.
+CREATE DATABASE tigerwallet_kyc;

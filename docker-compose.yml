@@ -110,6 +110,9 @@ services:
       # and RUSD/WTGR are genesis predeploys, so the wallet needs the endpoint to
       # serve balances, sends and swaps for them.
       TSC_RPC_URL: "http://tsc-node:8545"
+      # In-house KYC. P2P trading and card issuance are gated on this
+      # service, so leaving it unset blocks both (the gate fails closed).
+      KYC_SERVICE_TOKEN: "${KYC_API_TOKEN:?KYC_API_TOKEN must be set - the P2P and card gates fail closed without it}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -1206,6 +1209,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # In-house KYC (identity verification, document checks, sanctions screening).
+  # Runs entirely self-hosted: no external verification vendor. The wallet
+  # backend reaches it through the listing service, which is the KYC endpoint
+  # the P2P and card gates already call.
+  kyc-service:
+    build:
+      context: ./security/rust
+      dockerfile: kyc_service/Dockerfile
+    container_name: tigerwallet-kyc-service
+    ports:
+      - "8470:8470"
+    environment:
+      KYC_DATABASE_URL: "postgres://${POSTGRES_USER:-tigerwallet}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/tigerwallet_kyc?sslmode=disable"
+      # Submission/status token (used by the wallet backend) and a separate
+      # reviewer token (used by compliance staff). A reviewer token cannot be
+      # used to submit, and the service token cannot approve.
+      KYC_API_TOKEN: "${KYC_API_TOKEN:?KYC_API_TOKEN must be set}"
+      KYC_REVIEWER_TOKEN: "${KYC_REVIEWER_TOKEN:?KYC_REVIEWER_TOKEN must be set}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   listing-service:
     build:
       context: ./go/listing_service
@@ -1225,11 +1251,17 @@ services:
       # disables the payment webhook, so a listing can never be marked paid
       # by an unsigned caller.
       - PAYMENT_WEBHOOK_SECRET=${PAYMENT_WEBHOOK_SECRET:-}
+      # KYC status is served by the in-house engine. Without this the
+      # status endpoint answers 503 and the P2P/card gates stay closed.
+      - KYC_ENGINE_URL=http://kyc-service:8470
+      - KYC_SERVICE_TOKEN=${KYC_API_TOKEN:?KYC_API_TOKEN must be set}
     depends_on:
       redis:
         condition: service_healthy
       payment-service:
         condition: service_started
+      kyc-service:
+        condition: service_healthy
     restart: unless-stopped
 
   portfolio-tracker:
