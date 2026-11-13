@@ -58,6 +58,21 @@ type nonEvmSendReq struct {
 	CardanoOutputs []CardanoOutput `json:"cardano_outputs"`
 	FeeLovelace    uint64          `json:"fee_lovelace"`
 
+	// Substrate (Polkadot/Kusama) runtime values. Spec version, transaction
+	// version, genesis hash and the era anchor all come from the node's runtime
+	// metadata because they change on every runtime upgrade. The genesis hash
+	// reuses GenHash below, which carries the same value for Algorand.
+	SpecVersion uint32 `json:"spec_version"`
+	TxVersion   uint32 `json:"tx_version"`
+	BlockHash   string `json:"block_hash"`
+	Tip         uint64 `json:"tip"`
+	EraPeriod   uint64 `json:"era_period"`
+	// PalletIndex and CallIndex are the balances.transferKeepAlive dispatch
+	// indices from the runtime metadata. They are runtime-specific, so the
+	// caller supplies them rather than the backend guessing.
+	PalletIndex byte `json:"pallet_index"`
+	CallIndex   byte `json:"call_index"`
+
 	Sequence  uint64  `json:"sequence"`
 	MaxGas    uint64  `json:"max_gas"`
 	GenHash   string  `json:"genesis_hash"`
@@ -442,7 +457,22 @@ func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req
 		return "", "", "", nonEvmNotFeasible(family)
 
 	case familySubstrate:
-		return "", "", "", errors.New("substrate tx build requires SCALE encoding — fail-closed; address + message signing stay complete")
+		amount := new(big.Int)
+		if _, ok := amount.SetString(req.Amount, 10); !ok || amount.Sign() <= 0 {
+			return "", "", "", fmt.Errorf("substrate: amount %q must be a positive integer in plancks", req.Amount)
+		}
+		raw, txHash, err := SubstrateBuildTransfer(ctx, seed, path, lookupEndpoint(req.ChainID, ct),
+			[2]byte{req.PalletIndex, req.CallIndex}, req.To, amount,
+			SubstrateChainParams{
+				SpecVersion: req.SpecVersion,
+				TxVersion:   req.TxVersion,
+				GenesisHash: req.GenHash,
+				BlockHash:   req.BlockHash,
+				Nonce:       req.Nonce,
+				Tip:         req.Tip,
+				EraPeriod:   req.EraPeriod,
+			}, !req.Simulate)
+		return raw, txHash, famStr, err
 	}
 	return "", "", "", fmt.Errorf("family %q not routable for send", family)
 }
