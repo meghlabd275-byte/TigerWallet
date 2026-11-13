@@ -177,6 +177,12 @@ jobs:
           - rust/userwallet_fetchers
           - rust/admin_fetchers
           - fetcher_core/rust
+          # The in-house KYC engine decides whether an applicant is verified,
+          # and both the P2P and card gates trust that decision. Its tests must
+          # run on every change, so it is built and tested here rather than
+          # only in the image build.
+          - security/rust/kyc_engine
+          - security/rust/kyc_service
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
