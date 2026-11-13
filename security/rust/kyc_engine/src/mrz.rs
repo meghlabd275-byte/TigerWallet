@@ -81,7 +81,9 @@ fn char_value(c: u8) -> Result<u32, KycError> {
         b'0'..=b'9' => Ok(u32::from(c - b'0')),
         b'A'..=b'Z' => Ok(u32::from(c - b'A') + 10),
         b'<' => Ok(0),
-        _ => Err(KycError::MrzInvalidCharacter { character: c as char }),
+        _ => Err(KycError::MrzInvalidCharacter {
+            character: c as char,
+        }),
     }
 }
 
@@ -128,17 +130,29 @@ pub fn verify_check_digit(input: &str, expected: u8) -> Result<(), KycError> {
 /// function guessing.
 pub fn parse_mrz_date(raw: &str, century_base: u16) -> Result<String, KycError> {
     if raw.len() != 6 || !raw.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(KycError::MrzDateMalformed { field: raw.to_string() });
+        return Err(KycError::MrzDateMalformed {
+            field: raw.to_string(),
+        });
     }
-    let yy: u16 = raw[0..2].parse().map_err(|_| KycError::MrzDateMalformed { field: raw.to_string() })?;
-    let mm: u32 = raw[2..4].parse().map_err(|_| KycError::MrzDateMalformed { field: raw.to_string() })?;
-    let dd: u32 = raw[4..6].parse().map_err(|_| KycError::MrzDateMalformed { field: raw.to_string() })?;
+    let yy: u16 = raw[0..2].parse().map_err(|_| KycError::MrzDateMalformed {
+        field: raw.to_string(),
+    })?;
+    let mm: u32 = raw[2..4].parse().map_err(|_| KycError::MrzDateMalformed {
+        field: raw.to_string(),
+    })?;
+    let dd: u32 = raw[4..6].parse().map_err(|_| KycError::MrzDateMalformed {
+        field: raw.to_string(),
+    })?;
 
     if !(1..=12).contains(&mm) {
-        return Err(KycError::MrzDateMalformed { field: raw.to_string() });
+        return Err(KycError::MrzDateMalformed {
+            field: raw.to_string(),
+        });
     }
     if !(1..=31).contains(&dd) {
-        return Err(KycError::MrzDateMalformed { field: raw.to_string() });
+        return Err(KycError::MrzDateMalformed {
+            field: raw.to_string(),
+        });
     }
 
     let pivot = century_base % 100;
@@ -150,7 +164,9 @@ pub fn parse_mrz_date(raw: &str, century_base: u16) -> Result<String, KycError> 
 
     // Reject calendar-impossible dates such as 31 February.
     if dd > days_in_month(year, mm) {
-        return Err(KycError::MrzDateMalformed { field: raw.to_string() });
+        return Err(KycError::MrzDateMalformed {
+            field: raw.to_string(),
+        });
     }
 
     Ok(format!("{year:04}-{mm:02}-{dd:02}"))
@@ -438,17 +454,38 @@ mod tests {
 
     #[test]
     fn parse_mrz_date_rejects_impossible_dates() {
-        assert!(parse_mrz_date("740231", 1900).is_err(), "31 February must be rejected");
-        assert!(parse_mrz_date("741312", 1900).is_err(), "month 13 must be rejected");
-        assert!(parse_mrz_date("74AB12", 1900).is_err(), "non-numeric must be rejected");
+        assert!(
+            parse_mrz_date("740231", 1900).is_err(),
+            "31 February must be rejected"
+        );
+        assert!(
+            parse_mrz_date("741312", 1900).is_err(),
+            "month 13 must be rejected"
+        );
+        assert!(
+            parse_mrz_date("74AB12", 1900).is_err(),
+            "non-numeric must be rejected"
+        );
     }
 
     #[test]
     fn parse_mrz_date_handles_leap_years() {
-        assert!(parse_mrz_date("000229", 2000).is_ok(), "2000 is a leap year");
-        assert!(parse_mrz_date("010229", 2000).is_err(), "2001 is not a leap year");
-        assert!(parse_mrz_date("040229", 2000).is_ok(), "2004 is a leap year");
-        assert!(parse_mrz_date("000229", 1900).is_err(), "1900 is not a leap year");
+        assert!(
+            parse_mrz_date("000229", 2000).is_ok(),
+            "2000 is a leap year"
+        );
+        assert!(
+            parse_mrz_date("010229", 2000).is_err(),
+            "2001 is not a leap year"
+        );
+        assert!(
+            parse_mrz_date("040229", 2000).is_ok(),
+            "2004 is a leap year"
+        );
+        assert!(
+            parse_mrz_date("000229", 1900).is_err(),
+            "1900 is not a leap year"
+        );
     }
 
     #[test]

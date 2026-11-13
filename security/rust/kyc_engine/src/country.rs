@@ -65,16 +65,16 @@ pub fn country_risk_tier(code: &str) -> RiskTier {
     // jurisdictions of primary money-laundering concern by the platform's
     // policy. These route to manual review rather than auto-approval.
     const HIGH: &[&str] = &[
-        "AFG", "BLR", "CUB", "IRN", "IRQ", "KP", "PRK", "MMR", "SYR", "VEN", "YEM", "LBY",
-        "SOM", "SSD", "SDN", "MLI", "CAF", "COD", "ZWE", "HTI", "NGA",
+        "AFG", "BLR", "CUB", "IRN", "IRQ", "KP", "PRK", "MMR", "SYR", "VEN", "YEM", "LBY", "SOM",
+        "SSD", "SDN", "MLI", "CAF", "COD", "ZWE", "HTI", "NGA",
     ];
     // Jurisdictions requiring enhanced due diligence under the platform's
     // policy.
     const MEDIUM: &[&str] = &[
-        "ALB", "DZA", "AGO", "BHS", "BWA", "KHM", "CYM", "GHA", "GIB", "JAM", "JOR", "KGZ",
-        "LBN", "MAR", "MCO", "MOZ", "NAM", "PAK", "PAN", "PHL", "RUS", "SEN", "TUN", "TUR",
-        "UGA", "UKR", "VNM", "ARE", "SAU", "QAT", "KWT", "BHR", "OMN", "BRB", "TTO", "VCT",
-        "LCA", "GRD", "KNA", "ATG", "DMA", "SXM", "CUW", "ABW", "BES", "MHL", "PLW", "NRU",
+        "ALB", "DZA", "AGO", "BHS", "BWA", "KHM", "CYM", "GHA", "GIB", "JAM", "JOR", "KGZ", "LBN",
+        "MAR", "MCO", "MOZ", "NAM", "PAK", "PAN", "PHL", "RUS", "SEN", "TUN", "TUR", "UGA", "UKR",
+        "VNM", "ARE", "SAU", "QAT", "KWT", "BHR", "OMN", "BRB", "TTO", "VCT", "LCA", "GRD", "KNA",
+        "ATG", "DMA", "SXM", "CUW", "ABW", "BES", "MHL", "PLW", "NRU",
     ];
 
     if HIGH.contains(&upper.as_str()) {
@@ -120,7 +120,11 @@ mod tests {
     #[test]
     fn sanctions_jurisdictions_are_high_risk() {
         for c in ["PRK", "IRN", "SYR", "CUB"] {
-            assert_eq!(country_risk_tier(c), RiskTier::High, "{c} must be high risk");
+            assert_eq!(
+                country_risk_tier(c),
+                RiskTier::High,
+                "{c} must be high risk"
+            );
         }
     }
 
@@ -134,7 +138,11 @@ mod tests {
     #[test]
     fn enhanced_due_diligence_jurisdictions_are_medium_risk() {
         for c in ["PAN", "PHL", "TUR"] {
-            assert_eq!(country_risk_tier(c), RiskTier::Medium, "{c} must be medium risk");
+            assert_eq!(
+                country_risk_tier(c),
+                RiskTier::Medium,
+                "{c} must be medium risk"
+            );
         }
     }
 

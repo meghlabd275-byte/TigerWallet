@@ -692,10 +692,10 @@ func kycEngineToken() string {
 
 // kycStatusResponse is the engine's status payload.
 type kycStatusResponse struct {
-	Status   string `json:"status"`
-	Verified bool   `json:"verified"`
-	Level    int    `json:"level"`
-	Score    int    `json:"risk_score"`
+	Status   string   `json:"status"`
+	Verified bool     `json:"verified"`
+	Level    int      `json:"level"`
+	Score    int      `json:"risk_score"`
 	Reasons  []string `json:"reasons"`
 }
 
@@ -746,23 +746,23 @@ func (s *ListingService) GetKYCStatus(c *gin.Context) {
 		// Report the failure honestly rather than inventing a status. A client
 		// that receives this must keep the user's access closed.
 		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"success": false,
-			"error":   "identity verification service is unavailable",
-			"detail":  err.Error(),
-			"status":  "unavailable",
+			"success":  false,
+			"error":    "identity verification service is unavailable",
+			"detail":   err.Error(),
+			"status":   "unavailable",
 			"verified": false,
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
-		"user_id":  userID,
-		"status":   status.Status,
-		"verified": status.Verified,
-		"level":    status.Level,
+		"success":    true,
+		"user_id":    userID,
+		"status":     status.Status,
+		"verified":   status.Verified,
+		"level":      status.Level,
 		"risk_score": status.Score,
-		"reasons":  status.Reasons,
+		"reasons":    status.Reasons,
 	})
 }
 

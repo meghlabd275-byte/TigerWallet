@@ -108,7 +108,13 @@ impl ScreeningOutcome {
 pub fn normalise_name(name: &str) -> String {
     name.replace('<', " ")
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -207,7 +213,9 @@ pub fn screen_with_variants(
         sanctions_hit: matches.iter().any(|m| m.kind == ListKind::Sanctions),
         pep_hit: matches.iter().any(|m| m.kind == ListKind::Pep),
         adverse_media_hit: matches.iter().any(|m| m.kind == ListKind::AdverseMedia),
-        blocklist_hit: matches.iter().any(|m| m.kind == ListKind::InternalBlocklist),
+        blocklist_hit: matches
+            .iter()
+            .any(|m| m.kind == ListKind::InternalBlocklist),
         matches,
     }
 }
@@ -248,7 +256,10 @@ mod tests {
 
     #[test]
     fn normalise_name_collapses_and_upper_cases() {
-        assert_eq!(normalise_name("  eriksson<<anna   maria "), "ERIKSSON ANNA MARIA");
+        assert_eq!(
+            normalise_name("  eriksson<<anna   maria "),
+            "ERIKSSON ANNA MARIA"
+        );
         assert_eq!(normalise_name("O'Brien-Smith"), "O BRIEN SMITH");
         assert_eq!(normalise_name(""), "");
     }
@@ -299,7 +310,10 @@ mod tests {
         let entries = vec![entry("1", ListKind::Sanctions, "IVAN SOKOLOV")];
         let out = screen(&subject("IVAN SOKOLOV"), &entries);
         assert_eq!(out.matches[0].strength, MatchStrength::NameOnly);
-        assert!(out.requires_review(), "a name-only hit still needs a human decision");
+        assert!(
+            out.requires_review(),
+            "a name-only hit still needs a human decision"
+        );
     }
 
     /// A country mismatch must not suppress a name hit, because sanctions
@@ -330,7 +344,10 @@ mod tests {
     fn empty_subject_name_never_matches_by_name() {
         let entries = vec![entry("1", ListKind::Sanctions, "IVAN SOKOLOV")];
         let out = screen(&subject(""), &entries);
-        assert!(!out.has_matches(), "an empty subject name must not match a name entry");
+        assert!(
+            !out.has_matches(),
+            "an empty subject name must not match a name entry"
+        );
     }
 
     #[test]

@@ -261,7 +261,8 @@ pub fn verify(
         match (&applicant.address, &applicant.address_country) {
             (Some(a), Some(c)) if !a.trim().is_empty() && is_valid_country(c) => {}
             _ => {
-                rejections.push("proof of address is required for this verification level".to_string());
+                rejections
+                    .push("proof of address is required for this verification level".to_string());
             }
         }
     }
@@ -297,7 +298,9 @@ pub fn verify(
             score: 35,
         });
         if policy.pep_blocks_approval {
-            rejections.push("a politically exposed person match blocks approval at this level".to_string());
+            rejections.push(
+                "a politically exposed person match blocks approval at this level".to_string(),
+            );
         }
     }
     if screening.adverse_media_hit {
@@ -314,7 +317,9 @@ pub fn verify(
     let ceiling = risk_ceiling(level);
 
     let decision = if !rejections.is_empty() {
-        Decision::Rejected { reasons: rejections }
+        Decision::Rejected {
+            reasons: rejections,
+        }
     } else if score >= ceiling {
         Decision::Referred {
             reasons: vec![format!(
@@ -511,7 +516,10 @@ mod tests {
         }];
         let report = run(&doc, &applicant(), VerificationLevel::Standard, &lists).unwrap();
         assert!(report.screening.pep_hit);
-        assert!(report.score >= 35, "a PEP hit must add at least 35 to the score");
+        assert!(
+            report.score >= 35,
+            "a PEP hit must add at least 35 to the score"
+        );
     }
 
     #[test]
@@ -537,13 +545,18 @@ mod tests {
     #[test]
     fn risk_ceilings_tighten_with_level() {
         assert!(risk_ceiling(VerificationLevel::Basic) > risk_ceiling(VerificationLevel::Standard));
-        assert!(risk_ceiling(VerificationLevel::Standard) > risk_ceiling(VerificationLevel::Enhanced));
+        assert!(
+            risk_ceiling(VerificationLevel::Standard) > risk_ceiling(VerificationLevel::Enhanced)
+        );
     }
 
     #[test]
     fn decision_status_vocabulary_matches_the_backend_contract() {
         assert_eq!(Decision::Approved.status(), "verified");
-        assert_eq!(Decision::Referred { reasons: vec![] }.status(), "pending_review");
+        assert_eq!(
+            Decision::Referred { reasons: vec![] }.status(),
+            "pending_review"
+        );
         assert_eq!(Decision::Rejected { reasons: vec![] }.status(), "rejected");
     }
 }

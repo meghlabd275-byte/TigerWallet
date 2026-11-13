@@ -123,7 +123,10 @@ pub async fn submit(
                     &serde_json::json!({"reason": e.to_string()}),
                 )
                 .await;
-            return err(StatusCode::BAD_REQUEST, &format!("document check failed: {e}"));
+            return err(
+                StatusCode::BAD_REQUEST,
+                &format!("document check failed: {e}"),
+            );
         }
     };
 
@@ -131,7 +134,12 @@ pub async fn submit(
     // current century, because an expiry is always in the present or future.
     let expiry_iso = match tiger_kyc_engine::mrz_date_to_iso(&mrz.date_of_expiry, 2000) {
         Ok(d) => d,
-        Err(e) => return err(StatusCode::BAD_REQUEST, &format!("invalid expiry date: {e}")),
+        Err(e) => {
+            return err(
+                StatusCode::BAD_REQUEST,
+                &format!("invalid expiry date: {e}"),
+            )
+        }
     };
 
     let watchlist = match state.store.load_watchlist().await {
@@ -178,7 +186,10 @@ pub async fn submit(
                     &serde_json::json!({"reason": e.to_string()}),
                 )
                 .await;
-            return err(StatusCode::BAD_REQUEST, &format!("verification refused: {e}"));
+            return err(
+                StatusCode::BAD_REQUEST,
+                &format!("verification refused: {e}"),
+            );
         }
     };
 
@@ -213,7 +224,12 @@ pub async fn submit(
         .await
     {
         Ok(a) => a,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("cannot record decision: {e}")),
+        Err(e) => {
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("cannot record decision: {e}"),
+            )
+        }
     };
 
     let _ = state
@@ -284,7 +300,10 @@ pub async fn status(
             }),
         )
             .into_response(),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("cannot read status: {e}")),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("cannot read status: {e}"),
+        ),
     }
 }
 
@@ -351,7 +370,10 @@ pub async fn review(
                 .into_response()
         }
         Ok(None) => err(StatusCode::NOT_FOUND, "no application exists for that user"),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("cannot record decision: {e}")),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("cannot record decision: {e}"),
+        ),
     }
 }
 
@@ -364,8 +386,15 @@ pub async fn list_applications(
     if !is_reviewer_authenticated(&state, &headers) {
         return err(StatusCode::FORBIDDEN, "invalid or missing reviewer token");
     }
-    let wanted = q.get("status").cloned().unwrap_or_else(|| status::PENDING_REVIEW.to_string());
-    let limit: i64 = q.get("limit").and_then(|v| v.parse().ok()).unwrap_or(100).min(500);
+    let wanted = q
+        .get("status")
+        .cloned()
+        .unwrap_or_else(|| status::PENDING_REVIEW.to_string());
+    let limit: i64 = q
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100)
+        .min(500);
 
     match state.store.list_by_status(&wanted, limit).await {
         Ok(apps) => {
@@ -383,7 +412,10 @@ pub async fn list_applications(
                 .collect();
             (StatusCode::OK, Json(out)).into_response()
         }
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("cannot list applications: {e}")),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("cannot list applications: {e}"),
+        ),
     }
 }
 
@@ -439,7 +471,10 @@ pub async fn add_watchlist_entry(
 
     match state.store.add_watchlist_entry(&entry).await {
         Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({"id": id}))).into_response(),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("cannot add entry: {e}")),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("cannot add entry: {e}"),
+        ),
     }
 }
 
@@ -458,7 +493,10 @@ pub async fn remove_watchlist_entry(
     match state.store.remove_watchlist_entry(id).await {
         Ok(true) => (StatusCode::OK, Json(serde_json::json!({"removed": true}))).into_response(),
         Ok(false) => err(StatusCode::NOT_FOUND, "no such watchlist entry"),
-        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &format!("cannot remove entry: {e}")),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("cannot remove entry: {e}"),
+        ),
     }
 }
 
