@@ -335,6 +335,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [code-quality, build-rust, build-frontend, build-cpp]
     if: github.event_name != 'pull_request'
+    # Without an explicit packages: write the job inherits the repository
+    # default token scope and every push to ghcr.io is rejected with
+    # "installation not allowed to Create organization package".
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
