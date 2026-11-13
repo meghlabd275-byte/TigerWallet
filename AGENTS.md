@@ -1595,3 +1595,61 @@
   extension Google OAuth client_id + FCM google-services.json are deployment
   config; non-EVM broadcast limited to BTC/LTC/Solana/Cosmos families;
   EVM tx history needs ETHERSCAN_API_KEY (Blockscout keyless fallback).
+
+## Session 43 (2026-11-12/13) — full CI green + governance contract security audit (pushed to main)
+- CI NOW FULLY GREEN: all 3 workflows pass at b273006 (TigerWallet CI/CD 30/30 jobs,
+  MasterWallet CI/CD, Launch Readiness). The `docker` job in .github/workflows/ci-cd.yml
+  had NO `permissions:` block, so every ghcr.io push failed with "installation not allowed
+  to Create organization package" — images BUILT fine, the PUSH was denied. Fixed with
+  `contents: read` + `packages: write` (ba4281d). Then super_admin/go was the last failure:
+  its Dockerfile was the ONLY backend using `CGO_ENABLED=1` on a golang:1.21-alpine builder
+  that installs git+make but no gcc -> `cgo: C compiler "gcc" not found`. The module has no
+  cgo deps (no `import "C"`, no sqlite anywhere in the repo), so it is now CGO_ENABLED=0 +
+  -ldflags="-s -w" like every other backend (b273006). Verified with a real `docker build`
+  + container smoke test (fails closed on secret validation, does not die at link time).
+- Frontend CI (20e521f/98fbd76): super_admin/web had eslint referenced but NOT installed
+  (added eslint@8 + eslint.config.mjs, 12 dead-code errors fixed); white_label/frontend
+  eslint.config.js added; user_wallet/web 6 lint errors fixed (.npmrc legacy-peer-deps for
+  react-scripts 5 vs TS 5.5 peer conflict); white_label/frontend + frontend/web_nextjs
+  lockfiles regenerated with npm 10 (committed ones were npm-11-generated).
+- GOVERNANCE CONTRACT AUDIT — the `contracts/governance/` tree had ZERO tests though the
+  foundry `dex` profile compiled it, so these were never exercised. All REAL, exploitable:
+  - EmergencyPause: NO access control at all. pause/unpause/activateEmergency/
+    deactivateEmergency/setPauseDelay were open to any caller -> an attacker could pause the
+    protocol or LIFT a pause raised during an incident. Now guardian-gated; guardians
+    owner-managed; deactivateEmergency owner-only (a compromised guardian key must not undo
+    a freeze). Added setGuardian/transferOwnership.
+  - EmergencyCouncil: addMember/removeMember were FULLY PUBLIC. Membership is the contract's
+    entire security boundary, so a caller could add themselves, propose, vote it through
+    alone and execute. Now owner-only, plus setQuorum/setVotingPeriod/transferOwnership.
+  - UpgradeManager: proposeUpgrade/vote/executeUpgrade/setQuorum unguarded -> anyone could
+    register an upgrade against an implementation of their choosing and vote it through.
+    Now governor-gated, governor management owner-only, zero-implementation rejected.
+  - InsuranceVault.withdraw ignored the pause flag -> a governance freeze did not stop an
+    exit from the fund. Now whenNotPaused; setMaxCoverage rejects zero.
+  - TimelockController.queueTransaction hashed the PRE-increment nonce but stored the
+    POST-increment one, so the returned hash did not commit to the stored record and
+    getTransactionHash() could never match it. Nonce now captured once.
+- DELETED smart_contracts/evm_contracts/security/ — in NEITHER foundry src root (so never
+  compiled) and uncompilable anyway: imported @openzeppelin/contracts/security/Pausable.sol
+  (OZ v5 moved it to utils/) and inherited an undefined `Pauser`. Unreferenced. Its
+  TimelockController was a different role-based contract, NOT a dup of contracts/governance/.
+- NEW smart_contracts/evm_contracts/test/GovernanceTest.sol — 53 tests (rejection cases are
+  the point: every privileged entry point has a test that a non-privileged caller is blocked).
+  Contract tests now 116 total (was 63): default/AA 31, dex 85. Size gate passes (26 contracts).
+- TOOLCHAIN: Go 1.22.12 at /tmp/go122, foundry at ~/.foundry/bin, docker daemon started with
+  `sudo dockerd` (needs root in this sandbox).
+- VERIFIED WORKING (re-confirmed, no changes needed): separation rule holds (no UserWallet
+  client references :8450/:9093/:8082 — the only hit is a comment); no hardcoded secrets
+  (only zero-address sentinels + unit-test fixtures); Launch Readiness gates real domains
+  (canonical backends + wallet_api tests, TigerSmartChain build/vet/test, contracts, rust
+  security+fetchers, static secret/mock-data rejection).
+- STILL OPEN (unchanged, documented): 8 of 18 bot types are signal-only and fail closed at
+  start (ai_trading/signal/cross_chain/flash_loan/sandwich/front_run/mev/custom);
+  non-EVM on-chain broadcast covers only BTC/LTC/Solana/Cosmos families — the other ~40
+  seeded non-EVM chains fail closed explicitly (never faked); bots/android+ios are orphaned
+  SDK shells with no build files; bots/desktop+extension are UserWallet copies needing
+  retarget; Kotlin/Swift/Dart not compile-verified (no SDKs in sandbox); Kotlin has 0 tests;
+  web apps other than user_wallet/web have no test script; TSC chain id is 7710 in this repo
+  but the UPSTREAM TigerSmartChain repo is internally inconsistent (README 6666, TS SDK
+  TIGER_MAINNET=1, RPC returns 0x1) — an operator must start that node with TSC_CHAIN_ID=7710.
