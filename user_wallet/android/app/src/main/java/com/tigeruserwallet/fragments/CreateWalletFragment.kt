@@ -83,6 +83,7 @@ class CreateWalletFragment : Fragment() {
             return
         }
         setBusy(true)
+        val selectedChainId = UserWalletApiService.CHAINS[networkSpinner.selectedItemPosition].id
         // Real platform WebAuthn ceremony (Credential Manager); main-thread call.
         CredentialManagerHelper.createPasskeyForWallet(this) { cred ->
             CoroutineScope(Dispatchers.IO).launch {
@@ -92,19 +93,22 @@ class CreateWalletFragment : Fragment() {
                         label = label,
                         credentialId = cred.credentialId,
                         publicKey = cred.publicKey,
-                        chainId = UserWalletApiService.CHAINS[networkSpinner.selectedItemPosition].id
+                        chainId = selectedChainId
                     )
-                    UserWalletApiService.rememberWallet(wallet.id)
+                    val walletId = wallet.optString("id")
+                    val walletMnemonic = wallet.optString("mnemonic").takeIf { it.isNotEmpty() }
+                    val walletChainId = wallet.optInt("chain_id", selectedChainId)
+                    UserWalletApiService.rememberWallet(walletId)
                     withContext(Dispatchers.Main) {
                         setBusy(false)
-                        if (wallet.mnemonic != null) {
+                        if (walletMnemonic != null) {
                             parentFragmentManager.beginTransaction()
                                 .replace(
                                     R.id.fragmentContainer,
                                     BackupMnemonicFragment.newInstance(
-                                        wallet.id,
-                                        wallet.mnemonic,
-                                        wallet.chainId,
+                                        walletId,
+                                        walletMnemonic,
+                                        walletChainId,
                                         label,
                                         ""
                                     )

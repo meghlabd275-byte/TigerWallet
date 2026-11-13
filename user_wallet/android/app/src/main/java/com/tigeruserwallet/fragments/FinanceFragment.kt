@@ -1,5 +1,6 @@
 package com.tigeruserwallet.fragments
 
+import org.json.JSONObject
 import android.os.Bundle
 import android.content.ClipboardManager
 import android.view.LayoutInflater
@@ -56,6 +57,39 @@ class FinanceFragment : Fragment() {
 
         fun toast(msg: String) = Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
 
+        fun reload(accountsTv: TextView, historyTv: TextView) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val accounts = UserWalletApiService.getFinanceAccounts()
+                    val history = UserWalletApiService.getFinanceHistory()
+                    val convertHistory = UserWalletApiService.getConvertHistory()
+                    withContext(Dispatchers.Main) {
+                        val arr = accounts.optJSONArray("accounts")
+                        accountsTv.text = if (arr == null || arr.length() == 0) "No accounts yet"
+                        else (0 until arr.length()).joinToString("\n") { i ->
+                            val a = arr.getJSONObject(i)
+                            "${a.optString("currency")}: ${a.optString("balance")} (available ${a.optString("available")})"
+                        }
+                        val h = history.optJSONArray("history")
+                        historyTv.text = if (h == null || h.length() == 0) "No ledger history yet"
+                        else (0 until minOf(h.length(), 30)).joinToString("\n") { i ->
+                            val e = h.getJSONObject(i)
+                            "${e.optString("kind")} ${if (e.optString("direction") == "debit") "−" else "+"}${e.optString("amount")} ${e.optString("currency")}"
+                        }
+                        val ch = convertHistory.optJSONArray("conversions")
+                        val convTv = view.findViewById<TextView>(R.id.finConvertHistoryText)
+                        convTv.text = if (ch == null || ch.length() == 0) "No conversions yet"
+                        else (0 until minOf(ch.length(), 20)).joinToString("\n") { i ->
+                            val c = ch.getJSONObject(i)
+                            "${c.optString("from_currency")} ${c.optString("from_amount")} → ${c.optString("to_currency")} ${c.optString("to_amount")} @ ${c.optString("rate")}"
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) { accountsTv.text = "Accounts unavailable: ${e.message}" }
+                }
+            }
+        }
+
         view.findViewById<Button>(R.id.finTransferBtn).setOnClickListener {
             val to = toInput.text.toString().trim()
             val amount = amountInput.text.toString().trim()
@@ -98,39 +132,6 @@ class FinanceFragment : Fragment() {
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) { toast("Convert failed: ${e.message}") }
-                }
-            }
-        }
-
-        fun reload(accountsTv: TextView, historyTv: TextView) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val accounts = UserWalletApiService.getFinanceAccounts()
-                    val history = UserWalletApiService.getFinanceHistory()
-                    val convertHistory = UserWalletApiService.getConvertHistory()
-                    withContext(Dispatchers.Main) {
-                        val arr = accounts.optJSONArray("accounts")
-                        accountsTv.text = if (arr == null || arr.length() == 0) "No accounts yet"
-                        else (0 until arr.length()).joinToString("\n") { i ->
-                            val a = arr.getJSONObject(i)
-                            "${a.optString("currency")}: ${a.optString("balance")} (available ${a.optString("available")})"
-                        }
-                        val h = history.optJSONArray("history")
-                        historyTv.text = if (h == null || h.length() == 0) "No ledger history yet"
-                        else (0 until minOf(h.length(), 30)).joinToString("\n") { i ->
-                            val e = h.getJSONObject(i)
-                            "${e.optString("kind")} ${if (e.optString("direction") == "debit") "−" else "+"}${e.optString("amount")} ${e.optString("currency")}"
-                        }
-                        val ch = convertHistory.optJSONArray("conversions")
-                        val convTv = view.findViewById<TextView>(R.id.finConvertHistoryText)
-                        convTv.text = if (ch == null || ch.length() == 0) "No conversions yet"
-                        else (0 until minOf(ch.length(), 20)).joinToString("\n") { i ->
-                            val c = ch.getJSONObject(i)
-                            "${c.optString("from_currency")} ${c.optString("from_amount")} → ${c.optString("to_currency")} ${c.optString("to_amount")} @ ${c.optString("rate")}"
-                        }
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) { accountsTv.text = "Accounts unavailable: ${e.message}" }
                 }
             }
         }

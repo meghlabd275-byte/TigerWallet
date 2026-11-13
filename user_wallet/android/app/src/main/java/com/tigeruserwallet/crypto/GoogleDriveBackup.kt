@@ -56,7 +56,7 @@ object GoogleDriveBackup {
     /** Build the Google Sign-In options requesting the drive.file scope. */
     fun signInOptions(): GoogleSignInOptions =
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(config.webClientId)
+            .requestIdToken(config.webClientId.orEmpty())
             .requestEmail()
             .requestScopes(Scope(DriveScopes.DRIVE_FILE))
             .build()

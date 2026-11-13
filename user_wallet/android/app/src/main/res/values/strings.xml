@@ -122,6 +122,11 @@
     <string name="settings_username">Username</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_current">Theme: %1$s</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_light">Light</string>
+
+    <!-- Deployment config: OAuth2 web client id for Google Drive backup. Empty disables Drive backup. -->
+    <string name="google_drive_client_id" translatable="false"></string>
     <string name="settings_backend">Backend Server</string>
     <string name="settings_backend_desc">API base URL of the UserWallet backend. The default targets the Android emulator; on a physical device set your deployment URL.</string>
     <string name="settings_backend_hint">http://host:8443/api/v1</string>

@@ -98,10 +98,10 @@ object UserWalletApiService {
     private fun headers(): okhttp3.Headers.Builder = okhttp3.Headers.Builder()
         .add("Content-Type", "application/json")
         .add("Accept", "application/json")
-        .also { authToken?.let { h -> add("Authorization", "Bearer $h") } }
+        .also { authToken?.let { h -> it.add("Authorization", "Bearer $h") } }
 
     private fun requestBuilder(path: String): Request.Builder =
-        Request.Builder().url("$baseUrl$path").headers(headers())
+        Request.Builder().url("$baseUrl$path").headers(headers().build())
 
     /** /health lives at the server root (outside /api/v1). */
     private fun healthUrl(): String =
@@ -140,10 +140,8 @@ object UserWalletApiService {
 
     // ==================== Chain maps (mirror web services/api.ts) ====================
 
-    companion object {
-        /** EIP-155 chain id of TigerSmartChain, the platform's own network. */
-        const val PLATFORM_CHAIN_ID = 7710
-    }
+    /** EIP-155 chain id of TigerSmartChain, the platform's own network. */
+    private const val PLATFORM_CHAIN_ID = 7710
 
     val CHAIN_IDS: Map<String, Int> = mapOf(
         "ethereum" to 1,
@@ -229,7 +227,7 @@ object UserWalletApiService {
 
     fun login(email: String, password: String): AuthResult {
         val body = JSONObject().put("email", email).put("password", password).toString()
-        val req = requestBuilder("/auth/login").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/auth/login").post(body.toString().toRequestBody(jsonMediaType)).build()
         val json = execute(req)
         val token = json.optString("token")
         if (token.isNotEmpty()) setToken(token)
@@ -242,7 +240,7 @@ object UserWalletApiService {
      */
     fun register(email: String, password: String): JSONObject {
         val body = JSONObject().put("email", email).put("password", password).toString()
-        val req = requestBuilder("/auth/register").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/auth/register").post(body.toString().toRequestBody(jsonMediaType)).build()
         return execute(req)
     }
 
@@ -483,7 +481,7 @@ object UserWalletApiService {
             if (mnemonic != null) put("mnemonic", mnemonic)
             if (passphrase != null) put("passphrase", passphrase)
         }.toString()
-        val req = requestBuilder("/wallets").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/wallets").post(body.toString().toRequestBody(jsonMediaType)).build()
         val json = execute(req)
         return Wallet(
             id = json.optString("id"),
@@ -670,7 +668,7 @@ object UserWalletApiService {
             if (!maxPriorityGwei.isNullOrEmpty()) put("max_priority_gwei", maxPriorityGwei)
         }.toString()
         val req = requestBuilder("/send")
-            .post(body.toRequestBody(jsonMediaType))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
         return SendResult(
@@ -712,7 +710,7 @@ object UserWalletApiService {
             if (!maxPriorityGwei.isNullOrEmpty()) put("max_priority_gwei", maxPriorityGwei)
         }.toString()
         val req = requestBuilder("/auto-send")
-            .post(body.toRequestBody(jsonMediaType))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
         return AutoSendResult(
@@ -738,7 +736,7 @@ object UserWalletApiService {
             if (!params.password.isNullOrEmpty()) put("password", params.password)
         }.toString()
         val req = requestBuilder("/wallets/$walletId/unlock")
-            .post(body.toRequestBody(jsonMediaType))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .build()
         return execute(req)
     }
@@ -786,7 +784,7 @@ object UserWalletApiService {
             if (!data.isNullOrEmpty()) put("data", data)
         }.toString()
         val req = requestBuilder("/simulate")
-            .post(body.toRequestBody(jsonMediaType))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
         return SimulationResult(
@@ -839,7 +837,7 @@ object UserWalletApiService {
             if (password.isNotEmpty()) put("password", password)
         }.toString()
         val req = requestBuilder("/sign")
-            .post(body.toRequestBody(jsonMediaType))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .build()
         val json = execute(req)
         return SignResult(
@@ -858,7 +856,7 @@ object UserWalletApiService {
     )
 
     fun health(): Health {
-        val req = Request.Builder().url(healthUrl()).headers(headers()).get().build()
+        val req = Request.Builder().url(healthUrl()).headers(headers().build()).get().build()
         client.newCall(req).execute().use { response ->
             if (!response.isSuccessful) throw httpException(response)
             val json = JSONObject(response.body?.string() ?: "{}")
@@ -1024,17 +1022,6 @@ object UserWalletApiService {
         }
     }
 
-    data class NetworkStatus(val chainId: Int, val blockNumber: Long, val connected: Boolean)
-
-    fun getNetworkStatus(chainId: Int): NetworkStatus {
-        val chains = getChains()
-        val chain = chains.firstOrNull { it.chainId == chainId }
-        return NetworkStatus(
-            chainId = chain?.chainId ?: chainId,
-            blockNumber = 0L,
-            connected = chain != null
-        )
-    }
 
 // ==================== Swap (real CoinGecko cross-rate + on-chain via backend) ====================
 
@@ -1122,7 +1109,7 @@ object UserWalletApiService {
             put("cryptoCurrency", crypto)
             put("paymentMethod", method)
         }
-        val req = requestBuilder("/ramp/quote").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/ramp/quote").post(body.toString().toRequestBody(jsonMediaType)).build()
         return execute(req)
     }
 
@@ -1133,7 +1120,7 @@ object UserWalletApiService {
             put("fiatCurrency", fiat)
             put("cryptoCurrency", crypto)
         }
-        val req = requestBuilder("/ramp/offramp-quote").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/ramp/offramp-quote").post(body.toString().toRequestBody(jsonMediaType)).build()
         return execute(req)
     }
 
@@ -1148,7 +1135,7 @@ object UserWalletApiService {
 
     fun createP2POrder(advertId: String, amount: String): JSONObject {
         val body = JSONObject().put("advert_id", advertId).put("amount", amount)
-        return execute(requestBuilder("/p2p/orders").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/p2p/orders").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ---- Cross-chain bridge (proxied bridge_service) ----
@@ -1161,7 +1148,7 @@ object UserWalletApiService {
             .put("toChain", toChain)
             .put("token", token)
             .put("amount", amount)
-        return execute(requestBuilder("/bridge/quote").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/bridge/quote").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun executeBridgeTransfer(fromChain: Int, toChain: Int, token: String, amount: String, fromAddress: String): JSONObject {
@@ -1171,7 +1158,7 @@ object UserWalletApiService {
             .put("token", token)
             .put("amount", amount)
             .put("from_address", fromAddress)
-        return execute(requestBuilder("/bridge/transfer").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/bridge/transfer").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun getBridgeHistory(): JSONObject =
@@ -1186,7 +1173,7 @@ object UserWalletApiService {
             .put("symbol", symbol)
             .put("target_price", targetPrice)
             .put("direction", direction)
-        return execute(requestBuilder("/price-alerts").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/price-alerts").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun deletePriceAlert(id: String) {
@@ -1202,7 +1189,7 @@ object UserWalletApiService {
 
     fun securityScan(target: String): JSONObject {
         val body = JSONObject().put("target", target)
-        return execute(requestBuilder("/security/scan").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/security/scan").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ---- Trading Terminal (real OHLC kline + 24h ticker) ----
@@ -1222,7 +1209,7 @@ object UserWalletApiService {
             .put("label", label)
             .put("address", address)
             .put("chain_id", chainId)
-        return execute(requestBuilder("/wallets/watch-only").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/wallets/watch-only").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // Convert is the same path as swap (cross-token conversion).
@@ -1244,7 +1231,7 @@ object UserWalletApiService {
     /** POST /auth/guest { device_id } -> { user_id, token, guest } (mirror web). */
     fun guestAuth(deviceId: String): JSONObject {
         val body = JSONObject().put("device_id", deviceId).toString()
-        val req = requestBuilder("/auth/guest").post(body.toRequestBody(jsonMediaType)).build()
+        val req = requestBuilder("/auth/guest").post(body.toString().toRequestBody(jsonMediaType)).build()
         val json = execute(req)
         val token = json.optString("token")
         if (token.isNotEmpty()) setToken(token)
@@ -1286,7 +1273,7 @@ object UserWalletApiService {
             put("token_out", toToken)
             put("amount_in", fromAmount)
         }.toString()
-        return execute(requestBuilder("/amm/swap").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/amm/swap").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Staking actions (real on-chain via backend) ====================
@@ -1307,7 +1294,7 @@ object UserWalletApiService {
             if (amount != null) put("amount", amount)
             put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/staking/$action").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/staking/$action").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== NFT transfer ====================
@@ -1320,7 +1307,7 @@ object UserWalletApiService {
             put("contract_address", contractAddress)
             put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/nft/transfer").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/nft/transfer").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== KYC (proxied listing_service) ====================
@@ -1350,7 +1337,7 @@ object UserWalletApiService {
             put("address", address)
             if (chainId != null) put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/address-book/contacts").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/address-book/contacts").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun updateContact(id: String, name: String?, address: String?, chainId: Int?): JSONObject {
@@ -1359,7 +1346,7 @@ object UserWalletApiService {
             if (address != null) put("address", address)
             if (chainId != null) put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/address-book/contacts/$id").put(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/address-book/contacts/$id").put(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun deleteContact(id: String): JSONObject =
@@ -1374,7 +1361,7 @@ object UserWalletApiService {
             put("name", name)
             put("device_type", deviceType)
         }.toString()
-        return execute(requestBuilder("/devices").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/devices").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun syncDevice(deviceId: String): JSONObject =
@@ -1403,7 +1390,7 @@ object UserWalletApiService {
             put("password", password)
             put("export_password", password)
         }.toString()
-        return execute(requestBuilder("/keystore/export").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/keystore/export").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     /**
@@ -1417,7 +1404,7 @@ object UserWalletApiService {
             put("password", password)
             if (label != null) put("label", label)
         }.toString()
-        val json = execute(requestBuilder("/keystore/import").post(body.toRequestBody(jsonMediaType)).build())
+        val json = execute(requestBuilder("/keystore/import").post(body.toString().toRequestBody(jsonMediaType)).build())
         return Wallet(
             id = json.optString("wallet_id"),
             label = label ?: json.optString("label"),
@@ -1452,7 +1439,7 @@ object UserWalletApiService {
             put("amount", amount)
             put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/lending/$action").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/lending/$action").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Copy trading (go/copy_trading_service proxy) ====================
@@ -1464,7 +1451,7 @@ object UserWalletApiService {
             put("trader_id", traderId)
             if (allocation != null) put("allocation", allocation)
         }.toString()
-        return execute(requestBuilder("/copytrading/follow").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/copytrading/follow").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun stopCopyTrader(copierId: String): JSONObject =
@@ -1479,12 +1466,12 @@ object UserWalletApiService {
             put("title", title)
             put("description", description)
         }.toString()
-        return execute(requestBuilder("/dao/proposals").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/dao/proposals").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun voteDaoProposal(proposalId: String, support: Boolean): JSONObject {
         val body = JSONObject().put("support", support).toString()
-        return execute(requestBuilder("/dao/proposals/$proposalId/vote").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/dao/proposals/$proposalId/vote").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Perpetual positions (wallet_api /perpetual/*) ====================
@@ -1499,7 +1486,7 @@ object UserWalletApiService {
             put("leverage", leverage)
             put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/perpetual/positions").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/perpetual/positions").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun closePerpetualPosition(positionId: String): JSONObject =
@@ -1517,7 +1504,7 @@ object UserWalletApiService {
             put("leverage", leverage)
             put("chain_id", chainId)
         }.toString()
-        return execute(requestBuilder("/margin/positions").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/margin/positions").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun closeMarginPosition(positionId: String): JSONObject =
@@ -1546,7 +1533,7 @@ object UserWalletApiService {
             put("side", side)
             put("contracts", contracts)
         }.toString()
-        return execute(requestBuilder("/options/positions").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/options/positions").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     /** POST /options/positions/:id/close — settle and close an open position. */
@@ -1562,7 +1549,7 @@ object UserWalletApiService {
             put("side", side)
             put("amount", amount)
         }.toString()
-        return execute(requestBuilder("/prediction/markets/$marketId/bet").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/prediction/markets/$marketId/bet").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Launchpool (wallet_api /launchpool/*) ====================
@@ -1578,7 +1565,7 @@ object UserWalletApiService {
             put("password", password)
             put("amount", amount)
         }.toString()
-        return execute(requestBuilder("/launchpool/stake").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/launchpool/stake").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun launchpoolUnstake(walletId: String, password: String, amount: String): JSONObject {
@@ -1587,7 +1574,7 @@ object UserWalletApiService {
             put("password", password)
             put("amount", amount)
         }.toString()
-        return execute(requestBuilder("/launchpool/unstake").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/launchpool/unstake").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Token sales (wallet_api /token-sales/*) ====================
@@ -1596,7 +1583,7 @@ object UserWalletApiService {
 
     fun participateTokenSale(saleId: String, amount: String): JSONObject {
         val body = JSONObject().put("amount", amount).toString()
-        return execute(requestBuilder("/token-sales/$saleId/participate").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/token-sales/$saleId/participate").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Passkey / lock (mirror web) ====================
@@ -1632,7 +1619,7 @@ object UserWalletApiService {
             if (signCount != null) put("sign_count", signCount)
             if (!attestation.isNullOrEmpty()) put("attestation", attestation)
         }.toString()
-        return execute(requestBuilder("/passkey/wallet").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/passkey/wallet").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     fun setupLock(walletId: String, params: LockSetupParams): JSONObject {
@@ -1641,7 +1628,7 @@ object UserWalletApiService {
             if (!params.passkeyCredentialId.isNullOrEmpty()) put("passkey_credential_id", params.passkeyCredentialId)
             if (!params.passkeyPublicKey.isNullOrEmpty()) put("passkey_public_key", params.passkeyPublicKey)
         }.toString()
-        return execute(requestBuilder("/wallets/$walletId/lock").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/wallets/$walletId/lock").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     // ==================== Non-EVM chains (real derivation + signing) ====================
@@ -1876,7 +1863,7 @@ object UserWalletApiService {
     /** POST /finance/withdrawals — risk-scored, HMAC-signed withdrawal request. */
     fun createWithdrawal(currency: String, amount: String, toAddress: String): JSONObject {
         val body = JSONObject().put("currency", currency).put("amount", amount).put("to_address", toAddress).toString()
-        return execute(requestBuilder("/finance/withdrawals").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/finance/withdrawals").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     /** GET /finance/withdrawals — the caller's withdrawal requests. */
@@ -1890,13 +1877,13 @@ object UserWalletApiService {
     /** POST /finance/convert — instant conversion at the admin rate. */
     fun financeConvert(fromCurrency: String, toCurrency: String, amount: String): JSONObject {
         val body = JSONObject().put("from_currency", fromCurrency).put("to_currency", toCurrency).put("amount", amount).toString()
-        return execute(requestBuilder("/finance/convert").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/finance/convert").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     /** POST /finance/transfer — atomic KYC-gated internal transfer. */
     fun financeTransfer(toEmail: String, currency: String, amount: String): JSONObject {
         val body = JSONObject().put("to_email", toEmail).put("currency", currency).put("amount", amount).toString()
-        return execute(requestBuilder("/finance/transfer").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/finance/transfer").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     /** GET /finance/payment-methods — 881-method / 238-country catalog. */
@@ -1917,13 +1904,13 @@ object UserWalletApiService {
         val body = JSONObject().put("currency", currency).put("amount", amount)
             .put("fiat_currency", fiatCurrency).put("fiat_amount", fiatAmount)
             .put("payment_method_code", paymentMethodCode).put("country_code", countryCode).toString()
-        return execute(requestBuilder("/finance/p2p/escrow").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/finance/p2p/escrow").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
     /** POST /finance/p2p/escrow/:id/:action — accept/paid/release/dispute/cancel. */
     fun escrowAction(id: String, action: String, reason: String? = null): JSONObject {
         val body = (if (reason != null) JSONObject().put("reason", reason) else JSONObject()).toString()
-        return execute(requestBuilder("/finance/p2p/escrow/$id/$action").post(body.toRequestBody(jsonMediaType)).build())
+        return execute(requestBuilder("/finance/p2p/escrow/$id/$action").post(body.toString().toRequestBody(jsonMediaType)).build())
     }
 
 

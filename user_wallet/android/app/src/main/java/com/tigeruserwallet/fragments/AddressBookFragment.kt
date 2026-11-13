@@ -1,5 +1,6 @@
 package com.tigeruserwallet.fragments
 
+import org.json.JSONObject
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -35,7 +36,7 @@ class AddressBookFragment : Fragment() {
     private lateinit var addButton: Button
     private lateinit var updateButton: Button
 
-    private val adapter = ContactsAdapter(mutableListOf()) { deleteContact(it) }
+    private val adapter = ContactsAdapter(mutableListOf(), onDelete = { deleteContact(it) })
     private var selectedId: String? = null
 
     override fun onCreateView(

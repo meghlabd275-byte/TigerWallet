@@ -1,5 +1,6 @@
 package com.tigeruserwallet.fragments
 
+import android.widget.AdapterView
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -44,6 +45,9 @@ class TransactionsFragment : Fragment() {
 
     private var _binding: FragmentTransactionsBinding? = null
     private val binding get() = _binding!!
+
+    /** The included tx banner layout; <include> without app:binding yields no field. */
+    private val txBannerRoot: View get() = binding.root.findViewById(R.id.txBannerRoot)
 
     private lateinit var walletSpinner: AppCompatSpinner
     private lateinit var networkSpinner: AppCompatSpinner
@@ -120,12 +124,12 @@ class TransactionsFragment : Fragment() {
             tokenNames
         )
 
-        walletSpinner.onItemSelectedListener = object : Spinner.OnItemSelectedListener {
-            override fun onItemSelected(p: Spinner, v: View?, pos: Int, id: Long) {
+        walletSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 walletId = wallets.getOrNull(pos)?.id.orEmpty()
                 loadTransactions()
             }
-            override fun onNothingSelected(p: Spinner) {}
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         loadWallets()
@@ -265,7 +269,7 @@ class TransactionsFragment : Fragment() {
 
     private fun showBanner(txHash: String, chainId: Int) {
         val explorer = UserWalletApiService.explorerFor(chainId)
-        val root = binding.txBannerRoot
+        val root = txBannerRoot
         val hashTv = root.findViewById<TextView>(R.id.txBannerHash)
         val explorerRow = root.findViewById<View>(R.id.txBannerExplorerRow)
         val explorerBtn = root.findViewById<TextView>(R.id.txBannerExplorer)
@@ -301,7 +305,7 @@ class TransactionsFragment : Fragment() {
     }
 
     private fun hideBanner() {
-        binding.txBannerRoot.visibility = View.GONE
+        txBannerRoot.visibility = View.GONE
         bannerHandler?.removeCallbacks(bannerRunnable ?: Runnable {})
     }
 

@@ -1,5 +1,6 @@
 package com.tigeruserwallet.fragments
 
+import org.json.JSONObject
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -21,7 +22,7 @@ import org.json.JSONArray
 /**
  * Multisig: create multisig wallets, list them, create/sign/execute multisig
  * transactions. All calls go through the wallet_api multisig proxy
- * (/wallet/multisig/* -> MasterWallet) — real backend state, fail-closed
+ * (/wallet/multisig/... -> MasterWallet) — real backend state, fail-closed
  * error display, no fabricated data.
  */
 class MultisigFragment : Fragment() {

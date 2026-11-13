@@ -339,8 +339,8 @@ class DeFiFragment : Fragment() {
                         if (proposals.isEmpty()) "No proposals"
                         else proposals.joinToString("\n") {
                             "\u2022 ${it.optString("id", "?")}: ${it.optString("title", "?")} " +
-                                "[for ${it.optString("for", it.optInt("for_votes", 0))} / " +
-                                "against ${it.optString("against", it.optInt("against_votes", 0))}]"
+                                "[for ${it.optString("for", it.optInt("for_votes", 0).toString())} / " +
+                                "against ${it.optString("against", it.optInt("against_votes", 0).toString())}]"
                         }
                 }
             } catch (e: Exception) { status("\u2717 DAO: ${e.message ?: "load failed"}") }

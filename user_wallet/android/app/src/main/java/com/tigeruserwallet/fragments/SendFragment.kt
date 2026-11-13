@@ -380,7 +380,7 @@ class SendFragment : Fragment() {
         if (txHash.isNotEmpty()) sb.append("\nHash: ").append(txHash)
         if (autoApproved != null) {
             sb.append("\nAuto-approved: ").append(if (autoApproved) "yes" else "no")
-            if (reason.isNotEmpty()) sb.append(" (").append(reason).append(")")
+            if (!reason.isNullOrEmpty()) sb.append(" (").append(reason).append(")")
         }
         return sb.toString()
     }

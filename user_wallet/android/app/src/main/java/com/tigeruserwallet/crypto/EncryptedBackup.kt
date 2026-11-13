@@ -25,7 +25,7 @@ import javax.crypto.spec.SecretKeySpec
  * Fail-closed: a wrong password never yields plaintext (GCM auth tag fails).
  */
 object EncryptedBackup {
-    private const val MAGIC = "TWBK\x01\x00\x00\x00".toByteArray(Charsets.US_ASCII)
+    private val MAGIC = "TWBK".toByteArray(Charsets.US_ASCII) + byteArrayOf(1, 0, 0, 0)
     private const val PBKDF2_ITERS = 600_000
     private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
     private const val AES_TRANSFORM = "AES/GCM/NoPadding"

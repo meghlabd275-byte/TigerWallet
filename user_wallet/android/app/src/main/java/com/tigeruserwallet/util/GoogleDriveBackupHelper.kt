@@ -1,5 +1,6 @@
 package com.tigeruserwallet.util
 
+import com.google.android.gms.common.api.Scope
 import android.content.Context
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -229,7 +230,7 @@ object GoogleDriveBackupHelper {
             val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
                 .requestIdToken(clientId(context))
-                .requestScopes(com.google.android.gms.auth.api.signin.Scope(DriveScopes.DRIVE_APPDATA))
+                .requestScopes(Scope(DriveScopes.DRIVE_APPDATA))
                 .build()
             val client = GoogleSignIn.getClient(context, gso)
 
