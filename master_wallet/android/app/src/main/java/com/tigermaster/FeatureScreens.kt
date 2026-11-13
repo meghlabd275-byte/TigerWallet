@@ -1,5 +1,6 @@
 package com.tigermaster
 
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,6 +46,7 @@ val MASTER_FEATURES = listOf(
     FeatureEntry("trading", "Trading Control", "🎛️"),
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreScreen(viewModel: MasterWalletViewModel, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -696,6 +698,7 @@ fun WithdrawScreen(viewModel: MasterWalletViewModel) {
 private val TC_VERTICALS = listOf("spot", "perpetual", "futures", "margin", "options", "copy", "liquidity")
 private val TC_TABS = listOf("contracts", "pools", "pairs", "margin", "options", "copy", "verticals", "audit")
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TradingControlScreen(viewModel: MasterWalletViewModel) {
     val overview by viewModel.tradingOverview.collectAsState()

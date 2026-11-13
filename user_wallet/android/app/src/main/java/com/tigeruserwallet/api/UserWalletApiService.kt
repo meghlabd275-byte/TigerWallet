@@ -1338,7 +1338,7 @@ object UserWalletApiService {
 
     /** GET /kyc/session/:id — fetch a KYC session status. */
     fun getKycSession(id: String): JSONObject =
-        execute(requestBuilder("/kyc/session/${URLEncoder.encode(id,"UTF-8")").get().build())
+        execute(requestBuilder("/kyc/session/${URLEncoder.encode(id, "UTF-8")}").get().build())
 
     // ==================== Address book ====================
     fun getAddressBookContacts(): List<JSONObject> =
@@ -1861,7 +1861,7 @@ object UserWalletApiService {
 
     /** GET /finance/deposit-addresses/:asset — per-asset deterministic deposit address. */
     fun getDepositAddressByAsset(asset: String): JSONObject =
-        execute(requestBuilder("/finance/deposit-addresses/${URLEncoder.encode(asset,"UTF-8")").get().build())
+        execute(requestBuilder("/finance/deposit-addresses/${URLEncoder.encode(asset, "UTF-8")}").get().build())
 
     /** GET /finance/convert/history — the caller's settled conversions. */
     fun getConvertHistory(): JSONObject =

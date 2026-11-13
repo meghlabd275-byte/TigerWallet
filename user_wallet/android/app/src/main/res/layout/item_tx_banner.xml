@@ -55,7 +55,6 @@
                 android:layout_weight="1"
                 android:textColor="#FFFFFF"
                 android:textSize="12sp"
-                android:textStyle="underline"
                 android:text="@string/tx_view_explorer" />
         </LinearLayout>
 
@@ -67,7 +66,7 @@
 
             <Button
                 android:id="@+id/txBannerCopy"
-                style="@style/Widget.MaterialComponents.Button.Text"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -76,7 +75,7 @@
 
             <Button
                 android:id="@+id/txBannerDismiss"
-                style="@style/Widget.MaterialComponents.Button.Text"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"

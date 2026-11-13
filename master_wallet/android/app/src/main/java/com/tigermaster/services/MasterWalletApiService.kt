@@ -813,7 +813,7 @@ class MasterWalletApiService(private val baseUrl: String, private var authToken:
 
         val request = Request.Builder()
             .url("$baseUrl/api/v1/master-wallet/$walletId/multisig/transactions/$transactionId/execute")
-            .post(body.toRequestBody(jsonMediaType))
+            .post(body.toString().toRequestBody(jsonMediaType))
             .headers(getHeaders())
             .build()
 

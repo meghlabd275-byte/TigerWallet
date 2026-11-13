@@ -8,7 +8,7 @@ import android.content.Context
  * Super-admin / white-label / feature-toggle administration is an Admin-app
  * feature and is NOT part of the canonical MasterWallet backend contract
  * (port 8450). The previous implementation POSTed to fabricated
- * `/api/super-admin/*` routes that do not exist on the canonical backend.
+ * `/api/super-admin/...` routes that do not exist on the canonical backend.
  *
  * To preserve the MasterWallet/Admin app isolation guarantee, this service is
  * FAIL-CLOSED: every operation throws a descriptive error instead of hitting

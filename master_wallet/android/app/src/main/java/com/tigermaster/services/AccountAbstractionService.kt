@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
+import org.web3j.utils.Numeric
 import org.web3j.crypto.ECKeyPair
 import org.web3j.crypto.Hash
 import org.web3j.crypto.Keys
@@ -238,7 +239,7 @@ class AccountAbstractionService(private val context: Context) {
         return try {
             val paymasters = getPaymasters().toMutableMap()
             paymasters[chainId] = paymasterAddress
-            encryptedPrefs.edit().putString("paymasters", JSONObject(paymasters).toString()).apply()
+            encryptedPrefs.edit().putString("paymasters", JSONObject(paymasters as Map<*, *>).toString()).apply()
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -566,9 +567,9 @@ class AccountAbstractionService(private val context: Context) {
         val hash = hashUserOperation(userOp)
         val sig = Sign.signMessage(hash, keyPair, false)
 
-        val r = sig.r.toString(16).padStart(64, '0')
-        val s = sig.s.toString(16).padStart(64, '0')
-        val v = (sig.v.toInt() + 27).toString(16).padStart(2, '0')
+        val r = Numeric.toHexStringNoPrefixZeroPadded(BigInteger(1, sig.r), 64)
+        val s = Numeric.toHexStringNoPrefixZeroPadded(BigInteger(1, sig.s), 64)
+        val v = Numeric.toHexStringNoPrefixZeroPadded(BigInteger.valueOf((sig.v[0].toLong() + 27) and 0xff), 2)
         return "0x$r$s$v"
     }
 
@@ -661,10 +662,6 @@ class AccountAbstractionService(private val context: Context) {
         } catch (e: Exception) {
             emptyMap()
         }
-    }
-
-    private fun getSessionKeys(walletAddress: String): List<SessionKey> {
-        return getSessionKeys(walletAddress) // Already implemented above
     }
 
     private fun saveSessionKeys(walletAddress: String, keys: List<SessionKey>) {

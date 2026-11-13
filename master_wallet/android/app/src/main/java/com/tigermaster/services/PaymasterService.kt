@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.web3j.utils.Numeric
 import org.web3j.crypto.ECKeyPair
 import org.web3j.crypto.Hash
 import org.web3j.crypto.Sign
@@ -229,9 +230,9 @@ class PaymasterService(private val context: Context) {
      */
     private fun signMessage(data: ByteArray, keyPair: ECKeyPair): String {
         val sig = Sign.signMessage(data, keyPair, false)
-        val r = sig.r.toString(16).padStart(64, '0')
-        val s = sig.s.toString(16).padStart(64, '0')
-        val v = (sig.v.toInt() + 27).toString(16).padStart(2, '0')
+        val r = Numeric.toHexStringNoPrefixZeroPadded(BigInteger(1, sig.r), 64)
+        val s = Numeric.toHexStringNoPrefixZeroPadded(BigInteger(1, sig.s), 64)
+        val v = Numeric.toHexStringNoPrefixZeroPadded(BigInteger.valueOf((sig.v[0].toLong() + 27) and 0xff), 2)
         return "0x$r$s$v"
     }
 

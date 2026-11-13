@@ -1,5 +1,6 @@
 package com.tigermaster
 
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -212,6 +213,7 @@ fun MasterStatCard(title: String, value: String, icon: String, modifier: Modifie
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MasterActionButton(icon: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Card(modifier = modifier, onClick = onClick) {
