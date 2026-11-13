@@ -83,17 +83,6 @@ function sizeForVersion(ver: number): number {
   return ver * 4 + 17;
 }
 
-// Total number of data+ecc modules available for a version, before any
-// codeword split.
-function numRawDataModules(ver: number): number {
-  let result = (16 * ver + 128) * ver + 64;
-  if (ver >= 2) {
-    const numAlign = Math.floor(ver / 7) + 2;
-    result -= (25 * numAlign - 10) * numAlign - 55;
-    if (ver >= 7) result -= 36;
-  }
-  return result;
-}
 
 // Character-count indicator width for byte mode.
 function byteModeCharCountBits(ver: number): number {

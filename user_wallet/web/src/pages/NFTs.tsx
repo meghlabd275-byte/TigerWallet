@@ -1,6 +1,6 @@
 // NFTs Page — view ERC-721 NFTs and transfer them on-chain.
 import React, { useState, useEffect } from 'react';
-import { api, WalletRecord } from '../services/api';
+import { api } from '../services/api';
 
 const CHAIN_OPTIONS = [
   { id: 1, label: 'Ethereum' },
@@ -14,7 +14,6 @@ const CHAIN_OPTIONS = [
 interface NFT { contract: string; token_id: string; name?: string; image?: string; }
 
 export default function NFTs() {
-  const [wallets, setWallets] = useState<WalletRecord[]>([]);
   const [address, setAddress] = useState('');
   const [chainId, setChainId] = useState(1);
   const [nfts, setNfts] = useState<NFT[]>([]);
@@ -28,7 +27,6 @@ export default function NFTs() {
 
   useEffect(() => {
     api.getWallets().then((data) => {
-      setWallets(data.wallets || []);
       if (data.wallets && data.wallets.length > 0) {
         setAddress(data.wallets[0].address);
         setChainId(data.wallets[0].chain_id);

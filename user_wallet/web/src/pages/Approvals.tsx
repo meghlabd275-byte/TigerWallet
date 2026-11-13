@@ -1,6 +1,6 @@
 // Token Approvals Page — view + revoke ERC-20 token approvals (security).
 import React, { useState, useEffect } from 'react';
-import { api, WalletRecord } from '../services/api';
+import { api } from '../services/api';
 
 const CHAIN_OPTIONS = [
   { id: 1, label: 'Ethereum' },
@@ -14,7 +14,6 @@ const CHAIN_OPTIONS = [
 interface Approval { id: string; token?: string; spender?: string; amount?: string; approved?: boolean; }
 
 export default function Approvals() {
-  const [wallets, setWallets] = useState<WalletRecord[]>([]);
   const [address, setAddress] = useState('');
   const [chainId, setChainId] = useState(1);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -24,7 +23,6 @@ export default function Approvals() {
 
   useEffect(() => {
     api.getWallets().then((data) => {
-      setWallets(data.wallets || []);
       if (data.wallets && data.wallets.length > 0) { setAddress(data.wallets[0].address); setChainId(data.wallets[0].chain_id); }
     }).catch(() => {});
   }, []);
@@ -44,7 +42,10 @@ export default function Approvals() {
     }
   };
 
-  useEffect(() => { if (address) load(); /* eslint-disable-next-line */ }, [address, chainId]);
+  // load() is recreated per render; keying on the inputs it actually reads keeps
+  // the fetch from looping.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (address) load(); }, [address, chainId]);
 
   const revoke = async (id: string) => {
     if (!window.confirm('Revoke this approval?')) return;

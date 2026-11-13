@@ -6,7 +6,6 @@ export default function Cards() {
   const [rates, setRates] = useState<unknown>(null);
   const [balance, setBalance] = useState<unknown>(null);
   const [txs, setTxs] = useState<unknown[]>([]);
-  const [error, setError] = useState('');
 
   const load = useCallback(() => {
     api.getCryptoCardRates().then(setRates).catch(() => setRates(null));
@@ -22,7 +21,6 @@ export default function Cards() {
   return (
     <div className="cards-page">
       <h1>Crypto Card</h1>
-      {error && <div className="error">{error}</div>}
       <h2>Balance</h2>
       {balance ? <div className="quote-box"><pre>{JSON.stringify(balance, null, 2)}</pre></div> : <p className="empty-state">No card balance available.</p>}
       <h2>Rates</h2>

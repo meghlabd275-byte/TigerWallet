@@ -13,7 +13,9 @@ export function safeExternalUrl(raw: unknown, base?: string): string | null {
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim()
   if (!trimmed) return null
-  // Browsers strip control characters before resolving a scheme.
+  // Browsers strip control characters before resolving a scheme, so a URL
+  // carrying them can resolve to a different scheme than it appears to.
+  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null
 
   const origin =
