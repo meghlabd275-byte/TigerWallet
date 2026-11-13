@@ -1,0 +1,21 @@
+[package]
+name = "tiger-kyc-engine"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "In-house KYC verification engine: ICAO 9303 MRZ validation, identity screening and deterministic risk scoring. No external vendor dependency."
+license = "Proprietary"
+
+[lib]
+name = "tiger_kyc_engine"
+path = "src/lib.rs"
+
+# Deliberately dependency-free. The engine handles identity documents and
+# screening decisions, so its dependency surface is kept at zero: that removes
+# supply-chain risk and keeps every decision auditable in this repository.
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
