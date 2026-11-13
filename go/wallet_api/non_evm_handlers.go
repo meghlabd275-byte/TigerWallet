@@ -52,6 +52,12 @@ type nonEvmSendReq struct {
 	UTXOOutputs    []UTXOOutput   `json:"utxo_outputs"`
 	CosmosSignDoc  *CosmosSignDoc `json:"cosmos_sign_doc"`
 
+	// Cardano selects its own UTXO set: a Shelley body is built from explicit
+	// inputs, so the caller passes the exact outputs to spend and the fee.
+	CardanoInputs  []CardanoUTXO   `json:"cardano_inputs"`
+	CardanoOutputs []CardanoOutput `json:"cardano_outputs"`
+	FeeLovelace    uint64          `json:"fee_lovelace"`
+
 	Sequence  uint64  `json:"sequence"`
 	MaxGas    uint64  `json:"max_gas"`
 	GenHash   string  `json:"genesis_hash"`
@@ -419,7 +425,9 @@ func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req
 		return raw, txHash, famStr, err
 
 	case familyCardano:
-		return "", "", "", errors.New("cardano tx build requires CBOR serialization — fail-closed; message signing + address derivation stay complete")
+		raw, txHash, err := CardanoBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct),
+			req.CardanoInputs, req.CardanoOutputs, req.FeeLovelace, !req.Simulate)
+		return raw, txHash, famStr, err
 
 	case familyWaves:
 		return "", "", "", errors.New("waves tx build requires protobuf tx shape — fail-closed; address derivation + message signing stay complete")

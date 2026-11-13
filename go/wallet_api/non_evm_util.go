@@ -71,6 +71,27 @@ func postRaw(ctx context.Context, url string, body []byte) ([]byte, error) {
 	return raw, nil
 }
 
+// postRawCBOR POSTs a raw binary body (application/cbor) and returns the
+// response. Used by chains whose submit endpoint takes CBOR rather than JSON,
+// such as Cardano's submit-api.
+func postRawCBOR(ctx context.Context, url string, body []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/cbor")
+	resp, err := nvmHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw[:minInt(len(raw), 300)])))
+	}
+	return raw, nil
+}
+
 // getRaw GETs a URL and returns the body on 2xx, fail-closed otherwise.
 func getRaw(ctx context.Context, url string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
