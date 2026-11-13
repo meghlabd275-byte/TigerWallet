@@ -1712,3 +1712,67 @@
   android+ios have NO build files at all (orphaned SDK shells, known since S35).
 - Toolchain this session: Go 1.24/1.25 via /tmp, Rust 1.85 (~/.cargo), PostgreSQL 17
   + Redis in sandbox for the live KYC verification.
+
+## Session 44 (2026-11-13) — global commercial launch audit + gap report
+- DELIVERABLE: docs/LAUNCH_GAP_REPORT.md (committed c0e5ffd) — evidence-based
+  what-works / what-is-missing / what-is-broken report. Fixes committed 8eabd2e.
+- FIXED (8 bugs, all verified):
+  - multi_tenancy CreateTenant: 3 independent statements -> ONE transaction
+    (a failure after the tenant INSERT left a committed tenant with no quota
+    rows, so every later quota call failed forever).
+  - multi_tenancy: tenant_audit_logs was never written -> audit() helper wired
+    to tenant.created / status_changed / user_role_changed.
+  - multi_tenancy: GetTenantByID/GetTenantBySlug SQL parameter binding fixed.
+  - multi_tenancy: NEW tenant_service_test.go — 5 integration tests vs live
+    PostgreSQL (was 0 tests). PASS.
+  - user_wallet/ios: NO project file existed at all (50 swift files) -> NEW
+    Package.swift. DEP NAMES VERIFIED against upstream manifests: gtm-oauth2
+    ships NO Package.swift (use GTMAppAuth); the Drive SPM product is
+    GoogleAPIClientForREST_Drive (module it exposes is GTLRDrive).
+  - billing_subscription: main.go read only DATABASE_URL while compose supplies
+    BILLING_DB_* -> resolveDatabaseURL(); default port 8100 -> 9001.
+  - notifications: DB name typo tigerwallet_notification ->
+    tigerwallet_notifications (matches database/init.sql) in BOTH entrypoints.
+  - deployments/docker: IPFS host port 8080 collided with api-gateway -> 8098.
+- CI: billing_subscription/go + notifications/go + multi_tenancy/go added to the
+  unit-test matrix; multi_tenancy also runs in the PostgreSQL integration job.
+  (They were unlisted, which is why the bugs above survived.) CI green at
+  8eabd2e: 30 + 8 + 11 jobs.
+- VERIFIED STATE (tree, not docs):
+  - 3967 tracked files; 175 go.mod; 107 Cargo.toml; 77 Dockerfiles; 33 package.json.
+  - All 70 build services in root compose resolve to an EXISTING Dockerfile; all
+    3 compose files pass `docker compose config --quiet`; no duplicate host ports.
+  - Tests: 137 Go test files, 18 Rust, **1 frontend test file total**, 0 Kotlin,
+    1 Swift, 6 Solidity. Only 5 of 33 package.json declare a test script and the
+    root one is an echo placeholder. Frontend/mobile verification is the largest
+    coverage gap in the repo.
+  - Secrets: no hardcoded high-entropy secret literals in the 4 canonical
+    backends; JWT secrets fail closed (master_wallet config.go:61,
+    wallet_api main.go:31, white_label_admin, admin/go + super_admin/go via
+    getRequiredSecret(...,32)).
+  - Observability: ONE file (infrastructure/docker/monitoring/prometheus.yml).
+    No Grafana dashboards, no alert rules, no alertmanager, no tracing.
+  - K8s: 3 manifests vs 77 services; only wallet-api + masterwallet-backend have
+    real Deployment/HPA/PDB.
+  - Contracts: 103 .sol + 6 test files (AA/DEX/governance) but NO deployed
+    address configured anywhere in deployments/ — the on-chain layer has zero
+    effect on the running system.
+  - Bot types: 18 in BotType enum; 10 have real runners; 8 fail closed at start
+    (ai_trading/signal/cross_chain/flash_loan/sandwich/front_run/mev/custom).
+  - UNBUILDABLE app surfaces (no xcodeproj/Package.swift or no gradle):
+    bots/android (manifest declares .MainActivity — FILE DOES NOT EXIST;
+    layouts are wallet-themed), bots/ios, project_party/android,
+    project_party/ios, admin/ios (24 swift), super_admin/ios,
+    white_label_admin/ios, frontend/apps/ios, privacy_features/ios.
+    BUILDABLE: master_wallet/ios (SPM), user_wallet/ios (SPM, added today),
+    user_wallet/android (gradle), master_wallet/android (gradle),
+    admin/android (gradle only, no wrapper/settings), user_wallet/flutter.
+  - notifications/go has TWO entrypoints: cmd/main.go (FCM; the one the
+    Dockerfile builds) and cmd/gateway/main.go (SMTP/Twilio). README.md:129 maps
+    to a `notification/` dir that DOES NOT EXIST.
+- Toolchain (sandbox resets wipe these): Go 1.23.4 at /tmp/goroot/go
+  (GOTOOLCHAIN=auto pulls go1.25 for notifications), Swift 5.10.1 at /tmp/swift
+  (needs an ld.gold->ld.lld shim; `swift package dump-package` hangs on network
+  resolution in this sandbox), PostgreSQL 17 on :55432, Redis on :56379.
+- PUSH NOTE: the token in the git remote URL works; `git push origin main`
+  succeeded without refresh.
