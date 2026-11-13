@@ -1653,3 +1653,62 @@
   web apps other than user_wallet/web have no test script; TSC chain id is 7710 in this repo
   but the UPSTREAM TigerSmartChain repo is internally inconsistent (README 6666, TS SDK
   TIGER_MAINNET=1, RPC returns 0x1) — an operator must start that node with TSC_CHAIN_ID=7710.
+
+## Session 43 (2026-11-12/13) — KYC/compliance plane closed + launch-readiness audit
+- KYC GATE + CARD GATE (prior work this session): go/wallet_api/app_lock.go
+  requireKYCMiddleware (kycMinimumLevel) now gates /cards/*path + /card/*path and
+  P2P; kyc_gate_test.go covers malformed-JSON-fails-closed. Verified: an applicant
+  whose status is REJECTED is refused even at level 2 — the old `Level >= 2` check
+  accepted a rejected user at level 2. Gate requires an approving status AND level.
+- listing_service KYC DEAD END FIXED (go/listing_service/kyc_service.go):
+  processVerification only ever set pending_review and runAMLCheck always returned
+  pending, so the wallet's P2P gate could never see "verified" — P2P was
+  permanently blocked regardless of real verification. GetKYCStatus now delegates
+  to the in-house engine. kyc_status_test.go: 4 tests.
+- FAKE AML SERVICE REMOVED (commit 14dc5da): security/compliance_aml/go is DELETED.
+  Its screenAddressInternal was structurally incapable of matching: the
+  sanctionEntities map was declared and read but NEVER WRITTEN, so every address
+  screened "clean". State was in-process (lost on restart, invisible to a 2nd
+  replica) and nothing referenced it. security/kyc_aml is the REAL one and is kept:
+  PostgreSQL-backed (applications/documents/AML checks/watchlist/audit),
+  parameterised queries, real watchlist search, bounded risk scoring, fail-closed
+  when screening cannot run (recorded "failed", risk 100 — never "cleared").
+- KYC SERVICE DEPLOYED (commit 84d1712): security/rust/kyc_service had NO
+  Dockerfile and NO compose entry, so nothing ran it and EVERY P2P order + card
+  request was refused (gate fails closed on unreachable backend). Added the
+  Dockerfile (multi-stage rust 1.85, unprivileged uid 10002, /health probe),
+  tigerwallet_kyc database in database/init.sql, and the compose service + the two
+  links that make the gate work: listing-service KYC_ENGINE_URL + KYC_SERVICE_TOKEN,
+  wallet-api KYC_SERVICE_TOKEN. Both are REQUIRED vars -> an incomplete deployment
+  fails at `docker compose config` time, not at the first P2P order. Verified: exact
+  Dockerfile build command works, /health healthy, /readyz ready, exits with a named
+  error without KYC_DATABASE_URL. Compose now resolves 66 services.
+- KYC IN CI (commits 35c8b24, dcc8140): security/rust/kyc_engine (58 tests) +
+  kyc_service (4 tests) added to the ci-cd.yml Rust matrix AND the launch-readiness
+  rust job; both clippy-clean. New launch-readiness step rejects stub markers
+  ("In production, this would" / "not implemented yet" / "TODO: implement") across
+  go/ master_wallet/ admin/ super_admin/ white_label_admin/ security/ — the check
+  that would have caught the always-clean screening stub. Passes on current tree.
+- CANONICAL BACKENDS ARE STUB-FREE: go/wallet_api, master_wallet/backend, admin/go,
+  super_admin/go, white_label_admin/go contain ZERO TODO/FIXME and zero real stub
+  markers. The 665 grep hits for "fabricat/mock data" are overwhelmingly
+  "never fabricate" fail-closed COMMENTS (correct documentation), not stubs.
+- CHAIN/BROADCAST COVERAGE (verified, authoritative):
+  - master_wallet/backend/chain_registry_data.go = 198 EVM (defaultEVMChains) +
+    65 non-EVM (defaultNonEVMChains, 43 distinct families) = 263 chains.
+  - go/wallet_api = 196 EVM + 113 non-EVM chain entries.
+  - UserWallet broadcast: 16 real BuildSend paths — Solana, Cardano, Algorand,
+    Aptos, Sui, Near, Stellar, Nano, Tezos, MultiversX, Tron, Ripple, VET +
+    UTXO (BTC/LTC/etc) + Cosmos. Tests: TestNonEvmResolveAllSeededChains (66),
+    creation-covers-registry, no-EVM-duplicates, hardened paths, fail-closed.
+  - MASTERWALLET CUSTODY BROADCAST = 4 families ONLY (EVM, cosmos incl. the 23
+    seeded cosmos chains, bitcoin+litecoin UTXO, solana). ~25 of 66 non-EVM
+    signable; the remaining ~40 exotic chains FAIL CLOSED with an explicit error
+    (never faked). This is the single biggest commercial gap: a custodial
+    MasterWallet cannot sweep/sign on tron/cardano/xrp/near/ton/etc.
+- NOT COMPILE-VERIFIED (no SDKs in sandbox): Kotlin (no Android SDK), Swift.
+- iOS BUILDABILITY: user_wallet/ios has NO Xcode project/Package.swift (50 swift
+  files); master_wallet/ios HAS Package.swift (SPM). bots/ and project_party/
+  android+ios have NO build files at all (orphaned SDK shells, known since S35).
+- Toolchain this session: Go 1.24/1.25 via /tmp, Rust 1.85 (~/.cargo), PostgreSQL 17
+  + Redis in sandbox for the live KYC verification.
