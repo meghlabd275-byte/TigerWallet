@@ -94,6 +94,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --manifest-path rust/security/Cargo.toml
       - run: cargo test --manifest-path rust/masterwallet_fetchers/Cargo.toml
+      # The KYC engine is the compliance gate: it decides whether an applicant
+      # is verified, and the P2P and card gates trust that decision. A
+      # regression here silently admits or blocks users, so it is gated.
+      - run: cargo test --manifest-path security/rust/kyc_engine/Cargo.toml
+      - run: cargo test --manifest-path security/rust/kyc_service/Cargo.toml
 
   security-static:
     runs-on: ubuntu-latest
@@ -103,6 +108,15 @@ jobs:
         run: |
           ! grep -rInE "For now, return mock data|Generate mock chart data|Generate mock history|Simulate price updates" \
               --include='*.go' go/ master_wallet/ admin/ super_admin/
+      # A stub that answers instead of failing is the failure mode that
+      # matters here: a control that always returns "clean" or "approved"
+      # reads as coverage. Screening stubs were removed for this reason.
+      - name: Reject stub markers in production code
+        run: |
+          ! grep -rInE "In production, this would|not implemented yet|TODO: implement" \
+              --include='*.go' --include='*.rs' --include='*.ts' --include='*.tsx' \
+              --exclude='*_test.go' --exclude-dir=node_modules --exclude-dir=vendor \
+              go/ master_wallet/ admin/ super_admin/ white_label_admin/ security/
       - name: Reject committed secrets
         run: |
           ! grep -rInE "(PRIVATE_KEY|MNEMONIC|SEED_PHRASE|JWT_SECRET|ENCRYPTION_KEY)=[^[:space:]]+" \
