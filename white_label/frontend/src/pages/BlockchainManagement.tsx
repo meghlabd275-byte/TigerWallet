@@ -41,7 +41,7 @@ const BlockchainManagement: React.FC = () => {
       setSnackbar({ open: true, message: 'Blockchain enabled', severity: 'success' });
       fetchBlockchains();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to enable blockchain', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to enable blockchain: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -51,7 +51,7 @@ const BlockchainManagement: React.FC = () => {
       setSnackbar({ open: true, message: 'Blockchain disabled', severity: 'success' });
       fetchBlockchains();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to disable blockchain', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to disable blockchain: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 

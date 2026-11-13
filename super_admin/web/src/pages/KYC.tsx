@@ -50,7 +50,7 @@ export default function KYC() {
       await superAdminApi.approveKYC(id, { notes: 'Approved by admin' });
       loadRequests();
     } catch (err) {
-      alert('Failed to approve KYC');
+      alert(`Failed to approve KYC: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(false);
     }
@@ -64,7 +64,7 @@ export default function KYC() {
       await superAdminApi.rejectKYC(id, { reason });
       loadRequests();
     } catch (err) {
-      alert('Failed to reject KYC');
+      alert(`Failed to reject KYC: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(false);
     }

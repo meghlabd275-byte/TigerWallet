@@ -91,7 +91,7 @@ const AdminManagement: React.FC = () => {
       setSnackbar({ open: true, message: 'Admin deleted successfully', severity: 'success' });
       fetchAdmins();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete admin', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to delete admin: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -116,7 +116,7 @@ const AdminManagement: React.FC = () => {
       setOpenDialog(false);
       fetchAdmins();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Operation failed', severity: 'error' });
+      setSnackbar({ open: true, message: `Operation failed: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 

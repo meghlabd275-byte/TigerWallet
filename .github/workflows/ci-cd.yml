@@ -58,9 +58,16 @@ jobs:
                 failed=1
               fi
             fi
+            # api_gateway, billing_subscription and bots keep their sources in
+            # nested modules (go/ subdirectories with their own go.mod), so
+            # `./...` matches nothing here and vet exits 1 with "no packages to
+            # vet". Those nested modules are checked by their own pass over the
+            # module list; an empty result is therefore not a failure.
             if ! (cd "$mod" && go vet ./...); then
-              echo "::error title=go vet failed::$mod"
-              failed=1
+              if [ -n "$(cd "$mod" && go list ./... 2>/dev/null)" ]; then
+                echo "::error title=go vet failed::$mod"
+                failed=1
+              fi
             fi
             echo "::endgroup::"
           done < <(find . -name go.mod -not -path '*/vendor/*' -not -path '*/node_modules/*' | sed 's|/go.mod||' | sed 's|^\./||' | sort)

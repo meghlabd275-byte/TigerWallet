@@ -23,7 +23,7 @@ import type {
   AuditLog, AuditLogParams,
   SystemStatus, SystemMetrics,
   Notification,
-  PaginatedResponse, ApiResponse
+  PaginatedResponse
 } from '../types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_SUPER_ADMIN_API || 'http://localhost:8082';

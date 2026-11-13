@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useTheme } from '../context/ThemeContext';
 import superAdminApi from '../services/api';
 
 interface DashboardStats {
@@ -30,7 +29,6 @@ interface RecentActivity {
 }
 
 export default function Dashboard() {
-  const { resolvedTheme } = useTheme();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [activities, setActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);

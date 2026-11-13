@@ -116,7 +116,7 @@ const TradingPairsPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Trading pair deleted successfully', severity: 'success' });
       fetchPairs();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete trading pair', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to delete trading pair: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -126,7 +126,7 @@ const TradingPairsPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Trading pair suspended', severity: 'success' });
       fetchPairs();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to suspend trading pair', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to suspend trading pair: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -136,7 +136,7 @@ const TradingPairsPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Trading pair resumed', severity: 'success' });
       fetchPairs();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to resume trading pair', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to resume trading pair: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -146,7 +146,7 @@ const TradingPairsPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Trading pair halted', severity: 'success' });
       fetchPairs();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to halt trading pair', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to halt trading pair: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -162,7 +162,7 @@ const TradingPairsPage: React.FC = () => {
       setOpenDialog(false);
       fetchPairs();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Operation failed', severity: 'error' });
+      setSnackbar({ open: true, message: `Operation failed: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 

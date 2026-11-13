@@ -116,7 +116,7 @@ const ProductManagement: React.FC = () => {
       setSnackbar({ open: true, message: 'Product deleted successfully', severity: 'success' });
       fetchProducts();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete product', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to delete product: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -126,7 +126,7 @@ const ProductManagement: React.FC = () => {
       setSnackbar({ open: true, message: `Product ${product.status === 'enabled' ? 'disabled' : 'enabled'} successfully`, severity: 'success' });
       fetchProducts();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to toggle product', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to toggle product: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 
@@ -142,7 +142,7 @@ const ProductManagement: React.FC = () => {
       setOpenDialog(false);
       fetchProducts();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Operation failed', severity: 'error' });
+      setSnackbar({ open: true, message: `Operation failed: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 

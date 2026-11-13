@@ -81,7 +81,7 @@ export const WhiteLabelDashboard: React.FC = () => {
         fetchClients();
       }
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete', severity: 'error' });
+      setSnackbar({ open: true, message: `Failed to delete: ${error instanceof Error ? error.message : String(error)}`, severity: 'error' });
     }
   };
 

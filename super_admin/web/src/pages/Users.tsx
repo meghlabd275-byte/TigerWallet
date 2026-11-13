@@ -4,12 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useTheme } from '../context/ThemeContext';
 import superAdminApi from '../services/api';
 import type { User } from '../types';
 
 export default function Users() {
-  const { resolvedTheme } = useTheme();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +54,7 @@ export default function Users() {
       await superAdminApi.suspendUser(userId, 'Admin action');
       loadUsers();
     } catch (err) {
-      alert('Failed to suspend user');
+      alert(`Failed to suspend user: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(false);
     }
@@ -69,7 +67,7 @@ export default function Users() {
       await superAdminApi.banUser(userId, 'Admin action');
       loadUsers();
     } catch (err) {
-      alert('Failed to ban user');
+      alert(`Failed to ban user: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(false);
     }
@@ -81,7 +79,7 @@ export default function Users() {
       await superAdminApi.verifyUser(userId);
       loadUsers();
     } catch (err) {
-      alert('Failed to verify user');
+      alert(`Failed to verify user: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setActionLoading(false);
     }

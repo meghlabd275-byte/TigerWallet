@@ -13,7 +13,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { superAdminApi } from '../services/api';
 
 const VERTICALS = ['spot', 'perpetual', 'futures', 'margin', 'options', 'copy', 'liquidity'];
-const STATUSES = ['active', 'stopped', 'suspended'];
 
 type Tab = 'contracts' | 'pools' | 'pairs' | 'margin' | 'verticals' | 'audit';
 

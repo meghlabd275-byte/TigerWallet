@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useTheme } from '../context/ThemeContext';
 import superAdminApi from '../services/api';
 
 interface IPWhitelistItem {
@@ -21,14 +20,8 @@ interface RateLimitItem {
   burst: number;
 }
 
-interface TwoFASettings {
-  enabled: boolean;
-  method: string;
-  backup_codes_remaining: number;
-}
 
 export default function Security() {
-  const { resolvedTheme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('2fa');
   
