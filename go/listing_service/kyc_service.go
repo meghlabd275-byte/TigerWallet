@@ -12,11 +12,13 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -664,19 +666,103 @@ func (s *ListingService) SubmitKYCDocument(c *gin.Context) {
 	})
 }
 
+// KYC engine integration.
+//
+// The verification decision is made by the in-house engine service
+// (security/rust/kyc_service), not by this listing backend. This file used to
+// hold a parallel implementation whose processVerification only ever set
+// "pending_review" and whose runAMLCheck could never return a clear result, so
+// no user could ever reach "verified" and P2P trading stayed permanently
+// blocked. Delegating to the engine removes that dead end and leaves one
+// implementation of the decision.
+//
+// The wallet backend reads this status through /api/v1/kyc/status/:user_id, so
+// the shape returned here is a contract: it must carry `status`, `verified` and
+// `level`, and `status` must be "verified" only for an approved applicant.
+
+// kycEngineURL is the base URL of the in-house KYC engine service.
+func kycEngineURL() string {
+	return strings.TrimRight(getEnv("KYC_ENGINE_URL", ""), "/")
+}
+
+// kycEngineToken authenticates this backend to the engine service.
+func kycEngineToken() string {
+	return getEnv("KYC_SERVICE_TOKEN", "")
+}
+
+// kycStatusResponse is the engine's status payload.
+type kycStatusResponse struct {
+	Status   string `json:"status"`
+	Verified bool   `json:"verified"`
+	Level    int    `json:"level"`
+	Score    int    `json:"risk_score"`
+	Reasons  []string `json:"reasons"`
+}
+
+// fetchKYCStatus reads a user's verification status from the engine.
+//
+// Returns (nil, err) when the engine cannot be reached or does not answer 200.
+// The caller must not treat an error as "not verified by default" without
+// recording it, because a silent failure here would look like a normal
+// unverified user.
+func fetchKYCStatus(ctx context.Context, userID string) (*kycStatusResponse, error) {
+	base := kycEngineURL()
+	if base == "" {
+		return nil, errors.New("KYC_ENGINE_URL is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", base+"/api/v1/kyc/status/"+userID, nil)
+	if err != nil {
+		return nil, err
+	}
+	if tok := kycEngineToken(); tok != "" {
+		req.Header.Set("X-KYC-Token", tok)
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("KYC engine answered HTTP %d", resp.StatusCode)
+	}
+	var out kycStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetKYCStatus returns a user's verification status.
+//
+// This is the endpoint the wallet backend's P2P and card gates call, so an
+// unreachable engine must not be reported as an approving status. It answers
+// 503 instead, which the gate treats as a closed gate.
 func (s *ListingService) GetKYCStatus(c *gin.Context) {
 	userID := c.Param("user_id")
 
-	kycService := NewKYCService(s.redis, DefaultKYCConfig)
-	user, err := kycService.GetUserByID(c.Request.Context(), userID)
+	status, err := fetchKYCStatus(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		// Report the failure honestly rather than inventing a status. A client
+		// that receives this must keep the user's access closed.
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"success": false,
+			"error":   "identity verification service is unavailable",
+			"detail":  err.Error(),
+			"status":  "unavailable",
+			"verified": false,
+		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"user":    user,
+		"success":  true,
+		"user_id":  userID,
+		"status":   status.Status,
+		"verified": status.Verified,
+		"level":    status.Level,
+		"risk_score": status.Score,
+		"reasons":  status.Reasons,
 	})
 }
 
