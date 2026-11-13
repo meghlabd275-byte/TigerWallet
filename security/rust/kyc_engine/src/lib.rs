@@ -32,7 +32,10 @@ pub use decision::{
     VerificationReport,
 };
 pub use errors::KycError;
-pub use mrz::{check_digit, parse as parse_mrz, verify_check_digit, Mrz, MrzFormat, Sex};
+pub use mrz::{
+    check_digit, parse as parse_mrz, parse_mrz_date as mrz_date_to_iso, verify_check_digit, Mrz,
+    MrzFormat, Sex,
+};
 pub use screening::{
     normalise_name, screen, screen_with_variants, ListKind, MatchStrength, ScreeningMatch,
     ScreeningOutcome, ScreeningSubject, WatchlistEntry,

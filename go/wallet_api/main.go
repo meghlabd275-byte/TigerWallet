@@ -323,9 +323,9 @@ func main() {
 		// /api/v1/card/{balance,transactions,rates}. Clients use the plural
 		// /api/v1/cards/* surface (incl. /cards/:id/balance per-card style); the
 		// cardsProxy maps it to the upstream per-user card account.
-		wallet.Any("/cards/*path", cardsProxy("CARD_SERVICE_URL", "http://localhost:8457"))
+		wallet.Any("/cards/*path", requireKYCMiddleware("card issuance"), cardsProxy("CARD_SERVICE_URL", "http://localhost:8457"))
 		// Singular form (production/react client uses /card/{balance,transactions}).
-		wallet.Any("/card/*path", deFiProxyRewrite("CARD_SERVICE_URL", "http://localhost:8457", "card", "/api/v1/card"))
+		wallet.Any("/card/*path", requireKYCMiddleware("card issuance"), deFiProxyRewrite("CARD_SERVICE_URL", "http://localhost:8457", "card", "/api/v1/card"))
 
 		// Fiat ramp: the canonical go/fiat_ramp (:8451) exposes
 		// /api/v1/ramp/{providers,quote,offramp-quote,order,...} — identical

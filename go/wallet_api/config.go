@@ -26,6 +26,11 @@ type AppConfig struct {
 	// ListingServiceURL is the canonical listing/KYC backend (:8010). Used by
 	// the /kyc/* proxy + the P2P KYC gate. Server-to-server only.
 	ListingServiceURL string
+	// KYCServiceToken authenticates this backend to the in-house KYC service
+	// (security/rust/kyc_service). That service rejects an unauthenticated
+	// caller, so when this is unset the P2P and card KYC gates stay closed
+	// rather than trusting a status they cannot verify.
+	KYCServiceToken string
 	// P2PServiceURL is the canonical P2P trading backend (p2p_trading, :8475).
 	// Used by the /p2p/* proxy (orders KYC-gated). Server-to-server only.
 	P2PServiceURL string
@@ -47,6 +52,7 @@ func LoadConfig() *AppConfig {
 		AdminBootstrapEmail:    os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
 		MasterWalletBackendURL: envOr("MASTER_WALLET_API_URL", "http://localhost:8450"),
 		ListingServiceURL:      envOr("LISTING_SERVICE_URL", "http://localhost:8010"),
+		KYCServiceToken:        os.Getenv("KYC_SERVICE_TOKEN"),
 		P2PServiceURL:          envOr("P2P_SERVICE_URL", "http://localhost:8475"),
 		CORSAllowedOrigins:     splitAndTrim(os.Getenv("WALLET_API_CORS_ORIGINS")),
 	}

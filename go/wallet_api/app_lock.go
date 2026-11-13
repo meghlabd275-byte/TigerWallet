@@ -766,8 +766,13 @@ func handleKYCDetail(c *gin.Context) {
 	proxyKYC(c, "/api/v1/kyc/session/"+c.Param("id"), "GET", nil)
 }
 
-// kycVerified reports whether the user has a verified KYC status. Used by the
-// P2P order-creation gate. Returns false (deny) on any error — fail-closed.
+// kycMinimumLevel is the verification level P2P trading and card issuance
+// require. The in-house engine's Standard level maps to this value.
+const kycMinimumLevel = 2
+
+// kycVerified reports whether the user holds an approving KYC status. Used by
+// the P2P order-creation and card-issuance gates. Returns false (deny) on any
+// error, so a KYC backend outage closes the gate rather than opening it.
 func kycVerified(ctx context.Context, userID uuid.UUID) bool {
 	if appConfig.ListingServiceURL == "" {
 		// No KYC backend configured → fail-closed (P2P requires KYC).
@@ -776,6 +781,11 @@ func kycVerified(ctx context.Context, userID uuid.UUID) bool {
 	url := strings.TrimRight(appConfig.ListingServiceURL, "/") + "/api/v1/kyc/status/" + userID.String()
 	client := &http.Client{Timeout: 4 * time.Second}
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	// The in-house KYC service rejects an unauthenticated caller, so the token
+	// must be presented. Without it the request 401s and the gate stays closed.
+	if appConfig.KYCServiceToken != "" {
+		req.Header.Set("X-KYC-Token", appConfig.KYCServiceToken)
+	}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		if resp != nil {
@@ -792,7 +802,24 @@ func kycVerified(ctx context.Context, userID uuid.UUID) bool {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return false
 	}
-	return out.Verified || strings.EqualFold(out.Status, "verified") || strings.EqualFold(out.Status, "approved") || out.Level >= 2
+	// The status must be an approving one. A level alone must never be
+	// sufficient: previously `Level >= 2` was accepted on its own, so a
+	// REJECTED applicant who had reached level 2 still passed this gate and
+	// could trade P2P. Rejection and pending states are now decisive.
+	switch strings.ToLower(strings.TrimSpace(out.Status)) {
+	case "rejected", "expired", "not_started", "pending", "pending_review", "reviewing", "in_review":
+		return false
+	}
+	if out.Verified {
+		// A verified flag still has to carry the required level, otherwise a
+		// basic verification would satisfy a standard-verification gate.
+		return out.Level >= kycMinimumLevel
+	}
+	if strings.EqualFold(out.Status, "verified") || strings.EqualFold(out.Status, "approved") {
+		return out.Level >= kycMinimumLevel
+	}
+	// Any other status is not an approval, so access stays closed.
+	return false
 }
 
 func proxyKYC(c *gin.Context, path, method string, body []byte) {
@@ -868,12 +895,44 @@ func handleP2PAdverts(c *gin.Context) {
 	proxyP2P(c, "/api/v1/p2p/adverts", "GET", nil)
 }
 
+// ---------------------------------------------------------------------------
+// Card KYC gate
+// ---------------------------------------------------------------------------
+
+// requireKYCMiddleware blocks a route group for callers without an approving KYC
+// status. Used for card issuance, which is a regulated activity: a card must not
+// be issued to an unverified holder.
+//
+// The status is read from the in-house KYC service. When that service is
+// unreachable the request is refused, so an outage cannot be used to obtain a
+// card. The refusal carries a machine-readable code so a client can send the
+// user to verification instead of showing a generic error.
+func requireKYCMiddleware(activity string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid, err := uuid.Parse(getUserID(c))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+		if !kycVerified(c.Request.Context(), uid) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":         "identity verification is required for " + activity,
+				"code":          "kyc_required",
+				"kyc_required":  true,
+				"kyc_min_level": kycMinimumLevel,
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
 // handleP2PCreateOrder creates a P2P order, gated on the caller having a
 // verified KYC status.
 func handleP2PCreateOrder(c *gin.Context) {
 	uid, _ := uuid.Parse(getUserID(c))
 	if !kycVerified(c.Request.Context(), uid) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "KYC verification required for P2P trading", "kyc_required": true})
+		c.JSON(http.StatusForbidden, gin.H{"error": "identity verification is required for P2P trading", "code": "kyc_required", "kyc_required": true, "kyc_min_level": kycMinimumLevel})
 		return
 	}
 	body, _ := io.ReadAll(c.Request.Body)
