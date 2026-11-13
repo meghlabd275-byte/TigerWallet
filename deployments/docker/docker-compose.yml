@@ -11,7 +11,7 @@ services:
   # API Gateway
   api-gateway:
     build:
-      context: ./go/api_gateway
+      context: ../../go/api_gateway
       dockerfile: Dockerfile
     container_name: tigerwallet-api-gateway
     ports:
@@ -57,7 +57,7 @@ services:
   # is not functional without it.
   wallet-api:
     build:
-      context: ./go/wallet_api
+      context: ../../go/wallet_api
       dockerfile: Dockerfile
     container_name: tigerwallet-wallet-api
     ports:
@@ -87,7 +87,7 @@ services:
   # Listing Service
   listing-service:
     build:
-      context: ./listing_service/go
+      context: ../../listing_service/go
       dockerfile: Dockerfile
     container_name: tigerwallet-listing-service
     ports:
@@ -111,7 +111,7 @@ services:
   # CEX Connector Service
   cex-connector:
     build:
-      context: ./go/cex_connector
+      context: ../../go/cex_connector
       dockerfile: Dockerfile
     container_name: tigerwallet-cex-connector
     ports:
@@ -132,7 +132,7 @@ services:
   # WebSocket Service
   websocket-service:
     build:
-      context: ./go/websocket_service
+      context: ../../go/websocket_service
       dockerfile: Dockerfile
     container_name: tigerwallet-websocket
     ports:
@@ -152,7 +152,7 @@ services:
 
   wallet-service:
     build:
-      context: ./go/wallet_service
+      context: ../../go/wallet_service
       dockerfile: Dockerfile
     container_name: tigerwallet-wallet-service
     ports:
@@ -179,7 +179,7 @@ services:
 
   swap-service:
     build:
-      context: ./go/swap_service
+      context: ../../go/swap_service
       dockerfile: Dockerfile
     container_name: tigerwallet-swap-service
     ports:
@@ -202,7 +202,7 @@ services:
 
   bot-api:
     build:
-      context: ./mm_bot_platform/bot_api
+      context: ../../mm_bot_platform/bot_api
       dockerfile: Dockerfile
     container_name: tigerwallet-bot-api
     ports:
@@ -228,7 +228,7 @@ services:
 
   nft-service:
     build:
-      context: ./go/nft_service
+      context: ../../go/nft_service
       dockerfile: Dockerfile
     container_name: tigerwallet-nft-service
     ports:
@@ -300,7 +300,9 @@ services:
       - ipfs_data:/data/ipfs
     ports:
       - "5001:5001"
-      - "8080:8080"
+      # Host 8080 belongs to api-gateway; IPFS serves its gateway on 8080 in
+      # the container, so publish it on 8098 to avoid the collision.
+      - "8098:8080"
     networks:
       - tigerwallet
     restart: unless-stopped
@@ -389,7 +391,7 @@ services:
   # through TSC_RPC_URL.
   tsc-node:
     build:
-      context: ./tiger_smart_chain
+      context: ../../tiger_smart_chain
       dockerfile: Dockerfile
     container_name: tigerwallet-tsc-node
     ports:

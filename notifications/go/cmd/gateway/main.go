@@ -175,7 +175,7 @@ func loadConfig() *Config {
 			Port:     getEnvInt("NOTIFICATION_DB_PORT", 5432),
 			User:     getEnv("NOTIFICATION_DB_USER", "tigerwallet"),
 			Password: mustEnv("NOTIFICATION_DB_PASSWORD"),
-			DBName:   getEnv("NOTIFICATION_DB_NAME", "tigerwallet_notification"),
+			DBName:   getEnv("NOTIFICATION_DB_NAME", "tigerwallet_notifications"),
 			URL:      os.Getenv("DATABASE_URL"),
 		},
 		SMTP: SMTPConfig{

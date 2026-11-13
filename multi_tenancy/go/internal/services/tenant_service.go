@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/tigerwallet/multi-tenancy/internal/models"
@@ -52,27 +53,47 @@ func (s *TenantService) CreateTenant(ctx context.Context, name, email, slug stri
 	}
 	tenant.PlanID = planID
 
-	_, err = Pool.Exec(ctx, `
-		INSERT INTO tenants (id, name, slug, email, status, plan_id, timezone, language, features, metadata, created_at, updated_at, trial_ends_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-	`, tenant.ID, tenant.Name, tenant.Slug, tenant.Email, tenant.Status, tenant.PlanID,
-		tenant.Timezone, tenant.Language, tenant.Features, tenant.Metadata, tenant.CreatedAt, tenant.UpdatedAt, tenant.TrialEndsAt)
-
+	tx, err := Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback(ctx)
 
-	// Create default quotas
-	if err := s.createDefaultQuotas(ctx, tenant.ID); err != nil {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO tenants (id, name, slug, email, status, plan_id, timezone, language, features, metadata, created_at, updated_at, trial_ends_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`, tenant.ID, tenant.Name, tenant.Slug, tenant.Email, tenant.Status, tenant.PlanID,
+		tenant.Timezone, tenant.Language, tenant.Features, tenant.Metadata, tenant.CreatedAt, tenant.UpdatedAt, tenant.TrialEndsAt); err != nil {
 		return nil, err
 	}
 
-	// Create default config
-	if err := s.createDefaultConfig(ctx, tenant.ID); err != nil {
+	if err := createDefaultQuotasTx(ctx, tx, tenant.ID); err != nil {
 		return nil, err
 	}
+
+	if err := createDefaultConfigTx(ctx, tx, tenant.ID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	s.audit(ctx, tenant.ID, uuid.Nil, "tenant.created", "tenant", map[string]interface{}{"slug": tenant.Slug})
 
 	return tenant, nil
+}
+
+// audit records a lifecycle event. Audit logging must never fail a business
+// operation, so the error is intentionally dropped.
+func (s *TenantService) audit(ctx context.Context, tenantID, userID uuid.UUID, action, resource string, details map[string]interface{}) {
+	if details == nil {
+		details = map[string]interface{}{}
+	}
+	_, _ = Pool.Exec(ctx, `
+		INSERT INTO tenant_audit_logs (id, tenant_id, user_id, action, resource, details, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+	`, uuid.New(), tenantID, userID, action, resource, details)
 }
 
 func (s *TenantService) GetTenantByID(ctx context.Context, tenantID uuid.UUID) (*models.Tenant, error) {
@@ -81,7 +102,7 @@ func (s *TenantService) GetTenantByID(ctx context.Context, tenantID uuid.UUID) (
 		SELECT id, name, slug, email, status, plan_id, custom_domain, logo_url, primary_color, 
 			secondary_color, timezone, language, features, metadata, created_at, updated_at, trial_ends_at
 		FROM tenants WHERE id = $1
-	`).Scan(
+	`, tenantID).Scan(
 		&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.Email, &tenant.Status, &tenant.PlanID,
 		&tenant.CustomDomain, &tenant.LogoURL, &tenant.PrimaryColor, &tenant.SecondaryColor,
 		&tenant.Timezone, &tenant.Language, &tenant.Features, &tenant.Metadata,
@@ -99,7 +120,7 @@ func (s *TenantService) GetTenantBySlug(ctx context.Context, slug string) (*mode
 		SELECT id, name, slug, email, status, plan_id, custom_domain, logo_url, primary_color, 
 			secondary_color, timezone, language, features, metadata, created_at, updated_at, trial_ends_at
 		FROM tenants WHERE slug = $1
-	`).Scan(
+	`, slug).Scan(
 		&tenant.ID, &tenant.Name, &tenant.Slug, &tenant.Email, &tenant.Status, &tenant.PlanID,
 		&tenant.CustomDomain, &tenant.LogoURL, &tenant.PrimaryColor, &tenant.SecondaryColor,
 		&tenant.Timezone, &tenant.Language, &tenant.Features, &tenant.Metadata,
@@ -135,6 +156,9 @@ func (s *TenantService) UpdateTenantStatus(ctx context.Context, tenantID uuid.UU
 	_, err := Pool.Exec(ctx, `
 		UPDATE tenants SET status = $1, updated_at = NOW() WHERE id = $2
 	`, status, tenantID)
+	if err == nil {
+		s.audit(ctx, tenantID, uuid.Nil, "tenant.status_changed", "tenant", map[string]interface{}{"status": string(status)})
+	}
 	return err
 }
 
@@ -186,7 +210,7 @@ func (s *TenantService) ListTenants(ctx context.Context, status *models.TenantSt
 
 // Quota management
 
-func (s *TenantService) createDefaultQuotas(ctx context.Context, tenantID uuid.UUID) error {
+func createDefaultQuotasTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	now := time.Now()
 	periodEnd := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
 
@@ -202,8 +226,8 @@ func (s *TenantService) createDefaultQuotas(ctx context.Context, tenantID uuid.U
 	}
 
 	for _, quota := range quotas {
-		_, err := Pool.Exec(ctx, `
-			INSERT INTO quotas (id, tenant_id, resource, limit, used, period_start, period_end, reset_at)
+		_, err := tx.Exec(ctx, `
+			INSERT INTO quotas (id, tenant_id, resource, "limit", used, period_start, period_end, reset_at)
 			VALUES ($1, $2, $3, $4, 0, $5, $6, $6)
 		`, uuid.New(), tenantID, quota.resource, quota.limit, now, periodEnd)
 		if err != nil {
@@ -213,8 +237,8 @@ func (s *TenantService) createDefaultQuotas(ctx context.Context, tenantID uuid.U
 	return nil
 }
 
-func (s *TenantService) createDefaultConfig(ctx context.Context, tenantID uuid.UUID) error {
-	_, err := Pool.Exec(ctx, `
+func createDefaultConfigTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
 		INSERT INTO tenant_configs (id, tenant_id, created_at, updated_at)
 		VALUES ($1, $2, NOW(), NOW())
 	`, uuid.New(), tenantID)
@@ -224,7 +248,7 @@ func (s *TenantService) createDefaultConfig(ctx context.Context, tenantID uuid.U
 func (s *TenantService) GetQuota(ctx context.Context, tenantID, resource string) (*models.Quota, error) {
 	var quota models.Quota
 	err := Pool.QueryRow(ctx, `
-		SELECT id, tenant_id, resource, limit, used, period_start, period_end, reset_at
+		SELECT id, tenant_id, resource, "limit", used, period_start, period_end, reset_at
 		FROM quotas WHERE tenant_id = $1 AND resource = $2
 	`, tenantID, resource).Scan(
 		&quota.ID, &quota.TenantID, &quota.Resource, &quota.Limit, &quota.Used,
@@ -314,6 +338,9 @@ func (s *TenantService) UpdateUserRole(ctx context.Context, tenantID, userID uui
 		UPDATE tenant_users SET role = $1, updated_at = NOW()
 		WHERE tenant_id = $2 AND user_id = $3
 	`, role, tenantID, userID)
+	if err == nil {
+		s.audit(ctx, tenantID, userID, "tenant.user_role_changed", "tenant_user", map[string]interface{}{"role": role})
+	}
 	return err
 }
 
@@ -321,6 +348,9 @@ func (s *TenantService) RemoveUserFromTenant(ctx context.Context, tenantID, user
 	_, err := Pool.Exec(ctx, `
 		DELETE FROM tenant_users WHERE tenant_id = $1 AND user_id = $2
 	`, tenantID, userID)
+	if err == nil {
+		s.audit(ctx, tenantID, userID, "tenant.user_removed", "tenant_user", nil)
+	}
 	return err
 }
 

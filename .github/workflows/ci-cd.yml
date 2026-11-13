@@ -93,7 +93,8 @@ jobs:
                      wl_user_wallet/go wl_master_wallet/go wl_bots/go wl_card/go \
                      wl_liquidity/go wl_project_party/go license_service/go \
                      permission_bridge/go kill_switch listing_service/go go/payment \
-                     go/full_fetchers; do
+                     go/full_fetchers \
+                     billing_subscription/go notifications/go multi_tenancy/go; do
             [ -d "$mod" ] || continue
             echo "::group::$mod"
             if ! (cd "$mod" && go test ./...); then
@@ -159,6 +160,12 @@ jobs:
 
       - name: Test super admin against real PostgreSQL
         working-directory: super_admin/go
+        env:
+          TEST_DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable
+        run: go test ./...
+
+      - name: Test the multi-tenancy service against real PostgreSQL
+        working-directory: multi_tenancy/go
         env:
           TEST_DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable
         run: go test ./...

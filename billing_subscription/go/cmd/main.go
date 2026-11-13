@@ -144,9 +144,7 @@ var (
 
 func initDatabase() error {
 	var err error
-	dbURL := getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
-
-	db, err = pgxpool.New(context.Background(), dbURL)
+	db, err = pgxpool.New(context.Background(), resolveDatabaseURL())
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -247,8 +245,7 @@ func initDatabase() error {
 }
 
 func initRedis() error {
-	redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(redisURL)
+	opt, err := redis.ParseURL(resolveRedisURL())
 	if err != nil {
 		return err
 	}
@@ -618,16 +615,48 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// resolveDatabaseURL prefers an explicit DATABASE_URL and otherwise assembles
+// one from the BILLING_DB_* variables the deployment (docker-compose) sets.
+func resolveDatabaseURL() string {
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		return v
+	}
+	sslmode := getEnv("BILLING_DB_SSLMODE", "disable")
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		getEnv("BILLING_DB_USER", "tigerwallet"),
+		getEnv("BILLING_DB_PASSWORD", ""),
+		getEnv("BILLING_DB_HOST", "localhost"),
+		getEnv("BILLING_DB_PORT", "5432"),
+		getEnv("BILLING_DB_NAME", "tigerwallet_billing"),
+		sslmode)
+}
+
+// resolveRedisURL prefers an explicit REDIS_URL and otherwise assembles one
+// from the BILLING_REDIS_* variables.
+func resolveRedisURL() string {
+	if v := os.Getenv("REDIS_URL"); v != "" {
+		return v
+	}
+	auth := ""
+	if pw := os.Getenv("BILLING_REDIS_PASSWORD"); pw != "" {
+		auth = ":" + pw + "@"
+	}
+	return fmt.Sprintf("redis://%s%s:%s/%s", auth,
+		getEnv("BILLING_REDIS_HOST", "localhost"),
+		getEnv("BILLING_REDIS_PORT", "6379"),
+		getEnv("BILLING_REDIS_DB", "0"))
+}
+
 // ============ MAIN ============
 
 func main() {
 	logger = log.New(os.Stdout, "Billing Service: ", log.LstdFlags)
 	logger.Println("Starting Billing & Subscription Service...")
 
-	config.Port = getEnv("BILLING_PORT", "8100")
-	config.DatabaseURL = getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet_admin")
-	config.RedisURL = getEnv("REDIS_URL", "redis://localhost:6379")
-	config.JWTSecret = getEnv("JWT_SECRET", "")
+	config.Port = getEnv("BILLING_PORT", "9001")
+	config.DatabaseURL = resolveDatabaseURL()
+	config.RedisURL = resolveRedisURL()
+	config.JWTSecret = getEnv("BILLING_JWT_SECRET", getEnv("JWT_SECRET", ""))
 	jwtSecret = []byte(config.JWTSecret)
 
 	if err := initDatabase(); err != nil {
