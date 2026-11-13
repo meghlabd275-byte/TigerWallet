@@ -1,17 +1,17 @@
 //! TigerWallet EVM Chain Support - Monad, Berachain, and Emerging Chains
-//! 
+//!
 //! This module provides complete support for emerging EVM-compatible chains:
 //! - Monad (High-performance EVM)
 //! - Berachain (Proof of Liquidity)
 //! - Berachain Governance
-//! 
+//!
 //! Features:
 //! - Full EVM compatibility
 //! - Native bridge integration
 //! - Validator/staking support
 //! - Governance participation
 //! - Gas optimization
-//! 
+//!
 //! References:
 //! - Monad: https://monadlabs.com
 //! - Berachain: https://berachain.com
@@ -26,19 +26,19 @@ use thiserror::Error;
 pub enum ChainError {
     #[error("Invalid chain ID: {0}")]
     InvalidChainID(u64),
-    
+
     #[error("RPC error: {0}")]
     RPCError(String),
-    
+
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
-    
+
     #[error("Bridge error: {0}")]
     BridgeError(String),
-    
+
     #[error("Staking error: {0}")]
     StakingError(String),
-    
+
     #[error("Governance error: {0}")]
     GovernanceError(String),
 }
@@ -51,28 +51,28 @@ pub struct ChainConfig {
     pub wrapped_native: Option<String>,
     /// Chain ID
     pub chain_id: u64,
-    
+
     /// Chain name
     pub name: String,
-    
+
     /// Native token symbol
     pub symbol: String,
-    
+
     /// Native token decimals
     pub decimals: u8,
-    
+
     /// RPC URLs
     pub rpc_urls: Vec<String>,
-    
+
     /// Explorer URLs
     pub explorers: Vec<String>,
-    
+
     /// Bridge addresses
     pub bridges: Vec<BridgeConfig>,
-    
+
     /// Staking contract
     pub staking_contract: Option<String>,
-    
+
     /// Governance contract
     pub governance_contract: Option<String>,
 }
@@ -82,10 +82,10 @@ pub struct ChainConfig {
 pub struct BridgeConfig {
     /// Bridge name
     pub name: String,
-    
+
     /// Bridge address
     pub address: String,
-    
+
     /// Supported tokens
     pub tokens: Vec<String>,
 }
@@ -134,7 +134,11 @@ pub mod monad {
             &self.rpc_url
         }
 
-        async fn call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, ChainError> {
+        async fn call(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> Result<serde_json::Value, ChainError> {
             let request = serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": method,
@@ -168,18 +172,24 @@ pub mod monad {
                 .ok_or_else(|| ChainError::RPCError(format!("{method} returned no result")))
         }
 
-        async fn call_hex_u64(&self, method: &str, params: serde_json::Value) -> Result<u64, ChainError> {
+        async fn call_hex_u64(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> Result<u64, ChainError> {
             let result = self.call(method, params).await?;
-            let text = result
-                .as_str()
-                .ok_or_else(|| ChainError::RPCError(format!("{method} returned a non-string result")))?;
-            u64::from_str_radix(text.trim_start_matches("0x"), 16)
-                .map_err(|_| ChainError::RPCError(format!("{method} returned an unparsable quantity: {text}")))
+            let text = result.as_str().ok_or_else(|| {
+                ChainError::RPCError(format!("{method} returned a non-string result"))
+            })?;
+            u64::from_str_radix(text.trim_start_matches("0x"), 16).map_err(|_| {
+                ChainError::RPCError(format!("{method} returned an unparsable quantity: {text}"))
+            })
         }
 
         /// Latest block number.
         pub async fn get_block_number(&self) -> Result<u64, ChainError> {
-            self.call_hex_u64("eth_blockNumber", serde_json::json!([])).await
+            self.call_hex_u64("eth_blockNumber", serde_json::json!([]))
+                .await
         }
 
         /// Balance in wei, as the node's hex quantity.
@@ -187,21 +197,24 @@ pub mod monad {
             let result = self
                 .call("eth_getBalance", serde_json::json!([address, "latest"]))
                 .await?;
-            result
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| ChainError::RPCError("eth_getBalance returned a non-string result".to_string()))
+            result.as_str().map(|s| s.to_string()).ok_or_else(|| {
+                ChainError::RPCError("eth_getBalance returned a non-string result".to_string())
+            })
         }
 
         /// Pending transaction count for an address.
         pub async fn get_transaction_count(&self, address: &str) -> Result<u64, ChainError> {
-            self.call_hex_u64("eth_getTransactionCount", serde_json::json!([address, "pending"]))
-                .await
+            self.call_hex_u64(
+                "eth_getTransactionCount",
+                serde_json::json!([address, "pending"]),
+            )
+            .await
         }
 
         /// Current gas price in wei.
         pub async fn get_gas_price(&self) -> Result<u64, ChainError> {
-            self.call_hex_u64("eth_gasPrice", serde_json::json!([])).await
+            self.call_hex_u64("eth_gasPrice", serde_json::json!([]))
+                .await
         }
 
         /// Estimated gas for a transaction.
@@ -220,7 +233,8 @@ pub mod monad {
                 params.insert("data".to_string(), serde_json::json!(data));
             }
 
-            self.call_hex_u64("eth_estimateGas", serde_json::json!([params])).await
+            self.call_hex_u64("eth_estimateGas", serde_json::json!([params]))
+                .await
         }
 
         /// Deployed bytecode at an address (`0x` when there is none).
@@ -228,15 +242,19 @@ pub mod monad {
             let result = self
                 .call("eth_getCode", serde_json::json!([address, "latest"]))
                 .await?;
-            result
-                .as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| ChainError::RPCError("eth_getCode returned a non-string result".to_string()))
+            result.as_str().map(|s| s.to_string()).ok_or_else(|| {
+                ChainError::RPCError("eth_getCode returned a non-string result".to_string())
+            })
         }
 
         /// Transaction receipt, or `None` while the transaction is unmined.
-        pub async fn get_transaction_receipt(&self, tx_hash: &str) -> Result<Option<TransactionReceipt>, ChainError> {
-            let result = self.call("eth_getTransactionReceipt", serde_json::json!([tx_hash])).await?;
+        pub async fn get_transaction_receipt(
+            &self,
+            tx_hash: &str,
+        ) -> Result<Option<TransactionReceipt>, ChainError> {
+            let result = self
+                .call("eth_getTransactionReceipt", serde_json::json!([tx_hash]))
+                .await?;
             if result.is_null() {
                 return Ok(None);
             }
@@ -247,7 +265,8 @@ pub mod monad {
 
         /// Chain ID as reported by the node.
         pub async fn get_chain_id(&self) -> Result<u64, ChainError> {
-            self.call_hex_u64("eth_chainId", serde_json::json!([])).await
+            self.call_hex_u64("eth_chainId", serde_json::json!([]))
+                .await
         }
 
         /// Broadcast a signed raw transaction and return the hash the node
@@ -256,9 +275,11 @@ pub mod monad {
             let result = self
                 .call("eth_sendRawTransaction", serde_json::json!([signed_tx]))
                 .await?;
-            let hash = result
-                .as_str()
-                .ok_or_else(|| ChainError::RPCError("eth_sendRawTransaction returned a non-string result".to_string()))?;
+            let hash = result.as_str().ok_or_else(|| {
+                ChainError::RPCError(
+                    "eth_sendRawTransaction returned a non-string result".to_string(),
+                )
+            })?;
             if hash.is_empty() {
                 return Err(ChainError::RPCError(
                     "eth_sendRawTransaction returned an empty transaction hash".to_string(),
@@ -316,7 +337,10 @@ pub mod monad {
         }
 
         /// Build a wallet from an existing private key.
-        pub fn from_private_key(private_key: [u8; 32], rpc_url: String) -> Result<Self, ChainError> {
+        pub fn from_private_key(
+            private_key: [u8; 32],
+            rpc_url: String,
+        ) -> Result<Self, ChainError> {
             // A key outside [1, n-1] has no valid public key; reject it here
             // rather than deriving a meaningless address from it.
             SecretKey::from_slice(&private_key)
@@ -380,7 +404,15 @@ pub mod monad {
             // valid through short base-fee spikes.
             let max_fee = max_priority_fee.saturating_mul(2);
 
-            let raw = self.sign_eip1559(to, value_wei, nonce, gas_limit, max_fee, max_priority_fee, chain_id)?;
+            let raw = self.sign_eip1559(
+                to,
+                value_wei,
+                nonce,
+                gas_limit,
+                max_fee,
+                max_priority_fee,
+                chain_id,
+            )?;
             self.rpc.send_raw_transaction(&raw).await
         }
 
@@ -447,7 +479,11 @@ pub mod monad {
         for (index, character) in lower.chars().enumerate() {
             // Uppercase a hex letter when the matching nibble of the hash is >= 8.
             let hash_byte = hash[index / 2];
-            let nibble = if index % 2 == 0 { hash_byte >> 4 } else { hash_byte & 0x0f };
+            let nibble = if index % 2 == 0 {
+                hash_byte >> 4
+            } else {
+                hash_byte & 0x0f
+            };
             if character.is_ascii_digit() || nibble < 8 {
                 out.push(character);
             } else {
@@ -486,7 +522,10 @@ pub mod monad {
             return encode_bytes(&[]);
         }
         let bytes = value.to_be_bytes();
-        let first_nonzero = bytes.iter().position(|&b| b != 0).unwrap_or(bytes.len() - 1);
+        let first_nonzero = bytes
+            .iter()
+            .position(|&b| b != 0)
+            .unwrap_or(bytes.len() - 1);
         encode_bytes(&bytes[first_nonzero..])
     }
 
@@ -510,7 +549,10 @@ pub mod monad {
             return vec![offset + length as u8];
         }
         let length_bytes = length.to_be_bytes();
-        let first_nonzero = length_bytes.iter().position(|&b| b != 0).unwrap_or(length_bytes.len() - 1);
+        let first_nonzero = length_bytes
+            .iter()
+            .position(|&b| b != 0)
+            .unwrap_or(length_bytes.len() - 1);
         let significant = &length_bytes[first_nonzero..];
 
         let mut out = vec![offset + 55 + significant.len() as u8];
@@ -637,7 +679,9 @@ pub mod berachain {
             )));
         }
         if word[..16].iter().any(|&b| b != 0) {
-            return Err(ChainError::GovernanceError("value exceeds u128".to_string()));
+            return Err(ChainError::GovernanceError(
+                "value exceeds u128".to_string(),
+            ));
         }
         let mut buf = [0u8; 16];
         buf.copy_from_slice(&word[16..]);
@@ -678,22 +722,28 @@ pub mod berachain {
                 .json(&request)
                 .send()
                 .await
-                .map_err(|e| ChainError::GovernanceError(format!("eth_call transport error: {e}")))?;
+                .map_err(|e| {
+                    ChainError::GovernanceError(format!("eth_call transport error: {e}"))
+                })?;
 
-            let body: serde_json::Value = response
-                .json()
-                .await
-                .map_err(|e| ChainError::GovernanceError(format!("eth_call response is not JSON: {e}")))?;
+            let body: serde_json::Value = response.json().await.map_err(|e| {
+                ChainError::GovernanceError(format!("eth_call response is not JSON: {e}"))
+            })?;
 
             if let Some(error) = body.get("error") {
-                let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("unknown error");
+                let message = error
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown error");
                 return Err(ChainError::GovernanceError(format!("eth_call: {message}")));
             }
 
             body.get("result")
                 .and_then(|r| r.as_str())
                 .map(|s| s.to_string())
-                .ok_or_else(|| ChainError::GovernanceError("eth_call returned no result".to_string()))
+                .ok_or_else(|| {
+                    ChainError::GovernanceError("eth_call returned no result".to_string())
+                })
         }
 
         /// Read the raw ABI-encoded `proposals(uint256)` word set for a
@@ -713,8 +763,9 @@ pub mod berachain {
             data.extend_from_slice(&encode_address_argument(owner)?);
 
             let result = self.eth_call(&self.governance_address, &data).await?;
-            let bytes = hex::decode(result.trim_start_matches("0x"))
-                .map_err(|e| ChainError::GovernanceError(format!("malformed eth_call result: {e}")))?;
+            let bytes = hex::decode(result.trim_start_matches("0x")).map_err(|e| {
+                ChainError::GovernanceError(format!("malformed eth_call result: {e}"))
+            })?;
             decode_u256_word(&bytes)
         }
 
@@ -805,96 +856,114 @@ pub struct ChainRegistry {
 impl ChainRegistry {
     pub fn new() -> Self {
         let mut chains = HashMap::new();
-        
+
         // Add Monad
         chains.insert(monad::CHAIN_ID, monad::config());
-        
+
         // Add Berachain
         chains.insert(berachain::CHAIN_ID, berachain::config());
-        
+
         // Add Ethereum
-        chains.insert(1, ChainConfig {
-            chain_id: 1,
-            name: "Ethereum".to_string(),
-            symbol: "ETH".to_string(),
-            wrapped_native: Some("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string()),
-            decimals: 18,
-            rpc_urls: vec!["https://ethereum-rpc.publicnode.com".to_string()],
-            explorers: vec!["https://etherscan.io".to_string()],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
-        
+        chains.insert(
+            1,
+            ChainConfig {
+                chain_id: 1,
+                name: "Ethereum".to_string(),
+                symbol: "ETH".to_string(),
+                wrapped_native: Some("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".to_string()),
+                decimals: 18,
+                rpc_urls: vec!["https://ethereum-rpc.publicnode.com".to_string()],
+                explorers: vec!["https://etherscan.io".to_string()],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
+
         // Add BSC
-        chains.insert(56, ChainConfig {
-            chain_id: 56,
-            name: "BNB Smart Chain".to_string(),
-            symbol: "BNB".to_string(),
-            wrapped_native: Some("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c".to_string()),
-            decimals: 18,
-            rpc_urls: vec!["https://bsc-dataseed.binance.org".to_string()],
-            explorers: vec!["https://bscscan.com".to_string()],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
-        
+        chains.insert(
+            56,
+            ChainConfig {
+                chain_id: 56,
+                name: "BNB Smart Chain".to_string(),
+                symbol: "BNB".to_string(),
+                wrapped_native: Some("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c".to_string()),
+                decimals: 18,
+                rpc_urls: vec!["https://bsc-dataseed.binance.org".to_string()],
+                explorers: vec!["https://bscscan.com".to_string()],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
+
         // Add Polygon
-        chains.insert(137, ChainConfig {
-            chain_id: 137,
-            name: "Polygon".to_string(),
-            symbol: "MATIC".to_string(),
-            wrapped_native: Some("0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270".to_string()),
-            decimals: 18,
-            rpc_urls: vec!["https://polygon-rpc.com".to_string()],
-            explorers: vec!["https://polygonscan.com".to_string()],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
-        
+        chains.insert(
+            137,
+            ChainConfig {
+                chain_id: 137,
+                name: "Polygon".to_string(),
+                symbol: "MATIC".to_string(),
+                wrapped_native: Some("0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270".to_string()),
+                decimals: 18,
+                rpc_urls: vec!["https://polygon-rpc.com".to_string()],
+                explorers: vec!["https://polygonscan.com".to_string()],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
+
         // Add Arbitrum
-        chains.insert(42161, ChainConfig {
-            chain_id: 42161,
-            name: "Arbitrum One".to_string(),
-            symbol: "ETH".to_string(),
-            wrapped_native: Some("0x82aF49447D8a07e3bd95BD0d56f35241523fBab1".to_string()),
-            decimals: 18,
-            rpc_urls: vec!["https://arb1.arbitrum.io/rpc".to_string()],
-            explorers: vec!["https://arbiscan.io".to_string()],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
-        
+        chains.insert(
+            42161,
+            ChainConfig {
+                chain_id: 42161,
+                name: "Arbitrum One".to_string(),
+                symbol: "ETH".to_string(),
+                wrapped_native: Some("0x82aF49447D8a07e3bd95BD0d56f35241523fBab1".to_string()),
+                decimals: 18,
+                rpc_urls: vec!["https://arb1.arbitrum.io/rpc".to_string()],
+                explorers: vec!["https://arbiscan.io".to_string()],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
+
         // Add Optimism
-        chains.insert(10, ChainConfig {
-            chain_id: 10,
-            name: "Optimism".to_string(),
-            symbol: "ETH".to_string(),
-            wrapped_native: Some("0x4200000000000000000000000000000000000006".to_string()),
-            decimals: 18,
-            rpc_urls: vec!["https://mainnet.optimism.io".to_string()],
-            explorers: vec!["https://optimistic.etherscan.io".to_string()],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
-        
+        chains.insert(
+            10,
+            ChainConfig {
+                chain_id: 10,
+                name: "Optimism".to_string(),
+                symbol: "ETH".to_string(),
+                wrapped_native: Some("0x4200000000000000000000000000000000000006".to_string()),
+                decimals: 18,
+                rpc_urls: vec!["https://mainnet.optimism.io".to_string()],
+                explorers: vec!["https://optimistic.etherscan.io".to_string()],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
+
         // Add Base
-        chains.insert(8453, ChainConfig {
-            chain_id: 8453,
-            name: "Base".to_string(),
-            symbol: "ETH".to_string(),
-            wrapped_native: Some("0x4200000000000000000000000000000000000006".to_string()),
-            decimals: 18,
-            rpc_urls: vec!["https://mainnet.base.org".to_string()],
-            explorers: vec!["https://basescan.org".to_string()],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
+        chains.insert(
+            8453,
+            ChainConfig {
+                chain_id: 8453,
+                name: "Base".to_string(),
+                symbol: "ETH".to_string(),
+                wrapped_native: Some("0x4200000000000000000000000000000000000006".to_string()),
+                decimals: 18,
+                rpc_urls: vec!["https://mainnet.base.org".to_string()],
+                explorers: vec!["https://basescan.org".to_string()],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
 
         // Add TigerSmartChain, the platform's own network. Unlike the chains
         // above there is no public endpoint to bundle: the node is operated by
@@ -907,32 +976,35 @@ impl ChainRegistry {
             .filter(|u| !u.is_empty())
             .into_iter()
             .collect();
-        chains.insert(crate::platform_chain::CHAIN_ID, ChainConfig {
-            chain_id: crate::platform_chain::CHAIN_ID,
-            name: "TigerSmartChain".to_string(),
-            symbol: crate::platform_chain::NATIVE_SYMBOL.to_string(),
-            wrapped_native: Some(crate::platform_chain::WTGR_ADDRESS.to_string()),
-            decimals: 18,
-            rpc_urls: tsc_rpc,
-            explorers: vec![],
-            bridges: vec![],
-            staking_contract: None,
-            governance_contract: None,
-        });
-        
+        chains.insert(
+            crate::platform_chain::CHAIN_ID,
+            ChainConfig {
+                chain_id: crate::platform_chain::CHAIN_ID,
+                name: "TigerSmartChain".to_string(),
+                symbol: crate::platform_chain::NATIVE_SYMBOL.to_string(),
+                wrapped_native: Some(crate::platform_chain::WTGR_ADDRESS.to_string()),
+                decimals: 18,
+                rpc_urls: tsc_rpc,
+                explorers: vec![],
+                bridges: vec![],
+                staking_contract: None,
+                governance_contract: None,
+            },
+        );
+
         Self { chains }
     }
-    
+
     /// Get chain config
     pub fn get(&self, chain_id: u64) -> Option<&ChainConfig> {
         self.chains.get(&chain_id)
     }
-    
+
     /// Get all chain IDs
     pub fn chain_ids(&self) -> Vec<u64> {
         self.chains.keys().copied().collect()
     }
-    
+
     /// Add custom chain
     pub fn add(&mut self, config: ChainConfig) {
         self.chains.insert(config.chain_id, config);
@@ -948,11 +1020,11 @@ impl Default for ChainRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_chain_registry() {
         let registry = ChainRegistry::new();
-        
+
         assert!(registry.get(1).is_some()); // Ethereum
         assert!(registry.get(56).is_some()); // BSC
         assert!(registry.get(137).is_some()); // Polygon
@@ -983,20 +1055,20 @@ mod tests {
         assert!(config.explorers.is_empty());
         assert!(config.bridges.is_empty());
     }
-    
+
     #[test]
     fn test_monad_config() {
         let config = monad::config();
-        
+
         assert_eq!(config.chain_id, monad::CHAIN_ID);
         assert_eq!(config.name, "Monad");
         assert_eq!(config.symbol, "MON");
     }
-    
+
     #[test]
     fn test_berachain_config() {
         let config = berachain::config();
-        
+
         assert_eq!(config.chain_id, berachain::CHAIN_ID);
         assert_eq!(config.name, "Berachain");
         assert_eq!(config.symbol, "BERA");

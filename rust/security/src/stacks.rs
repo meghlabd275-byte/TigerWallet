@@ -1,8 +1,8 @@
 //! TigerWallet Stacks Blockchain Support
-//! 
+//!
 //! This module provides complete support for Stacks (STX) blockchain,
 //! a Bitcoin L2 that enables smart contracts on Bitcoin.
-//! 
+//!
 //! Features:
 //! - STX transfers
 //! - Clarity smart contract deployment
@@ -11,13 +11,13 @@
 //! - Stacking (Proof of Transfer)
 //! - BNS (Blockstack Naming Service)
 //! - Bitcoin finalize transaction
-//! 
+//!
 //! Security:
 //! - All transactions signed with Stacks private key
 //! - Bitcoin anchor transaction verification
 //! - Microblock confirmation tracking
 //! - PoX (Proof of Transfer) security
-//! 
+//!
 //! References:
 //! - Stacks Docs: https://docs.stacks.co
 //! - SIPs: https://github.com/stacksgov/sips
@@ -31,25 +31,25 @@ use thiserror::Error;
 pub enum StacksError {
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
-    
+
     #[error("Invalid private key: {0}")]
     InvalidPrivateKey(String),
-    
+
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
-    
+
     #[error("Contract deployment failed: {0}")]
     ContractFailed(String),
-    
+
     #[error("API error: {0}")]
     APIError(String),
-    
+
     #[error("Signing failed: {0}")]
     SigningFailed(String),
-    
+
     #[error("Verification failed: {0}")]
     VerificationFailed(String),
-    
+
     #[error("Stacking error: {0}")]
     StackingError(String),
 }
@@ -80,10 +80,10 @@ pub enum AddressType {
 pub struct StacksAddress {
     /// Address version byte
     pub version: u8,
-    
+
     /// Hash160 of the public key or contract
     pub hash160: [u8; 20],
-    
+
     /// Address type
     pub address_type: AddressType,
 }
@@ -113,7 +113,10 @@ pub mod c32 {
     /// Index of `character` in `ALPHABET`, after normalising the aliases.
     fn digit(character: u8) -> Option<u8> {
         let character = character.to_ascii_uppercase();
-        ALPHABET.iter().position(|c| *c == character).map(|i| i as u8)
+        ALPHABET
+            .iter()
+            .position(|c| *c == character)
+            .map(|i| i as u8)
     }
 
     /// Encode bytes with the Stacks base-32 variant.
@@ -131,7 +134,11 @@ pub mod c32 {
         for index in (0..hex.len()).rev() {
             if carry < 4 {
                 let current = hex_value(hex[index]) >> carry;
-                let next = if index != 0 { hex_value(hex[index - 1]) } else { 0 };
+                let next = if index != 0 {
+                    hex_value(hex[index - 1])
+                } else {
+                    0
+                };
                 let next_bits = 1 + carry;
                 let next_low = (next % (1 << next_bits)) << (5 - next_bits);
                 out.insert(0, ALPHABET[current + next_low]);
@@ -296,8 +303,7 @@ pub mod c32 {
             for version in [20u8, 21, 22, 26] {
                 let payload: Vec<u8> = (0u8..20).collect();
                 let encoded = format!("S{}", encode_check(version, &payload));
-                let (decoded_version, decoded) =
-                    decode_check(&encoded).expect("valid checksum");
+                let (decoded_version, decoded) = decode_check(&encoded).expect("valid checksum");
                 assert_eq!(decoded_version, version);
                 assert_eq!(decoded, payload);
             }
@@ -332,8 +338,8 @@ pub mod c32 {
 impl StacksAddress {
     /// Create from a C32Check address string.
     pub fn from_string(addr: &str, network: Network) -> Result<Self, StacksError> {
-        let (version, payload) = c32::decode_check(addr)
-            .ok_or_else(|| StacksError::InvalidAddress(addr.to_string()))?;
+        let (version, payload) =
+            c32::decode_check(addr).ok_or_else(|| StacksError::InvalidAddress(addr.to_string()))?;
 
         if payload.len() != 20 {
             return Err(StacksError::InvalidAddress(addr.to_string()));
@@ -383,8 +389,8 @@ impl PrivateKey {
     pub fn generate() -> Result<Self, StacksError> {
         use crate::secure_random::generate_random_bytes;
 
-        let material = generate_random_bytes(32)
-            .map_err(|e| StacksError::SigningFailed(e.to_string()))?;
+        let material =
+            generate_random_bytes(32).map_err(|e| StacksError::SigningFailed(e.to_string()))?;
 
         Self::from_bytes(&material)
     }
@@ -567,16 +573,10 @@ pub enum TransactionPayload {
     },
 
     /// Contract deployment.
-    ContractDeploy {
-        code: Vec<u8>,
-        name: String,
-    },
+    ContractDeploy { code: Vec<u8>, name: String },
 
     /// Poison microblock.
-    PoisonMicroblock {
-        header: Vec<u8>,
-        signature: Vec<u8>,
-    },
+    PoisonMicroblock { header: Vec<u8>, signature: Vec<u8> },
 }
 
 /// Post condition.
@@ -843,15 +843,13 @@ impl Transaction {
             TransactionPayload::ContractDeploy { code, name } => {
                 out.push(0x02);
                 write_length_prefixed(&mut out, name.as_bytes(), 1)?;
-                let length = u32::try_from(code.len())
-                    .map_err(|_| StacksError::TransactionFailed("contract code too large".into()))?;
+                let length = u32::try_from(code.len()).map_err(|_| {
+                    StacksError::TransactionFailed("contract code too large".into())
+                })?;
                 out.extend_from_slice(&length.to_be_bytes());
                 out.extend_from_slice(code);
             }
-            TransactionPayload::PoisonMicroblock {
-                header,
-                signature,
-            } => {
+            TransactionPayload::PoisonMicroblock { header, signature } => {
                 out.push(0x03);
                 let header_length = u32::try_from(header.len())
                     .map_err(|_| StacksError::TransactionFailed("header too large".into()))?;
@@ -1049,7 +1047,12 @@ impl RPCClient {
         let balance = body
             .get("balance")
             .and_then(|v| v.as_str())
-            .and_then(|v| v.trim_start_matches("0x").parse::<u64>().ok().or_else(|| u64::from_str_radix(v, 16).ok()))
+            .and_then(|v| {
+                v.trim_start_matches("0x")
+                    .parse::<u64>()
+                    .ok()
+                    .or_else(|| u64::from_str_radix(v, 16).ok())
+            })
             .or_else(|| body.get("balance").and_then(|v| v.as_u64()))
             .ok_or_else(|| StacksError::APIError("response has no balance field".into()))?;
 
@@ -1627,8 +1630,9 @@ mod tests {
     #[test]
     fn address_roundtrips_through_string_form() {
         let address = key().stacks_address(Network::Mainnet);
-        let parsed = StacksAddress::from_string(&address.canonical(Network::Mainnet), Network::Mainnet)
-            .expect("own address parses");
+        let parsed =
+            StacksAddress::from_string(&address.canonical(Network::Mainnet), Network::Mainnet)
+                .expect("own address parses");
         assert_eq!(parsed.hash160, address.hash160);
         assert_eq!(parsed.version, address.version);
     }
@@ -1636,7 +1640,9 @@ mod tests {
     #[test]
     fn malformed_addresses_are_rejected() {
         assert!(StacksAddress::from_string("not-an-address", Network::Mainnet).is_err());
-        assert!(StacksAddress::from_string("SP000000000000000000002Q6VF79", Network::Mainnet).is_err());
+        assert!(
+            StacksAddress::from_string("SP000000000000000000002Q6VF79", Network::Mainnet).is_err()
+        );
     }
 
     #[test]

@@ -216,14 +216,14 @@ func (s *service) listBots(c *gin.Context) {
 		}
 		out = append(out, gin.H{"id": b.ID, "name": b.Name, "strategy": b.Strat, "pair": b.Pair, "params": b.Params, "status": b.Status, "created_at": b.Ts})
 	}
-	        c.JSON(http.StatusOK, gin.H{"bots": out, "count": len(out)})
+	c.JSON(http.StatusOK, gin.H{"bots": out, "count": len(out)})
 }
 
 // listAllBots returns every bot across all users, with real per-bot performance
 // (trade count, PnL, volume) aggregated from trading_bot_trades. Used by the
 // admin panel Bot Management page.
 func (s *service) listAllBots(c *gin.Context) {
-        rows, err := s.pg.Query(c, `
+	rows, err := s.pg.Query(c, `
                 SELECT b.id, b.user_id, b.name, b.strategy, b.pair, b.params::text, b.status,
                        extract(epoch from b.created_at)::bigint,
                        COUNT(t.id) AS trades,
@@ -233,28 +233,28 @@ func (s *service) listAllBots(c *gin.Context) {
                 LEFT JOIN trading_bot_trades t ON t.bot_id = b.id
                 GROUP BY b.id
                 ORDER BY b.created_at DESC`)
-        if err != nil {
-                c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
-                return
-        }
-        defer rows.Close()
-        out := []gin.H{}
-        for rows.Next() {
-                var b struct {
-                        ID, UserID, Name, Strat, Pair, Params, Status, PnL, Volume string
-                        Ts                                                              int64
-                        Trades                                                          int
-                }
-                if err := rows.Scan(&b.ID, &b.UserID, &b.Name, &b.Strat, &b.Pair, &b.Params, &b.Status, &b.Ts, &b.Trades, &b.PnL, &b.Volume); err != nil {
-                        continue
-                }
-                out = append(out, gin.H{
-                        "id": b.ID, "user_id": b.UserID, "name": b.Name, "strategy": b.Strat,
-                        "pair": b.Pair, "params": b.Params, "status": b.Status,
-                        "created_at": b.Ts, "trades": b.Trades, "pnl": b.PnL, "volume": b.Volume,
-                })
-        }
-        c.JSON(http.StatusOK, gin.H{"bots": out, "count": len(out)})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+		return
+	}
+	defer rows.Close()
+	out := []gin.H{}
+	for rows.Next() {
+		var b struct {
+			ID, UserID, Name, Strat, Pair, Params, Status, PnL, Volume string
+			Ts                                                         int64
+			Trades                                                     int
+		}
+		if err := rows.Scan(&b.ID, &b.UserID, &b.Name, &b.Strat, &b.Pair, &b.Params, &b.Status, &b.Ts, &b.Trades, &b.PnL, &b.Volume); err != nil {
+			continue
+		}
+		out = append(out, gin.H{
+			"id": b.ID, "user_id": b.UserID, "name": b.Name, "strategy": b.Strat,
+			"pair": b.Pair, "params": b.Params, "status": b.Status,
+			"created_at": b.Ts, "trades": b.Trades, "pnl": b.PnL, "volume": b.Volume,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"bots": out, "count": len(out)})
 }
 
 type createBotReq struct {

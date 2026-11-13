@@ -1,6 +1,6 @@
 /**
  * TigerWallet Blockchain Explorer Service
- * 
+ *
  * Comprehensive blockchain explorer with RPC management,
  * chain registry, token integration, and node infrastructure.
  * Built with Go for high-load distributed operations.
@@ -25,101 +25,101 @@ import (
 
 // Chain represents a blockchain
 type Chain struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Symbol        string            `json:"symbol"`
-	ChainID       uint64            `json:"chain_id"`
-	ChainType     string            `json:"chain_type"` // evm, solana, bitcoin, cosmos, etc.
-	RPCURLs       []string          `json:"rpc_urls"`
-	ExplorerURL   string            `json:"explorer_url"`
-	SymbolNative  string            `json:"symbol_native"`
-	Decimals      int               `json:"decimals"`
-	BlockTime    int               `json:"block_time"` // seconds
-	GasToken      string            `json:"gas_token"`
-	Status       string            `json:"status"` // active, maintenance, deprecated
-	Features     []string          `json:"features"` // smart_contracts, nft, staking, etc.
-	IconURL      string            `json:"icon_url"`
-	CreatedAt    int64             `json:"created_at"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Symbol       string   `json:"symbol"`
+	ChainID      uint64   `json:"chain_id"`
+	ChainType    string   `json:"chain_type"` // evm, solana, bitcoin, cosmos, etc.
+	RPCURLs      []string `json:"rpc_urls"`
+	ExplorerURL  string   `json:"explorer_url"`
+	SymbolNative string   `json:"symbol_native"`
+	Decimals     int      `json:"decimals"`
+	BlockTime    int      `json:"block_time"` // seconds
+	GasToken     string   `json:"gas_token"`
+	Status       string   `json:"status"`   // active, maintenance, deprecated
+	Features     []string `json:"features"` // smart_contracts, nft, staking, etc.
+	IconURL      string   `json:"icon_url"`
+	CreatedAt    int64    `json:"created_at"`
 }
 
 // Token represents a blockchain token
 type Token struct {
-	ID            string  `json:"id"`
-	Address       string  `json:"address"`
-	Name          string  `json:"name"`
-	Symbol        string  `json:"symbol"`
-	Decimals      int     `json:"decimals"`
-	TotalSupply   string  `json:"total_supply"`
-	ChainID       uint64  `json:"chain_id"`
-	Type          string  `json:"type"` // erc20, erc721, erc1155, native
-	Price         float64 `json:"price"`
-	MarketCap     float64 `json:"market_cap"`
-	Volume24h     float64 `json:"volume_24h"`
-	HoldersCount int     `json:"holders_count"`
-	Transfers24h  int    `json:"transfers_24h"`
-	IconURL       string  `json:"icon_url"`
-	ContractVerified bool  `json:"contract_verified"`
-	Status        string  `json:"status"`
+	ID               string  `json:"id"`
+	Address          string  `json:"address"`
+	Name             string  `json:"name"`
+	Symbol           string  `json:"symbol"`
+	Decimals         int     `json:"decimals"`
+	TotalSupply      string  `json:"total_supply"`
+	ChainID          uint64  `json:"chain_id"`
+	Type             string  `json:"type"` // erc20, erc721, erc1155, native
+	Price            float64 `json:"price"`
+	MarketCap        float64 `json:"market_cap"`
+	Volume24h        float64 `json:"volume_24h"`
+	HoldersCount     int     `json:"holders_count"`
+	Transfers24h     int     `json:"transfers_24h"`
+	IconURL          string  `json:"icon_url"`
+	ContractVerified bool    `json:"contract_verified"`
+	Status           string  `json:"status"`
 }
 
 // Block represents a block
 type Block struct {
-	Number           uint64    `json:"number"`
-	Hash             string    `json:"hash"`
-	ParentHash       string    `json:"parent_hash"`
-	Timestamp        int64     `json:"timestamp"`
-	Transactions     []string  `json:"transactions"`
-	TransactionsCount int     `json:"transactions_count"`
-	GasUsed          uint64    `json:"gas_used"`
-	GasLimit         uint64    `json:"gas_limit"`
-	Miner            string    `json:"miner"`
-	Reward           string    `json:"reward"`
-	Size             uint64    `json:"size"`
-	Nonce            string    `json:"nonce"`
-	ChainID          uint64    `json:"chain_id"`
+	Number            uint64   `json:"number"`
+	Hash              string   `json:"hash"`
+	ParentHash        string   `json:"parent_hash"`
+	Timestamp         int64    `json:"timestamp"`
+	Transactions      []string `json:"transactions"`
+	TransactionsCount int      `json:"transactions_count"`
+	GasUsed           uint64   `json:"gas_used"`
+	GasLimit          uint64   `json:"gas_limit"`
+	Miner             string   `json:"miner"`
+	Reward            string   `json:"reward"`
+	Size              uint64   `json:"size"`
+	Nonce             string   `json:"nonce"`
+	ChainID           uint64   `json:"chain_id"`
 }
 
 // Transaction represents a transaction
 type Transaction struct {
-	Hash           string   `json:"hash"`
-	BlockNumber    uint64   `json:"block_number"`
-	BlockHash      string   `json:"block_hash"`
-	From           string   `json:"from"`
-	To             string   `json:"to"`
-	Value          string   `json:"value"`
-	GasPrice       string   `json:"gas_price"`
-	GasUsed        uint64   `json:"gas_used"`
-	GasLimit       uint64   `json:"gas_limit"`
-	Nonce          uint64   `json:"nonce"`
+	Hash             string `json:"hash"`
+	BlockNumber      uint64 `json:"block_number"`
+	BlockHash        string `json:"block_hash"`
+	From             string `json:"from"`
+	To               string `json:"to"`
+	Value            string `json:"value"`
+	GasPrice         string `json:"gas_price"`
+	GasUsed          uint64 `json:"gas_used"`
+	GasLimit         uint64 `json:"gas_limit"`
+	Nonce            uint64 `json:"nonce"`
 	TransactionIndex uint64 `json:"transaction_index"`
-	Input          string   `json:"input"`
-	Status         string   `json:"status"` // success, failed, pending
-	Timestamp      int64    `json:"timestamp"`
-	ChainID        uint64   `json:"chain_id"`
-	Type           string   `json:"type"` // legacy, eip1559
+	Input            string `json:"input"`
+	Status           string `json:"status"` // success, failed, pending
+	Timestamp        int64  `json:"timestamp"`
+	ChainID          uint64 `json:"chain_id"`
+	Type             string `json:"type"` // legacy, eip1559
 }
 
 // TokenTransfer represents a token transfer
 type TokenTransfer struct {
-	ID            string  `json:"id"`
+	ID              string `json:"id"`
 	TransactionHash string `json:"transaction_hash"`
-	BlockNumber  uint64  `json:"block_number"`
-	TokenAddress string  `json:"token_address"`
-	From         string  `json:"from"`
-	To           string  `json:"to"`
-	Value        string  `json:"value"`
-	TokenID      string  `json:"token_id,omitempty"`
-	Type         string  `json:"type"` // transfer, mint, burn
-	Timestamp    int64   `json:"timestamp"`
-	ChainID      uint64  `json:"chain_id"`
+	BlockNumber     uint64 `json:"block_number"`
+	TokenAddress    string `json:"token_address"`
+	From            string `json:"from"`
+	To              string `json:"to"`
+	Value           string `json:"value"`
+	TokenID         string `json:"token_id,omitempty"`
+	Type            string `json:"type"` // transfer, mint, burn
+	Timestamp       int64  `json:"timestamp"`
+	ChainID         uint64 `json:"chain_id"`
 }
 
 // TokenHolder represents a token holder
 type TokenHolder struct {
-	Address    string  `json:"address"`
-	Balance   string  `json:"balance"`
-	Percent   float64 `json:"percent"`
-	Rank      int     `json:"rank"`
+	Address string  `json:"address"`
+	Balance string  `json:"balance"`
+	Percent float64 `json:"percent"`
+	Rank    int     `json:"rank"`
 }
 
 // RPCEndpoint represents an RPC endpoint
@@ -129,42 +129,42 @@ type RPCEndpoint struct {
 	URL         string  `json:"url"`
 	Name        string  `json:"name"`
 	Provider    string  `json:"provider"`
-	Status      string  `json:"status"` // active, inactive, error
+	Status      string  `json:"status"`  // active, inactive, error
 	Latency     int     `json:"latency"` // ms
 	SuccessRate float64 `json:"success_rate"`
-	Requests24h  int64   `json:"requests_24h"`
+	Requests24h int64   `json:"requests_24h"`
 	IsDefault   bool    `json:"is_default"`
 }
 
 // Contract represents a smart contract
 type Contract struct {
-	Address       string            `json:"address"`
-	ChainID       uint64            `json:"chain_id"`
-	Name          string            `json:"name"`
-	ABI           string            `json:"abi"`
-	Compiler      string            `json:"compiler"`
-	Version       string            `json:"version"`
-	Optimized     bool              `json:"optimized"`
-	SourceCode   string            `json:"source_code"`
-	Constructor   string            `json:"constructor"`
-	Functions    []ContractFunction `json:"functions"`
-	Events       []ContractEvent   `json:"events"`
-	CreatedAt    int64             `json:"created_at"`
+	Address     string             `json:"address"`
+	ChainID     uint64             `json:"chain_id"`
+	Name        string             `json:"name"`
+	ABI         string             `json:"abi"`
+	Compiler    string             `json:"compiler"`
+	Version     string             `json:"version"`
+	Optimized   bool               `json:"optimized"`
+	SourceCode  string             `json:"source_code"`
+	Constructor string             `json:"constructor"`
+	Functions   []ContractFunction `json:"functions"`
+	Events      []ContractEvent    `json:"events"`
+	CreatedAt   int64              `json:"created_at"`
 }
 
 // ContractFunction represents a contract function
 type ContractFunction struct {
-	Name        string   `json:"name"`
-	Signature   string   `json:"signature"`
-	Inputs      []string `json:"inputs"`
-	Outputs     []string `json:"outputs"`
-	StateMutability string `json:"state_mutability"` // pure, view, nonpayable, payable
+	Name            string   `json:"name"`
+	Signature       string   `json:"signature"`
+	Inputs          []string `json:"inputs"`
+	Outputs         []string `json:"outputs"`
+	StateMutability string   `json:"state_mutability"` // pure, view, nonpayable, payable
 }
 
 // ContractEvent represents a contract event
 type ContractEvent struct {
-	Name      string   `json:"name"`
-	Signature string   `json:"signature"`
+	Name      string       `json:"name"`
+	Signature string       `json:"signature"`
 	Inputs    []EventInput `json:"inputs"`
 }
 
@@ -181,14 +181,14 @@ type EventInput struct {
 
 // BlockchainExplorerService provides blockchain exploration functionality
 type BlockchainExplorerService struct {
-	mu          sync.RWMutex
-	chains      map[string]*Chain
-	tokens      map[string]*Token
-	blocks      map[uint64]map[uint64]*Block // chain_id -> block_number -> block
+	mu           sync.RWMutex
+	chains       map[string]*Chain
+	tokens       map[string]*Token
+	blocks       map[uint64]map[uint64]*Block // chain_id -> block_number -> block
 	transactions map[string]*Transaction
-	transfers   map[string][]*TokenTransfer
+	transfers    map[string][]*TokenTransfer
 	rpcEndpoints map[string]*RPCEndpoint
-	contracts   map[string]*Contract
+	contracts    map[string]*Contract
 	chainTokens  map[uint64]map[string]*Token // chain_id -> token_address -> token
 }
 
@@ -196,8 +196,8 @@ type BlockchainExplorerService struct {
 func NewBlockchainExplorerService() *BlockchainExplorerService {
 	return &BlockchainExplorerService{
 		chains:       make(map[string]*Chain),
-		tokens:        make(map[string]*Token),
-		blocks:        make(map[uint64]map[uint64]*Block),
+		tokens:       make(map[string]*Token),
+		blocks:       make(map[uint64]map[uint64]*Block),
 		transactions: make(map[string]*Transaction),
 		transfers:    make(map[string][]*TokenTransfer),
 		rpcEndpoints: make(map[string]*RPCEndpoint),
@@ -621,14 +621,14 @@ func (s *BlockchainExplorerService) VerifyContract(ctx context.Context, chainID 
 
 	key := fmt.Sprintf("%d_%s", chainID, address)
 	contract := &Contract{
-		Address:     address,
-		ChainID:     chainID,
-		SourceCode:  sourceCode,
-		ABI:         abi,
-		Compiler:    "solc",
-		Version:     "0.8.0",
-		Optimized:   true,
-		CreatedAt:   time.Now().UnixMilli(),
+		Address:    address,
+		ChainID:    chainID,
+		SourceCode: sourceCode,
+		ABI:        abi,
+		Compiler:   "solc",
+		Version:    "0.8.0",
+		Optimized:  true,
+		CreatedAt:  time.Now().UnixMilli(),
 	}
 
 	s.contracts[key] = contract

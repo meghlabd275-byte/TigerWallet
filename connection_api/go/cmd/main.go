@@ -44,11 +44,11 @@ type Config struct {
 type WhiteLevelProduct string
 
 const (
-	ProductMasterWallet   WhiteLevelProduct = "master_wallet"
-	ProductUserWallet    WhiteLevelProduct = "user_wallet"
-	ProductBots          WhiteLevelProduct = "bots"
-	ProductBotsClients   WhiteLevelProduct = "bots_clients"
-	ProductProjectParty  WhiteLevelProduct = "project_party"
+	ProductMasterWallet WhiteLevelProduct = "master_wallet"
+	ProductUserWallet   WhiteLevelProduct = "user_wallet"
+	ProductBots         WhiteLevelProduct = "bots"
+	ProductBotsClients  WhiteLevelProduct = "bots_clients"
+	ProductProjectParty WhiteLevelProduct = "project_party"
 )
 
 type ConnectionStatus string
@@ -62,71 +62,71 @@ const (
 
 // Connection state
 type ConnectionState struct {
-	ID              uuid.UUID         `json:"id"`
-	ClientID        uuid.UUID         `json:"client_id"`
-	Product         WhiteLevelProduct `json:"product"`
-	ConnectionKey   string            `json:"connection_key"`
-	Status          ConnectionStatus  `json:"status"`
-	IPAddress       string            `json:"ip_address"`
-	Region          string            `json:"region"`
-	Latency         int               `json:"latency"` // ms
-	LastHeartbeat   time.Time         `json:"last_heartbeat"`
-	ConnectedAt     time.Time         `json:"connected_at"`
+	ID             uuid.UUID         `json:"id"`
+	ClientID       uuid.UUID         `json:"client_id"`
+	Product        WhiteLevelProduct `json:"product"`
+	ConnectionKey  string            `json:"connection_key"`
+	Status         ConnectionStatus  `json:"status"`
+	IPAddress      string            `json:"ip_address"`
+	Region         string            `json:"region"`
+	Latency        int               `json:"latency"` // ms
+	LastHeartbeat  time.Time         `json:"last_heartbeat"`
+	ConnectedAt    time.Time         `json:"connected_at"`
 	ReconnectCount int               `json:"reconnect_count"`
-	Metadata        map[string]string `json:"metadata"`
+	Metadata       map[string]string `json:"metadata"`
 }
 
 // Connection request/response
 type ConnectRequest struct {
-	Product     WhiteLevelProduct `json:"product" binding:"required"`
-	APIKey      string            `json:"api_key" binding:"required"`
-	ClientInfo  map[string]string `json:"client_info"`
-	IPAddress   string            `json:"ip_address"`
-	Region      string            `json:"region"`
+	Product    WhiteLevelProduct `json:"product" binding:"required"`
+	APIKey     string            `json:"api_key" binding:"required"`
+	ClientInfo map[string]string `json:"client_info"`
+	IPAddress  string            `json:"ip_address"`
+	Region     string            `json:"region"`
 }
 
 type ConnectResponse struct {
 	ConnectionKey string            `json:"connection_key"`
-	SessionToken string            `json:"session_token"`
-	ExpiresAt    time.Time        `json:"expires_at"`
-	Config      map[string]string `json:"config"`
+	SessionToken  string            `json:"session_token"`
+	ExpiresAt     time.Time         `json:"expires_at"`
+	Config        map[string]string `json:"config"`
 }
 
 type HeartbeatRequest struct {
-	ConnectionKey string            `json:"connection_key" binding:"required"`
-	Latency      int               `json:"latency"`
-	Status       ConnectionStatus  `json:"status"`
-	Metrics      map[string]int    `json:"metrics"`
+	ConnectionKey string           `json:"connection_key" binding:"required"`
+	Latency       int              `json:"latency"`
+	Status        ConnectionStatus `json:"status"`
+	Metrics       map[string]int   `json:"metrics"`
 }
 
 type DisconnectRequest struct {
 	ConnectionKey string `json:"connection_key" binding:"required"`
-	Reason       string `json:"reason"`
+	Reason        string `json:"reason"`
 }
 
 // Global state
 var (
-	db              *pgxpool.Pool
-	redis           *redislib.Client
-	config          Config
-	logger          *log.Logger
-	jwtSecret       []byte
-	
+	db        *pgxpool.Pool
+	redis     *redislib.Client
+	config    Config
+	logger    *log.Logger
+	jwtSecret []byte
+
 	// Connection management
-	connections     sync.Map // map[string]*ConnectionState
-	activeCount    atomic.Int64
-	totalConnects  atomic.Int64
+	connections      sync.Map // map[string]*ConnectionState
+	activeCount      atomic.Int64
+	totalConnects    atomic.Int64
 	totalDisconnects atomic.Int64
-	
+
 	// Rate limiting
-	rateLimiters   sync.Map // map[string]*rateLimiter
-	
+	rateLimiters sync.Map // map[string]*rateLimiter
+
 	// Metrics
 	metrics struct {
-		connectsPerSec  atomic.Int64
+		connectsPerSec    atomic.Int64
 		disconnectsPerSec atomic.Int64
-		avgLatency      atomic.Int64
-		errorsPerSec    atomic.Int64
+		avgLatency        atomic.Int64
+		errorsPerSec      atomic.Int64
 	}
 )
 
@@ -149,12 +149,12 @@ func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 func (r *rateLimiter) Allow() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if time.Since(r.lastReset) > r.window {
 		r.requests = 0
 		r.lastReset = time.Now()
 	}
-	
+
 	if r.requests >= r.limit {
 		return false
 	}
@@ -319,17 +319,17 @@ func createConnection(req ConnectRequest) (*ConnectResponse, error) {
 
 	// Create connection state
 	conn := &ConnectionState{
-		ID:              uuid.New(),
-		ClientID:        *clientID,
-		Product:         req.Product,
-		ConnectionKey:   connKey,
-		Status:          StatusConnected,
-		IPAddress:       req.IPAddress,
-		Region:          req.Region,
-		LastHeartbeat:   time.Now(),
-		ConnectedAt:     time.Now(),
-		ReconnectCount:  0,
-		Metadata:        req.ClientInfo,
+		ID:             uuid.New(),
+		ClientID:       *clientID,
+		Product:        req.Product,
+		ConnectionKey:  connKey,
+		Status:         StatusConnected,
+		IPAddress:      req.IPAddress,
+		Region:         req.Region,
+		LastHeartbeat:  time.Now(),
+		ConnectedAt:    time.Now(),
+		ReconnectCount: 0,
+		Metadata:       req.ClientInfo,
 	}
 
 	// Store in memory
@@ -371,9 +371,9 @@ func createConnection(req ConnectRequest) (*ConnectResponse, error) {
 
 	return &ConnectResponse{
 		ConnectionKey: connKey,
-		SessionToken: sessionToken,
-		ExpiresAt:    expiresAt,
-		Config:       config,
+		SessionToken:  sessionToken,
+		ExpiresAt:     expiresAt,
+		Config:        config,
 	}, nil
 }
 
@@ -414,7 +414,7 @@ func processHeartbeat(req HeartbeatRequest) error {
 		if err != nil {
 			return fmt.Errorf("connection not found")
 		}
-		
+
 		var newConn ConnectionState
 		json.Unmarshal([]byte(connJSON), &newConn)
 		conn = &newConn
@@ -423,7 +423,7 @@ func processHeartbeat(req HeartbeatRequest) error {
 	state := conn.(*ConnectionState)
 	state.LastHeartbeat = time.Now()
 	state.Latency = req.Latency
-	
+
 	if req.Status != "" {
 		state.Status = req.Status
 	}
@@ -484,7 +484,7 @@ func checkConnectionHealth() {
 
 	for range ticker.C {
 		timeout := time.Now().Add(-time.Duration(config.HeartbeatTimeout) * time.Second)
-		
+
 		connections.Range(func(key, value interface{}) bool {
 			conn := value.(*ConnectionState)
 			if conn.LastHeartbeat.Before(timeout) {
@@ -503,9 +503,9 @@ func getConnectionConfig(product WhiteLevelProduct) map[string]string {
 		// Default config
 		return map[string]string{
 			"heartbeat_interval": "30",
-			"reconnect_timeout": "60",
-			"max_reconnects": "5",
-			"timeout_ms": "5000",
+			"reconnect_timeout":  "60",
+			"max_reconnects":     "5",
+			"timeout_ms":         "5000",
 		}
 	}
 
@@ -534,23 +534,23 @@ func getEnv(key, defaultValue string) string {
 
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redis.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":        "ok",
-		"database":      dbStatus,
-		"redis":         redisStatus,
-		"active_conns":  activeCount.Load(),
-		"timestamp":     time.Now(),
+		"status":       "ok",
+		"database":     dbStatus,
+		"redis":        redisStatus,
+		"active_conns": activeCount.Load(),
+		"timestamp":    time.Now(),
 	})
 }
 
@@ -682,7 +682,7 @@ func GetConnections(c *gin.Context) {
 		Region        string            `json:"region"`
 		Latency       int               `json:"latency"`
 		ConnectedAt   time.Time         `json:"connected_at"`
-		ExpiresAt     time.Time        `json:"expires_at"`
+		ExpiresAt     time.Time         `json:"expires_at"`
 	}
 
 	var sessions []SessionInfo
@@ -704,10 +704,10 @@ func GetMetrics(c *gin.Context) {
 	db.QueryRow(context.Background(), "SELECT COUNT(*) FROM connection_sessions WHERE status = 'connected'").Scan(&totalDisconns)
 
 	c.JSON(http.StatusOK, gin.H{
-		"active_connections":  activeCount.Load(),
-		"total_connections":    totalConnects.Load(),
-		"total_disconnects":    totalDisconnects.Load(),
-		"avg_latency_ms":      metrics.avgLatency.Load(),
+		"active_connections": activeCount.Load(),
+		"total_connections":  totalConnects.Load(),
+		"total_disconnects":  totalDisconnects.Load(),
+		"avg_latency_ms":     metrics.avgLatency.Load(),
 	})
 }
 
@@ -728,13 +728,13 @@ func ValidateConnection(c *gin.Context) {
 	}
 
 	state := conn.(*ConnectionState)
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"valid":       state.Status == StatusConnected,
-		"client_id":   state.ClientID,
-		"product":     state.Product,
+		"valid":          state.Status == StatusConnected,
+		"client_id":      state.ClientID,
+		"product":        state.Product,
 		"last_heartbeat": state.LastHeartbeat,
-		"latency":     state.Latency,
+		"latency":        state.Latency,
 	})
 }
 
@@ -845,10 +845,10 @@ func main() {
 
 	logger.Printf("Starting server on port %s", config.Port)
 	srv := &http.Server{
-		Addr:         ":" + config.Port,
-		Handler:      router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:           ":" + config.Port,
+		Handler:        router,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   30 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
 

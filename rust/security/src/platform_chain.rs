@@ -286,8 +286,12 @@ impl PlatformChainClient {
                 text.chars().take(200).collect::<String>()
             )));
         }
-        let parsed: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| PlatformChainError::Decode(format!("{e}: {}", text.chars().take(200).collect::<String>())))?;
+        let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            PlatformChainError::Decode(format!(
+                "{e}: {}",
+                text.chars().take(200).collect::<String>()
+            ))
+        })?;
         if let Some(err) = parsed.get("error") {
             return Err(PlatformChainError::Rpc(err.to_string()));
         }
@@ -793,7 +797,10 @@ mod tests {
         std::env::remove_var(PAIR_ENV);
         assert!(pair_address().is_none());
         std::env::set_var(PAIR_ENV, "not-an-address");
-        assert!(pair_address().is_none(), "a malformed pool must be rejected");
+        assert!(
+            pair_address().is_none(),
+            "a malformed pool must be rejected"
+        );
         std::env::set_var(PAIR_ENV, "0x00000000000000000000000000000000000000aa");
         assert!(pair_address().is_some());
         match previous {
@@ -835,7 +842,10 @@ mod tests {
         let entry = chain_entry();
         assert_eq!(entry.get("chain_id").map(String::as_str), Some("7710"));
         assert_eq!(entry.get("symbol").map(String::as_str), Some("TGR"));
-        assert_eq!(entry.get("rpc_env").map(String::as_str), Some("TSC_RPC_URL"));
+        assert_eq!(
+            entry.get("rpc_env").map(String::as_str),
+            Some("TSC_RPC_URL")
+        );
         assert_eq!(
             entry.get("rusd_address").map(String::as_str),
             Some(RUSD_ADDRESS)

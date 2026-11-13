@@ -40,7 +40,7 @@ func TestPortfolioStatementsPrepare(t *testing.T) {
 	ctx := context.Background()
 
 	statements := map[string]string{
-		"insert margin position": sqlInsertMarginPosition,
+		"insert margin position":  sqlInsertMarginPosition,
 		"upsert launchpool stake": sqlUpsertLaunchpoolStake,
 		"insert dao vote": `INSERT INTO dao_votes (id, proposal_id, voter_id, choice, voting_power)
                  VALUES ($1,$2,$3,$4,$5) ON CONFLICT (proposal_id, voter_id) DO UPDATE SET choice=$4, voting_power=$5`,

@@ -38,50 +38,50 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type P2POrder struct {
-	ID              string    `json:"id"`
-	Creator         string    `json:"creator"`
-	Type            string    `json:"type"` // "buy" or "sell"
-	Token           string    `json:"token"`
-	Amount          float64   `json:"amount"`
-	Price           float64   `json:"price"`
-	PaymentMethod   string    `json:"paymentMethod"`
-	Status          string    `json:"status"` // "open", "pending", "completed", "cancelled", "disputed"
-	FiatCurrency    string    `json:"fiatCurrency"`
-	MinAmount       float64   `json:"minAmount"`
-	MaxAmount       float64   `json:"maxAmount"`
-	Terms           string    `json:"terms"`
-	CreatedAt       time.Time `json:"createdAt"`
-	ExpiresAt       time.Time `json:"expiresAt"`
+	ID            string    `json:"id"`
+	Creator       string    `json:"creator"`
+	Type          string    `json:"type"` // "buy" or "sell"
+	Token         string    `json:"token"`
+	Amount        float64   `json:"amount"`
+	Price         float64   `json:"price"`
+	PaymentMethod string    `json:"paymentMethod"`
+	Status        string    `json:"status"` // "open", "pending", "completed", "cancelled", "disputed"
+	FiatCurrency  string    `json:"fiatCurrency"`
+	MinAmount     float64   `json:"minAmount"`
+	MaxAmount     float64   `json:"maxAmount"`
+	Terms         string    `json:"terms"`
+	CreatedAt     time.Time `json:"createdAt"`
+	ExpiresAt     time.Time `json:"expiresAt"`
 }
 
 type Trade struct {
-	ID              string    `json:"id"`
-	OrderID         string    `json:"orderId"`
-	Buyer           string    `json:"buyer"`
-	Seller          string    `json:"seller"`
-	Amount          float64   `json:"amount"`
-	Price           float64   `json:"price"`
-	Status          string    `json:"status"` // "initiated", "paid", "released", "completed", "disputed", "cancelled"
-	EscrowAddress   string    `json:"escrowAddress"`
+	ID              string     `json:"id"`
+	OrderID         string     `json:"orderId"`
+	Buyer           string     `json:"buyer"`
+	Seller          string     `json:"seller"`
+	Amount          float64    `json:"amount"`
+	Price           float64    `json:"price"`
+	Status          string     `json:"status"` // "initiated", "paid", "released", "completed", "disputed", "cancelled"
+	EscrowAddress   string     `json:"escrowAddress"`
 	BuyerConfirmAt  *time.Time `json:"buyerConfirmAt"`
 	SellerConfirmAt *time.Time `json:"sellerConfirmAt"`
-	DisputeReason   string    `json:"disputeReason"`
-	CreatedAt       time.Time `json:"createdAt"`
+	DisputeReason   string     `json:"disputeReason"`
+	CreatedAt       time.Time  `json:"createdAt"`
 	CompletedAt     *time.Time `json:"completedAt"`
 }
 
 type User struct {
-	ID            string    `json:"id"`
-	Address       string    `json:"address"`
-	Username      string    `json:"username"`
-	ReputationScore float64 `json:"reputationScore"`
-	TotalTrades   int      `json:"totalTrades"`
-	CompletedTrades int     `json:"completedTrades"`
-	CancelledTrades int    `json:"cancelledTrades"`
-	DisputedTrades int     `json:"disputedTrades"`
-	BlockedUsers  []string `json:"blockedUsers"`
-	Verified      bool      `json:"verified"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID              string    `json:"id"`
+	Address         string    `json:"address"`
+	Username        string    `json:"username"`
+	ReputationScore float64   `json:"reputationScore"`
+	TotalTrades     int       `json:"totalTrades"`
+	CompletedTrades int       `json:"completedTrades"`
+	CancelledTrades int       `json:"cancelledTrades"`
+	DisputedTrades  int       `json:"disputedTrades"`
+	BlockedUsers    []string  `json:"blockedUsers"`
+	Verified        bool      `json:"verified"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 type ChatMessage struct {
@@ -93,16 +93,16 @@ type ChatMessage struct {
 }
 
 type Dispute struct {
-	ID          string    `json:"id"`
-	TradeID     string    `json:"tradeId"`
-	Reporter    string    `json:"reporter"`
-	Reason      string    `json:"reason"`
-	Evidence    string    `json:"evidence"`
-	Status      string    `json:"status"` // "open", "under_review", "resolved", "closed"
-	Resolution  string    `json:"resolution"`
-	RefundTo    string    `json:"refundTo"`
-	CreatedAt   time.Time `json:"createdAt"`
-	ResolvedAt  *time.Time `json:"resolvedAt"`
+	ID         string     `json:"id"`
+	TradeID    string     `json:"tradeId"`
+	Reporter   string     `json:"reporter"`
+	Reason     string     `json:"reason"`
+	Evidence   string     `json:"evidence"`
+	Status     string     `json:"status"` // "open", "under_review", "resolved", "closed"
+	Resolution string     `json:"resolution"`
+	RefundTo   string     `json:"refundTo"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ResolvedAt *time.Time `json:"resolvedAt"`
 }
 
 // ============================================================================
@@ -227,7 +227,7 @@ func (s *P2PService) InitiateTrade(ctx context.Context, orderID, buyerAddress st
 		Seller:        order.Creator,
 		Amount:        order.Amount,
 		Price:         order.Price,
-		Status:         "initiated",
+		Status:        "initiated",
 		EscrowAddress: escrowAddress,
 		CreatedAt:     time.Now(),
 	}
@@ -388,16 +388,16 @@ func (s *P2PService) GetUser(ctx context.Context, address string) (*User, error)
 	if err != nil {
 		// Create new user
 		user := &User{
-			ID:               uuid.New().String(),
-			Address:          address,
-			ReputationScore:  100.0,
-			TotalTrades:      0,
-			CompletedTrades:  0,
-			CancelledTrades:  0,
-			DisputedTrades:   0,
-			BlockedUsers:     []string{},
-			Verified:         false,
-			CreatedAt:        time.Now(),
+			ID:              uuid.New().String(),
+			Address:         address,
+			ReputationScore: 100.0,
+			TotalTrades:     0,
+			CompletedTrades: 0,
+			CancelledTrades: 0,
+			DisputedTrades:  0,
+			BlockedUsers:    []string{},
+			Verified:        false,
+			CreatedAt:       time.Now(),
 		}
 		return user, nil
 	}
@@ -410,7 +410,7 @@ func (s *P2PService) GetUser(ctx context.Context, address string) (*User, error)
 // Update user reputation
 func (s *P2PService) updateReputation(ctx context.Context, address string, completed bool) {
 	user, _ := s.GetUser(ctx, address)
-	
+
 	user.TotalTrades++
 	if completed {
 		user.CompletedTrades++
@@ -498,7 +498,7 @@ func (h *Handler) InitiateTrade(c *gin.Context) {
 
 func (h *Handler) ConfirmPayment(c *gin.Context) {
 	tradeID := c.Param("tradeId")
-	
+
 	var req struct {
 		Address string `json:"address" binding:"required"`
 	}
@@ -519,7 +519,7 @@ func (h *Handler) ConfirmPayment(c *gin.Context) {
 
 func (h *Handler) ReleaseCrypto(c *gin.Context) {
 	tradeID := c.Param("tradeId")
-	
+
 	var req struct {
 		Address string `json:"address" binding:"required"`
 	}
@@ -540,7 +540,7 @@ func (h *Handler) ReleaseCrypto(c *gin.Context) {
 
 func (h *Handler) GetTrade(c *gin.Context) {
 	tradeID := c.Param("tradeId")
-	
+
 	trade, err := h.service.GetTrade(c.Request.Context(), tradeID)
 	if err != nil {
 		c.JSON(404, gin.H{"error": err.Error()})
@@ -552,7 +552,7 @@ func (h *Handler) GetTrade(c *gin.Context) {
 
 func (h *Handler) OpenDispute(c *gin.Context) {
 	tradeID := c.Param("tradeId")
-	
+
 	var req struct {
 		Reporter string `json:"reporter" binding:"required"`
 		Reason   string `json:"reason" binding:"required"`
@@ -575,7 +575,7 @@ func (h *Handler) OpenDispute(c *gin.Context) {
 
 func (h *Handler) SendMessage(c *gin.Context) {
 	tradeID := c.Param("tradeId")
-	
+
 	var req struct {
 		Sender  string `json:"sender" binding:"required"`
 		Message string `json:"message" binding:"required"`
@@ -597,7 +597,7 @@ func (h *Handler) SendMessage(c *gin.Context) {
 
 func (h *Handler) GetMessages(c *gin.Context) {
 	tradeID := c.Param("tradeId")
-	
+
 	messages, err := h.service.GetMessages(c.Request.Context(), tradeID)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -609,7 +609,7 @@ func (h *Handler) GetMessages(c *gin.Context) {
 
 func (h *Handler) GetUser(c *gin.Context) {
 	address := c.Param("address")
-	
+
 	user, err := h.service.GetUser(c.Request.Context(), address)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})

@@ -304,84 +304,84 @@ func newTestService(t *testing.T, guardianAddress string) *SocialRecoveryService
 // state, because a guardian registered against a wallet nobody can look up is
 // worthless when a recovery is actually needed.
 func TestUnreachableStoreFailsClosed(t *testing.T) {
-// Port 1 is reserved and never has a listener.
-service, err := NewSocialRecoveryService(&Config{
-Port:          "0",
-RedisURL:      "127.0.0.1:1",
-RecoveryDelay: time.Hour,
-MinGuardians:  1,
-MaxGuardians:  10,
-})
-if err != nil {
-t.Fatalf("cannot build the service: %v", err)
-}
-if service.redis != nil {
-t.Fatal("the service kept a client for a store that never answered")
-}
+	// Port 1 is reserved and never has a listener.
+	service, err := NewSocialRecoveryService(&Config{
+		Port:          "0",
+		RedisURL:      "127.0.0.1:1",
+		RecoveryDelay: time.Hour,
+		MinGuardians:  1,
+		MaxGuardians:  10,
+	})
+	if err != nil {
+		t.Fatalf("cannot build the service: %v", err)
+	}
+	if service.redis != nil {
+		t.Fatal("the service kept a client for a store that never answered")
+	}
 
-ctx := context.Background()
+	ctx := context.Background()
 
-t.Run("creating a wallet reports the store is down", func(t *testing.T) {
-_, err := service.CreateWallet(ctx, "0x1111111111111111111111111111111111111111", "ethereum", 1,
-[]Guardian{{ID: "g1", Address: "0x1111111111111111111111111111111111111111", Confirmed: true}})
-if err == nil {
-t.Fatal("a wallet was reported as created while the store was unreachable")
-}
-if !strings.Contains(err.Error(), "unavailable") {
-t.Errorf("the error should name the unavailable store, got: %v", err)
-}
-})
+	t.Run("creating a wallet reports the store is down", func(t *testing.T) {
+		_, err := service.CreateWallet(ctx, "0x1111111111111111111111111111111111111111", "ethereum", 1,
+			[]Guardian{{ID: "g1", Address: "0x1111111111111111111111111111111111111111", Confirmed: true}})
+		if err == nil {
+			t.Fatal("a wallet was reported as created while the store was unreachable")
+		}
+		if !strings.Contains(err.Error(), "unavailable") {
+			t.Errorf("the error should name the unavailable store, got: %v", err)
+		}
+	})
 
-t.Run("reading a wallet reports not found rather than a zero value", func(t *testing.T) {
-wallet, err := service.GetWallet(ctx, "does-not-exist")
-if err == nil {
-t.Fatalf("a wallet was returned from an unreachable store: %+v", wallet)
-}
-})
+	t.Run("reading a wallet reports not found rather than a zero value", func(t *testing.T) {
+		wallet, err := service.GetWallet(ctx, "does-not-exist")
+		if err == nil {
+			t.Fatalf("a wallet was returned from an unreachable store: %+v", wallet)
+		}
+	})
 }
 
 // TestWalletSurvivesARoundTrip checks that what CreateWallet writes is what
 // GetWallet reads back, including the guardian set, which is the data a
 // recovery depends on.
 func TestWalletSurvivesARoundTrip(t *testing.T) {
-service := newTestService(t, "0x1111111111111111111111111111111111111111")
-if service.redis == nil {
-t.Skip("no recovery store available")
-}
-ctx := context.Background()
+	service := newTestService(t, "0x1111111111111111111111111111111111111111")
+	if service.redis == nil {
+		t.Skip("no recovery store available")
+	}
+	ctx := context.Background()
 
-const address = "0xAAA1111111111111111111111111111111111111"
-guardians := []Guardian{
-{ID: "g1", Address: "0x1111111111111111111111111111111111111111", Type: GuardianTypeAddress, Confirmed: true},
-{ID: "g2", Address: "0x2222222222222222222222222222222222222222", Type: GuardianTypeAddress, Confirmed: false},
-}
+	const address = "0xAAA1111111111111111111111111111111111111"
+	guardians := []Guardian{
+		{ID: "g1", Address: "0x1111111111111111111111111111111111111111", Type: GuardianTypeAddress, Confirmed: true},
+		{ID: "g2", Address: "0x2222222222222222222222222222222222222222", Type: GuardianTypeAddress, Confirmed: false},
+	}
 
-created, err := service.CreateWallet(ctx, address, "ethereum", 2, guardians)
-if err != nil {
-t.Fatalf("cannot create the wallet: %v", err)
-}
+	created, err := service.CreateWallet(ctx, address, "ethereum", 2, guardians)
+	if err != nil {
+		t.Fatalf("cannot create the wallet: %v", err)
+	}
 
-loaded, err := service.GetWallet(ctx, created.ID)
-if err != nil {
-t.Fatalf("cannot read the wallet back: %v", err)
-}
-if loaded.Threshold != 2 {
-t.Errorf("threshold = %d, want 2", loaded.Threshold)
-}
-if len(loaded.Guardians) != 2 {
-t.Fatalf("guardians = %d, want 2", len(loaded.Guardians))
-}
-if loaded.Guardians[1].Confirmed {
-t.Error("the unconfirmed guardian came back as confirmed")
-}
+	loaded, err := service.GetWallet(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("cannot read the wallet back: %v", err)
+	}
+	if loaded.Threshold != 2 {
+		t.Errorf("threshold = %d, want 2", loaded.Threshold)
+	}
+	if len(loaded.Guardians) != 2 {
+		t.Fatalf("guardians = %d, want 2", len(loaded.Guardians))
+	}
+	if loaded.Guardians[1].Confirmed {
+		t.Error("the unconfirmed guardian came back as confirmed")
+	}
 
-// The address index is written alongside the wallet, so a lookup by
-// address must find the same wallet.
-byAddress, err := service.GetWalletByAddress(ctx, "ethereum", address)
-if err != nil {
-t.Fatalf("cannot find the wallet by address: %v", err)
-}
-if byAddress.ID != created.ID {
-t.Errorf("address lookup returned %s, want %s", byAddress.ID, created.ID)
-}
+	// The address index is written alongside the wallet, so a lookup by
+	// address must find the same wallet.
+	byAddress, err := service.GetWalletByAddress(ctx, "ethereum", address)
+	if err != nil {
+		t.Fatalf("cannot find the wallet by address: %v", err)
+	}
+	if byAddress.ID != created.ID {
+		t.Errorf("address lookup returned %s, want %s", byAddress.ID, created.ID)
+	}
 }

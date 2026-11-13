@@ -228,7 +228,6 @@ func (s *GasOracleService) nativePriceUSD(coinID string) float64 {
 	return price
 }
 
-
 func (s *GasOracleService) FetchGasPrice(chainID uint64) (*GasPrice, error) {
 	chain, ok := s.chainInfo[chainID]
 	if !ok {
@@ -334,7 +333,6 @@ func (s *GasOracleService) FetchGasPrice(chainID uint64) (*GasPrice, error) {
 	return gasPrice, nil
 }
 
-
 func (s *GasOracleService) convertToUSD(gasPriceWei string, nativePrice float64) float64 {
 	gasPrice, err := strconv.ParseFloat(gasPriceWei, 64)
 	if err != nil {
@@ -376,7 +374,6 @@ func (s *GasOracleService) GetRecommendation(chainID uint64) (map[string]GasPric
 		"slow":   slow,
 	}, nil
 }
-
 
 type CostEstimate struct {
 	ChainID      uint64  `json:"chainId"`
@@ -427,7 +424,6 @@ func (s *GasOracleService) EstimateCost(chainID uint64, operation string, gasLim
 		TotalCostUSD: math.Round(totalNative*nativePrice*100) / 100,
 	}, nil
 }
-
 
 func (s *GasOracleService) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) {

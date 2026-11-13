@@ -3,10 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
-	"golang.org/x/crypto/sha3"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/sha3"
 	"io"
 	"math/big"
 	"net/http"

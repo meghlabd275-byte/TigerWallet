@@ -10,12 +10,12 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
-"github.com/tigerwallet/account-abstraction/abi"
+	"github.com/tigerwallet/account-abstraction/abi"
 )
 
 // entryPointDefaults holds the deployed EntryPoint and factory addresses.
@@ -307,10 +307,10 @@ func trimHexPrefix(value string) string {
 // not name one. It is configurable so a deployment can default to its own
 // network.
 func defaultChainID() uint64 {
-if value := os.Getenv("AA_DEFAULT_CHAIN_ID"); value != "" {
-if parsed, err := strconv.ParseUint(value, 10, 64); err == nil && parsed != 0 {
-return parsed
-}
-}
-return 1
+	if value := os.Getenv("AA_DEFAULT_CHAIN_ID"); value != "" {
+		if parsed, err := strconv.ParseUint(value, 10, 64); err == nil && parsed != 0 {
+			return parsed
+		}
+	}
+	return 1
 }

@@ -24,25 +24,25 @@ import (
 
 type Config struct {
 	ServerPort string
-	DBHost    string
-	DBPort    string
-	DBUser    string
+	DBHost     string
+	DBPort     string
+	DBUser     string
 	DBPassword string
-	DBName    string
-	RedisHost string
-	RedisPort string
+	DBName     string
+	RedisHost  string
+	RedisPort  string
 }
 
 func LoadConfig() *Config {
 	return &Config{
 		ServerPort: getEnv("NFT_PORT", "9099"),
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "tigerwallet"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "tigerwallet"),
 		DBPassword: mustEnv("DB_PASSWORD"),
-		DBName:    getEnv("DB_NAME", "tigerwallet_nft"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
+		DBName:     getEnv("DB_NAME", "tigerwallet_nft"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
 	}
 }
 
@@ -66,7 +66,7 @@ func getEnv(key, def string) string {
 
 // Models
 type NFTCollection struct {
-	ID             uint      `gorm:"primarykey"`
+	ID            uint      `gorm:"primarykey"`
 	CreatedAt     time.Time `json:"created_at"`
 	CollectionID  string    `gorm:"uniqueIndex" json:"collection_id"`
 	Name          string    `json:"name"`
@@ -87,73 +87,73 @@ type NFTCollection struct {
 	Twitter       string    `json:"twitter"`
 	Discord       string    `json:"discord"`
 	Status        string    `json:"status"` // active, paused, delisted
-	WhiteLabelID  *uint    `json:"white_label_id"`
+	WhiteLabelID  *uint     `json:"white_label_id"`
 }
 
 type NFTToken struct {
-	ID            uint      `gorm:"primarykey"`
-	CreatedAt     time.Time `json:"created_at"`
-	TokenID       string    `gorm:"uniqueIndex" json:"token_id"`
-	CollectionID  string    `gorm:"index" json:"collection_id"`
-	Owner         string    `gorm:"index" json:"owner"`
-	TokenURI      string    `json:"token_uri"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	ImageURL      string    `json:"image_url"`
-	AnimationURL  string    `json:"animation_url"`
-	ExternalURL   string    `json:"external_url"`
-	Attributes    string    `json:"attributes"` // JSON
-	ChainID       int64     `json:"chain_id"`
-	Price         string    `json:"price"`
-	Status        string    `json:"status"` // minted, listed, sold, transferred
-	ListedAt      *int64    `json:"listed_at"`
-	MintedAt      int64     `json:"minted_at"`
+	ID           uint      `gorm:"primarykey"`
+	CreatedAt    time.Time `json:"created_at"`
+	TokenID      string    `gorm:"uniqueIndex" json:"token_id"`
+	CollectionID string    `gorm:"index" json:"collection_id"`
+	Owner        string    `gorm:"index" json:"owner"`
+	TokenURI     string    `json:"token_uri"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	ImageURL     string    `json:"image_url"`
+	AnimationURL string    `json:"animation_url"`
+	ExternalURL  string    `json:"external_url"`
+	Attributes   string    `json:"attributes"` // JSON
+	ChainID      int64     `json:"chain_id"`
+	Price        string    `json:"price"`
+	Status       string    `json:"status"` // minted, listed, sold, transferred
+	ListedAt     *int64    `json:"listed_at"`
+	MintedAt     int64     `json:"minted_at"`
 }
 
 type NFTListing struct {
-	ID            uint      `gorm:"primarykey"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID           uint      `gorm:"primarykey"`
+	CreatedAt    time.Time `json:"created_at"`
 	ListingID    string    `gorm:"uniqueIndex" json:"listing_id"`
-	TokenID       string    `gorm:"index" json:"token_id"`
+	TokenID      string    `gorm:"index" json:"token_id"`
 	Seller       string    `gorm:"index" json:"seller"`
 	Price        string    `json:"price"`
 	PaymentToken string    `json:"payment_token"` // ETH, USDC, etc.
-	ChainID       int64     `json:"chain_id"`
-	Status        string    `json:"status"` // active, sold, cancelled, expired
-	ExpiresAt     int64     `json:"expires_at"`
+	ChainID      int64     `json:"chain_id"`
+	Status       string    `json:"status"` // active, sold, cancelled, expired
+	ExpiresAt    int64     `json:"expires_at"`
 }
 
 type NFTOffer struct {
-	ID          uint      `gorm:"primarykey"`
-	CreatedAt   time.Time `json:"created_at"`
-	OfferID     string    `gorm:"uniqueIndex" json:"offer_id"`
-	TokenID     string    `gorm:"index" json:"token_id"`
-	Offerer    string    `gorm:"index" json:"offerer"`
-	Price       string    `json:"price"`
-	PaymentToken string  `json:"payment_token"`
-	ChainID     int64     `json:"chain_id"`
-	Status      string    `json:"status"` // pending, accepted, rejected, expired
-	ExpiresAt   int64     `json:"expires_at"`
+	ID           uint      `gorm:"primarykey"`
+	CreatedAt    time.Time `json:"created_at"`
+	OfferID      string    `gorm:"uniqueIndex" json:"offer_id"`
+	TokenID      string    `gorm:"index" json:"token_id"`
+	Offerer      string    `gorm:"index" json:"offerer"`
+	Price        string    `json:"price"`
+	PaymentToken string    `json:"payment_token"`
+	ChainID      int64     `json:"chain_id"`
+	Status       string    `json:"status"` // pending, accepted, rejected, expired
+	ExpiresAt    int64     `json:"expires_at"`
 }
 
 type NFTTransaction struct {
-	ID            uint      `gorm:"primarykey"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID           uint      `gorm:"primarykey"`
+	CreatedAt    time.Time `json:"created_at"`
 	TxHash       string    `gorm:"uniqueIndex" json:"tx_hash"`
-	TokenID       string    `gorm:"index" json:"token_id"`
-	From          string    `gorm:"index" json:"from"`
-	To            string    `json:"to"`
-	Price         string    `json:"price"`
+	TokenID      string    `gorm:"index" json:"token_id"`
+	From         string    `gorm:"index" json:"from"`
+	To           string    `json:"to"`
+	Price        string    `json:"price"`
 	PaymentToken string    `json:"payment_token"`
-	ChainID       int64     `json:"chain_id"`
-	Type          string    `json:"type"` // mint, list, buy, transfer, bid
+	ChainID      int64     `json:"chain_id"`
+	Type         string    `json:"type"` // mint, list, buy, transfer, bid
 }
 
 type NFTService struct {
 	db     *gorm.DB
-	redis *redis.Client
+	redis  *redis.Client
 	config *Config
-	mu    sync.RWMutex
+	mu     sync.RWMutex
 }
 
 func NewNFTService(cfg *Config) (*NFTService, error) {
@@ -179,16 +179,16 @@ func NewNFTService(cfg *Config) (*NFTService, error) {
 func (s *NFTService) CreateCollection(c *gin.Context) {
 	var req struct {
 		Name         string  `json:"name" binding:"required"`
-		Symbol      string  `json:"symbol"`
-		Description string  `json:"description"`
-		ContractAddr string `json:"contract_address"`
-		ChainID     int64   `json:"chain_id"`
-		Creator     string  `json:"creator" binding:"required"`
-		Royalty     float64 `json:"royalty"`
-		Logo        string  `json:"logo"`
-		Website     string  `json:"website"`
-		Twitter     string  `json:"twitter"`
-		Discord     string  `json:"discord"`
+		Symbol       string  `json:"symbol"`
+		Description  string  `json:"description"`
+		ContractAddr string  `json:"contract_address"`
+		ChainID      int64   `json:"chain_id"`
+		Creator      string  `json:"creator" binding:"required"`
+		Royalty      float64 `json:"royalty"`
+		Logo         string  `json:"logo"`
+		Website      string  `json:"website"`
+		Twitter      string  `json:"twitter"`
+		Discord      string  `json:"discord"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -237,13 +237,13 @@ func (s *NFTService) GetCollection(c *gin.Context) {
 func (s *NFTService) MintNFT(c *gin.Context) {
 	var req struct {
 		CollectionID string `json:"collection_id" binding:"required"`
-		Owner       string `json:"owner" binding:"required"`
-		TokenURI    string `json:"token_uri" binding:"required"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		ImageURL    string `json:"image_url"`
-		Attributes  string `json:"attributes"`
-		ChainID     int64  `json:"chain_id"`
+		Owner        string `json:"owner" binding:"required"`
+		TokenURI     string `json:"token_uri" binding:"required"`
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		ImageURL     string `json:"image_url"`
+		Attributes   string `json:"attributes"`
+		ChainID      int64  `json:"chain_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -253,15 +253,15 @@ func (s *NFTService) MintNFT(c *gin.Context) {
 	token := &NFTToken{
 		TokenID:      uuid.New().String(),
 		CollectionID: req.CollectionID,
-		Owner:       req.Owner,
-		TokenURI:    req.TokenURI,
-		Name:        req.Name,
-		Description: req.Description,
-		ImageURL:    req.ImageURL,
-		Attributes:  req.Attributes,
-		ChainID:     req.ChainID,
-		Status:      "minted",
-		MintedAt:    time.Now().Unix(),
+		Owner:        req.Owner,
+		TokenURI:     req.TokenURI,
+		Name:         req.Name,
+		Description:  req.Description,
+		ImageURL:     req.ImageURL,
+		Attributes:   req.Attributes,
+		ChainID:      req.ChainID,
+		Status:       "minted",
+		MintedAt:     time.Now().Unix(),
 	}
 
 	if err := s.db.Create(token).Error; err != nil {
@@ -300,7 +300,7 @@ func (s *NFTService) ListNFT(c *gin.Context) {
 		Price        string `json:"price" binding:"required"`
 		PaymentToken string `json:"payment_token"`
 		ChainID      int64  `json:"chain_id"`
-		Duration     int   `json:"duration"` // hours
+		Duration     int    `json:"duration"` // hours
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -319,13 +319,13 @@ func (s *NFTService) ListNFT(c *gin.Context) {
 
 	listing := &NFTListing{
 		ListingID:    uuid.New().String(),
-		TokenID:     req.TokenID,
-		Seller:      req.Seller,
-		Price:       req.Price,
+		TokenID:      req.TokenID,
+		Seller:       req.Seller,
+		Price:        req.Price,
 		PaymentToken: paymentToken,
-		ChainID:     req.ChainID,
-		Status:      "active",
-		ExpiresAt:   expiresAt,
+		ChainID:      req.ChainID,
+		Status:       "active",
+		ExpiresAt:    expiresAt,
 	}
 
 	if err := s.db.Create(listing).Error; err != nil {
@@ -363,7 +363,7 @@ func (s *NFTService) MakeOffer(c *gin.Context) {
 		Price        string `json:"price" binding:"required"`
 		PaymentToken string `json:"payment_token"`
 		ChainID      int64  `json:"chain_id"`
-		Duration     int   `json:"duration"`
+		Duration     int    `json:"duration"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -377,13 +377,13 @@ func (s *NFTService) MakeOffer(c *gin.Context) {
 
 	offer := &NFTOffer{
 		OfferID:      uuid.New().String(),
-		TokenID:     req.TokenID,
-		Offerer:     req.Offerer,
-		Price:       req.Price,
+		TokenID:      req.TokenID,
+		Offerer:      req.Offerer,
+		Price:        req.Price,
 		PaymentToken: req.PaymentToken,
-		ChainID:     req.ChainID,
-		Status:      "pending",
-		ExpiresAt:   expiresAt,
+		ChainID:      req.ChainID,
+		Status:       "pending",
+		ExpiresAt:    expiresAt,
 	}
 
 	if err := s.db.Create(offer).Error; err != nil {
@@ -458,10 +458,10 @@ func (s *NFTService) GetStats(c *gin.Context) {
 	s.db.Model(&NFTOffer{}).Where("status = ?", "pending").Count(&totalOffers)
 
 	c.JSON(200, gin.H{
-		"collections":   totalCollections,
-		"minted":       totalMinted,
-		"listings":     totalListings,
-		"offers":       totalOffers,
+		"collections": totalCollections,
+		"minted":      totalMinted,
+		"listings":    totalListings,
+		"offers":      totalOffers,
 	})
 }
 

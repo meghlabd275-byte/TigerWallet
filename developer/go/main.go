@@ -12,33 +12,33 @@ import (
 
 // API Key for developers
 type APIKey struct {
-	ID          string `json:"id"`
-	DeveloperID string `json:"developerId"`
-	Key        string `json:"key"`
-	Name       string `json:"name"`
+	ID          string   `json:"id"`
+	DeveloperID string   `json:"developerId"`
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
 	Permissions []string `json:"permissions"`
-	RateLimit  int    `json:"rateLimit"`
-	CreatedAt  int64  `json:"createdAt"`
-	ExpiresAt int64  `json:"expiresAt"`
+	RateLimit   int      `json:"rateLimit"`
+	CreatedAt   int64    `json:"createdAt"`
+	ExpiresAt   int64    `json:"expiresAt"`
 }
 
 // Developer profile
 type Developer struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Email     string   `json:"email"`
 	APIKeys   []string `json:"apiKeys"`
 	Apps      []string `json:"apps"`
-	CreatedAt int64   `json:"createdAt"`
+	CreatedAt int64    `json:"createdAt"`
 }
 
 // SDK package
 type SDKPackage struct {
 	Name        string `json:"name"`
-	Version    string `json:"version"`
-	Language   string `json:"language"`
+	Version     string `json:"version"`
+	Language    string `json:"language"`
 	DownloadURL string `json:"downloadUrl"`
-	Checksum  string `json:"checksum"`
+	Checksum    string `json:"checksum"`
 }
 
 // Developer platform service
@@ -53,7 +53,7 @@ func NewDeveloperService() *DeveloperService {
 	svc := &DeveloperService{
 		developers: make(map[string]*Developer),
 		apiKeys:    make(map[string]*APIKey),
-		sdks:      make(map[string]*SDKPackage),
+		sdks:       make(map[string]*SDKPackage),
 	}
 	svc.initSDKs()
 	return svc
@@ -129,7 +129,7 @@ func (s *DeveloperService) createAPIKey(w http.ResponseWriter, r *http.Request) 
 	_ = vars["id"]
 
 	var req struct {
-		Name       string   `json:"name"`
+		Name        string   `json:"name"`
 		Permissions []string `json:"permissions"`
 	}
 

@@ -214,22 +214,22 @@ func (h *PairHandler) UpdatePair(c *gin.Context) {
 	// Permissive binding: accept both snake_case and camelCase keys (the admin
 	// frontend sends camelCase such as minTradeAmount/maxTradeAmount).
 	var req struct {
-		PairName           string  `json:"pair_name"`
-		PairNameCamel      string  `json:"pairName"`
-		MinTradeAmount     float64 `json:"min_trade_amount"`
-		MinTradeAmountCam  float64 `json:"minTradeAmount"`
-		MaxTradeAmount     float64 `json:"max_trade_amount"`
-		MaxTradeAmountCam  float64 `json:"maxTradeAmount"`
-		MakerFee           float64 `json:"maker_fee"`
-		MakerFeeCamel      float64 `json:"makerFee"`
-		TakerFee           float64 `json:"taker_fee"`
-		TakerFeeCamel      float64 `json:"takerFee"`
-		PricePrecision     int     `json:"price_precision"`
-		QuantityPrecision  int     `json:"quantity_precision"`
-		MinPrice           float64 `json:"min_price"`
-		MaxPrice           float64 `json:"max_price"`
-		IsActive           *bool   `json:"is_active"`
-		Active             *bool   `json:"active"`
+		PairName          string  `json:"pair_name"`
+		PairNameCamel     string  `json:"pairName"`
+		MinTradeAmount    float64 `json:"min_trade_amount"`
+		MinTradeAmountCam float64 `json:"minTradeAmount"`
+		MaxTradeAmount    float64 `json:"max_trade_amount"`
+		MaxTradeAmountCam float64 `json:"maxTradeAmount"`
+		MakerFee          float64 `json:"maker_fee"`
+		MakerFeeCamel     float64 `json:"makerFee"`
+		TakerFee          float64 `json:"taker_fee"`
+		TakerFeeCamel     float64 `json:"takerFee"`
+		PricePrecision    int     `json:"price_precision"`
+		QuantityPrecision int     `json:"quantity_precision"`
+		MinPrice          float64 `json:"min_price"`
+		MaxPrice          float64 `json:"max_price"`
+		IsActive          *bool   `json:"is_active"`
+		Active            *bool   `json:"active"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

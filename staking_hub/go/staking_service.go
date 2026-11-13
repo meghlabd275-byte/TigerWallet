@@ -22,7 +22,7 @@ import (
 
 // Configuration
 type StakingConfig struct {
-	ServerPort  string `json:"server_port"`
+	ServerPort string `json:"server_port"`
 	DBHost     string `json:"db_host"`
 	DBPort     string `json:"db_port"`
 	DBUser     string `json:"db_user"`
@@ -34,40 +34,40 @@ type StakingConfig struct {
 
 // Validator represents a staking validator
 type Validator struct {
-	ID             uint   `gorm:"primaryKey" json:"id"`
-	ValidatorAddr  string `gorm:"uniqueIndex" json:"validator_addr"`
-	Name          string `json:"name"`
-	ChainID       int64  `json:"chain_id"`
-	Commission    int64  `json:"commission"`
-	MinStake      string `json:"min_stake"`
-	MaxStake      string `json:"max_stake"`
+	ID            uint    `gorm:"primaryKey" json:"id"`
+	ValidatorAddr string  `gorm:"uniqueIndex" json:"validator_addr"`
+	Name          string  `json:"name"`
+	ChainID       int64   `json:"chain_id"`
+	Commission    int64   `json:"commission"`
+	MinStake      string  `json:"min_stake"`
+	MaxStake      string  `json:"max_stake"`
 	APY           float64 `json:"apy"`
-	TotalStake    string `json:"total_stake"`
+	TotalStake    string  `json:"total_stake"`
 	Delegators    int64   `json:"delegators"`
-	IsActive     bool   `json:"is_active"`
-	Jailed        bool   `json:"jailed"`
+	IsActive      bool    `json:"is_active"`
+	Jailed        bool    `json:"jailed"`
 }
 
 // StakePosition represents a user's stake
 type StakePosition struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
 	PositionID     string    `gorm:"uniqueIndex" json:"position_id"`
 	UserAddress    string    `gorm:"index" json:"user_address"`
 	ValidatorAddr  string    `json:"validator_addr"`
 	ChainID        int64     `json:"chain_id"`
-	Token         string    `json:"token"`
-	StakedAmount  string    `json:"staked_amount"`
-	RewardsClaimed string   `json:"rewards_claimed"`
-	RewardsPending string   `json:"rewards_pending"`
-	LockPeriod     int64    `json:"lock_period"`
+	Token          string    `json:"token"`
+	StakedAmount   string    `json:"staked_amount"`
+	RewardsClaimed string    `json:"rewards_claimed"`
+	RewardsPending string    `json:"rewards_pending"`
+	LockPeriod     int64     `json:"lock_period"`
 	StartTime      time.Time `json:"start_time"`
 	UnlockTime     time.Time `json:"unlock_time"`
 	// TxHash is the hash returned by the node for the stake/unstake
 	// transaction. Empty means nothing has been broadcast yet.
-	TxHash        string    `json:"tx_hash"`
-	Status        string   `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	TxHash    string    `json:"tx_hash"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Staking Stats
@@ -80,20 +80,20 @@ type StakingStats struct {
 
 // ClaimRecord represents a claim transaction
 type ClaimRecord struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	ClaimID      string    `gorm:"uniqueIndex" json:"claim_id"`
-	PositionID   string    `json:"position_id"`
-	UserAddr    string    `json:"user_address"`
-	Amount      string    `json:"amount"`
-	ChainID     int64     `json:"chain_id"`
-	TxHash      string    `json:"tx_hash"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	ClaimID    string    `gorm:"uniqueIndex" json:"claim_id"`
+	PositionID string    `json:"position_id"`
+	UserAddr   string    `json:"user_address"`
+	Amount     string    `json:"amount"`
+	ChainID    int64     `json:"chain_id"`
+	TxHash     string    `json:"tx_hash"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Staking Service
 type StakingService struct {
-	db      *gorm.DB
+	db     *gorm.DB
 	redis  *redis.Client
 	config StakingConfig
 	// onchain is nil when the on-chain integration is not configured; in that
@@ -136,8 +136,8 @@ func NewStakingService(cfg StakingConfig) (*StakingService, error) {
 
 	return &StakingService{
 		db:      db,
-		redis:  rdb,
-		config: cfg,
+		redis:   rdb,
+		config:  cfg,
 		onchain: onchain,
 	}, nil
 }
@@ -160,17 +160,17 @@ func (s *StakingService) Stake(req StakeRequest) (*StakePosition, error) {
 	position := &StakePosition{
 		PositionID:     positionID,
 		UserAddress:    req.UserAddress,
-		ValidatorAddr: req.ValidatorAddr,
-		ChainID:       req.ChainID,
-		Token:        req.Token,
-		StakedAmount: req.Amount,
+		ValidatorAddr:  req.ValidatorAddr,
+		ChainID:        req.ChainID,
+		Token:          req.Token,
+		StakedAmount:   req.Amount,
 		RewardsClaimed: "0",
 		RewardsPending: "0",
-		LockPeriod:    req.LockPeriod,
-		StartTime:    time.Now(),
-		UnlockTime:   time.Now().Add(time.Duration(req.LockPeriod) * 24 * time.Hour),
-		Status:       "pending_broadcast",
-		CreatedAt:    time.Now(),
+		LockPeriod:     req.LockPeriod,
+		StartTime:      time.Now(),
+		UnlockTime:     time.Now().Add(time.Duration(req.LockPeriod) * 24 * time.Hour),
+		Status:         "pending_broadcast",
+		CreatedAt:      time.Now(),
 	}
 
 	if s.onchain != nil {
@@ -268,10 +268,10 @@ func (s *StakingService) ClaimRewards(positionID string) (*ClaimRecord, error) {
 	claim := &ClaimRecord{
 		ClaimID:    claimID,
 		PositionID: positionID,
-		UserAddr:  position.UserAddress,
-		Amount:   position.RewardsPending,
-		ChainID:  position.ChainID,
-		Status:   "pending_broadcast",
+		UserAddr:   position.UserAddress,
+		Amount:     position.RewardsPending,
+		ChainID:    position.ChainID,
+		Status:     "pending_broadcast",
 	}
 
 	if s.onchain != nil {
@@ -349,13 +349,13 @@ func (s *StakingService) GetUserStats(userAddress string) (*StakingStats, error)
 // Request types
 
 type StakeRequest struct {
-	UserAddress    string  `json:"user_address" binding:"required"`
+	UserAddress   string  `json:"user_address" binding:"required"`
 	ValidatorAddr string  `json:"validator_addr" binding:"required"`
 	ChainID       int64   `json:"chain_id" binding:"required"`
-	Token        string  `json:"token" binding:"required"`
-	Amount       string  `json:"amount" binding:"required"`
+	Token         string  `json:"token" binding:"required"`
+	Amount        string  `json:"amount" binding:"required"`
 	LockPeriod    int64   `json:"lock_period"`
-	APY          float64 `json:"apy"`
+	APY           float64 `json:"apy"`
 }
 
 // Handlers
@@ -473,13 +473,13 @@ func addStrings(a, b string) string {
 func main() {
 	cfg := StakingConfig{
 		ServerPort: getEnv("STAKING_SERVER_PORT", "8084"),
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "postgres"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: mustEnv("DB_PASSWORD"),
-		DBName:    getEnv("DB_NAME", "staking_db"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
+		DBName:     getEnv("DB_NAME", "staking_db"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
 	}
 
 	service, err := NewStakingService(cfg)

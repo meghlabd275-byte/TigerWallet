@@ -24,17 +24,17 @@ func NewOnRampHandler(db *gorm.DB) *OnRampHandler {
 
 // OnRampOrder mirrors the onramp_orders table.
 type OnRampOrder struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserID        *string   `gorm:"index" json:"user_id"`
-	Provider      string    `gorm:"not null" json:"provider"`
-	FiatCurrency  string    `gorm:"not null" json:"fiat_currency"`
-	CryptoToken   string    `gorm:"not null" json:"crypto_token"`
-	FiatAmount    float64   `gorm:"not null;default:0" json:"fiat_amount"`
-	CryptoAmount  float64   `gorm:"not null;default:0" json:"crypto_amount"`
-	Status        string    `gorm:"not null;default:'pending'" json:"status"`
-	PaymentRef    *string   `json:"payment_ref"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserID       *string   `gorm:"index" json:"user_id"`
+	Provider     string    `gorm:"not null" json:"provider"`
+	FiatCurrency string    `gorm:"not null" json:"fiat_currency"`
+	CryptoToken  string    `gorm:"not null" json:"crypto_token"`
+	FiatAmount   float64   `gorm:"not null;default:0" json:"fiat_amount"`
+	CryptoAmount float64   `gorm:"not null;default:0" json:"crypto_amount"`
+	Status       string    `gorm:"not null;default:'pending'" json:"status"`
+	PaymentRef   *string   `json:"payment_ref"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 func (OnRampOrder) TableName() string { return "onramp_orders" }

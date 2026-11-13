@@ -311,14 +311,14 @@ func fetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 		Status  string `json:"status"`
 		Message string `json:"message"`
 		Result  []struct {
-			Hash        string `json:"hash"`
-			From        string `json:"from"`
-			To          string `json:"to"`
-			Value       string `json:"value"`
-			TimeStamp   string `json:"timeStamp"`
-			IsError     string `json:"isError"`
-			GasUsed     string `json:"gasUsed"`
-			Status      string `json:"status"`
+			Hash          string `json:"hash"`
+			From          string `json:"from"`
+			To            string `json:"to"`
+			Value         string `json:"value"`
+			TimeStamp     string `json:"timeStamp"`
+			IsError       string `json:"isError"`
+			GasUsed       string `json:"gasUsed"`
+			Status        string `json:"status"`
 			Confirmations string `json:"confirmations"`
 		} `json:"result"`
 	}

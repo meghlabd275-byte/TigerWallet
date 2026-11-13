@@ -106,10 +106,10 @@ func TestASignatureWithAHighSScalarIsRejected(t *testing.T) {
 
 func TestMalformedSignaturesAreRejected(t *testing.T) {
 	cases := map[string]string{
-		"empty":            "",
-		"not hex":          "0xzzzz",
-		"too short":        "0x1234",
-		"too long":         "0x" + strings.Repeat("ab", 66),
+		"empty":             "",
+		"not hex":           "0xzzzz",
+		"too short":         "0x1234",
+		"too long":          "0x" + strings.Repeat("ab", 66),
 		"missing prefix ok": "", // replaced below
 	}
 	delete(cases, "missing prefix ok")

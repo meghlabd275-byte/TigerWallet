@@ -193,5 +193,7 @@ func (s *Svc) reviewOnrampOrder(c *gin.Context, status, action string) {
 	c.JSON(http.StatusOK, gin.H{action: id})
 }
 
-func (s *Svc) ApproveOnrampOrder(c *gin.Context) { s.reviewOnrampOrder(c, "completed", "onramp.approve") }
-func (s *Svc) RejectOnrampOrder(c *gin.Context)  { s.reviewOnrampOrder(c, "rejected", "onramp.reject") }
+func (s *Svc) ApproveOnrampOrder(c *gin.Context) {
+	s.reviewOnrampOrder(c, "completed", "onramp.approve")
+}
+func (s *Svc) RejectOnrampOrder(c *gin.Context) { s.reviewOnrampOrder(c, "rejected", "onramp.reject") }

@@ -264,8 +264,8 @@ impl TransactionAnalyzer {
         }
 
         if self.config.enable_phishing_check && is_phishing_address(&tx.to) {
-                report.is_malicious = true;
-                report.risk_score += 100;
+            report.is_malicious = true;
+            report.risk_score += 100;
             report
                 .warnings
                 .push("Recipient address flagged as phishing".to_string());

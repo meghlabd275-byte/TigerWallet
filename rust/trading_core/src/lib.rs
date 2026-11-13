@@ -211,11 +211,11 @@ impl Order {
             update_time: now,
         }
     }
-    
+
     pub fn is_fulfilled(&self) -> bool {
         self.filled >= self.size
     }
-    
+
     pub fn remaining(&self) -> Quantity {
         self.size - self.filled
     }
@@ -259,7 +259,7 @@ impl Position {
         } else {
             entry_price * (1.0 + 1.0 / leverage as f64)
         };
-        
+
         Self {
             id,
             user_id,
@@ -277,18 +277,18 @@ impl Position {
             open_time: current_timestamp(),
         }
     }
-    
+
     pub fn calculate_pnl(&mut self) {
         let price_diff = if self.side == PositionSide::Long {
             self.mark_price - self.entry_price
         } else {
             self.entry_price - self.mark_price
         };
-        
+
         self.pnl = price_diff * self.size;
         self.pnl_percent = (self.pnl / self.margin) * 100.0;
     }
-    
+
     pub fn is_liquidated(&self) -> bool {
         if self.side == PositionSide::Long {
             self.mark_price <= self.liquidation_price
@@ -319,14 +319,15 @@ impl TradingEngine {
         };
         engine
     }
-    
+
     /// Register a market from operator configuration.
     ///
     /// The engine starts empty. A pair exists only once an operator has
     /// listed it, which is what makes the venue's market list truthful.
     pub fn add_pair(&mut self, config: TradingPairConfig) -> &TradingPair {
         let symbol = config.symbol.clone();
-        self.pairs.insert(symbol.clone(), TradingPair::from_config(config));
+        self.pairs
+            .insert(symbol.clone(), TradingPair::from_config(config));
         self.pairs.get(&symbol).expect("pair was just inserted")
     }
 
@@ -355,19 +356,19 @@ impl TradingEngine {
             None => false,
         }
     }
-    
+
     pub fn get_pair(&self, symbol: &str) -> Option<&TradingPair> {
         self.pairs.get(symbol)
     }
-    
+
     pub fn get_pre_installed_pairs(&self) -> Vec<&TradingPair> {
         self.pairs.values().filter(|p| p.is_pre_installed).collect()
     }
-    
+
     pub fn get_total_pairs(&self) -> usize {
         self.pairs.len()
     }
-    
+
     pub fn create_order(
         &mut self,
         user_id: UserID,
@@ -391,9 +392,9 @@ impl TradingEngine {
         if leverage < 1 {
             return None;
         }
-        
+
         let order_id = self.next_order_id.fetch_add(1, Ordering::Relaxed);
-        
+
         let order = Order::new(
             order_id,
             user_id,
@@ -404,11 +405,11 @@ impl TradingEngine {
             price,
             leverage,
         );
-        
+
         self.orders.insert(order_id, order);
         Some(order_id)
     }
-    
+
     pub fn cancel_order(&mut self, order_id: OrderID) -> bool {
         if let Some(order) = self.orders.get_mut(&order_id) {
             if order.status == OrderStatus::Open {
@@ -419,11 +420,11 @@ impl TradingEngine {
         }
         false
     }
-    
+
     pub fn get_order(&self, order_id: OrderID) -> Option<&Order> {
         self.orders.get(&order_id)
     }
-    
+
     pub fn open_position(
         &mut self,
         user_id: UserID,
@@ -434,9 +435,9 @@ impl TradingEngine {
         leverage: i32,
     ) -> Option<OrderID> {
         let margin = (size * price) / leverage as f64;
-        
+
         let position_id = self.next_order_id.fetch_add(1, Ordering::Relaxed);
-        
+
         let position = Position::new(
             position_id,
             user_id,
@@ -447,24 +448,24 @@ impl TradingEngine {
             leverage,
             margin,
         );
-        
+
         let key = format!("{}_{}", user_id, symbol);
         self.positions.insert(key, position);
         Some(position_id)
     }
-    
+
     pub fn get_position(&self, user_id: UserID, symbol: &str) -> Option<&Position> {
         let key = format!("{}_{}", user_id, symbol);
         self.positions.get(&key)
     }
-    
+
     pub fn get_user_positions(&self, user_id: UserID) -> Vec<&Position> {
         self.positions
             .values()
             .filter(|p| p.user_id == user_id)
             .collect()
     }
-    
+
     /// Apply a mark price from the market data feed.
     ///
     /// The 24h change is measured against the price reported 24 hours ago. It
@@ -609,7 +610,13 @@ mod tests {
     fn create_order_rejects_unknown_market() {
         let mut engine = TradingEngine::new();
         let order_id = engine.create_order(
-            1, "NOPE/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 10.0, 10,
+            1,
+            "NOPE/USDT",
+            OrderSide::Buy,
+            OrderType::Limit,
+            1.0,
+            10.0,
+            10,
         );
         assert!(order_id.is_none());
     }
@@ -618,7 +625,13 @@ mod tests {
     fn create_order_accepts_a_valid_limit_order() {
         let mut engine = engine_with_btc();
         let order_id = engine.create_order(
-            1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 43000.0, 10,
+            1,
+            "BTC/USDT",
+            OrderSide::Buy,
+            OrderType::Limit,
+            1.0,
+            43000.0,
+            10,
         );
         assert!(order_id.is_some());
         let order = engine.get_order(order_id.unwrap()).expect("order stored");
@@ -638,15 +651,39 @@ mod tests {
 
         // Below the minimum.
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 0.001, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                0.001,
+                43000.0,
+                10
+            )
             .is_none());
         // Above the maximum.
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 10.0, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                10.0,
+                43000.0,
+                10
+            )
             .is_none());
         // Inside the band.
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                43000.0,
+                10
+            )
             .is_some());
     }
 
@@ -654,10 +691,26 @@ mod tests {
     fn create_order_rejects_non_positive_price_on_limit_orders() {
         let mut engine = engine_with_btc();
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 0.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                0.0,
+                10
+            )
             .is_none());
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, -5.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                -5.0,
+                10
+            )
             .is_none());
     }
 
@@ -667,12 +720,28 @@ mod tests {
         assert!(engine.set_pair_status("BTC/USDT", false));
 
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                43000.0,
+                10
+            )
             .is_none());
 
         assert!(engine.set_pair_status("BTC/USDT", true));
         assert!(engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                43000.0,
+                10
+            )
             .is_some());
     }
 
@@ -680,7 +749,15 @@ mod tests {
     fn remove_pair_cancels_its_open_orders() {
         let mut engine = engine_with_btc();
         let order_id = engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                43000.0,
+                10,
+            )
             .expect("order created");
 
         assert!(engine.remove_pair("BTC/USDT"));
@@ -689,7 +766,10 @@ mod tests {
         let order = engine.get_order(order_id).expect("order retained");
         assert_eq!(order.status, OrderStatus::Cancelled);
 
-        assert!(!engine.remove_pair("BTC/USDT"), "second removal must report false");
+        assert!(
+            !engine.remove_pair("BTC/USDT"),
+            "second removal must report false"
+        );
     }
 
     #[test]
@@ -705,7 +785,11 @@ mod tests {
 
         let pair = engine.get_pair("BTC/USDT").unwrap();
         assert_eq!(pair.price, 42000.0);
-        assert!((pair.change_24h - 5.0).abs() < 1e-9, "change was {}", pair.change_24h);
+        assert!(
+            (pair.change_24h - 5.0).abs() < 1e-9,
+            "change was {}",
+            pair.change_24h
+        );
         assert_eq!(pair.high_24h, 44000.0);
         assert_eq!(pair.low_24h, 39000.0);
         assert_eq!(pair.volume_24h, 1234.0);
@@ -732,21 +816,39 @@ mod tests {
         let position = engine.get_position(7, "BTC/USDT").expect("position exists");
         assert_eq!(position.mark_price, 44000.0);
         // (44000 - 43000) * 2 = 2000
-        assert!((position.pnl - 2000.0).abs() < 1e-9, "pnl was {}", position.pnl);
+        assert!(
+            (position.pnl - 2000.0).abs() < 1e-9,
+            "pnl was {}",
+            position.pnl
+        );
         assert!(!position.is_liquidated());
     }
 
     #[test]
     fn position_pnl_long_and_short_have_opposite_signs() {
         let mut long = Position::new(
-            1, 1, "BTC/USDT".to_string(), PositionSide::Long, 1.0, 43000.0, 10, 4300.0,
+            1,
+            1,
+            "BTC/USDT".to_string(),
+            PositionSide::Long,
+            1.0,
+            43000.0,
+            10,
+            4300.0,
         );
         long.mark_price = 44000.0;
         long.calculate_pnl();
         assert!(long.pnl > 0.0);
 
         let mut short = Position::new(
-            2, 1, "BTC/USDT".to_string(), PositionSide::Short, 1.0, 43000.0, 10, 4300.0,
+            2,
+            1,
+            "BTC/USDT".to_string(),
+            PositionSide::Short,
+            1.0,
+            43000.0,
+            10,
+            4300.0,
         );
         short.mark_price = 44000.0;
         short.calculate_pnl();
@@ -756,12 +858,26 @@ mod tests {
     #[test]
     fn liquidation_price_brackets_the_entry() {
         let long = Position::new(
-            1, 1, "BTC/USDT".to_string(), PositionSide::Long, 1.0, 43000.0, 10, 4300.0,
+            1,
+            1,
+            "BTC/USDT".to_string(),
+            PositionSide::Long,
+            1.0,
+            43000.0,
+            10,
+            4300.0,
         );
         assert!(long.liquidation_price < long.entry_price);
 
         let short = Position::new(
-            2, 1, "BTC/USDT".to_string(), PositionSide::Short, 1.0, 43000.0, 10, 4300.0,
+            2,
+            1,
+            "BTC/USDT".to_string(),
+            PositionSide::Short,
+            1.0,
+            43000.0,
+            10,
+            4300.0,
         );
         assert!(short.liquidation_price > short.entry_price);
     }
@@ -769,13 +885,27 @@ mod tests {
     #[test]
     fn liquidation_triggers_when_the_mark_crosses_the_price() {
         let mut long = Position::new(
-            1, 1, "BTC/USDT".to_string(), PositionSide::Long, 1.0, 43000.0, 10, 4300.0,
+            1,
+            1,
+            "BTC/USDT".to_string(),
+            PositionSide::Long,
+            1.0,
+            43000.0,
+            10,
+            4300.0,
         );
         long.mark_price = long.liquidation_price - 1.0;
         assert!(long.is_liquidated());
 
         let mut short = Position::new(
-            2, 1, "BTC/USDT".to_string(), PositionSide::Short, 1.0, 43000.0, 10, 4300.0,
+            2,
+            1,
+            "BTC/USDT".to_string(),
+            PositionSide::Short,
+            1.0,
+            43000.0,
+            10,
+            4300.0,
         );
         short.mark_price = short.liquidation_price + 1.0;
         assert!(short.is_liquidated());
@@ -785,11 +915,22 @@ mod tests {
     fn cancel_order_only_affects_open_orders() {
         let mut engine = engine_with_btc();
         let order_id = engine
-            .create_order(1, "BTC/USDT", OrderSide::Buy, OrderType::Limit, 1.0, 43000.0, 10)
+            .create_order(
+                1,
+                "BTC/USDT",
+                OrderSide::Buy,
+                OrderType::Limit,
+                1.0,
+                43000.0,
+                10,
+            )
             .expect("order created");
 
         assert!(engine.cancel_order(order_id));
-        assert_eq!(engine.get_order(order_id).unwrap().status, OrderStatus::Cancelled);
+        assert_eq!(
+            engine.get_order(order_id).unwrap().status,
+            OrderStatus::Cancelled
+        );
         // A second cancel must report failure, not silently succeed.
         assert!(!engine.cancel_order(order_id));
     }

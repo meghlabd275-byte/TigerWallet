@@ -24,7 +24,7 @@ type MetricsCollector struct {
 	totalLatency  time.Duration
 
 	// Rolling window used for requests-per-second.
-	windowStart   time.Time
+	windowStart    time.Time
 	windowRequests uint64
 
 	// Current second and the last completed second, so a scrape always sees a

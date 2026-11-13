@@ -73,7 +73,14 @@ jobs:
       # tests and silently reports success. Install the Foundry dependencies
       # (lib/ is gitignored) and run the real suite.
       - run: git clone --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std lib/forge-std
+      # `forge build --sizes` alone fails on the vendored eth-infinitism
+      # reference EntryPoint (>EIP-170), which this repo never deploys —
+      # production calls the canonical on-chain EntryPoint and only tests
+      # instantiate the vendored copy. The gate below still fails on any
+      # TigerWallet contract that outgrows the limit.
       - run: forge build --sizes
+        continue-on-error: true
+      - run: python3 scripts/check_contract_sizes.py
       - run: forge test -vv
 
       # TigerSwap DEX tree (contracts/ + test/CoreTest.sol) is a separate

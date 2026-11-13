@@ -58,25 +58,25 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 	r.Use(func() gin.HandlerFunc {
-	// CORS: an explicit origin allowlist. A wildcard cannot be combined with
-	// AllowCredentials (browsers reject it), so this previously blocked
-	// credentialed cross-origin calls while appearing to permit them. With no
-	// allowlist configured the API serves same-origin only.
-	corsCfg := cors.Config{
-		AllowOrigins:     cfg.CORSAllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}
-	if len(cfg.CORSAllowedOrigins) == 0 {
-		// gin-contrib/cors rejects a config with no origins at all, so deny
-		// explicitly rather than panicking on an unconfigured deployment.
-		corsCfg.AllowOriginFunc = func(string) bool { return false }
-	}
-	return cors.New(corsCfg)
-}())
+		// CORS: an explicit origin allowlist. A wildcard cannot be combined with
+		// AllowCredentials (browsers reject it), so this previously blocked
+		// credentialed cross-origin calls while appearing to permit them. With no
+		// allowlist configured the API serves same-origin only.
+		corsCfg := cors.Config{
+			AllowOrigins:     cfg.CORSAllowedOrigins,
+			AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+			AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
+			ExposeHeaders:    []string{"Content-Length"},
+			AllowCredentials: true,
+			MaxAge:           12 * time.Hour,
+		}
+		if len(cfg.CORSAllowedOrigins) == 0 {
+			// gin-contrib/cors rejects a config with no origins at all, so deny
+			// explicitly rather than panicking on an unconfigured deployment.
+			corsCfg.AllowOriginFunc = func(string) bool { return false }
+		}
+		return cors.New(corsCfg)
+	}())
 
 	r.GET("/health", h.Health)
 
@@ -145,8 +145,8 @@ func main() {
 			sa.POST("/licenses/:id/suspend", h.SuspendLicense)
 			sa.POST("/licenses/:id/halt", h.HaltLicense)
 			sa.POST("/licenses/:id/revoke", h.RevokeLicense)
-			sa.POST("/licenses/:id/resume", h.ResumeLicense) // SuperAdmin-only resume
-				sa.POST("/licenses/:id/clear-instance", h.ClearLicenseInstance) // SuperAdmin-only rebind
+			sa.POST("/licenses/:id/resume", h.ResumeLicense)                // SuperAdmin-only resume
+			sa.POST("/licenses/:id/clear-instance", h.ClearLicenseInstance) // SuperAdmin-only rebind
 
 			// Feature flags (per-fetcher granularity)
 			sa.POST("/feature-flags", h.SetFeatureFlag)

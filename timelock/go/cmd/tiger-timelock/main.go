@@ -1,7 +1,7 @@
 /**
  * TigerWallet Timelock Service
  * Delayed Transaction Execution System
- * 
+ *
  * Features:
  * - Scheduled transactions
  * - Multi-sig timelock
@@ -44,17 +44,17 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort      string
-	DBHost          string
-	DBPort          string
-	DBUser          string
-	DBPassword      string
-	DBName          string
-	RedisHost       string
-	RedisPort       string
-	MinDelay        int // seconds
-	DefaultDelay    int // seconds
-	MaxDelay        int // seconds
+	ServerPort   string
+	DBHost       string
+	DBPort       string
+	DBUser       string
+	DBPassword   string
+	DBName       string
+	RedisHost    string
+	RedisPort    string
+	MinDelay     int // seconds
+	DefaultDelay int // seconds
+	MaxDelay     int // seconds
 }
 
 func LoadConfig() *Config {
@@ -67,9 +67,9 @@ func LoadConfig() *Config {
 		DBName:       getEnv("DB_NAME", "tigerwallet"),
 		RedisHost:    getEnv("REDIS_HOST", "localhost"),
 		RedisPort:    getEnv("REDIS_PORT", "6379"),
-		MinDelay:     60,        // 1 minute minimum
-		DefaultDelay: 86400,     // 24 hours default
-		MaxDelay:     2592000,   // 30 days maximum
+		MinDelay:     60,      // 1 minute minimum
+		DefaultDelay: 86400,   // 24 hours default
+		MaxDelay:     2592000, // 30 days maximum
 	}
 }
 
@@ -96,72 +96,72 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type TimelockTransaction struct {
-	ID                uint           `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
-	TxID              string         `gorm:"uniqueIndex;size:36" json:"tx_id"`
-	Proposer          string         `gorm:"index" json:"proposer"`
-	ProposerID        uint            `gorm:"index" json:"proposer_id"`
-	Target            string         `json:"target"` // Contract address
-	ChainID           int            `json:"chain_id"`
-	Value             string         `json:"value"` // Amount in wei
-	Data              string         `json:"data"` // Calldata
-	Sig               string         `json:"sig"` // Function signature
-	Description       string         `json:"description"`
-	Delay             int            `json:"delay"` // in seconds
-	ETA               time.Time      `json:"eta"` // Estimated time of execution
-	ExecuteAfter      time.Time      `json:"execute_after"`
-	Status            string         `json:"status"` // pending, queued, executed, cancelled, expired
-	ExecutedAt        *time.Time     `json:"executed_at"`
-	ExecutedBy        string         `json:"executed_by"`
-	ExecutionTxHash   string         `gorm:"size:66" json:"execution_tx_hash"`
-	CancelledAt       *time.Time     `json:"cancelled_at"`
-	CancelledBy       string         `json:"cancelled_by"`
-	CancelReason      string         `json:"cancel_reason"`
-	BlockNumber       int64          `json:"block_number"`
-	GasUsed           string         `json:"gas_used"`
-	FailureReason     string         `json:"failure_reason"`
+	ID              uint           `gorm:"primarykey" json:"id"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `gorm:"index" json:"-"`
+	TxID            string         `gorm:"uniqueIndex;size:36" json:"tx_id"`
+	Proposer        string         `gorm:"index" json:"proposer"`
+	ProposerID      uint           `gorm:"index" json:"proposer_id"`
+	Target          string         `json:"target"` // Contract address
+	ChainID         int            `json:"chain_id"`
+	Value           string         `json:"value"` // Amount in wei
+	Data            string         `json:"data"`  // Calldata
+	Sig             string         `json:"sig"`   // Function signature
+	Description     string         `json:"description"`
+	Delay           int            `json:"delay"` // in seconds
+	ETA             time.Time      `json:"eta"`   // Estimated time of execution
+	ExecuteAfter    time.Time      `json:"execute_after"`
+	Status          string         `json:"status"` // pending, queued, executed, cancelled, expired
+	ExecutedAt      *time.Time     `json:"executed_at"`
+	ExecutedBy      string         `json:"executed_by"`
+	ExecutionTxHash string         `gorm:"size:66" json:"execution_tx_hash"`
+	CancelledAt     *time.Time     `json:"cancelled_at"`
+	CancelledBy     string         `json:"cancelled_by"`
+	CancelReason    string         `json:"cancel_reason"`
+	BlockNumber     int64          `json:"block_number"`
+	GasUsed         string         `json:"gas_used"`
+	FailureReason   string         `json:"failure_reason"`
 }
 
 type TimelockAdmin struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	AdminAddress      string    `gorm:"uniqueIndex;size:42" json:"admin_address"`
-	AdminID           uint      `gorm:"index" json:"admin_id"`
-	Role              string    `json:"role"` // executor, proposer, canceller
-	IsActive          bool      `json:"is_active"`
-	Threshold         int       `json:"threshold"` // Required signatures
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	AdminAddress string    `gorm:"uniqueIndex;size:42" json:"admin_address"`
+	AdminID      uint      `gorm:"index" json:"admin_id"`
+	Role         string    `json:"role"` // executor, proposer, canceller
+	IsActive     bool      `json:"is_active"`
+	Threshold    int       `json:"threshold"` // Required signatures
 }
 
 type TimelockQueue struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	QueueID           string    `gorm:"uniqueIndex;size:36" json:"queue_id"`
-	Name              string    `json:"name"`
-	Delay             int       `json:"delay"` // seconds
-	GracePeriod       int       `json:"grace_period"` // seconds after ETA
-	IsActive          bool      `json:"is_active"`
-	MinDelay          int       `json:"min_delay"`
-	MaxDelay          int       `json:"max_delay"`
+	ID          uint      `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	QueueID     string    `gorm:"uniqueIndex;size:36" json:"queue_id"`
+	Name        string    `json:"name"`
+	Delay       int       `json:"delay"`        // seconds
+	GracePeriod int       `json:"grace_period"` // seconds after ETA
+	IsActive    bool      `json:"is_active"`
+	MinDelay    int       `json:"min_delay"`
+	MaxDelay    int       `json:"max_delay"`
 }
 
 type TimelockSignatures struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	TxID              string    `gorm:"index" json:"tx_id"`
-	AdminAddress      string    `gorm:"index" json:"admin_address"`
-	Signature         string    `json:"signature"`
-	SignedAt          time.Time `json:"signed_at"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	TxID         string    `gorm:"index" json:"tx_id"`
+	AdminAddress string    `gorm:"index" json:"admin_address"`
+	Signature    string    `json:"signature"`
+	SignedAt     time.Time `json:"signed_at"`
 }
 
 type TimelockHistory struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	TxID              string    `gorm:"index" json:"tx_id"`
-	Action            string    `json:"action"` // queued, executed, cancelled
-	Actor             string    `json:"actor"`
-	Details           string    `json:"details"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	TxID      string    `gorm:"index" json:"tx_id"`
+	Action    string    `json:"action"` // queued, executed, cancelled
+	Actor     string    `json:"actor"`
+	Details   string    `json:"details"`
 }
 
 // ============================================================================
@@ -178,42 +178,42 @@ type TimelockService struct {
 func NewTimelockService(cfg *Config) (*TimelockService, error) {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
-	
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
-	
+
 	db.AutoMigrate(&TimelockTransaction{}, &TimelockAdmin{}, &TimelockQueue{}, &TimelockSignatures{}, &TimelockHistory{})
-	
+
 	rdb := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
+		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),
 		Password: "",
-		DB: 0,
+		DB:       0,
 	})
-	
+
 	executor, err := NewOnChainExecutorFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("on-chain executor config: %w", err)
 	}
 
 	service := &TimelockService{
-		config: cfg,
-		db:     db,
-		redis:  rdb,
+		config:   cfg,
+		db:       db,
+		redis:    rdb,
 		executor: executor,
 	}
-	
+
 	// Initialize default queue if not exists
 	service.initDefaultQueue()
-	
+
 	return service, nil
 }
 
 func (s *TimelockService) initDefaultQueue() {
 	var queue TimelockQueue
 	result := s.db.Where("queue_id = ?", "default").First(&queue)
-	
+
 	if result.Error == gorm.ErrRecordNotFound {
 		queue = TimelockQueue{
 			QueueID:     "default",
@@ -243,7 +243,7 @@ func (s *TimelockService) ScheduleTransaction(
 	description string,
 	delay int,
 ) (*TimelockTransaction, error) {
-	
+
 	// Validate delay
 	if delay < s.config.MinDelay {
 		return nil, fmt.Errorf("delay must be at least %d seconds", s.config.MinDelay)
@@ -251,11 +251,11 @@ func (s *TimelockService) ScheduleTransaction(
 	if delay > s.config.MaxDelay {
 		return nil, fmt.Errorf("delay cannot exceed %d seconds", s.config.MaxDelay)
 	}
-	
+
 	txID := uuid.New().String()
 	now := time.Now()
 	executeAfter := now.Add(time.Duration(delay) * time.Second)
-	
+
 	tx := TimelockTransaction{
 		TxID:         txID,
 		Proposer:     proposer,
@@ -271,25 +271,25 @@ func (s *TimelockService) ScheduleTransaction(
 		ExecuteAfter: executeAfter,
 		Status:       "pending",
 	}
-	
+
 	s.db.Create(&tx)
-	
+
 	// Add history
 	s.addHistory(txID, "created", proposer, "Transaction created")
-	
+
 	// Queue the transaction
 	s.queueTransaction(&tx)
-	
+
 	return &tx, nil
 }
 
 func (s *TimelockService) queueTransaction(tx *TimelockTransaction) {
 	// Store in Redis for quick access
 	ctx := context.Background()
-	
+
 	txJSON, _ := json.Marshal(tx)
 	s.redis.Set(ctx, fmt.Sprintf("timelock:tx:%s", tx.TxID), txJSON, time.Duration(tx.Delay+86400)*time.Second)
-	
+
 	// Add to sorted set for scheduled execution
 	score := float64(tx.ExecuteAfter.Unix())
 	s.redis.ZAdd(ctx, "timelock:schedule", redis.Z{Score: score, Member: tx.TxID})
@@ -300,12 +300,12 @@ func (s *TimelockService) ExecuteTransaction(txID string, executor string) (*Tim
 	if err := s.db.Where("tx_id = ?", txID).First(&tx).Error; err != nil {
 		return nil, fmt.Errorf("transaction not found")
 	}
-	
+
 	// Check if ready to execute
 	if time.Now().Before(tx.ExecuteAfter) {
 		return nil, fmt.Errorf("transaction not yet executable. ETA: %s", tx.ExecuteAfter)
 	}
-	
+
 	// Check grace period (24 hours after ETA)
 	gracePeriodEnd := tx.ETA.Add(24 * time.Hour)
 	if time.Now().After(gracePeriodEnd) {
@@ -313,7 +313,7 @@ func (s *TimelockService) ExecuteTransaction(txID string, executor string) (*Tim
 		s.db.Save(&tx)
 		return nil, fmt.Errorf("transaction expired")
 	}
-	
+
 	// Execute transaction. When an on-chain executor is configured, broadcast
 	// the real transaction and record its hash; otherwise keep the honest
 	// pending_broadcast status — never fabricate a hash.
@@ -353,7 +353,7 @@ func (s *TimelockService) ExecuteTransaction(txID string, executor string) (*Tim
 
 	// Add history
 	s.addHistory(txID, "pending_broadcast", executor, "Transaction queued for broadcast; awaiting real on-chain hash")
-	
+
 	return &tx, nil
 }
 
@@ -362,26 +362,26 @@ func (s *TimelockService) CancelTransaction(txID string, canceller string, reaso
 	if err := s.db.Where("tx_id = ?", txID).First(&tx).Error; err != nil {
 		return nil, fmt.Errorf("transaction not found")
 	}
-	
+
 	if tx.Status != "pending" && tx.Status != "queued" {
 		return nil, fmt.Errorf("cannot cancel transaction in status: %s", tx.Status)
 	}
-	
+
 	tx.Status = "cancelled"
 	now := time.Now()
 	tx.CancelledAt = &now
 	tx.CancelledBy = canceller
 	tx.CancelReason = reason
-	
+
 	s.db.Save(&tx)
-	
+
 	// Remove from schedule
 	s.redis.ZRem(context.Background(), "timelock:schedule", txID)
 	s.redis.Del(context.Background(), fmt.Sprintf("timelock:tx:%s", txID))
-	
+
 	// Add history
 	s.addHistory(txID, "cancelled", canceller, reason)
-	
+
 	return &tx, nil
 }
 
@@ -417,7 +417,7 @@ func (s *TimelockService) GetUserTransactions(userID uint) ([]TimelockTransactio
 
 func (s *TimelockService) CreateQueue(name string, delay int, gracePeriod int) (*TimelockQueue, error) {
 	queueID := uuid.New().String()
-	
+
 	queue := TimelockQueue{
 		QueueID:     queueID,
 		Name:        name,
@@ -427,9 +427,9 @@ func (s *TimelockService) CreateQueue(name string, delay int, gracePeriod int) (
 		MinDelay:    s.config.MinDelay,
 		MaxDelay:    s.config.MaxDelay,
 	}
-	
+
 	s.db.Create(&queue)
-	
+
 	return &queue, nil
 }
 
@@ -437,7 +437,7 @@ func (s *TimelockService) UpdateQueueDelay(queueID string, newDelay int) error {
 	if newDelay < s.config.MinDelay || newDelay > s.config.MaxDelay {
 		return fmt.Errorf("delay must be between %d and %d seconds", s.config.MinDelay, s.config.MaxDelay)
 	}
-	
+
 	result := s.db.Model(&TimelockQueue{}).Where("queue_id = ?", queueID).Update("delay", newDelay)
 	return result.Error
 }
@@ -454,9 +454,9 @@ func (s *TimelockService) AddAdmin(address string, userID uint, role string) (*T
 		IsActive:     true,
 		Threshold:    1,
 	}
-	
+
 	s.db.Create(&admin)
-	
+
 	return &admin, nil
 }
 
@@ -479,36 +479,36 @@ func (s *TimelockService) SignTransaction(txID string, adminAddress string) erro
 	if err := s.db.Where("tx_id = ?", txID).First(&tx).Error; err != nil {
 		return err
 	}
-	
+
 	// Check if already signed
 	var existing TimelockSignatures
 	result := s.db.Where("tx_id = ? AND admin_address = ?", txID, adminAddress).First(&existing)
 	if result.Error == nil {
 		return fmt.Errorf("already signed")
 	}
-	
+
 	// Add signature
 	sig := TimelockSignatures{
 		TxID:         txID,
 		AdminAddress: adminAddress,
-		Signature:   generateSignature(txID, adminAddress),
-		SignedAt:    time.Now(),
+		Signature:    generateSignature(txID, adminAddress),
+		SignedAt:     time.Now(),
 	}
 	s.db.Create(&sig)
-	
+
 	// Check if threshold met
 	var sigCount int64
 	s.db.Model(&TimelockSignatures{}).Where("tx_id = ?", txID).Count(&sigCount)
-	
+
 	// Get admin threshold
 	var admin TimelockAdmin
 	s.db.Where("admin_address = ?", adminAddress).First(&admin)
-	
+
 	if sigCount >= int64(admin.Threshold) && tx.Status == "pending" {
 		tx.Status = "queued"
 		s.db.Save(&tx)
 	}
-	
+
 	return nil
 }
 
@@ -524,10 +524,10 @@ func (s *TimelockService) GetSignatures(txID string) ([]TimelockSignatures, erro
 
 func (s *TimelockService) addHistory(txID, action, actor, details string) {
 	history := TimelockHistory{
-		TxID:     txID,
-		Action:   action,
-		Actor:    actor,
-		Details:  details,
+		TxID:    txID,
+		Action:  action,
+		Actor:   actor,
+		Details: details,
 	}
 	s.db.Create(&history)
 }
@@ -553,24 +553,24 @@ func (s *TimelockService) setupRoutes(router *gin.Engine) {
 		api.GET("/queued", s.getQueued)
 		api.GET("/executable", s.getExecutable)
 		api.GET("/user/:user_id/txs", s.getUserTransactions)
-		
+
 		// Queue
 		api.POST("/queue", s.createQueue)
 		api.PUT("/queue/:queue_id/delay", s.updateQueueDelay)
-		
+
 		// Admin
 		api.POST("/admin", s.addAdmin)
 		api.DELETE("/admin/:address", s.removeAdmin)
 		api.GET("/admins", s.getAdmins)
-		
+
 		// Signatures
 		api.POST("/sign", s.signTransaction)
 		api.GET("/tx/:tx_id/signatures", s.getSignatures)
-		
+
 		// History
 		api.GET("/tx/:tx_id/history", s.getTransactionHistory)
 	}
-	
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "timelock"})
 	})
@@ -588,16 +588,16 @@ func (s *TimelockService) scheduleTransaction(c *gin.Context) {
 		Description string `json:"description"`
 		Delay       int    `json:"delay"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if req.Delay == 0 {
 		req.Delay = s.config.DefaultDelay
 	}
-	
+
 	tx, err := s.ScheduleTransaction(
 		req.ProposerID,
 		req.Proposer,
@@ -609,12 +609,12 @@ func (s *TimelockService) scheduleTransaction(c *gin.Context) {
 		req.Description,
 		req.Delay,
 	)
-	
+
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusCreated, gin.H{"transaction": tx})
 }
 
@@ -623,51 +623,51 @@ func (s *TimelockService) executeTransaction(c *gin.Context) {
 		TxID     string `json:"tx_id" binding:"required"`
 		Executor string `json:"executor" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	tx, err := s.ExecuteTransaction(req.TxID, req.Executor)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"transaction": tx})
 }
 
 func (s *TimelockService) cancelTransaction(c *gin.Context) {
 	var req struct {
-		TxID       string `json:"tx_id" binding:"required"`
-		Canceller  string `json:"canceller" binding:"required"`
-		Reason     string `json:"reason"`
+		TxID      string `json:"tx_id" binding:"required"`
+		Canceller string `json:"canceller" binding:"required"`
+		Reason    string `json:"reason"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	tx, err := s.CancelTransaction(req.TxID, req.Canceller, req.Reason)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"transaction": tx})
 }
 
 func (s *TimelockService) getTransaction(c *gin.Context) {
 	txID := c.Param("tx_id")
-	
+
 	tx, err := s.GetTransaction(txID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"transaction": tx})
 }
 
@@ -677,7 +677,7 @@ func (s *TimelockService) getQueued(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"transactions": txs})
 }
 
@@ -687,19 +687,19 @@ func (s *TimelockService) getExecutable(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"transactions": txs})
 }
 
 func (s *TimelockService) getUserTransactions(c *gin.Context) {
 	userID, _ := strconv.ParseUint(c.Param("user_id"), 10, 32)
-	
+
 	txs, err := s.GetUserTransactions(uint(userID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"transactions": txs})
 }
 
@@ -709,46 +709,46 @@ func (s *TimelockService) createQueue(c *gin.Context) {
 		Delay       int    `json:"delay"`
 		GracePeriod int    `json:"grace_period"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if req.Delay == 0 {
 		req.Delay = s.config.DefaultDelay
 	}
 	if req.GracePeriod == 0 {
 		req.GracePeriod = 86400
 	}
-	
+
 	queue, err := s.CreateQueue(req.Name, req.Delay, req.GracePeriod)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusCreated, gin.H{"queue": queue})
 }
 
 func (s *TimelockService) updateQueueDelay(c *gin.Context) {
 	queueID := c.Param("queue_id")
-	
+
 	var req struct {
 		Delay int `json:"delay" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	err := s.UpdateQueueDelay(queueID, req.Delay)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "delay updated"})
 }
 
@@ -758,30 +758,30 @@ func (s *TimelockService) addAdmin(c *gin.Context) {
 		UserID  uint   `json:"user_id"`
 		Role    string `json:"role" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	admin, err := s.AddAdmin(req.Address, req.UserID, req.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusCreated, gin.H{"admin": admin})
 }
 
 func (s *TimelockService) removeAdmin(c *gin.Context) {
 	address := c.Param("address")
-	
+
 	err := s.RemoveAdmin(address)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "admin removed"})
 }
 
@@ -791,48 +791,48 @@ func (s *TimelockService) getAdmins(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"admins": admins})
 }
 
 func (s *TimelockService) signTransaction(c *gin.Context) {
 	var req struct {
-		TxID        string `json:"tx_id" binding:"required"`
+		TxID         string `json:"tx_id" binding:"required"`
 		AdminAddress string `json:"admin_address" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	err := s.SignTransaction(req.TxID, req.AdminAddress)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "signed"})
 }
 
 func (s *TimelockService) getSignatures(c *gin.Context) {
 	txID := c.Param("tx_id")
-	
+
 	sigs, err := s.GetSignatures(txID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"signatures": sigs})
 }
 
 func (s *TimelockService) getTransactionHistory(c *gin.Context) {
 	txID := c.Param("tx_id")
-	
+
 	var history []TimelockHistory
 	s.db.Where("tx_id = ?", txID).Order("created_at DESC").Find(&history)
-	
+
 	c.JSON(http.StatusOK, gin.H{"history": history})
 }
 
@@ -842,24 +842,24 @@ func (s *TimelockService) getTransactionHistory(c *gin.Context) {
 
 func main() {
 	cfg := LoadConfig()
-	
+
 	service, err := NewTimelockService(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create timelock service: %v", err)
 	}
-	
+
 	router := gin.Default()
 	service.setupRoutes(router)
-	
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	
+
 	go func() {
 		<-quit
 		log.Println("Shutting down timelock service...")
 		os.Exit(0)
 	}()
-	
+
 	log.Printf("Timelock Service starting on port %s", cfg.ServerPort)
 	if err := router.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

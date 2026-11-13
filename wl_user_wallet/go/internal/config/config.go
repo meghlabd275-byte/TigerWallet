@@ -12,41 +12,41 @@ import (
 )
 
 type Config struct {
-	Port              string
-	DatabaseURL       string
-	JWTSecret         string
-	ControlPlaneURL   string // license control plane (TWO_PARTY_GATE_URL)
-	ControlPlaneToken string // WL client service token
-	WLClientID        string // the WL client's UUID (tenant identity)
-	LicenseKey        string // the product's license key (issued by SuperAdmin)
-	Product           string // product identifier (e.g. "user_wallet")
-	InstanceID        string // unique instance id (hostname/container id)
-	BCryptCost        int
-	JWTExpiry         time.Duration
-	HeartbeatInterval time.Duration
-	CoinGeckoAPIKey   string
-	EtherscanAPIKey   string
-	RedisURL          string // shared Redis (trading control-plane enforcement)
+	Port                 string
+	DatabaseURL          string
+	JWTSecret            string
+	ControlPlaneURL      string // license control plane (TWO_PARTY_GATE_URL)
+	ControlPlaneToken    string // WL client service token
+	WLClientID           string // the WL client's UUID (tenant identity)
+	LicenseKey           string // the product's license key (issued by SuperAdmin)
+	Product              string // product identifier (e.g. "user_wallet")
+	InstanceID           string // unique instance id (hostname/container id)
+	BCryptCost           int
+	JWTExpiry            time.Duration
+	HeartbeatInterval    time.Duration
+	CoinGeckoAPIKey      string
+	EtherscanAPIKey      string
+	RedisURL             string // shared Redis (trading control-plane enforcement)
 	CanonicalRegistryURL string // canonical wallet_api base URL for chain-registry sync
 }
 
 func Load() *Config {
 	return &Config{
-		Port:               getEnv("PORT", "8443"),
-		DatabaseURL:        getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/wl_userwallet?sslmode=disable"),
-		JWTSecret:          getEnv("JWT_SECRET", ""),
-		ControlPlaneURL:    getEnv("TWO_PARTY_GATE_URL", ""),
-		ControlPlaneToken:  getEnv("TWO_PARTY_GATE_TOKEN", ""),
-		WLClientID:         getEnv("WL_CLIENT_ID", ""),
-		LicenseKey:         getEnv("WL_LICENSE_KEY", ""),
-		Product:            getEnv("WL_PRODUCT", "user_wallet"),
-		InstanceID:         getEnv("WL_INSTANCE_ID", "default"),
-		BCryptCost:         getInt("BCRYPT_COST", 12),
-		JWTExpiry:          getDuration("JWT_EXPIRY", 24*time.Hour),
-		HeartbeatInterval:  getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
-		CoinGeckoAPIKey:    getEnv("COINGECKO_API_KEY", ""),
-		EtherscanAPIKey:    getEnv("ETHERSCAN_API_KEY", ""),
-		RedisURL:           getEnv("REDIS_URL", ""),
+		Port:                 getEnv("PORT", "8443"),
+		DatabaseURL:          getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/wl_userwallet?sslmode=disable"),
+		JWTSecret:            getEnv("JWT_SECRET", ""),
+		ControlPlaneURL:      getEnv("TWO_PARTY_GATE_URL", ""),
+		ControlPlaneToken:    getEnv("TWO_PARTY_GATE_TOKEN", ""),
+		WLClientID:           getEnv("WL_CLIENT_ID", ""),
+		LicenseKey:           getEnv("WL_LICENSE_KEY", ""),
+		Product:              getEnv("WL_PRODUCT", "user_wallet"),
+		InstanceID:           getEnv("WL_INSTANCE_ID", "default"),
+		BCryptCost:           getInt("BCRYPT_COST", 12),
+		JWTExpiry:            getDuration("JWT_EXPIRY", 24*time.Hour),
+		HeartbeatInterval:    getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		CoinGeckoAPIKey:      getEnv("COINGECKO_API_KEY", ""),
+		EtherscanAPIKey:      getEnv("ETHERSCAN_API_KEY", ""),
+		RedisURL:             getEnv("REDIS_URL", ""),
 		CanonicalRegistryURL: getEnv("CANONICAL_WALLET_API_URL", ""),
 	}
 }

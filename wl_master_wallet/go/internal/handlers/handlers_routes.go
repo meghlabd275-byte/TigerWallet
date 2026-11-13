@@ -35,8 +35,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -1007,11 +1007,11 @@ func (h *Handlers) PublicGas(c *gin.Context) {
 	}
 	baseFees, ratios, rewards, _ := fetchFeeHistory(ctx, rpc, 10, []float64{25, 50, 75})
 	c.JSON(http.StatusOK, gin.H{
-		"chain_id":          chainID,
-		"gas_price_wei":     gp.String(),
-		"max_fee_wei":       maxFee.String(),
-		"priority_fee_wei":  tip.String(),
-		"fee_history":       gin.H{"base_fees": bigIntsToHex(baseFees), "gas_used_ratios": ratios, "rewards": rewardsToHex(rewards)},
+		"chain_id":         chainID,
+		"gas_price_wei":    gp.String(),
+		"max_fee_wei":      maxFee.String(),
+		"priority_fee_wei": tip.String(),
+		"fee_history":      gin.H{"base_fees": bigIntsToHex(baseFees), "gas_used_ratios": ratios, "rewards": rewardsToHex(rewards)},
 	})
 }
 

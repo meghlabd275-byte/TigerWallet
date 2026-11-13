@@ -25,20 +25,20 @@ func NewBotsClientsHandler(db *gorm.DB) *BotsClientsHandler {
 
 // BotsClient mirrors the admin_bots_clients governance table.
 type BotsClient struct {
-	ID            uint       `gorm:"primaryKey" json:"id"`
-	ClientID      string     `gorm:"uniqueIndex;not null" json:"client_id"`
-	BotID         string     `gorm:"index;not null" json:"bot_id"`
-	UserID        *string    `gorm:"index" json:"user_id"`
-	ClientName    string     `json:"client_name"`
-	ClientType    string     `json:"client_type"`
-	APIKeyID      string     `json:"api_key_id"`
-	Status        string     `gorm:"not null;default:'active';index" json:"status"`
-	ConnectedAt   *time.Time `json:"connected_at"`
-	LastSeenAt    *time.Time `json:"last_seen_at"`
-	AllocatedUSD  float64    `gorm:"default:0" json:"allocated_usd"`
-	PnlUSD        float64    `gorm:"default:0" json:"pnl_usd"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	ClientID     string     `gorm:"uniqueIndex;not null" json:"client_id"`
+	BotID        string     `gorm:"index;not null" json:"bot_id"`
+	UserID       *string    `gorm:"index" json:"user_id"`
+	ClientName   string     `json:"client_name"`
+	ClientType   string     `json:"client_type"`
+	APIKeyID     string     `json:"api_key_id"`
+	Status       string     `gorm:"not null;default:'active';index" json:"status"`
+	ConnectedAt  *time.Time `json:"connected_at"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
+	AllocatedUSD float64    `gorm:"default:0" json:"allocated_usd"`
+	PnlUSD       float64    `gorm:"default:0" json:"pnl_usd"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 func (BotsClient) TableName() string { return "admin_bots_clients" }

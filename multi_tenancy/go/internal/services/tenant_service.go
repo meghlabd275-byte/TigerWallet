@@ -261,15 +261,15 @@ func (s *TenantService) CheckQuota(ctx context.Context, tenantID, resource strin
 
 func (s *TenantService) AddUserToTenant(ctx context.Context, tenantID, userID uuid.UUID, role string) (*models.TenantUser, error) {
 	tenantUser := &models.TenantUser{
-		ID:         uuid.New(),
-		TenantID:   tenantID,
-		UserID:     userID,
-		Role:       role,
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		UserID:      userID,
+		Role:        role,
 		Permissions: []string{},
-		Status:     "active",
-		JoinedAt:   func() *time.Time { t := time.Now(); return &t }(),
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Status:      "active",
+		JoinedAt:    func() *time.Time { t := time.Now(); return &t }(),
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	_, err := Pool.Exec(ctx, `

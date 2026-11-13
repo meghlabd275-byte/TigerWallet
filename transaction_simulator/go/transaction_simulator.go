@@ -179,8 +179,8 @@ type ApprovalCheck struct {
 
 	Status string `json:"status"`
 
-	RiskLevel    string   `json:"risk_level"`
-	RiskFactors  []string `json:"risk_factors" gorm:"type:text"`
+	RiskLevel   string   `json:"risk_level"`
+	RiskFactors []string `json:"risk_factors" gorm:"type:text"`
 }
 
 type TokenApproval struct {
@@ -506,8 +506,8 @@ func (s *TransactionSimulator) traceCall(ctx context.Context, client *RPCClient,
 		"enableReturnData": true,
 	}
 	return client.Call(ctx, "debug_traceCall", callObj, "latest", map[string]interface{}{
-		"tracer":  "callTracer",
-		"config":  traceOpts,
+		"tracer": "callTracer",
+		"config": traceOpts,
 	})
 }
 
@@ -609,16 +609,16 @@ func (s *TransactionSimulator) GetApprovals(walletAddress string) ([]TokenApprov
 	for _, token := range commonTokens {
 		check, err := s.checkApproval(walletAddress, token.Address, "0x0000000000000000000000000000000000000001")
 		ap := TokenApproval{
-			WalletAddress:  walletAddress,
-			TokenAddress:   token.Address,
-			TokenSymbol:    token.Symbol,
-			TokenName:      token.Name,
-			Spender:        "0x0000000000000000000000000000000000000001",
-			IsActive:       check != nil && check.Amount != "0",
-			ApprovedAmount: "0",
-			RiskLevel:      "low",
+			WalletAddress:   walletAddress,
+			TokenAddress:    token.Address,
+			TokenSymbol:     token.Symbol,
+			TokenName:       token.Name,
+			Spender:         "0x0000000000000000000000000000000000000001",
+			IsActive:        check != nil && check.Amount != "0",
+			ApprovedAmount:  "0",
+			RiskLevel:       "low",
 			IsKnownContract: true,
-			IsVerified:     true,
+			IsVerified:      true,
 		}
 		if err == nil && check != nil {
 			ap.ApprovedAmount = check.Amount
@@ -660,9 +660,9 @@ type traceFrame struct {
 }
 
 type traceLogEntry struct {
-	Address string        `json:"address"`
-	Topics  []string      `json:"topics"`
-	Data    string        `json:"data"`
+	Address string   `json:"address"`
+	Topics  []string `json:"topics"`
+	Data    string   `json:"data"`
 }
 
 func parseTraceFrame(raw json.RawMessage) (*traceFrame, error) {
@@ -763,10 +763,10 @@ func parseTraceApprovals(raw json.RawMessage, topRecipient string) []ApprovalCha
 			}
 			if strings.ToLower(lg.Topics[0]) == approvalEventSignature && len(lg.Topics) >= 3 {
 				out = append(out, ApprovalChange{
-					Token:    lg.Address,
-					Owner:    topicToAddress(lg.Topics[1]),
-					Spender:  topicToAddress(lg.Topics[2]),
-					Amount:   hexQuantityToDecimal(lg.Data),
+					Token:     lg.Address,
+					Owner:     topicToAddress(lg.Topics[1]),
+					Spender:   topicToAddress(lg.Topics[2]),
+					Amount:    hexQuantityToDecimal(lg.Data),
 					Unlimited: isMaxUint256(lg.Data),
 				})
 			}
@@ -804,14 +804,14 @@ func walkTrace(f *traceFrame, visit func(*traceFrame)) {
 // ============================================================================
 
 const (
-	transferEventSignature         = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
-	approvalEventSignature         = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
-	transferSingleEventSignature   = "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2f0280"
-	sigTransfer                    = "0xa9059cbb"
-	sigTransferFrom                = "0x23b872dd"
-	sigApprove                     = "0x095ea7b3"
-	sigIncreaseAllowance           = "0x39509351"
-	sigSafeTransferFrom            = "0x42842e0e"
+	transferEventSignature       = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	approvalEventSignature       = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
+	transferSingleEventSignature = "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2f0280"
+	sigTransfer                  = "0xa9059cbb"
+	sigTransferFrom              = "0x23b872dd"
+	sigApprove                   = "0x095ea7b3"
+	sigIncreaseAllowance         = "0x39509351"
+	sigSafeTransferFrom          = "0x42842e0e"
 )
 
 type calldataAnalysis struct {
@@ -862,7 +862,7 @@ func decodeTransferArgs(hexData string) (to, value string, ok bool) {
 	if len(hexData) < 136 {
 		return "", "", false
 	}
-	to = "0x" + hexData[4+12 : 4+32]
+	to = "0x" + hexData[4+12:4+32]
 	val := new(big.Int)
 	val.SetString(hexData[4+32:4+64], 16)
 	return to, val.String(), true
@@ -873,8 +873,8 @@ func decodeTransferFromArgs(hexData string) (from, to, value string, ok bool) {
 	if len(hexData) < 200 {
 		return "", "", "", false
 	}
-	from = "0x" + hexData[4+12 : 4+32]
-	to = "0x" + hexData[4+32+12 : 4+32+32]
+	from = "0x" + hexData[4+12:4+32]
+	to = "0x" + hexData[4+32+12:4+32+32]
 	val := new(big.Int)
 	val.SetString(hexData[4+64:4+96], 16)
 	return from, to, val.String(), true
@@ -885,7 +885,7 @@ func decodeApprovalArgs(hexData string) (spender, amount string, unlimited bool,
 	if len(hexData) < 136 {
 		return "", "", false, false
 	}
-	spender = "0x" + hexData[4+12 : 4+32]
+	spender = "0x" + hexData[4+12:4+32]
 	amountHex := hexData[4+32 : 4+64]
 	val := new(big.Int)
 	val.SetString(amountHex, 16)
@@ -1187,20 +1187,20 @@ type SimRequest struct {
 }
 
 type SimulationResult struct {
-	Success            bool             `json:"success"`
-	GasUsed            uint64           `json:"gas_used"`
-	GasEstimated       uint64           `json:"gas_estimated"`
-	ExecutionTime      int64            `json:"execution_time"`
-	Error              string           `json:"error,omitempty"`
-	ReturnData         string           `json:"return_data,omitempty"`
-	RecipientIsContract bool            `json:"recipient_is_contract"`
-	RecipientCode      string           `json:"recipient_code,omitempty"`
-	BalanceChanges     []BalanceChange  `json:"balance_changes"`
-	StateChanges       []StateChange    `json:"state_changes"`
-	Logs               []string         `json:"logs"`
-	TokenTransfers     []TokenTransfer  `json:"token_transfers"`
-	ApprovalChanges    []ApprovalChange `json:"approval_changes"`
-	SecurityAnalysis   SecurityAnalysis `json:"security_analysis"`
+	Success             bool             `json:"success"`
+	GasUsed             uint64           `json:"gas_used"`
+	GasEstimated        uint64           `json:"gas_estimated"`
+	ExecutionTime       int64            `json:"execution_time"`
+	Error               string           `json:"error,omitempty"`
+	ReturnData          string           `json:"return_data,omitempty"`
+	RecipientIsContract bool             `json:"recipient_is_contract"`
+	RecipientCode       string           `json:"recipient_code,omitempty"`
+	BalanceChanges      []BalanceChange  `json:"balance_changes"`
+	StateChanges        []StateChange    `json:"state_changes"`
+	Logs                []string         `json:"logs"`
+	TokenTransfers      []TokenTransfer  `json:"token_transfers"`
+	ApprovalChanges     []ApprovalChange `json:"approval_changes"`
+	SecurityAnalysis    SecurityAnalysis `json:"security_analysis"`
 }
 
 type BalanceChange struct {

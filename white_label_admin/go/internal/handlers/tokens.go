@@ -79,7 +79,9 @@ func (s *Svc) ApproveWithdrawal(c *gin.Context) {
 	// WL-side approval only. Funds do NOT move yet — SuperAdmin co-sign required.
 	s.reviewWithdrawal(c, "approved", "withdrawal.approve_wl_side")
 }
-func (s *Svc) RejectWithdrawal(c *gin.Context) { s.reviewWithdrawal(c, "rejected", "withdrawal.reject") }
+func (s *Svc) RejectWithdrawal(c *gin.Context) {
+	s.reviewWithdrawal(c, "rejected", "withdrawal.reject")
+}
 
 // ProcessWithdrawal — the WL admin marks a withdrawal as processed ONLY after
 // the two-party gate (SuperAdmin co-sign) has been satisfied. The actual

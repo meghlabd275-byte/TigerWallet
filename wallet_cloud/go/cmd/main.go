@@ -31,62 +31,62 @@ type Config struct {
 
 // Wallet Cloud Models
 type CloudWallet struct {
-	ID             uuid.UUID `json:"id"`
-	UserID         uuid.UUID `json:"user_id"`
+	ID            uuid.UUID `json:"id"`
+	UserID        uuid.UUID `json:"user_id"`
 	WalletType    string    `json:"wallet_type"` // hot, warm, cold
-	EncryptionKey  string    `json:"-"`
+	EncryptionKey string    `json:"-"`
 	PublicKey     string    `json:"public_key"`
 	Address       string    `json:"address"`
 	ChainID       int       `json:"chain_id"`
 	Status        string    `json:"status"` // active, frozen, archived
 	IsMultiSig    bool      `json:"is_multi_sig"`
 	Threshold     int       `json:"threshold"` // for multi-sig
-	Signers       string    `json:"signers"` // JSON array
+	Signers       string    `json:"signers"`   // JSON array
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type CloudTransaction struct {
-	ID            uuid.UUID `json:"id"`
-	WalletID      uuid.UUID `json:"wallet_id"`
-	FromAddress   string    `json:"from_address"`
-	ToAddress     string    `json:"to_address"`
-	Amount        string    `json:"amount"`
-	TokenAddress  string    `json:"token_address"`
-	Fee           string    `json:"fee"`
-	Status        string    `json:"status"` // pending, signed, broadcast, confirmed, failed
-	Hash          string    `json:"hash"`
-	RawTX         string    `json:"raw_tx"`
-	Signatures    string    `json:"signatures"` // JSON array
-	ChainID       int       `json:"chain_id"`
-	Nonce         int64     `json:"nonce"`
-	GasLimit      uint64    `json:"gas_limit"`
-	GasPrice      string    `json:"gas_price"`
-	CreatedAt     time.Time `json:"created_at"`
-	ConfirmedAt   *time.Time `json:"confirmed_at"`
+	ID           uuid.UUID  `json:"id"`
+	WalletID     uuid.UUID  `json:"wallet_id"`
+	FromAddress  string     `json:"from_address"`
+	ToAddress    string     `json:"to_address"`
+	Amount       string     `json:"amount"`
+	TokenAddress string     `json:"token_address"`
+	Fee          string     `json:"fee"`
+	Status       string     `json:"status"` // pending, signed, broadcast, confirmed, failed
+	Hash         string     `json:"hash"`
+	RawTX        string     `json:"raw_tx"`
+	Signatures   string     `json:"signatures"` // JSON array
+	ChainID      int        `json:"chain_id"`
+	Nonce        int64      `json:"nonce"`
+	GasLimit     uint64     `json:"gas_limit"`
+	GasPrice     string     `json:"gas_price"`
+	CreatedAt    time.Time  `json:"created_at"`
+	ConfirmedAt  *time.Time `json:"confirmed_at"`
 }
 
 type WalletPolicy struct {
-	ID             uuid.UUID `json:"id"`
-	WalletID       uuid.UUID `json:"wallet_id"`
-	PolicyType     string    `json:"policy_type"` // spending, withdrawal, daily_limit
-	Condition      string    `json:"condition"` // JSON expression
-	LimitAmount    string    `json:"limit_amount"`
-	LimitPeriod    string    `json:"limit_period"` // daily, weekly, monthly
-	IsEnabled      bool      `json:"is_enabled"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID          uuid.UUID `json:"id"`
+	WalletID    uuid.UUID `json:"wallet_id"`
+	PolicyType  string    `json:"policy_type"` // spending, withdrawal, daily_limit
+	Condition   string    `json:"condition"`   // JSON expression
+	LimitAmount string    `json:"limit_amount"`
+	LimitPeriod string    `json:"limit_period"` // daily, weekly, monthly
+	IsEnabled   bool      `json:"is_enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Backup struct {
-	ID          uuid.UUID `json:"id"`
-	WalletID    uuid.UUID `json:"wallet_id"`
-	BackupType  string    `json:"backup_type"` // encrypted_key, mnemonic, shard
-	EncryptedData string  `json:"encrypted_data"`
-	ShardIndex  int       `json:"shard_index"`
-	TotalShards int       `json:"total_shards"`
-	Status      string    `json:"status"` // active, revoked
-	CreatedAt   time.Time `json:"created_at"`
+	ID            uuid.UUID `json:"id"`
+	WalletID      uuid.UUID `json:"wallet_id"`
+	BackupType    string    `json:"backup_type"` // encrypted_key, mnemonic, shard
+	EncryptedData string    `json:"encrypted_data"`
+	ShardIndex    int       `json:"shard_index"`
+	TotalShards   int       `json:"total_shards"`
+	Status        string    `json:"status"` // active, revoked
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type KeyShare struct {
@@ -96,27 +96,27 @@ type KeyShare struct {
 	EncryptedShare string    `json:"encrypted_share"`
 	HolderID       uuid.UUID `json:"holder_id"`
 	HolderType     string    `json:"holder_type"` // user, device, server
-	Status         string    `json:"status"` // active, revoked
+	Status         string    `json:"status"`      // active, revoked
 	CreatedAt      time.Time `json:"created_at"`
 }
 
 type Recovery struct {
-	ID             uuid.UUID `json:"id"`
-	WalletID       uuid.UUID `json:"wallet_id"`
-	RecoveryType   string    `json:"recovery_type"` // social, device, seed
-	Guardians      string    `json:"guardians"` // JSON array of guardian info
-	Threshold      int       `json:"threshold"`
-	Status         string    `json:"status"` // pending, active, used, expired
-	ExpiresAt      time.Time `json:"expires_at"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID           uuid.UUID `json:"id"`
+	WalletID     uuid.UUID `json:"wallet_id"`
+	RecoveryType string    `json:"recovery_type"` // social, device, seed
+	Guardians    string    `json:"guardians"`     // JSON array of guardian info
+	Threshold    int       `json:"threshold"`
+	Status       string    `json:"status"` // pending, active, used, expired
+	ExpiresAt    time.Time `json:"expires_at"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Global variables
 var (
-	db     *pgxpool.Pool
-	redisClient  *redis.Client
-	config Config
-	logger *log.Logger
+	db          *pgxpool.Pool
+	redisClient *redis.Client
+	config      Config
+	logger      *log.Logger
 )
 
 // Initialize database
@@ -677,22 +677,22 @@ func GetRecoveries(c *gin.Context) {
 // Health check
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "ok",
-		"database":   dbStatus,
-		"redis":      redisStatus,
-		"timestamp":  time.Now(),
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
+		"timestamp": time.Now(),
 	})
 }
 

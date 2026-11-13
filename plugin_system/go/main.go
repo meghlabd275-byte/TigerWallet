@@ -116,44 +116,44 @@ func getEnv(key, def string) string {
 
 // Plugin represents a plugin/snap
 type Plugin struct {
-	ID              string            `json:"id"`
-	Name            string            `json:"name"`
-	Version         string            `json:"version"`
-	Description     string            `json:"description"`
-	Author          string            `json:"author"`
-	AuthorURL       string            `json:"authorUrl"`
-	HomepageURL     string            `json:"homepageUrl"`
-	RepositoryURL   string            `json:"repositoryUrl"`
-	License         string            `json:"license"`
-	Category        string            `json:"category"` // defi, nft, security, utility, game, social
-	Tags            []string          `json:"tags"`
-	IconURL         string            `json:"iconUrl"`
-	Screenshots     []string          `json:"screenshots"`
-	Manifest        PluginManifest    `json:"manifest"`
-	Permissions     []string          `json:"permissions"`
-	RequiredPermissions []string      `json:"requiredPermissions"`
-	Status          string            `json:"status"` // draft, pending, published, deprecated, removed
-	Downloads       int               `json:"downloads"`
-	Ratings         float64           `json:"ratings"`
-	RatingCount    int               `json:"ratingCount"`
-	ChainIDs        []uint64          `json:"chainIds"` // Supported chains
-	VersionHistory  []VersionEntry   `json:"versionHistory"`
-	CreatedAt       int64             `json:"createdAt"`
-	UpdatedAt       int64             `json:"updatedAt"`
-	PublishedAt     int64             `json:"publishedAt"`
+	ID                  string         `json:"id"`
+	Name                string         `json:"name"`
+	Version             string         `json:"version"`
+	Description         string         `json:"description"`
+	Author              string         `json:"author"`
+	AuthorURL           string         `json:"authorUrl"`
+	HomepageURL         string         `json:"homepageUrl"`
+	RepositoryURL       string         `json:"repositoryUrl"`
+	License             string         `json:"license"`
+	Category            string         `json:"category"` // defi, nft, security, utility, game, social
+	Tags                []string       `json:"tags"`
+	IconURL             string         `json:"iconUrl"`
+	Screenshots         []string       `json:"screenshots"`
+	Manifest            PluginManifest `json:"manifest"`
+	Permissions         []string       `json:"permissions"`
+	RequiredPermissions []string       `json:"requiredPermissions"`
+	Status              string         `json:"status"` // draft, pending, published, deprecated, removed
+	Downloads           int            `json:"downloads"`
+	Ratings             float64        `json:"ratings"`
+	RatingCount         int            `json:"ratingCount"`
+	ChainIDs            []uint64       `json:"chainIds"` // Supported chains
+	VersionHistory      []VersionEntry `json:"versionHistory"`
+	CreatedAt           int64          `json:"createdAt"`
+	UpdatedAt           int64          `json:"updatedAt"`
+	PublishedAt         int64          `json:"publishedAt"`
 }
 
 // PluginManifest defines plugin capabilities
 type PluginManifest struct {
-	Name        string         `json:"name"`
-	Version     string         `json:"version"`
-	Description string         `json:"description"`
-	Main        string         `json:"main"` // Entry point
-	Scripts     map[string]string `json:"scripts,omitempty"`
-	Permissions []string       `json:"permissions"`
-	ContentScripts []ContentScript `json:"contentScripts,omitempty"`
-	Background   *BackgroundScript `json:"background,omitempty"`
-	Icon         string        `json:"icon,omitempty"`
+	Name           string            `json:"name"`
+	Version        string            `json:"version"`
+	Description    string            `json:"description"`
+	Main           string            `json:"main"` // Entry point
+	Scripts        map[string]string `json:"scripts,omitempty"`
+	Permissions    []string          `json:"permissions"`
+	ContentScripts []ContentScript   `json:"contentScripts,omitempty"`
+	Background     *BackgroundScript `json:"background,omitempty"`
+	Icon           string            `json:"icon,omitempty"`
 }
 
 type ContentScript struct {
@@ -163,27 +163,27 @@ type ContentScript struct {
 }
 
 type BackgroundScript struct {
-	ServiceWorker string `json:"serviceWorker"`
+	ServiceWorker string   `json:"serviceWorker"`
 	Scripts       []string `json:"scripts"`
 }
 
 // VersionEntry represents a version release
 type VersionEntry struct {
-	Version   string `json:"version"`
-	Changelog string `json:"changelog"`
-	ReleasedAt int64 `json:"releasedAt"`
+	Version    string `json:"version"`
+	Changelog  string `json:"changelog"`
+	ReleasedAt int64  `json:"releasedAt"`
 }
 
 // PluginInstance represents an installed plugin
 type PluginInstance struct {
-	InstanceID  string    `json:"instanceId"`
-	PluginID    string    `json:"pluginId"`
-	UserID      string    `json:"userId"`
-	Enabled     bool      `json:"enabled"`
-	Permissions []string  `json:"permissions"` // Granted permissions
+	InstanceID  string                 `json:"instanceId"`
+	PluginID    string                 `json:"pluginId"`
+	UserID      string                 `json:"userId"`
+	Enabled     bool                   `json:"enabled"`
+	Permissions []string               `json:"permissions"` // Granted permissions
 	Config      map[string]interface{} `json:"config"`
-	CreatedAt   int64     `json:"createdAt"`
-	UpdatedAt   int64     `json:"updatedAt"`
+	CreatedAt   int64                  `json:"createdAt"`
+	UpdatedAt   int64                  `json:"updatedAt"`
 }
 
 // PluginRequest represents a request to a plugin
@@ -196,20 +196,20 @@ type PluginRequest struct {
 type PluginResponse struct {
 	Success bool                   `json:"success"`
 	Result  map[string]interface{} `json:"result,omitempty"`
-	Error   string                `json:"error,omitempty"`
+	Error   string                 `json:"error,omitempty"`
 }
 
 // PluginStore manages plugins
 type PluginStore struct {
-	config *Config
-	mu     sync.RWMutex
+	config  *Config
+	mu      sync.RWMutex
 	plugins map[string]*Plugin
 }
 
 func NewPluginStore(cfg *Config) *PluginStore {
 	store := &PluginStore{
-		config:   cfg,
-		plugins:  make(map[string]*Plugin),
+		config:  cfg,
+		plugins: make(map[string]*Plugin),
 	}
 
 	// Load built-in plugins
@@ -227,13 +227,13 @@ func (s *PluginStore) loadBuiltInPlugins() {
 			Version:     "1.0.0",
 			Description: "Advanced DeFi portfolio tracking and analytics",
 			Author:      "TigerWallet",
-			Category:   "defi",
-			Tags:       []string{"defi", "portfolio", "analytics"},
-			Status:     "published",
-			ChainIDs:   []uint64{1, 56, 137, 42161},
+			Category:    "defi",
+			Tags:        []string{"defi", "portfolio", "analytics"},
+			Status:      "published",
+			ChainIDs:    []uint64{1, 56, 137, 42161},
 			Permissions: []string{"eth_accounts", "eth_chainId", "eth_blockNumber"},
-			CreatedAt:  time.Now().Unix(),
-			UpdatedAt:  time.Now().Unix(),
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
 		},
 		{
 			ID:          "tiger-nft",
@@ -241,13 +241,13 @@ func (s *PluginStore) loadBuiltInPlugins() {
 			Version:     "1.0.0",
 			Description: "Manage and view NFT collections across chains",
 			Author:      "TigerWallet",
-			Category:   "nft",
-			Tags:       []string{"nft", "collection", "gallery"},
-			Status:     "published",
-			ChainIDs:   []uint64{1, 137, 42161},
+			Category:    "nft",
+			Tags:        []string{"nft", "collection", "gallery"},
+			Status:      "published",
+			ChainIDs:    []uint64{1, 137, 42161},
 			Permissions: []string{"eth_accounts", "eth_chainId"},
-			CreatedAt:  time.Now().Unix(),
-			UpdatedAt:  time.Now().Unix(),
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
 		},
 		{
 			ID:          "tiger-security",
@@ -255,13 +255,13 @@ func (s *PluginStore) loadBuiltInPlugins() {
 			Version:     "1.0.0",
 			Description: "Scan transactions and addresses for security risks",
 			Author:      "TigerWallet",
-			Category:   "security",
-			Tags:       []string{"security", "scanner", "protection"},
-			Status:     "published",
-			ChainIDs:   []uint64{1, 56, 137, 42161, 10},
+			Category:    "security",
+			Tags:        []string{"security", "scanner", "protection"},
+			Status:      "published",
+			ChainIDs:    []uint64{1, 56, 137, 42161, 10},
 			Permissions: []string{"eth_accounts", "eth_chainId", "eth_blockNumber"},
-			CreatedAt:  time.Now().Unix(),
-			UpdatedAt:  time.Now().Unix(),
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
 		},
 		{
 			ID:          "tiger-stake",
@@ -269,13 +269,13 @@ func (s *PluginStore) loadBuiltInPlugins() {
 			Version:     "1.0.0",
 			Description: "Stake tokens and earn yields with liquid staking",
 			Author:      "TigerWallet",
-			Category:   "defi",
-			Tags:       []string{"staking", "yield", "defi"},
-			Status:     "published",
-			ChainIDs:   []uint64{1, 56},
+			Category:    "defi",
+			Tags:        []string{"staking", "yield", "defi"},
+			Status:      "published",
+			ChainIDs:    []uint64{1, 56},
 			Permissions: []string{"eth_accounts", "eth_chainId"},
-			CreatedAt:  time.Now().Unix(),
-			UpdatedAt:  time.Now().Unix(),
+			CreatedAt:   time.Now().Unix(),
+			UpdatedAt:   time.Now().Unix(),
 		},
 	}
 
@@ -412,10 +412,10 @@ func listPlugins(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"plugins":   plugins,
-		"total":     len(plugins),
-		"limit":     limit,
-		"offset":    offset,
+		"plugins": plugins,
+		"total":   len(plugins),
+		"limit":   limit,
+		"offset":  offset,
 	})
 }
 
@@ -747,10 +747,10 @@ func executePlugin(c *gin.Context) {
 	response := &PluginResponse{
 		Success: true,
 		Result: map[string]interface{}{
-			"executed":   true,
-			"method":     req.Method,
-			"plugin":     plugin.Name,
-			"timestamp":  time.Now().Unix(),
+			"executed":  true,
+			"method":    req.Method,
+			"plugin":    plugin.Name,
+			"timestamp": time.Now().Unix(),
 		},
 	}
 
@@ -830,7 +830,7 @@ func checkUpdates(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"hasUpdates": len(updates) > 0,
-		"updates":     updates,
+		"updates":    updates,
 	})
 }
 

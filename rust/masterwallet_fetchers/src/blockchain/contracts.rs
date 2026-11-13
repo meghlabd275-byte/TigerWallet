@@ -44,68 +44,144 @@ pub fn erc20_abi() -> Vec<Function> {
         Function {
             name: "name".to_string(),
             inputs: vec![],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "string".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "string".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "symbol".to_string(),
             inputs: vec![],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "string".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "string".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "decimals".to_string(),
             inputs: vec![],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "uint8".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "uint8".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "totalSupply".to_string(),
             inputs: vec![],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "uint256".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "uint256".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "balanceOf".to_string(),
-            inputs: vec![Parameter { name: "owner".to_string(), param_type: "address".to_string(), indexed: false }],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "uint256".to_string(), indexed: false }],
+            inputs: vec![Parameter {
+                name: "owner".to_string(),
+                param_type: "address".to_string(),
+                indexed: false,
+            }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "uint256".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "transfer".to_string(),
             inputs: vec![
-                Parameter { name: "to".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "amount".to_string(), param_type: "uint256".to_string(), indexed: false },
+                Parameter {
+                    name: "to".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "amount".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
             ],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "bool".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "bool".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::Nonpayable,
         },
         Function {
             name: "approve".to_string(),
             inputs: vec![
-                Parameter { name: "spender".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "amount".to_string(), param_type: "uint256".to_string(), indexed: false },
+                Parameter {
+                    name: "spender".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "amount".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
             ],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "bool".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "bool".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::Nonpayable,
         },
         Function {
             name: "transferFrom".to_string(),
             inputs: vec![
-                Parameter { name: "from".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "to".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "amount".to_string(), param_type: "uint256".to_string(), indexed: false },
+                Parameter {
+                    name: "from".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "to".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "amount".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
             ],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "bool".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "bool".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::Nonpayable,
         },
         Function {
             name: "allowance".to_string(),
             inputs: vec![
-                Parameter { name: "owner".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "spender".to_string(), param_type: "address".to_string(), indexed: false },
+                Parameter {
+                    name: "owner".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "spender".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
             ],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "uint256".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "uint256".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
     ]
@@ -117,33 +193,69 @@ pub fn erc721_abi() -> Vec<Function> {
         Function {
             name: "name".to_string(),
             inputs: vec![],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "string".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "string".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "symbol".to_string(),
             inputs: vec![],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "string".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "string".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "ownerOf".to_string(),
-            inputs: vec![Parameter { name: "tokenId".to_string(), param_type: "uint256".to_string(), indexed: false }],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "address".to_string(), indexed: false }],
+            inputs: vec![Parameter {
+                name: "tokenId".to_string(),
+                param_type: "uint256".to_string(),
+                indexed: false,
+            }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "address".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "balanceOf".to_string(),
-            inputs: vec![Parameter { name: "owner".to_string(), param_type: "address".to_string(), indexed: false }],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "uint256".to_string(), indexed: false }],
+            inputs: vec![Parameter {
+                name: "owner".to_string(),
+                param_type: "address".to_string(),
+                indexed: false,
+            }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "uint256".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "safeTransferFrom".to_string(),
             inputs: vec![
-                Parameter { name: "from".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "to".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "tokenId".to_string(), param_type: "uint256".to_string(), indexed: false },
+                Parameter {
+                    name: "from".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "to".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "tokenId".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
             ],
             outputs: vec![],
             state_mutability: StateMutability::Nonpayable,
@@ -157,20 +269,52 @@ pub fn erc1155_abi() -> Vec<Function> {
         Function {
             name: "balanceOf".to_string(),
             inputs: vec![
-                Parameter { name: "account".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "id".to_string(), param_type: "uint256".to_string(), indexed: false },
+                Parameter {
+                    name: "account".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "id".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
             ],
-            outputs: vec![Parameter { name: "".to_string(), param_type: "uint256".to_string(), indexed: false }],
+            outputs: vec![Parameter {
+                name: "".to_string(),
+                param_type: "uint256".to_string(),
+                indexed: false,
+            }],
             state_mutability: StateMutability::View,
         },
         Function {
             name: "safeTransferFrom".to_string(),
             inputs: vec![
-                Parameter { name: "from".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "to".to_string(), param_type: "address".to_string(), indexed: false },
-                Parameter { name: "id".to_string(), param_type: "uint256".to_string(), indexed: false },
-                Parameter { name: "amount".to_string(), param_type: "uint256".to_string(), indexed: false },
-                Parameter { name: "data".to_string(), param_type: "bytes".to_string(), indexed: false },
+                Parameter {
+                    name: "from".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "to".to_string(),
+                    param_type: "address".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "id".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "amount".to_string(),
+                    param_type: "uint256".to_string(),
+                    indexed: false,
+                },
+                Parameter {
+                    name: "data".to_string(),
+                    param_type: "bytes".to_string(),
+                    indexed: false,
+                },
             ],
             outputs: vec![],
             state_mutability: StateMutability::Nonpayable,
@@ -186,37 +330,49 @@ pub struct ContractRegistry {
 impl ContractRegistry {
     pub fn new() -> Self {
         let mut contracts = HashMap::new();
-        
+
         // ERC-20
-        contracts.insert("ERC20".to_string(), Contract {
-            address: "".to_string(),
-            abi: erc20_abi(),
-        });
-        
+        contracts.insert(
+            "ERC20".to_string(),
+            Contract {
+                address: "".to_string(),
+                abi: erc20_abi(),
+            },
+        );
+
         // ERC-721
-        contracts.insert("ERC721".to_string(), Contract {
-            address: "".to_string(),
-            abi: erc721_abi(),
-        });
-        
+        contracts.insert(
+            "ERC721".to_string(),
+            Contract {
+                address: "".to_string(),
+                abi: erc721_abi(),
+            },
+        );
+
         // ERC-1155
-        contracts.insert("ERC1155".to_string(), Contract {
-            address: "".to_string(),
-            abi: erc1155_abi(),
-        });
-        
+        contracts.insert(
+            "ERC1155".to_string(),
+            Contract {
+                address: "".to_string(),
+                abi: erc1155_abi(),
+            },
+        );
+
         Self { contracts }
     }
-    
+
     pub fn get(&self, name: &str) -> Option<&Contract> {
         self.contracts.get(name)
     }
-    
+
     pub fn register(&mut self, name: &str, address: &str, abi: Vec<Function>) {
-        self.contracts.insert(name.to_string(), Contract {
-            address: address.to_string(),
-            abi,
-        });
+        self.contracts.insert(
+            name.to_string(),
+            Contract {
+                address: address.to_string(),
+                abi,
+            },
+        );
     }
 }
 
@@ -232,13 +388,12 @@ pub struct ABIEncoder;
 impl ABIEncoder {
     /// Encode function call data
     pub fn encode(function_name: &str, params: &[&dyn ParamEncoder]) -> Result<Vec<u8>, String> {
-
         let mut result = Vec::new();
-        
+
         // Function selector (first 4 bytes of keccak256 of function signature)
         let selector = Self::function_selector(function_name);
         result.extend_from_slice(&selector);
-        
+
         // Encode parameters. A malformed argument aborts the whole call
         // rather than producing calldata that would dispatch with the wrong
         // arguments.
@@ -246,10 +401,10 @@ impl ABIEncoder {
             let word = param.encode()?;
             result.extend_from_slice(&word);
         }
-        
+
         Ok(result)
     }
-    
+
     /// Generate function selector
     ///
     /// The selector is the first four bytes of the Keccak-256 hash of the
@@ -282,8 +437,8 @@ fn encode_word(hex_value: &str, kind: &str) -> Result<Vec<u8>, String> {
         .or_else(|| hex_value.strip_prefix("0X"))
         .unwrap_or(hex_value);
 
-    let bytes = hex::decode(digits)
-        .map_err(|e| format!("{kind} is not valid hex ({hex_value}): {e}"))?;
+    let bytes =
+        hex::decode(digits).map_err(|e| format!("{kind} is not valid hex ({hex_value}): {e}"))?;
 
     if bytes.len() > 32 {
         return Err(format!(
@@ -333,7 +488,10 @@ mod tests {
             ("transfer(address,uint256)", [0xa9, 0x05, 0x9c, 0xbb]),
             ("balanceOf(address)", [0x70, 0xa0, 0x82, 0x31]),
             ("approve(address,uint256)", [0x09, 0x5e, 0xa7, 0xb3]),
-            ("transferFrom(address,address,uint256)", [0x23, 0xb8, 0x72, 0xdd]),
+            (
+                "transferFrom(address,address,uint256)",
+                [0x23, 0xb8, 0x72, 0xdd],
+            ),
             ("totalSupply()", [0x18, 0x16, 0x0d, 0xdd]),
             ("decimals()", [0x31, 0x3c, 0xe5, 0x67]),
         ];
@@ -391,7 +549,10 @@ mod tests {
         let over_long = format!("0x{}", "ab".repeat(21));
         let err = ABIEncoder::encode("transfer(address,uint256)", &[&AddressEncoder(over_long)])
             .expect_err("21-byte address must not encode");
-        assert!(err.contains("longer than 20 bytes"), "unexpected error: {err}");
+        assert!(
+            err.contains("longer than 20 bytes"),
+            "unexpected error: {err}"
+        );
     }
 
     /// A bare hex string without the 0x prefix is still valid input.
@@ -418,14 +579,20 @@ mod tests {
         let amount = "0x0000000000000000000000000000000000000000000000000000000000000064";
         let encoded = ABIEncoder::encode(
             "transfer(address,uint256)",
-            &[&AddressEncoder(address.to_string()), &Uint256Encoder(amount.to_string())],
+            &[
+                &AddressEncoder(address.to_string()),
+                &Uint256Encoder(amount.to_string()),
+            ],
         )
         .expect("encoding a well-formed call must succeed");
 
         assert_eq!(&encoded[..4], &[0xa9, 0x05, 0x9c, 0xbb]);
         assert_eq!(encoded.len(), 4 + 32 + 32);
         // Left-padded address in the first word.
-        assert_eq!(&encoded[4 + 12..4 + 32], &hex::decode("000000000000000000000000000000000000dead").unwrap()[..]);
+        assert_eq!(
+            &encoded[4 + 12..4 + 32],
+            &hex::decode("000000000000000000000000000000000000dead").unwrap()[..]
+        );
         // Amount in the second word.
         assert_eq!(encoded[4 + 63], 0x64);
     }

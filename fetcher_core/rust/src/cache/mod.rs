@@ -11,7 +11,8 @@ use tracing::{debug, error, info};
 /// Cache implementation using Redis
 pub struct FetcherCache {
     redis: Arc<RwLock<Option<ConnectionManager>>>,
-    memory_cache: Arc<RwLock<std::collections::HashMap<String, (serde_json::Value, std::time::Instant)>>>,
+    memory_cache:
+        Arc<RwLock<std::collections::HashMap<String, (serde_json::Value, std::time::Instant)>>>,
     enable_memory_fallback: bool,
 }
 
@@ -28,10 +29,10 @@ impl FetcherCache {
     pub async fn connect(&self, url: &str) -> Result<()> {
         let client = Client::open(url)?;
         let manager = ConnectionManager::new(client).await?;
-        
+
         let mut redis = self.redis.write().await;
         *redis = Some(manager);
-        
+
         info!("Connected to Redis cache");
         Ok(())
     }
@@ -68,7 +69,7 @@ impl FetcherCache {
     /// Set a value in cache
     pub async fn set<T: Serialize>(&self, key: &str, value: &T, ttl_seconds: u64) -> Result<()> {
         let data = serde_json::to_vec(value)?;
-        
+
         // Try Redis first
         {
             let redis = self.redis.read().await;
@@ -86,7 +87,7 @@ impl FetcherCache {
                 key.to_string(),
                 (serde_json::to_value(value)?, std::time::Instant::now()),
             );
-            
+
             // Clean old entries
             if memory.len() > 10000 {
                 let now = std::time::Instant::now();
@@ -148,14 +149,14 @@ impl FetcherCache {
     /// Get multiple keys at once
     pub async fn get_many<T: DeserializeOwned>(&self, keys: &[String]) -> Result<Vec<Option<T>>> {
         let mut results = Vec::with_capacity(keys.len());
-        
+
         for key in keys {
             match self.get(key).await {
                 Ok(value) => results.push(Some(value)),
                 Err(_) => results.push(None),
             }
         }
-        
+
         Ok(results)
     }
 
@@ -166,11 +167,12 @@ impl FetcherCache {
         // Delete from memory
         {
             let mut memory = self.memory_cache.write().await;
-            let keys: Vec<String> = memory.keys()
+            let keys: Vec<String> = memory
+                .keys()
                 .filter(|k| k.contains(pattern))
                 .cloned()
                 .collect();
-            
+
             for key in keys {
                 memory.remove(&key);
                 deleted += 1;
@@ -178,8 +180,11 @@ impl FetcherCache {
         }
 
         // Note: Redis pattern deletion would require SCAN + DEL in production
-        
-        info!("Invalidated {} cache entries matching pattern: {}", deleted, pattern);
+
+        info!(
+            "Invalidated {} cache entries matching pattern: {}",
+            deleted, pattern
+        );
         Ok(deleted)
     }
 

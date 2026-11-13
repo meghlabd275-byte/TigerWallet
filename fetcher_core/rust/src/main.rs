@@ -16,8 +16,8 @@ use blockchain::BlockchainFetcher;
 use cache::FetcherCache;
 use market::MarketFetcher;
 use tiger_fetcher::{
-    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherManager, FetcherMetrics,
-    FetcherState, FetcherStatus, FetcherType,
+    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherManager, FetcherMetrics, FetcherState,
+    FetcherStatus, FetcherType,
 };
 
 /// CLI arguments
@@ -52,12 +52,14 @@ pub struct FetcherService {
 impl FetcherService {
     pub async fn new(redis_url: &str, enable_memory_fallback: bool) -> Result<Self> {
         let cache = Arc::new(FetcherCache::new(enable_memory_fallback));
-        
+
         // Try to connect to Redis
         if let Err(e) = cache.connect(redis_url).await {
             error!("Failed to connect to Redis: {}", e);
             if !enable_memory_fallback {
-                return Err(anyhow::anyhow!("Redis connection required when memory fallback is disabled"));
+                return Err(anyhow::anyhow!(
+                    "Redis connection required when memory fallback is disabled"
+                ));
             }
         }
 
@@ -111,9 +113,11 @@ impl FetcherManager for FetcherService {
     }
 
     async fn fetch(&self, fetcher_type: FetcherType, params: FetchParams) -> Result<FetchResult> {
-        let fetcher = self.get_fetcher(fetcher_type.clone()).await
+        let fetcher = self
+            .get_fetcher(fetcher_type.clone())
+            .await
             .ok_or_else(|| anyhow::anyhow!("Fetcher not found: {:?}", fetcher_type))?;
-        
+
         fetcher.fetch(params).await
     }
 
@@ -143,17 +147,14 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Setup logging
-    let file_appender = RollingFileAppender::new(
-        Rotation::DAILY,
-        "/var/log/tigerwallet",
-        "fetcher.log",
-    );
-    
+    let file_appender =
+        RollingFileAppender::new(Rotation::DAILY, "/var/log/tigerwallet", "fetcher.log");
+
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&args.log_level));
-    
+
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&args.log_level));
+
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_writer(std::io::stdout))
@@ -165,22 +166,22 @@ async fn main() -> Result<()> {
 
     // Initialize fetcher service
     let service = FetcherService::new(&args.redis_url, args.memory_cache).await?;
-    
+
     // Register fetchers
     service.register_default_fetchers().await?;
 
     // Start HTTP server
     let addr = format!("0.0.0.0:{}", args.port);
     info!("Starting HTTP server on {}", addr);
-    
+
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     loop {
         let (socket, addr) = listener.accept().await?;
         info!("New connection from: {}", addr);
-        
+
         let service = Arc::new(service.clone());
-        
+
         tokio::spawn(async move {
             if let Err(e) = handle_connection(socket, service).await {
                 error!("Connection error: {}", e);
@@ -191,22 +192,22 @@ async fn main() -> Result<()> {
 
 async fn handle_connection(
     socket: tokio::net::TcpStream,
-    service: Arc<FetcherService>
+    service: Arc<FetcherService>,
 ) -> Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    
+
     let mut buffer = [0u8; 4096];
     let mut reader = tokio::io::BufReader::new(socket);
-    
+
     loop {
         let n = reader.read(&mut buffer).await?;
         if n == 0 {
             break;
         }
-        
+
         let request = String::from_utf8_lossy(&buffer[..n]);
         info!("Received request: {}", request.trim());
-        
+
         // Simple HTTP response
         let response = r#"{"status":"ok","service":"tiger-fetcher"}"#;
         let http_response = format!(
@@ -214,12 +215,12 @@ async fn handle_connection(
             response.len(),
             response
         );
-        
+
         let mut writer = tokio::io::BufWriter::new(&mut reader);
         writer.write_all(http_response.as_bytes()).await?;
         writer.flush().await?;
     }
-    
+
     Ok(())
 }
 

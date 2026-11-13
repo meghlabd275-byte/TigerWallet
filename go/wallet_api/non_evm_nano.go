@@ -136,7 +136,7 @@ func nanoRPC(ctx context.Context, endpoint, action string, fields map[string]int
 		return nil, err
 	}
 	var parsed struct {
-		Error string          `json:"error"`
+		Error string `json:"error"`
 	}
 	if err := unmarshalCheckError(resp, &parsed); err != nil {
 		return nil, err

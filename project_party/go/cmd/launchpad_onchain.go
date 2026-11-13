@@ -29,13 +29,13 @@ import (
 // disabled and handlers return 503 "on-chain not configured" — they NEVER
 // fabricate a transaction hash.
 type LaunchpadOnChain struct {
-	client    *ethclient.Client
-	pk        *ecdsa.PrivateKey
-	fromAddr  common.Address
-	contract  common.Address
-	auth      *bind.TransactOpts
-	abi       abi.ABI
-	chainID   *big.Int
+	client   *ethclient.Client
+	pk       *ecdsa.PrivateKey
+	fromAddr common.Address
+	contract common.Address
+	auth     *bind.TransactOpts
+	abi      abi.ABI
+	chainID  *big.Int
 }
 
 // launchpadOnChainSingleton is initialized once on startup (if configured).
@@ -104,10 +104,10 @@ func (loc *LaunchpadOnChain) contributeOnChain(ctx context.Context, saleID [32]b
 	}
 	// Estimate gas (fail-closed if the call would revert).
 	gasLimit, err := loc.client.EstimateGas(ctx, ethereum.CallMsg{
-		From:     loc.fromAddr,
-		To:       &loc.contract,
-		Data:     input,
-		Value:    valueWei,
+		From:  loc.fromAddr,
+		To:    &loc.contract,
+		Data:  input,
+		Value: valueWei,
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("estimateGas: %w", err)

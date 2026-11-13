@@ -24,14 +24,14 @@ func NewCopyTradingHandler(db *gorm.DB) *CopyTradingHandler {
 
 // CopyTradingConfig mirrors the copy_trading_configs table.
 type CopyTradingConfig struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	FollowerID   *string   `gorm:"index" json:"follower_id"`
-	LeaderID     *string   `gorm:"index" json:"leader_id"`
-	Allocation   float64   `gorm:"not null;default:0" json:"allocation"`
-	MaxLeverage  float64   `gorm:"not null;default:1" json:"max_leverage"`
-	Status       string    `gorm:"not null;default:'active'" json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	FollowerID  *string   `gorm:"index" json:"follower_id"`
+	LeaderID    *string   `gorm:"index" json:"leader_id"`
+	Allocation  float64   `gorm:"not null;default:0" json:"allocation"`
+	MaxLeverage float64   `gorm:"not null;default:1" json:"max_leverage"`
+	Status      string    `gorm:"not null;default:'active'" json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func (CopyTradingConfig) TableName() string { return "copy_trading_configs" }

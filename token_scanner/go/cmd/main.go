@@ -75,14 +75,14 @@ type Token struct {
 	RiskScore   int         `json:"riskScore"`
 	// BalanceRaw is the holder's balance in base units; BalanceFormatted is the
 	// same amount scaled by Decimals. Both are populated only by a wallet scan.
-	BalanceRaw       string `json:"balanceRaw,omitempty"`
-	BalanceFormatted string `json:"balance,omitempty"`
-	Verified         bool   `json:"verified"`
-	Tags        []string    `json:"tags"`
-	Socials     Socials     `json:"socials"`
-	Contract    Contract    `json:"contract"`
-	CreatedAt   int64       `json:"createdAt"`
-	UpdatedAt   int64       `json:"updatedAt"`
+	BalanceRaw       string   `json:"balanceRaw,omitempty"`
+	BalanceFormatted string   `json:"balance,omitempty"`
+	Verified         bool     `json:"verified"`
+	Tags             []string `json:"tags"`
+	Socials          Socials  `json:"socials"`
+	Contract         Contract `json:"contract"`
+	CreatedAt        int64    `json:"createdAt"`
+	UpdatedAt        int64    `json:"updatedAt"`
 }
 
 type Socials struct {

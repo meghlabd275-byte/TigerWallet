@@ -312,7 +312,7 @@ func zip243Preimage(tx *btcTx, idx int, subScript []byte, satoshis int64) []byte
 
 	in := tx.inputs[idx]
 	var b bytes.Buffer
-	writeU32LE(&b, 0x04000080) // v4 header
+	writeU32LE(&b, 0x04000080)              // v4 header
 	b.Write([]byte{0x70, 0x85, 0xC8, 0x92}) // versionGroupId 0x892FC208 LE
 	b.Write(hashPrevouts)
 	b.Write(hashSequence)

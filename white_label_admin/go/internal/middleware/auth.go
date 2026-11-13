@@ -18,12 +18,12 @@ import (
 // scope: every admin is bound to exactly one WL client and can only act within
 // that tenancy. scopes is the set of scoped sub-admin roles the admin holds.
 type Claims struct {
-	AdminID       uuid.UUID  `json:"admin_id"`
-	Username      string     `json:"username"`
-	Email         string     `json:"email"`
-	Role          string     `json:"role"`
-	WhiteLabelID  *uuid.UUID `json:"white_label_id,omitempty"`
-	Scopes        []string   `json:"scopes,omitempty"`
+	AdminID      uuid.UUID  `json:"admin_id"`
+	Username     string     `json:"username"`
+	Email        string     `json:"email"`
+	Role         string     `json:"role"`
+	WhiteLabelID *uuid.UUID `json:"white_label_id,omitempty"`
+	Scopes       []string   `json:"scopes,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -97,8 +97,10 @@ func RoleAuth(allowedRoles ...string) gin.HandlerFunc {
 
 // RequireScope is the per-endpoint authorization gate. The caller passes the
 // scope(s) permitted to call this endpoint. The admin passes if:
-//   (a) their role is 'wl_client' (the WL owner — full tenancy control), OR
-//   (b) they hold any of the required scopes in their scopes array.
+//
+//	(a) their role is 'wl_client' (the WL owner — full tenancy control), OR
+//	(b) they hold any of the required scopes in their scopes array.
+//
 // Tenant isolation is enforced separately by TenantScope (below): even a
 // wl_client can only touch rows in their own white_label_id.
 func RequireScope(allowedScopes ...string) gin.HandlerFunc {
@@ -121,7 +123,7 @@ func RequireScope(allowedScopes ...string) gin.HandlerFunc {
 			}
 		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error":          "insufficient scope",
+			"error":           "insufficient scope",
 			"required_scopes": allowedScopes,
 		})
 	}

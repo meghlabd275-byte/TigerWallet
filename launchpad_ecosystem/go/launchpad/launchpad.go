@@ -14,22 +14,22 @@ import "time"
 // for compatibility. The canonical, DB-backed model is LaunchpadProject in
 // launchpad_service.go.
 type Project struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	Token         string    `json:"token"`
-	TokenAddress  string    `json:"tokenAddress"`
-	SoftCap       float64   `json:"softCap"`
-	HardCap       float64   `json:"hardCap"`
-	MinBuy        float64   `json:"minBuy"`
-	MaxBuy        float64   `json:"maxBuy"`
-	Price         float64   `json:"price"`
-	StartTime     time.Time `json:"startTime"`
-	EndTime       time.Time `json:"endTime"`
-	Status        string    `json:"status"`
-	TotalRaised   float64   `json:"totalRaised"`
-	Participants  int       `json:"participants"`
-	Logo          string    `json:"logo"`
-	Website       string    `json:"website"`
-	Whitepaper    string    `json:"whitepaper"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Token        string    `json:"token"`
+	TokenAddress string    `json:"tokenAddress"`
+	SoftCap      float64   `json:"softCap"`
+	HardCap      float64   `json:"hardCap"`
+	MinBuy       float64   `json:"minBuy"`
+	MaxBuy       float64   `json:"maxBuy"`
+	Price        float64   `json:"price"`
+	StartTime    time.Time `json:"startTime"`
+	EndTime      time.Time `json:"endTime"`
+	Status       string    `json:"status"`
+	TotalRaised  float64   `json:"totalRaised"`
+	Participants int       `json:"participants"`
+	Logo         string    `json:"logo"`
+	Website      string    `json:"website"`
+	Whitepaper   string    `json:"whitepaper"`
 }

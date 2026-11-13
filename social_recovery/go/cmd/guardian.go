@@ -323,7 +323,6 @@ func (s *SocialRecoveryService) sendRawSMS(ctx context.Context, to, message stri
 	return nil
 }
 
-
 // sendGuardianInvitation issues a code and delivers it. Failures are logged: the
 // guardian stays unconfirmed and the operator can retry.
 func (s *SocialRecoveryService) sendGuardianInvitation(ctx context.Context, walletID string, guardian Guardian) {

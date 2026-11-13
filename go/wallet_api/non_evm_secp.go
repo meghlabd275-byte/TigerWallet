@@ -98,12 +98,12 @@ func TronBuildSend(ctx context.Context, seed []byte, path, endpoint, to string, 
 	}
 	submit := map[string]interface{}{
 		"signature": []map[string]string{{"signature": hexOf(sig)}},
-		"txID":      "",                  // optional
+		"txID":      "", // optional
 	}
 	_ = submit
 	finalBody, _ := json.Marshal(map[string]interface{}{
 		"raw_data_hex": rawHex,
-		"signature":   []string{hexOf(sig)},
+		"signature":    []string{hexOf(sig)},
 	})
 	resp2, err := postRaw(ctx, strings.TrimRight(endpoint, "/")+"/wallet/broadcasttransaction", finalBody)
 	if err != nil {
@@ -206,7 +206,9 @@ func VETBuildSend(ctx context.Context, seed []byte, path, endpoint, to string, a
 	if err != nil {
 		return "", "", err
 	}
-	var parsed struct { Id string `json:"id"` }
+	var parsed struct {
+		Id string `json:"id"`
+	}
 	if err := json.Unmarshal(best, &parsed); err != nil || parsed.Id == "" {
 		return "", "", errors.New("vechain best block malformed")
 	}
@@ -271,7 +273,9 @@ func VETBuildSend(ctx context.Context, seed []byte, path, endpoint, to string, a
 	if err != nil {
 		return "", "", fmt.Errorf("vechain broadcast: %w", err)
 	}
-	var out struct{ Id string `json:"id"` }
+	var out struct {
+		Id string `json:"id"`
+	}
 	if err := json.Unmarshal(resp, &out); err != nil || out.Id == "" {
 		return "", "", errors.New("vechain broadcast malformed")
 	}
@@ -412,18 +416,18 @@ func rippleCanonicalFields(fromPub, fromAcct, toAcct []byte, seq, lastLedger uin
 		h := append([]byte{hdr, byte(len(raw))}, raw...)
 		fields = append(fields, f{h[:2], raw})
 	}
-	pushAcct(0x11, fromAcct)             // Account
-	pushU16(0x12, 0)                     // TransactionType Payment = 0
-	pushAcct(0x13, toAcct)               // Destination
-	pushU64(0x18, drops)                 // Amount
-	pushU64(0x19, fee)                   // Fee
-	pushU32(0x22, 0)                     // Flags
-	pushU32(0x24, seq)                   // Sequence
-	pushU32(0x28, lastLedger)            // LastLedgerSequence
+	pushAcct(0x11, fromAcct)  // Account
+	pushU16(0x12, 0)          // TransactionType Payment = 0
+	pushAcct(0x13, toAcct)    // Destination
+	pushU64(0x18, drops)      // Amount
+	pushU64(0x19, fee)        // Fee
+	pushU32(0x22, 0)          // Flags
+	pushU32(0x24, seq)        // Sequence
+	pushU32(0x28, lastLedger) // LastLedgerSequence
 	if destTag != nil {
-		pushU32(0x2e, *destTag)            // (2,14) DestinationTag
+		pushU32(0x2e, *destTag) // (2,14) DestinationTag
 	}
-	pushAcct(0x73, fromPub)              // SigningPubKey
+	pushAcct(0x73, fromPub) // SigningPubKey
 	var out bytes.Buffer
 	for _, x := range fields {
 		out.Write(x.hdr)
@@ -443,7 +447,9 @@ func rippledRPC(ctx context.Context, endpoint, method string, params map[string]
 	if err != nil {
 		return nil, err
 	}
-	var parsed struct { Result json.RawMessage `json:"result"` }
+	var parsed struct {
+		Result json.RawMessage `json:"result"`
+	}
 	if err := json.Unmarshal(resp, &parsed); err != nil {
 		return nil, err
 	}
@@ -474,7 +480,9 @@ func RippleBuildSend(ctx context.Context, seed []byte, path, endpoint, to string
 		return "", "", fmt.Errorf("ripple account_info: %w", err)
 	}
 	var acc struct {
-		AccountData struct { Sequence uint32 `json:"Sequence"` } `json:"account_data"`
+		AccountData struct {
+			Sequence uint32 `json:"Sequence"`
+		} `json:"account_data"`
 		LedgerCurrentIndex uint32 `json:"ledger_current_index"`
 	}
 	if err := json.Unmarshal(ai, &acc); err != nil {
@@ -484,7 +492,11 @@ func RippleBuildSend(ctx context.Context, seed []byte, path, endpoint, to string
 	if err != nil {
 		return "", "", fmt.Errorf("ripple fee: %w", err)
 	}
-	var fd struct { Drops struct { BaseFee string `json:"base_fee"` } `json:"drops"` }
+	var fd struct {
+		Drops struct {
+			BaseFee string `json:"base_fee"`
+		} `json:"drops"`
+	}
 	if err := json.Unmarshal(feeRes, &fd); err != nil || fd.Drops.BaseFee == "" {
 		return "", "", errors.New("ripple fee malformed")
 	}

@@ -74,11 +74,7 @@ impl UserWalletClient {
         self.token.read().unwrap().clone()
     }
 
-    async fn request_json(
-        &self,
-        path: &str,
-        authenticated: bool,
-    ) -> Result<Value, String> {
+    async fn request_json(&self, path: &str, authenticated: bool) -> Result<Value, String> {
         let url = format!("{}{}", self.base_url, path);
         let mut req = self.http.get(&url);
         if authenticated {
@@ -170,10 +166,7 @@ impl UserWalletClient {
 
     pub async fn list_wallets(&self) -> Result<Vec<WalletRecord>, String> {
         let body = self.request_json("/wallets", true).await?;
-        let wallets = body
-            .get("wallets")
-            .cloned()
-            .unwrap_or(Value::Array(vec![]));
+        let wallets = body.get("wallets").cloned().unwrap_or(Value::Array(vec![]));
         serde_json::from_value(wallets).map_err(|e| format!("decode wallets: {e}"))
     }
 
@@ -253,10 +246,7 @@ impl UserWalletClient {
     pub async fn tokens(&self, address: &str, chain_id: i64) -> Result<Vec<Token>, String> {
         let path = format!("/tokens?address={address}&chain_id={chain_id}");
         let body = self.request_json(&path, true).await?;
-        let tokens = body
-            .get("tokens")
-            .cloned()
-            .unwrap_or(Value::Array(vec![]));
+        let tokens = body.get("tokens").cloned().unwrap_or(Value::Array(vec![]));
         serde_json::from_value(tokens).map_err(|e| format!("decode tokens: {e}"))
     }
 
@@ -306,16 +296,17 @@ impl UserWalletClient {
     pub async fn staking_quote(&self, chain_id: i64) -> Result<Vec<StakingQuote>, String> {
         let path = format!("/staking/quote?chain_id={chain_id}");
         let body = self.request_json(&path, true).await?;
-        let assets = body
-            .get("assets")
-            .cloned()
-            .unwrap_or(Value::Array(vec![]));
+        let assets = body.get("assets").cloned().unwrap_or(Value::Array(vec![]));
         serde_json::from_value(assets).map_err(|e| format!("decode staking: {e}"))
     }
 
     // ---- DApp directory (curated real entries via backend) ----
 
-    pub async fn dapps(&self, category: Option<&str>, chain: Option<&str>) -> Result<Vec<DApp>, String> {
+    pub async fn dapps(
+        &self,
+        category: Option<&str>,
+        chain: Option<&str>,
+    ) -> Result<Vec<DApp>, String> {
         let mut path = String::from("/dapps");
         let mut sep = '?';
         if let Some(c) = category {
@@ -334,16 +325,16 @@ impl UserWalletClient {
 
     // ---- Token registry (real per-chain lists via backend) ----
 
-    pub async fn token_registry(&self, chain_id: Option<i64>) -> Result<Vec<TokenRegistryEntry>, String> {
+    pub async fn token_registry(
+        &self,
+        chain_id: Option<i64>,
+    ) -> Result<Vec<TokenRegistryEntry>, String> {
         let path = match chain_id {
             Some(id) => format!("/tokens/registry?chain_id={id}"),
             None => "/tokens/registry".to_string(),
         };
         let body = self.request_json(&path, false).await?;
-        let registry = body
-            .get("tokens")
-            .cloned()
-            .unwrap_or(Value::Array(vec![]));
+        let registry = body.get("tokens").cloned().unwrap_or(Value::Array(vec![]));
         serde_json::from_value(registry).map_err(|e| format!("decode registry: {e}"))
     }
 
@@ -362,14 +353,21 @@ impl UserWalletClient {
     // call returns a real network error — never fabricated data.
     // ========================================================================
 
-    async fn service_get(&self, service: &str, path: &str, authenticated: bool) -> Result<Value, String> {
+    async fn service_get(
+        &self,
+        service: &str,
+        path: &str,
+        authenticated: bool,
+    ) -> Result<Value, String> {
         let base = self
             .services
             .get(service)
             .cloned()
             .ok_or_else(|| format!("service '{service}' URL is not configured"))?;
         if base.is_empty() {
-            return Err(format!("service '{service}' URL is empty; configure it before use"));
+            return Err(format!(
+                "service '{service}' URL is empty; configure it before use"
+            ));
         }
         let url = format!("{base}{path}");
         let mut req = self.http.get(&url);
@@ -395,28 +393,33 @@ impl UserWalletClient {
 
     /// Real Aave V3 lending markets (go/lending_service :8009).
     pub async fn lending_markets(&self) -> Result<Value, String> {
-        self.service_get("lending", "/api/v1/lending/markets", false).await
+        self.service_get("lending", "/api/v1/lending/markets", false)
+            .await
     }
 
     /// Real copy-trading signals (go/copy_trading_service :8006).
     pub async fn copy_trading_signals(&self) -> Result<Value, String> {
-        self.service_get("copy_trading", "/api/v1/copytrading/signals", true).await
+        self.service_get("copy_trading", "/api/v1/copytrading/signals", true)
+            .await
     }
 
     /// Real governance proposals / DAO (go/governance_service :8454).
     pub async fn dao_proposals(&self) -> Result<Value, String> {
-        self.service_get("governance", "/api/v1/governance/proposals", false).await
+        self.service_get("governance", "/api/v1/governance/proposals", false)
+            .await
     }
 
     /// Real perpetual markets — covers futures + margin positions
     /// (go/perpetual_service :8464).
     pub async fn futures_markets(&self) -> Result<Value, String> {
-        self.service_get("perpetual", "/api/v1/perpetual/pairs", true).await
+        self.service_get("perpetual", "/api/v1/perpetual/pairs", true)
+            .await
     }
 
     /// Real prediction markets (go/prediction_service :8455).
     pub async fn prediction_markets(&self) -> Result<Value, String> {
-        self.service_get("prediction", "/api/v1/prediction/markets", false).await
+        self.service_get("prediction", "/api/v1/prediction/markets", false)
+            .await
     }
 
     /// Real NFT marketplace listings / NFT trading (go/nft_service :8085).
@@ -426,7 +429,8 @@ impl UserWalletClient {
 
     /// Real fiat on/off-ramp providers (go/fiat_ramp :8008).
     pub async fn fiat_ramp_providers(&self) -> Result<Value, String> {
-        self.service_get("fiat_ramp", "/api/v1/ramp/providers", false).await
+        self.service_get("fiat_ramp", "/api/v1/ramp/providers", false)
+            .await
     }
 }
 
@@ -496,7 +500,9 @@ impl<T> Pipe<T> for T {
 }
 
 impl crate::Fetcher for BalanceFetcher {
-    fn name(&self) -> &str { "balance" }
+    fn name(&self) -> &str {
+        "balance"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let address = params.get("address").cloned().ok_or("missing address")?;
         let chain_id = params
@@ -509,7 +515,9 @@ impl crate::Fetcher for BalanceFetcher {
 }
 
 impl crate::Fetcher for TransactionFetcher {
-    fn name(&self) -> &str { "transactions" }
+    fn name(&self) -> &str {
+        "transactions"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let address = params.get("address").cloned().ok_or("missing address")?;
         let chain_id = params
@@ -522,7 +530,9 @@ impl crate::Fetcher for TransactionFetcher {
 }
 
 impl crate::Fetcher for TokenFetcher {
-    fn name(&self) -> &str { "tokens" }
+    fn name(&self) -> &str {
+        "tokens"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let address = params.get("address").cloned().ok_or("missing address")?;
         let chain_id = params
@@ -535,7 +545,9 @@ impl crate::Fetcher for TokenFetcher {
 }
 
 impl crate::Fetcher for NftFetcher {
-    fn name(&self) -> &str { "nfts" }
+    fn name(&self) -> &str {
+        "nfts"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let address = params.get("address").cloned().ok_or("missing address")?;
         let chain_id = params
@@ -548,7 +560,9 @@ impl crate::Fetcher for NftFetcher {
 }
 
 impl crate::Fetcher for GasFetcher {
-    fn name(&self) -> &str { "gas" }
+    fn name(&self) -> &str {
+        "gas"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let chain_id = params
             .get("chain_id")
@@ -560,7 +574,9 @@ impl crate::Fetcher for GasFetcher {
 }
 
 impl crate::Fetcher for PriceFetcher {
-    fn name(&self) -> &str { "price" }
+    fn name(&self) -> &str {
+        "price"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let symbol = params.get("symbol").cloned().ok_or("missing symbol")?;
         block_on(async { self.client.price(&symbol).await })?
@@ -569,9 +585,14 @@ impl crate::Fetcher for PriceFetcher {
 }
 
 impl crate::Fetcher for SwapFetcher {
-    fn name(&self) -> &str { "swap" }
+    fn name(&self) -> &str {
+        "swap"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
-        let from = params.get("from_token").cloned().ok_or("missing from_token")?;
+        let from = params
+            .get("from_token")
+            .cloned()
+            .ok_or("missing from_token")?;
         let to = params.get("to_token").cloned().ok_or("missing to_token")?;
         let amount = params.get("amount").cloned().ok_or("missing amount")?;
         let chain_id = params
@@ -584,7 +605,9 @@ impl crate::Fetcher for SwapFetcher {
 }
 
 impl crate::Fetcher for StakingFetcher {
-    fn name(&self) -> &str { "staking" }
+    fn name(&self) -> &str {
+        "staking"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let chain_id = params
             .get("chain_id")
@@ -596,7 +619,9 @@ impl crate::Fetcher for StakingFetcher {
 }
 
 impl crate::Fetcher for DAppRegistryFetcher {
-    fn name(&self) -> &str { "dapps" }
+    fn name(&self) -> &str {
+        "dapps"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         let category = params.get("category").map(|s| s.as_str());
         let chain = params.get("chain").map(|s| s.as_str());
@@ -610,35 +635,45 @@ impl crate::Fetcher for DAppRegistryFetcher {
 // ============================================================================
 
 impl crate::Fetcher for LendingFetcher {
-    fn name(&self) -> &str { "lending" }
+    fn name(&self) -> &str {
+        "lending"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.lending_markets().await })?
     }
 }
 
 impl crate::Fetcher for CopyTradingFetcher {
-    fn name(&self) -> &str { "copy_trading" }
+    fn name(&self) -> &str {
+        "copy_trading"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.copy_trading_signals().await })?
     }
 }
 
 impl crate::Fetcher for DaoFetcher {
-    fn name(&self) -> &str { "dao" }
+    fn name(&self) -> &str {
+        "dao"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.dao_proposals().await })?
     }
 }
 
 impl crate::Fetcher for FuturesFetcher {
-    fn name(&self) -> &str { "futures" }
+    fn name(&self) -> &str {
+        "futures"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.futures_markets().await })?
     }
 }
 
 impl crate::Fetcher for MarginFetcher {
-    fn name(&self) -> &str { "margin" }
+    fn name(&self) -> &str {
+        "margin"
+    }
     fn fetch(&self, params: HashMap<String, String>) -> Result<Value, String> {
         // Margin positions are perpetual positions filtered by user; reuse the
         // perpetual pairs/positions service.
@@ -648,21 +683,27 @@ impl crate::Fetcher for MarginFetcher {
 }
 
 impl crate::Fetcher for PredictionFetcher {
-    fn name(&self) -> &str { "prediction" }
+    fn name(&self) -> &str {
+        "prediction"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.prediction_markets().await })?
     }
 }
 
 impl crate::Fetcher for NftTradingFetcher {
-    fn name(&self) -> &str { "nft_trading" }
+    fn name(&self) -> &str {
+        "nft_trading"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.nft_marketplace().await })?
     }
 }
 
 impl crate::Fetcher for FiatRampFetcher {
-    fn name(&self) -> &str { "fiat_ramp" }
+    fn name(&self) -> &str {
+        "fiat_ramp"
+    }
     fn fetch(&self, _params: HashMap<String, String>) -> Result<Value, String> {
         block_on(async { self.client.fiat_ramp_providers().await })?
     }

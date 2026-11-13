@@ -26,24 +26,24 @@ func NewBotsHandler(db *gorm.DB) *BotsHandler {
 
 // Bot mirrors the admin_bots governance table.
 type Bot struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	BotID         string    `gorm:"uniqueIndex;not null" json:"bot_id"`
-	Name          string    `gorm:"not null" json:"name"`
-	OwnerID       *string   `gorm:"index" json:"owner_id"`
-	BotType       string    `gorm:"not null" json:"bot_type"`
-	Strategy      string    `json:"strategy"`
-	ChainID       *int64    `json:"chain_id"`
-	Status        string    `gorm:"not null;default:'active';index" json:"status"`
-	Tier          string    `json:"tier"`
-	Exchange      string    `json:"exchange"`
-	Pair          string    `json:"pair"`
-	AllocatedUSD  float64   `gorm:"default:0" json:"allocated_usd"`
-	PnlUSD        float64   `gorm:"default:0" json:"pnl_usd"`
-	WinRate       float64   `gorm:"default:0" json:"win_rate"`
-	TotalTrades   int64     `gorm:"default:0" json:"total_trades"`
-	LastActiveAt  *time.Time `json:"last_active_at"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	BotID        string     `gorm:"uniqueIndex;not null" json:"bot_id"`
+	Name         string     `gorm:"not null" json:"name"`
+	OwnerID      *string    `gorm:"index" json:"owner_id"`
+	BotType      string     `gorm:"not null" json:"bot_type"`
+	Strategy     string     `json:"strategy"`
+	ChainID      *int64     `json:"chain_id"`
+	Status       string     `gorm:"not null;default:'active';index" json:"status"`
+	Tier         string     `json:"tier"`
+	Exchange     string     `json:"exchange"`
+	Pair         string     `json:"pair"`
+	AllocatedUSD float64    `gorm:"default:0" json:"allocated_usd"`
+	PnlUSD       float64    `gorm:"default:0" json:"pnl_usd"`
+	WinRate      float64    `gorm:"default:0" json:"win_rate"`
+	TotalTrades  int64      `gorm:"default:0" json:"total_trades"`
+	LastActiveAt *time.Time `json:"last_active_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 func (Bot) TableName() string { return "admin_bots" }
@@ -185,15 +185,15 @@ func (h *BotsHandler) GetStats(c *gin.Context) {
 
 // BotTier mirrors the admin_bot_tiers governance table.
 type BotTier struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	Name        string    `gorm:"uniqueIndex;not null" json:"name"`
-	MaxBots     int       `gorm:"not null;default:1" json:"max_bots"`
-	MaxAllocation float64 `gorm:"default:0" json:"max_allocation"`
-	FeePercent  float64   `gorm:"default:0" json:"fee_percent"`
-	Features    string    `json:"features"`
-	Status      string    `gorm:"not null;default:'active'" json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	Name          string    `gorm:"uniqueIndex;not null" json:"name"`
+	MaxBots       int       `gorm:"not null;default:1" json:"max_bots"`
+	MaxAllocation float64   `gorm:"default:0" json:"max_allocation"`
+	FeePercent    float64   `gorm:"default:0" json:"fee_percent"`
+	Features      string    `json:"features"`
+	Status        string    `gorm:"not null;default:'active'" json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func (BotTier) TableName() string { return "admin_bot_tiers" }

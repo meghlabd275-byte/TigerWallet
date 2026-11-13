@@ -27,16 +27,16 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string
-	RedisAddr     string
-	RateLimitRPS  float64
+	ServerPort     string
+	RedisAddr      string
+	RateLimitRPS   float64
 	RateLimitBurst int
 }
 
 var cfg = Config{
-	ServerPort:    ":8444",
-	RedisAddr:     "localhost:6379",
-	RateLimitRPS:  200,
+	ServerPort:     ":8444",
+	RedisAddr:      "localhost:6379",
+	RateLimitRPS:   200,
 	RateLimitBurst: 400,
 }
 
@@ -45,84 +45,84 @@ var cfg = Config{
 // ============================================================================
 
 type CardToken struct {
-	TokenID           string    `json:"token_id"`
-	LastFour         string    `json:"last_four"`
-	CardType         string    `json:"card_type"` // debit, credit
-	Network           string    `json:"network"`   // visa, mastercard, amex
-	ExpMonth         uint8     `json:"exp_month"`
-	ExpYear          uint8     `json:"exp_year"`
-	CardholderName   string    `json:"cardholder_name"`
-	CreatedAt        uint64    `json:"created_at"`
-	LastUsedAt       uint64    `json:"last_used_at"`
-	IsFrozen         bool      `json:"is_frozen"`
-	DailyLimit       uint32    `json:"daily_limit"`
-	MonthlyLimit     uint32    `json:"monthly_limit"`
+	TokenID        string `json:"token_id"`
+	LastFour       string `json:"last_four"`
+	CardType       string `json:"card_type"` // debit, credit
+	Network        string `json:"network"`   // visa, mastercard, amex
+	ExpMonth       uint8  `json:"exp_month"`
+	ExpYear        uint8  `json:"exp_year"`
+	CardholderName string `json:"cardholder_name"`
+	CreatedAt      uint64 `json:"created_at"`
+	LastUsedAt     uint64 `json:"last_used_at"`
+	IsFrozen       bool   `json:"is_frozen"`
+	DailyLimit     uint32 `json:"daily_limit"`
+	MonthlyLimit   uint32 `json:"monthly_limit"`
 }
 
 type Transaction struct {
-	TransactionID    uint64    `json:"transaction_id"`
-	UserID           uint64    `json:"user_id"`
-	CardID           string    `json:"card_id"`
-	TransactionType  string    `json:"transaction_type"` // purchase, withdrawal, refund
-	Status           string    `json:"status"`          // pending, processing, approved, declined, completed
-	Amount           uint32    `json:"amount"`
-	OriginalAmount   uint32    `json:"original_amount"`
-	Currency         string    `json:"currency"`
-	MerchantID       uint64    `json:"merchant_id"`
-	MerchantName     string    `json:"merchant_name"`
-	MerchantCategory string    `json:"merchant_category"`
-	Country          string    `json:"country"`
-	ExchangeRate     int32     `json:"exchange_rate"`
-	Fees             uint32    `json:"fees"`
-	Cashback         uint32    `json:"cashback"`
-	Timestamp        uint64    `json:"timestamp"`
-	ProcessedAt      uint64    `json:"processed_at"`
-	RiskScore        uint8     `json:"risk_score"`
-	RejectionReason  string    `json:"rejection_reason,omitempty"`
-	AuthCode         string    `json:"auth_code"`
+	TransactionID    uint64 `json:"transaction_id"`
+	UserID           uint64 `json:"user_id"`
+	CardID           string `json:"card_id"`
+	TransactionType  string `json:"transaction_type"` // purchase, withdrawal, refund
+	Status           string `json:"status"`           // pending, processing, approved, declined, completed
+	Amount           uint32 `json:"amount"`
+	OriginalAmount   uint32 `json:"original_amount"`
+	Currency         string `json:"currency"`
+	MerchantID       uint64 `json:"merchant_id"`
+	MerchantName     string `json:"merchant_name"`
+	MerchantCategory string `json:"merchant_category"`
+	Country          string `json:"country"`
+	ExchangeRate     int32  `json:"exchange_rate"`
+	Fees             uint32 `json:"fees"`
+	Cashback         uint32 `json:"cashback"`
+	Timestamp        uint64 `json:"timestamp"`
+	ProcessedAt      uint64 `json:"processed_at"`
+	RiskScore        uint8  `json:"risk_score"`
+	RejectionReason  string `json:"rejection_reason,omitempty"`
+	AuthCode         string `json:"auth_code"`
 }
 
 type CardLimits struct {
-	DailyLimit         uint32 `json:"daily_limit"`
-	MonthlyLimit       uint32 `json:"monthly_limit"`
+	DailyLimit          uint32 `json:"daily_limit"`
+	MonthlyLimit        uint32 `json:"monthly_limit"`
 	PerTransactionLimit uint32 `json:"per_transaction_limit"`
-	DailySpent         uint32 `json:"daily_spent"`
-	MonthlySpent       uint32 `json:"monthly_spent"`
-	TransactionCount   uint32 `json:"transaction_count"`
+	DailySpent          uint32 `json:"daily_spent"`
+	MonthlySpent        uint32 `json:"monthly_spent"`
+	TransactionCount    uint32 `json:"transaction_count"`
 }
 
 type AuthorizationRequest struct {
-	UserID          uint64  `json:"user_id"`
-	CardToken       string  `json:"card_token"`
-	Amount          uint32  `json:"amount"`
-	Currency        string  `json:"currency"`
-	MerchantID      uint64  `json:"merchant_id"`
-	MerchantName    string  `json:"merchant_name"`
-	MerchantCategory string `json:"merchant_category"`
-	Country         string  `json:"country"`
-	TerminalID      string  `json:"terminal_id"`
-	Latitude        float64 `json:"latitude"`
-	Longitude       float64 `json:"longitude"`
+	UserID           uint64  `json:"user_id"`
+	CardToken        string  `json:"card_token"`
+	Amount           uint32  `json:"amount"`
+	Currency         string  `json:"currency"`
+	MerchantID       uint64  `json:"merchant_id"`
+	MerchantName     string  `json:"merchant_name"`
+	MerchantCategory string  `json:"merchant_category"`
+	Country          string  `json:"country"`
+	TerminalID       string  `json:"terminal_id"`
+	Latitude         float64 `json:"latitude"`
+	Longitude        float64 `json:"longitude"`
 }
 
 type AuthorizationResponse struct {
-	TransactionID uint64  `json:"transaction_id"`
-	Status        string  `json:"status"`
+	TransactionID  uint64 `json:"transaction_id"`
+	Status         string `json:"status"`
 	ApprovedAmount uint32 `json:"approved_amount"`
-	AuthCode      string  `json:"auth_code"`
-	ResponseCode  string  `json:"response_code"`
-	RiskScore     uint8   `json:"risk_score"`
-	Message       string  `json:"message"`
+	AuthCode       string `json:"auth_code"`
+	ResponseCode   string `json:"response_code"`
+	RiskScore      uint8  `json:"risk_score"`
+	Message        string `json:"message"`
 }
 
 type CardStats struct {
-	TotalCards      int     `json:"total_cards"`
-	ActiveCards     int     `json:"active_cards"`
-	TotalVolume    uint64  `json:"total_volume"`
-	Volume24h      uint64  `json:"volume_24h"`
-	TotalTransactions uint64 `json:"total_transactions"`
-	ApprovedCount   uint64  `json:"approved_count"`
-	DeclinedCount   uint64  `json:"declined_count"`
+	TotalCards         int    `json:"total_cards"`
+	ActiveCards        int    `json:"active_cards"`
+	TotalVolume        uint64 `json:"total_volume"`
+	Volume24h          uint64 `json:"volume_24h"`
+	TotalTransactions  uint64 `json:"total_transactions"`
+	ApprovedCount      uint64 `json:"approved_count"`
+	DeclinedCount      uint64 `json:"declined_count"`
 	AvgTransactionSize uint64 `json:"avg_transaction_size"`
 }
 
@@ -142,24 +142,24 @@ type APIError struct {
 // ============================================================================
 
 type PaymentService struct {
-	redis         *redis.Client
-	cards         map[string]map[string]*CardToken  // userID -> tokenID -> CardToken
-	transactions  map[uint64]*Transaction
-	limits        map[string]*CardLimits
-	nextTxID      uint64
-	mu            sync.RWMutex
-	feePercent    float32
+	redis           *redis.Client
+	cards           map[string]map[string]*CardToken // userID -> tokenID -> CardToken
+	transactions    map[uint64]*Transaction
+	limits          map[string]*CardLimits
+	nextTxID        uint64
+	mu              sync.RWMutex
+	feePercent      float32
 	cashbackPercent float32
 }
 
 func NewPaymentService(redisAddr string) *PaymentService {
 	svc := &PaymentService{
-		cards:         make(map[string]map[string]*CardToken),
-		transactions:  make(map[uint64]*Transaction),
-		limits:        make(map[string]*CardLimits),
-		nextTxID:      1,
-		feePercent:    0.029,  // 2.9%
-		cashbackPercent: 0.03,   // 3%
+		cards:           make(map[string]map[string]*CardToken),
+		transactions:    make(map[uint64]*Transaction),
+		limits:          make(map[string]*CardLimits),
+		nextTxID:        1,
+		feePercent:      0.029, // 2.9%
+		cashbackPercent: 0.03,  // 3%
 	}
 
 	svc.redis = redis.NewClient(&redis.Options{
@@ -181,31 +181,29 @@ func NewPaymentService(redisAddr string) *PaymentService {
 	return svc
 }
 
-
-
 func (s *PaymentService) CreateCard(userID, cardType, network, cardholderName string, expMonth, expYear uint8) *CardToken {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := uint64(time.Now().UnixMilli())
-	
+
 	// Generate token
 	lastFour := fmt.Sprintf("%04d", 1000+len(s.transactions)%9000)
 	tokenID := fmt.Sprintf("tok_%s_%s", network[:2], lastFour)
 
 	card := &CardToken{
-		TokenID:         tokenID,
-		LastFour:        lastFour,
-		CardType:        cardType,
-		Network:         network,
-		ExpMonth:        expMonth,
-		ExpYear:         expYear,
-		CardholderName:  cardholderName,
-		CreatedAt:        now,
-		LastUsedAt:       now,
-		IsFrozen:        false,
-		DailyLimit:      10000,
-		MonthlyLimit:     50000,
+		TokenID:        tokenID,
+		LastFour:       lastFour,
+		CardType:       cardType,
+		Network:        network,
+		ExpMonth:       expMonth,
+		ExpYear:        expYear,
+		CardholderName: cardholderName,
+		CreatedAt:      now,
+		LastUsedAt:     now,
+		IsFrozen:       false,
+		DailyLimit:     10000,
+		MonthlyLimit:   50000,
 	}
 
 	if s.cards[userID] == nil {
@@ -215,8 +213,8 @@ func (s *PaymentService) CreateCard(userID, cardType, network, cardholderName st
 
 	// Initialize limits
 	s.limits[tokenID] = &CardLimits{
-		DailyLimit:         10000,
-		MonthlyLimit:       50000,
+		DailyLimit:          10000,
+		MonthlyLimit:        50000,
 		PerTransactionLimit: 5000,
 	}
 
@@ -318,27 +316,27 @@ func (s *PaymentService) Authorize(req *AuthorizationRequest) *AuthorizationResp
 	card := s.cards[fmt.Sprintf("%d", req.UserID)][req.CardToken]
 	if card == nil {
 		return &AuthorizationResponse{
-			Status:      "declined",
+			Status:       "declined",
 			ResponseCode: "CARD_NOT_FOUND",
-			Message:     "Card not found",
+			Message:      "Card not found",
 		}
 	}
 
 	// Check if frozen
 	if card.IsFrozen {
 		return &AuthorizationResponse{
-			Status:      "declined",
+			Status:       "declined",
 			ResponseCode: "CARD_FROZEN",
-			Message:     "Card is frozen",
+			Message:      "Card is frozen",
 		}
 	}
 
 	// Check expiry
 	if card.ExpYear < 26 || (card.ExpYear == 26 && card.ExpMonth < 6) {
 		return &AuthorizationResponse{
-			Status:      "declined",
+			Status:       "declined",
 			ResponseCode: "CARD_EXPIRED",
-			Message:     "Card has expired",
+			Message:      "Card has expired",
 		}
 	}
 
@@ -347,16 +345,16 @@ func (s *PaymentService) Authorize(req *AuthorizationRequest) *AuthorizationResp
 	if limits != nil {
 		if req.Amount > limits.PerTransactionLimit {
 			return &AuthorizationResponse{
-				Status:      "declined",
+				Status:       "declined",
 				ResponseCode: "AMOUNT_EXCEEDS_LIMIT",
-				Message:     "Amount exceeds per-transaction limit",
+				Message:      "Amount exceeds per-transaction limit",
 			}
 		}
 		if req.Amount+limits.DailySpent > limits.DailyLimit {
 			return &AuthorizationResponse{
-				Status:      "declined",
+				Status:       "declined",
 				ResponseCode: "DAILY_LIMIT_EXCEEDED",
-				Message:     "Daily limit exceeded",
+				Message:      "Daily limit exceeded",
 			}
 		}
 	}
@@ -375,7 +373,6 @@ func (s *PaymentService) Authorize(req *AuthorizationRequest) *AuthorizationResp
 			RiskScore:    riskScore,
 		}
 	}
-
 
 	txID := s.nextTxID
 	s.nextTxID++
@@ -418,13 +415,13 @@ func (s *PaymentService) Authorize(req *AuthorizationRequest) *AuthorizationResp
 	card.LastUsedAt = now
 
 	return &AuthorizationResponse{
-		TransactionID: txID,
-		Status:        "approved",
+		TransactionID:  txID,
+		Status:         "approved",
 		ApprovedAmount: req.Amount,
-		AuthCode:      authCode,
-		ResponseCode:  "APPROVED",
-		RiskScore:    10,
-		Message:      "Transaction approved",
+		AuthCode:       authCode,
+		ResponseCode:   "APPROVED",
+		RiskScore:      10,
+		Message:        "Transaction approved",
 	}
 }
 
@@ -448,17 +445,17 @@ func (s *PaymentService) Refund(txID uint64, amount uint32) bool {
 	now := uint64(time.Now().UnixMilli())
 	refund := &Transaction{
 		TransactionID:   refundID,
-		UserID:         tx.UserID,
-		CardID:         tx.CardID,
+		UserID:          tx.UserID,
+		CardID:          tx.CardID,
 		TransactionType: "refund",
 		Status:          "completed",
-		Amount:         amount,
-		OriginalAmount: amount,
-		Currency:       tx.Currency,
-		MerchantID:     tx.MerchantID,
-		MerchantName:   tx.MerchantName,
-		Timestamp:      now,
-		ProcessedAt:    now,
+		Amount:          amount,
+		OriginalAmount:  amount,
+		Currency:        tx.Currency,
+		MerchantID:      tx.MerchantID,
+		MerchantName:    tx.MerchantName,
+		Timestamp:       now,
+		ProcessedAt:     now,
 	}
 
 	s.transactions[refundID] = refund
@@ -545,11 +542,11 @@ func (s *PaymentService) GetStats() *CardStats {
 	}
 
 	return &CardStats{
-		TotalCards:          totalCards,
-		ActiveCards:         activeCards,
+		TotalCards:         totalCards,
+		ActiveCards:        activeCards,
 		TotalVolume:        totalVol,
 		Volume24h:          vol24h,
-		TotalTransactions:   approved + declined,
+		TotalTransactions:  approved + declined,
 		ApprovedCount:      approved,
 		DeclinedCount:      declined,
 		AvgTransactionSize: avgSize,

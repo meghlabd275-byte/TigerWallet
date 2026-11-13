@@ -13,9 +13,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -42,11 +42,11 @@ type Config struct {
 type WhiteLevelProduct string
 
 const (
-	ProductMasterWallet      WhiteLevelProduct = "master_wallet"
-	ProductUserWallet       WhiteLevelProduct = "user_wallet"
-	ProductBots            WhiteLevelProduct = "bots"
-	ProductBotsClients     WhiteLevelProduct = "bots_clients"
-	ProductProjectParty    WhiteLevelProduct = "project_party"
+	ProductMasterWallet WhiteLevelProduct = "master_wallet"
+	ProductUserWallet   WhiteLevelProduct = "user_wallet"
+	ProductBots         WhiteLevelProduct = "bots"
+	ProductBotsClients  WhiteLevelProduct = "bots_clients"
+	ProductProjectParty WhiteLevelProduct = "project_party"
 )
 
 // Permission levels
@@ -65,75 +65,75 @@ const (
 type FetcherType string
 
 const (
-	FetcherPrices        FetcherType = "prices"
-	FetcherBalances      FetcherType = "balances"
-	FetcherTransactions  FetcherType = "transactions"
-	FetcherUserData      FetcherType = "user_data"
-	FetcherMarketData    FetcherType = "market_data"
-	FetcherBlockchain    FetcherType = "blockchain"
-	FetcherTokenInfo     FetcherType = "token_info"
-	FetcherKYC           FetcherType = "kyc"
+	FetcherPrices       FetcherType = "prices"
+	FetcherBalances     FetcherType = "balances"
+	FetcherTransactions FetcherType = "transactions"
+	FetcherUserData     FetcherType = "user_data"
+	FetcherMarketData   FetcherType = "market_data"
+	FetcherBlockchain   FetcherType = "blockchain"
+	FetcherTokenInfo    FetcherType = "token_info"
+	FetcherKYC          FetcherType = "kyc"
 )
 
 // Core models
 type WhiteLevelClient struct {
-	ID                uuid.UUID         `json:"id"`
-	Name              string            `json:"name"`
-	Domain            string            `json:"domain"`
-	Products          []WhiteLevelProduct `json:"products"`
-	Status            string            `json:"status"` // active, suspended, terminated
-	APIKey            string            `json:"api_key"`
-	APIKeyHash        string            `json:"-"`
-	APIKeyPrefix      string            `json:"api_key_prefix"`
-	RateLimit         int               `json:"rate_limit"` // requests per minute
-	CreatedAt         time.Time         `json:"created_at"`
-	UpdatedAt         time.Time         `json:"updated_at"`
+	ID           uuid.UUID           `json:"id"`
+	Name         string              `json:"name"`
+	Domain       string              `json:"domain"`
+	Products     []WhiteLevelProduct `json:"products"`
+	Status       string              `json:"status"` // active, suspended, terminated
+	APIKey       string              `json:"api_key"`
+	APIKeyHash   string              `json:"-"`
+	APIKeyPrefix string              `json:"api_key_prefix"`
+	RateLimit    int                 `json:"rate_limit"` // requests per minute
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
 }
 
 type WhiteLevelAdmin struct {
-	ID             uuid.UUID       `json:"id"`
-	ClientID       uuid.UUID       `json:"client_id"`
-	Email          string          `json:"email"`
-	Username       string          `json:"username"`
-	PasswordHash   string          `json:"-"`
-	Role           string          `json:"role"` // owner, admin, manager, viewer
-	Products       []WhiteLevelProduct `json:"products"`
-	Permissions    map[string]map[PermissionLevel]bool `json:"permissions"`
-	IsActive       bool            `json:"is_active"`
-	TwoFactorEnabled bool          `json:"two_factor_enabled"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	LastLogin      *time.Time      `json:"last_login"`
+	ID               uuid.UUID                           `json:"id"`
+	ClientID         uuid.UUID                           `json:"client_id"`
+	Email            string                              `json:"email"`
+	Username         string                              `json:"username"`
+	PasswordHash     string                              `json:"-"`
+	Role             string                              `json:"role"` // owner, admin, manager, viewer
+	Products         []WhiteLevelProduct                 `json:"products"`
+	Permissions      map[string]map[PermissionLevel]bool `json:"permissions"`
+	IsActive         bool                                `json:"is_active"`
+	TwoFactorEnabled bool                                `json:"two_factor_enabled"`
+	CreatedAt        time.Time                           `json:"created_at"`
+	UpdatedAt        time.Time                           `json:"updated_at"`
+	LastLogin        *time.Time                          `json:"last_login"`
 }
 
 type ProductPermission struct {
-	ID             uuid.UUID         `json:"id"`
-	ClientID       uuid.UUID         `json:"client_id"`
-	Product        WhiteLevelProduct `json:"product"`
-	Fetcher        FetcherType       `json:"fetcher"`
-	Permission     PermissionLevel   `json:"permission"`
-	IsEnabled      bool              `json:"is_enabled"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ID         uuid.UUID         `json:"id"`
+	ClientID   uuid.UUID         `json:"client_id"`
+	Product    WhiteLevelProduct `json:"product"`
+	Fetcher    FetcherType       `json:"fetcher"`
+	Permission PermissionLevel   `json:"permission"`
+	IsEnabled  bool              `json:"is_enabled"`
+	CreatedAt  time.Time         `json:"created_at"`
+	UpdatedAt  time.Time         `json:"updated_at"`
 }
 
 type FetcherConfig struct {
-	ID            uuid.UUID   `json:"id"`
-	Product       WhiteLevelProduct `json:"product"`
-	Fetcher       FetcherType `json:"fetcher"`
-	Endpoint      string     `json:"endpoint"`
-	Timeout       int        `json:"timeout"` // milliseconds
-	RetryCount    int        `json:"retry_count"`
-	CacheTTL      int        `json:"cache_ttl"` // seconds
-	IsActive     bool       `json:"is_active"`
-	ConfigData   string     `json:"config_data"` // JSON
+	ID         uuid.UUID         `json:"id"`
+	Product    WhiteLevelProduct `json:"product"`
+	Fetcher    FetcherType       `json:"fetcher"`
+	Endpoint   string            `json:"endpoint"`
+	Timeout    int               `json:"timeout"` // milliseconds
+	RetryCount int               `json:"retry_count"`
+	CacheTTL   int               `json:"cache_ttl"` // seconds
+	IsActive   bool              `json:"is_active"`
+	ConfigData string            `json:"config_data"` // JSON
 }
 
 type PermissionAudit struct {
 	ID           uuid.UUID `json:"id"`
 	AdminID      uuid.UUID `json:"admin_id"`
 	ClientID     uuid.UUID `json:"client_id"`
-	Action       string    `json:"action"` // grant, revoke, modify
+	Action       string    `json:"action"`        // grant, revoke, modify
 	ResourceType string    `json:"resource_type"` // product, fetcher, admin
 	ResourceID   string    `json:"resource_id"`
 	Details      string    `json:"details"` // JSON
@@ -142,25 +142,25 @@ type PermissionAudit struct {
 }
 
 type APIConnection struct {
-	ID            uuid.UUID `json:"id"`
-	ClientID      uuid.UUID `json:"client_id"`
+	ID            uuid.UUID         `json:"id"`
+	ClientID      uuid.UUID         `json:"client_id"`
 	Product       WhiteLevelProduct `json:"product"`
-	ConnectionKey string    `json:"connection_key"`
-	Status        string    `json:"status"` // connected, disconnected, error
-	LastHeartbeat time.Time `json:"last_heartbeat"`
-	IPAddress     string    `json:"ip_address"`
-	CreatedAt     time.Time `json:"created_at"`
+	ConnectionKey string            `json:"connection_key"`
+	Status        string            `json:"status"` // connected, disconnected, error
+	LastHeartbeat time.Time         `json:"last_heartbeat"`
+	IPAddress     string            `json:"ip_address"`
+	CreatedAt     time.Time         `json:"created_at"`
 }
 
 // Global variables
 var (
-	db             *pgxpool.Pool
-	redis           *redislib.Client
-	config         Config
-	logger         *log.Logger
-	permCache      *sync.Map // permission cache
-	connManager    *sync.Map // connection manager
-	jwtSecret      []byte
+	db          *pgxpool.Pool
+	redis       *redislib.Client
+	config      Config
+	logger      *log.Logger
+	permCache   *sync.Map // permission cache
+	connManager *sync.Map // connection manager
+	jwtSecret   []byte
 )
 
 // ============ INITIALIZATION ============
@@ -367,11 +367,11 @@ func generateAPIKey() (string, string, string) {
 
 func generateJWT(adminID, clientID uuid.UUID, role string) (string, error) {
 	claims := jwt.MapClaims{
-		"admin_id": adminID.String(),
+		"admin_id":  adminID.String(),
 		"client_id": clientID.String(),
-		"role": role,
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
-		"iat": time.Now().Unix(),
+		"role":      role,
+		"exp":       time.Now().Add(24 * time.Hour).Unix(),
+		"iat":       time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(jwtSecret)
@@ -397,11 +397,11 @@ func validateAPIKey(apiKey string) (*WhiteLevelClient, error) {
 
 func registerConnection(clientID uuid.UUID, product WhiteLevelProduct, ipAddress string) (*APIConnection, error) {
 	connKey := uuid.New().String()
-	
+
 	conn := &APIConnection{
 		ID:            uuid.New(),
 		ClientID:      clientID,
-		Product:        product,
+		Product:       product,
 		ConnectionKey: connKey,
 		Status:        "connected",
 		LastHeartbeat: time.Now(),
@@ -424,7 +424,7 @@ func registerConnection(clientID uuid.UUID, product WhiteLevelProduct, ipAddress
 
 func heartbeatConnection(connKey string) error {
 	connManager.Store(connKey, time.Now())
-	
+
 	_, err := db.Exec(context.Background(), `
 		UPDATE api_connections SET last_heartbeat = NOW() WHERE connection_key = $1
 	`, connKey)
@@ -433,7 +433,7 @@ func heartbeatConnection(connKey string) error {
 
 func disconnectConnection(connKey string) error {
 	connManager.Delete(connKey)
-	
+
 	_, err := db.Exec(context.Background(), `
 		UPDATE api_connections SET status = 'disconnected' WHERE connection_key = $1
 	`, connKey)
@@ -444,7 +444,7 @@ func disconnectConnection(connKey string) error {
 
 func logAudit(adminID, clientID uuid.UUID, action, resourceType, resourceID, details, ipAddress string) error {
 	detailsJSON, _ := json.Marshal(details)
-	
+
 	_, err := db.Exec(context.Background(), `
 		INSERT INTO permission_audits (id, admin_id, client_id, action, resource_type, resource_id, details, ip_address)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -486,16 +486,16 @@ func HealthCheck(c *gin.Context) {
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redis.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":   "ok",
-		"database": dbStatus,
-		"redis":    redisStatus,
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
 		"timestamp": time.Now(),
 	})
 }
@@ -503,8 +503,8 @@ func HealthCheck(c *gin.Context) {
 // RegisterClient - Register a new white level client
 func RegisterClient(c *gin.Context) {
 	var req struct {
-		Name     string               `json:"name" binding:"required"`
-		Domain   string               `json:"domain"`
+		Name     string              `json:"name" binding:"required"`
+		Domain   string              `json:"domain"`
 		Products []WhiteLevelProduct `json:"products" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -513,19 +513,19 @@ func RegisterClient(c *gin.Context) {
 	}
 
 	apiKey, keyHash, prefix := generateAPIKey()
-	
+
 	client := WhiteLevelClient{
 		ID:           uuid.New(),
 		Name:         req.Name,
-		Domain:        req.Domain,
-		Products:       req.Products,
-		Status:        "active",
-		APIKey:        apiKey,
-		APIKeyHash:    keyHash,
-		APIKeyPrefix:  prefix,
-		RateLimit:     100,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		Domain:       req.Domain,
+		Products:     req.Products,
+		Status:       "active",
+		APIKey:       apiKey,
+		APIKeyHash:   keyHash,
+		APIKeyPrefix: prefix,
+		RateLimit:    100,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	productsJSON, _ := json.Marshal(client.Products)
@@ -549,13 +549,13 @@ func RegisterClient(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"client": gin.H{
-			"id":           client.ID,
-			"name":         client.Name,
-			"domain":       client.Domain,
-			"products":      client.Products,
-			"status":       client.Status,
-			"api_key":      client.APIKey,
-			"rate_limit":   client.RateLimit,
+			"id":         client.ID,
+			"name":       client.Name,
+			"domain":     client.Domain,
+			"products":   client.Products,
+			"status":     client.Status,
+			"api_key":    client.APIKey,
+			"rate_limit": client.RateLimit,
 		},
 	})
 }
@@ -585,11 +585,11 @@ func GetClient(c *gin.Context) {
 // CreateAdmin - Create admin for client
 func CreateAdmin(c *gin.Context) {
 	var req struct {
-		ClientID uuid.UUID       `json:"client_id" binding:"required"`
-		Email    string          `json:"email" binding:"required"`
-		Username string          `json:"username" binding:"required"`
-		Password string          `json:"password" binding:"required"`
-		Role     string          `json:"role"`
+		ClientID uuid.UUID           `json:"client_id" binding:"required"`
+		Email    string              `json:"email" binding:"required"`
+		Username string              `json:"username" binding:"required"`
+		Password string              `json:"password" binding:"required"`
+		Role     string              `json:"role"`
 		Products []WhiteLevelProduct `json:"products"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -609,17 +609,17 @@ func CreateAdmin(c *gin.Context) {
 	}
 
 	admin := WhiteLevelAdmin{
-		ID:               uuid.New(),
-		ClientID:         req.ClientID,
-		Email:            req.Email,
-		Username:         req.Username,
-		PasswordHash:     string(passwordHash),
-		Role:             req.Role,
-		Products:         req.Products,
-		Permissions:      make(map[string]map[PermissionLevel]bool),
-		IsActive:         true,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		ID:           uuid.New(),
+		ClientID:     req.ClientID,
+		Email:        req.Email,
+		Username:     req.Username,
+		PasswordHash: string(passwordHash),
+		Role:         req.Role,
+		Products:     req.Products,
+		Permissions:  make(map[string]map[PermissionLevel]bool),
+		IsActive:     true,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	productsJSON, _ := json.Marshal(admin.Products)
@@ -652,8 +652,8 @@ func Login(c *gin.Context) {
 	}
 
 	var (
-		admin         WhiteLevelAdmin
-		storedHash    string
+		admin      WhiteLevelAdmin
+		storedHash string
 	)
 	err := db.QueryRow(context.Background(), `
 		SELECT id, client_id, email, username, role, products, permissions, is_active, two_factor_enabled, password_hash
@@ -678,10 +678,10 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token": token,
 		"admin": gin.H{
-			"id":      admin.ID,
-			"email":   admin.Email,
+			"id":       admin.ID,
+			"email":    admin.Email,
 			"username": admin.Username,
-			"role":    admin.Role,
+			"role":     admin.Role,
 		},
 	})
 }
@@ -772,7 +772,7 @@ func CheckPermissionHandler(c *gin.Context) {
 func RegisterConnection(c *gin.Context) {
 	var req struct {
 		Product   WhiteLevelProduct `json:"product" binding:"required"`
-		IPAddress string             `json:"ip_address"`
+		IPAddress string            `json:"ip_address"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -799,7 +799,7 @@ func RegisterConnection(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"connection_key": conn.ConnectionKey,
-		"status":        conn.Status,
+		"status":         conn.Status,
 	})
 }
 

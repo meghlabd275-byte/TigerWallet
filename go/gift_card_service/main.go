@@ -41,12 +41,12 @@ type GiftCard struct {
 
 // GiftCardBrand is a purchasable gift card brand (table: gift_card_brands).
 type GiftCardBrand struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Logo     string  `json:"logo"`
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Logo      string  `json:"logo"`
 	MinAmount float64 `json:"min_amount"`
 	MaxAmount float64 `json:"max_amount"`
-	Discount float64 `json:"discount"`
+	Discount  float64 `json:"discount"`
 }
 
 type service struct {

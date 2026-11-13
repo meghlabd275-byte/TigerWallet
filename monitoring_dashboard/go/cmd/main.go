@@ -36,18 +36,18 @@ type ServiceType string
 
 const (
 	ServicePermission   ServiceType = "permission"
-	ServiceConnection  ServiceType = "connection"
-	ServiceFetcher     ServiceType = "fetcher"
+	ServiceConnection   ServiceType = "connection"
+	ServiceFetcher      ServiceType = "fetcher"
 	ServiceMasterWallet ServiceType = "master_wallet"
-	ServiceUserWallet  ServiceType = "user_wallet"
-	ServiceBots       ServiceType = "bots"
+	ServiceUserWallet   ServiceType = "user_wallet"
+	ServiceBots         ServiceType = "bots"
 	ServiceProjectParty ServiceType = "project_party"
 )
 
 type ServiceStatus string
 
 const (
-	StatusHealthy   ServiceStatus = "healthy"
+	StatusHealthy  ServiceStatus = "healthy"
 	StatusDegraded ServiceStatus = "degraded"
 	StatusDown     ServiceStatus = "down"
 	StatusUnknown  ServiceStatus = "unknown"
@@ -55,42 +55,42 @@ const (
 
 // Service health
 type ServiceHealth struct {
-	ID          uuid.UUID     `json:"id"`
-	Service    ServiceType   `json:"service"`
-	Status     ServiceStatus `json:"status"`
-	Uptime     float64      `json:"uptime"` // percentage
-	Latency    float64      `json:"latency"` // ms
-	ErrorRate  float64      `json:"error_rate"` // percentage
-	Requests   int64       `json:"requests"`
-	Errors     int64       `json:"errors"`
-	LastCheck  time.Time   `json:"last_check"`
-	CreatedAt  time.Time   `json:"created_at"`
+	ID        uuid.UUID     `json:"id"`
+	Service   ServiceType   `json:"service"`
+	Status    ServiceStatus `json:"status"`
+	Uptime    float64       `json:"uptime"`     // percentage
+	Latency   float64       `json:"latency"`    // ms
+	ErrorRate float64       `json:"error_rate"` // percentage
+	Requests  int64         `json:"requests"`
+	Errors    int64         `json:"errors"`
+	LastCheck time.Time     `json:"last_check"`
+	CreatedAt time.Time     `json:"created_at"`
 }
 
 // Alert
 type Alert struct {
-	ID          uuid.UUID   `json:"id"`
+	ID         uuid.UUID   `json:"id"`
 	Service    ServiceType `json:"service"`
-	AlertType  string     `json:"alert_type"` // latency, error, downtime
-	Severity   string     `json:"severity"` // critical, warning, info
-	Message    string     `json:"message"`
-	Status     string     `json:"status"` // active, resolved
-	CreatedAt  time.Time `json:"created_at"`
-	ResolvedAt *time.Time `json:"resolved_at"`
+	AlertType  string      `json:"alert_type"` // latency, error, downtime
+	Severity   string      `json:"severity"`   // critical, warning, info
+	Message    string      `json:"message"`
+	Status     string      `json:"status"` // active, resolved
+	CreatedAt  time.Time   `json:"created_at"`
+	ResolvedAt *time.Time  `json:"resolved_at"`
 }
 
 // Metrics
 type SystemMetrics struct {
-	TotalRequests   int64   `json:"total_requests"`
-	SuccessRate   float64 `json:"success_rate"`
-	ErrorRate     float64 `json:"error_rate"`
-	AvgLatency    float64 `json:"avg_latency"`
-	P99Latency    float64 `json:"p99_latency"`
-	ActiveConns   int64   `json:"active_connections"`
-	CPUUsage      float64 `json:"cpu_usage"`
-	MemoryUsage   float64 `json:"memory_usage"`
-	DiskUsage    float64 `json:"disk_usage"`
-	Timestamp    time.Time `json:"timestamp"`
+	TotalRequests int64     `json:"total_requests"`
+	SuccessRate   float64   `json:"success_rate"`
+	ErrorRate     float64   `json:"error_rate"`
+	AvgLatency    float64   `json:"avg_latency"`
+	P99Latency    float64   `json:"p99_latency"`
+	ActiveConns   int64     `json:"active_connections"`
+	CPUUsage      float64   `json:"cpu_usage"`
+	MemoryUsage   float64   `json:"memory_usage"`
+	DiskUsage     float64   `json:"disk_usage"`
+	Timestamp     time.Time `json:"timestamp"`
 }
 
 type ProductMetrics struct {
@@ -105,20 +105,20 @@ type ProductMetrics struct {
 // Global variables
 var (
 	db     *pgxpool.Pool
-	redis           *redislib.Client
+	redis  *redislib.Client
 	config Config
 	logger *log.Logger
 
 	// In-memory cache
-	healthCache    map[ServiceType]*ServiceHealth
-	metricsCache   map[string]interface{}
-	alertCache     []Alert
-	cacheMu        sync.RWMutex
+	healthCache  map[ServiceType]*ServiceHealth
+	metricsCache map[string]interface{}
+	alertCache   []Alert
+	cacheMu      sync.RWMutex
 
 	// Counters
-	totalRequests   int64
-	totalErrors     int64
-	requestsStart   time.Time
+	totalRequests int64
+	totalErrors   int64
+	requestsStart time.Time
 )
 
 // ============ INITIALIZATION ============
@@ -214,10 +214,10 @@ func updateServiceHealth(service ServiceType, status ServiceStatus, latency floa
 	health, exists := healthCache[service]
 	if !exists {
 		health = &ServiceHealth{
-			ID:         uuid.New(),
-			Service:    service,
-			Uptime:     100.0,
-			CreatedAt:   time.Now(),
+			ID:        uuid.New(),
+			Service:   service,
+			Uptime:    100.0,
+			CreatedAt: time.Now(),
 		}
 		healthCache[service] = health
 	}
@@ -268,13 +268,13 @@ func checkAlerts(service ServiceType, status ServiceStatus, latency float64, err
 
 func createAlert(service ServiceType, alertType, severity, message string) {
 	alert := Alert{
-		ID:         uuid.New(),
-		Service:    service,
-		AlertType:  alertType,
-		Severity:   severity,
-		Message:    message,
-		Status:     "active",
-		CreatedAt:  time.Now(),
+		ID:        uuid.New(),
+		Service:   service,
+		AlertType: alertType,
+		Severity:  severity,
+		Message:   message,
+		Status:    "active",
+		CreatedAt: time.Now(),
 	}
 
 	cacheMu.Lock()
@@ -384,10 +384,10 @@ func getProductMetrics() []ProductMetrics {
 
 		result = append(result, ProductMetrics{
 			Product:       product,
-			Requests:     requests,
-			SuccessRate:  successRate,
-			AvgLatency:   latency,
-			ErrorRate:    errorRate,
+			Requests:      requests,
+			SuccessRate:   successRate,
+			AvgLatency:    latency,
+			ErrorRate:     errorRate,
 			ActiveClients: clients,
 		})
 	}
@@ -491,7 +491,7 @@ func diskUsagePercent() (float64, bool) {
 // Host metric sampling state. CPU utilisation is only meaningful as a delta
 // between two cumulative /proc/stat reads.
 var (
-	hostMetricsMu  sync.Mutex
+	hostMetricsMu sync.Mutex
 	lastCPUSample cpuSample
 	haveCPUSample bool
 )
@@ -550,21 +550,21 @@ func startMetricsCollection() {
 
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redis.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":   "ok",
-		"database": dbStatus,
-		"redis":    redisStatus,
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
 		"timestamp": time.Now(),
 	})
 }
@@ -649,20 +649,20 @@ func GetDashboardData(c *gin.Context) {
 	cacheMu.RUnlock()
 
 	c.JSON(http.StatusOK, gin.H{
-		"system":       systemMetrics,
-		"products":     productMetrics,
-		"services":     healthList,
+		"system":        systemMetrics,
+		"products":      productMetrics,
+		"services":      healthList,
 		"active_alerts": alertCount,
-		"timestamp":    time.Now(),
+		"timestamp":     time.Now(),
 	})
 }
 
 // RecordMetric - Record a metric
 func RecordMetric(c *gin.Context) {
 	var req struct {
-		Service  string  `json:"service" binding:"required"`
-		Metric   string  `json:"metric" binding:"required"`
-		Value    float64 `json:"value" binding:"required"`
+		Service string  `json:"service" binding:"required"`
+		Metric  string  `json:"metric" binding:"required"`
+		Value   float64 `json:"value" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -756,7 +756,6 @@ func getEnv(key, defaultValue string) string {
 }
 
 // ============ MAIN ============
-
 
 // ============ INCIDENT HANDLERS ============
 

@@ -141,9 +141,9 @@ func (s *FiatRampService) handleStripeWebhook(c *gin.Context) {
 		Type string `json:"type"`
 		Data struct {
 			Object struct {
-				ID            string `json:"id"`
-				ClientReferenceID string `json:"client_reference_id"`
-				Metadata      map[string]string `json:"metadata"`
+				ID                string            `json:"id"`
+				ClientReferenceID string            `json:"client_reference_id"`
+				Metadata          map[string]string `json:"metadata"`
 			} `json:"object"`
 		} `json:"data"`
 	}
@@ -201,10 +201,10 @@ func (s *FiatRampService) handleMoonPayWebhook(c *gin.Context) {
 	var event struct {
 		Type string `json:"type"`
 		Data struct {
-			ID               string `json:"id"`
-			Status           string `json:"status"`
-			ExternalCustomerID string `json:"externalCustomerId"`
-			Metadata         map[string]string `json:"metadata"`
+			ID                 string            `json:"id"`
+			Status             string            `json:"status"`
+			ExternalCustomerID string            `json:"externalCustomerId"`
+			Metadata           map[string]string `json:"metadata"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &event); err != nil {
@@ -254,8 +254,8 @@ func (s *FiatRampService) handleTransakWebhook(c *gin.Context) {
 	var event struct {
 		EventID string `json:"eventID"`
 		Data    struct {
-			ID           string `json:"id"`
-			Status       string `json:"status"`
+			ID             string `json:"id"`
+			Status         string `json:"status"`
 			PartnerOrderID string `json:"partnerOrderId"`
 		} `json:"webhookData"`
 	}

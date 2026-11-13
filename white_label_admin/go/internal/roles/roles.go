@@ -3,62 +3,65 @@
 // by the RequireScope middleware for per-endpoint authorization.
 //
 // The 6 product scopes:
-//   trading_admin     — WL futures, margin, options, copy, convert trading
-//   p2p_admin         — WL p2p, on-ramp, off-ramp, p2p merchant+client
-//   bot_admin         — all WL bots
-//   listing_admin     — WL coin/token listing + trading-pair + listingManager/partner mgmt
-//   liquidity_admin   — all WL liquidity sources
-//   wallet_admin      — WL MasterWallet + WL-UserWallet management
+//
+//	trading_admin     — WL futures, margin, options, copy, convert trading
+//	p2p_admin         — WL p2p, on-ramp, off-ramp, p2p merchant+client
+//	bot_admin         — all WL bots
+//	listing_admin     — WL coin/token listing + trading-pair + listingManager/partner mgmt
+//	liquidity_admin   — all WL liquidity sources
+//	wallet_admin      — WL MasterWallet + WL-UserWallet management
 //
 // The 7 other-services scopes:
-//   customer_service_admin — customer service / support tickets
-//   marketing_admin        — marketing & promotion
-//   kyc_admin              — KYC review
-//   card_admin             — WL-Branded CryptoCard
-//   reward_admin           — reward system
-//   security_admin         — security (WL client only)
-//   compliance_admin       — compliance / audit / reports
+//
+//	customer_service_admin — customer service / support tickets
+//	marketing_admin        — marketing & promotion
+//	kyc_admin              — KYC review
+//	card_admin             — WL-Branded CryptoCard
+//	reward_admin           — reward system
+//	security_admin         — security (WL client only)
+//	compliance_admin       — compliance / audit / reports
 //
 // Plus the WL client owner role:
-//   wl_client — the WL client themselves; can do everything in their tenancy
-//               EXCEPT withdraw funds/revenue (that needs SuperAdmin co-sign).
+//
+//	wl_client — the WL client themselves; can do everything in their tenancy
+//	            EXCEPT withdraw funds/revenue (that needs SuperAdmin co-sign).
 package roles
 
 // Scoped roles assignable by a WL client.
 const (
-	WLClient              = "wl_client"
-	TradingAdmin          = "trading_admin"
-	P2PAdmin              = "p2p_admin"
-	BotAdmin              = "bot_admin"
-	ListingAdmin          = "listing_admin"
-	LiquidityAdmin        = "liquidity_admin"
-	WalletAdmin           = "wallet_admin"
-	CustomerServiceAdmin  = "customer_service_admin"
-	MarketingAdmin        = "marketing_admin"
-	KYCAdmin              = "kyc_admin"
-	CardAdmin             = "card_admin"
-	RewardAdmin           = "reward_admin"
-	SecurityAdmin         = "security_admin"
-	ComplianceAdmin       = "compliance_admin"
+	WLClient             = "wl_client"
+	TradingAdmin         = "trading_admin"
+	P2PAdmin             = "p2p_admin"
+	BotAdmin             = "bot_admin"
+	ListingAdmin         = "listing_admin"
+	LiquidityAdmin       = "liquidity_admin"
+	WalletAdmin          = "wallet_admin"
+	CustomerServiceAdmin = "customer_service_admin"
+	MarketingAdmin       = "marketing_admin"
+	KYCAdmin             = "kyc_admin"
+	CardAdmin            = "card_admin"
+	RewardAdmin          = "reward_admin"
+	SecurityAdmin        = "security_admin"
+	ComplianceAdmin      = "compliance_admin"
 )
 
 // ValidScopes is the whitelist of assignable scopes. A WL client cannot invent
 // arbitrary scope strings.
 var ValidScopes = map[string]bool{
-	WLClient: true,
-	TradingAdmin: true,
-	P2PAdmin: true,
-	BotAdmin: true,
-	ListingAdmin: true,
-	LiquidityAdmin: true,
-	WalletAdmin: true,
+	WLClient:             true,
+	TradingAdmin:         true,
+	P2PAdmin:             true,
+	BotAdmin:             true,
+	ListingAdmin:         true,
+	LiquidityAdmin:       true,
+	WalletAdmin:          true,
 	CustomerServiceAdmin: true,
-	MarketingAdmin: true,
-	KYCAdmin: true,
-	CardAdmin: true,
-	RewardAdmin: true,
-	SecurityAdmin: true,
-	ComplianceAdmin: true,
+	MarketingAdmin:       true,
+	KYCAdmin:             true,
+	CardAdmin:            true,
+	RewardAdmin:          true,
+	SecurityAdmin:        true,
+	ComplianceAdmin:      true,
 }
 
 // AllScopes returns the list of assignable scope names (for the frontend role picker).

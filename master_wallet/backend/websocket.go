@@ -44,9 +44,9 @@ var upgrader = websocket.Upgrader{
 
 // wsClient is one connected WebSocket client.
 type wsClient struct {
-	conn       *websocket.Conn
-	masterID   string
-	send       chan []byte
+	conn     *websocket.Conn
+	masterID string
+	send     chan []byte
 }
 
 // wsHub manages connected clients + broadcasts.

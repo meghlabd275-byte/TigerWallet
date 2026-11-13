@@ -751,7 +751,6 @@ func GetChannelSubscribers(c *gin.Context) {
 	})
 }
 
-
 // requireAdminAPIToken protects operational endpoints. Configure a high-entropy
 // TIGERWALLET_WS_ADMIN_TOKEN through the deployment secret manager.
 func requireAdminAPIToken() gin.HandlerFunc {

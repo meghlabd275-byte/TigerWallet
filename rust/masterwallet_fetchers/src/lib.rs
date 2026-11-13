@@ -8,26 +8,26 @@
 //! - NO user wallet operations (those are in userwallet_fetchers)
 //! - NO admin operations (those are in admin_fetchers)
 
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use redis::{Client as RedisClient, Commands, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
-use tokio_postgres::{NoTls, Client, Row};
-use redis::{Client as RedisClient, Commands, Connection};
+use tokio_postgres::{Client, NoTls, Row};
 
-pub mod types;
-pub mod fetchers;
-pub mod database;
 pub mod blockchain;
 pub mod cache;
+pub mod database;
+pub mod fetchers;
+pub mod types;
 
-pub use types::*;
-pub use fetchers::*;
-pub use database::*;
 pub use blockchain::*;
 pub use cache::*;
+pub use database::*;
+pub use fetchers::*;
+pub use types::*;
 
 /// MasterWallet fetcher manager - only includes master wallet operations
 pub struct MasterWalletFetcherManager {
@@ -44,14 +44,45 @@ impl MasterWalletFetcherManager {
         let mut fetchers = HashMap::new();
 
         // Master wallet operations (different from user wallet)
-        fetchers.insert("subwallets".to_string(), Arc::new(SubWalletFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("auto_sign".to_string(), Arc::new(AutoSignFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("sign_approval".to_string(), Arc::new(SignApprovalFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("user_management".to_string(), Arc::new(UserManagementFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("volume".to_string(), Arc::new(VolumeFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("master_analytics".to_string(), Arc::new(MasterAnalyticsFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("permissions".to_string(), Arc::new(PermissionsFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
-        fetchers.insert("whitelist".to_string(), Arc::new(WhitelistFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>);
+        fetchers.insert(
+            "subwallets".to_string(),
+            Arc::new(SubWalletFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "auto_sign".to_string(),
+            Arc::new(AutoSignFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "sign_approval".to_string(),
+            Arc::new(SignApprovalFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "user_management".to_string(),
+            Arc::new(UserManagementFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "volume".to_string(),
+            Arc::new(VolumeFetcher::new(db_pool.clone(), cache.clone())) as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "master_analytics".to_string(),
+            Arc::new(MasterAnalyticsFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "permissions".to_string(),
+            Arc::new(PermissionsFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
+        fetchers.insert(
+            "whitelist".to_string(),
+            Arc::new(WhitelistFetcher::new(db_pool.clone(), cache.clone()))
+                as Arc<dyn MasterFetcher>,
+        );
 
         Ok(Self {
             fetchers,
@@ -159,19 +190,29 @@ impl DatabasePool {
         })
     }
 
-    pub fn execute(&self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64, String> {
+    pub fn execute(
+        &self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, String> {
         let client = self.get_connection()?;
         self.runtime.block_on(async {
-            client.execute(query, params)
+            client
+                .execute(query, params)
                 .await
                 .map_err(|e| format!("Query execution failed: {}", e))
         })
     }
 
-    pub fn query(&self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<Row>, String> {
+    pub fn query(
+        &self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<Row>, String> {
         let client = self.get_connection()?;
         self.runtime.block_on(async {
-            client.query(query, params)
+            client
+                .query(query, params)
                 .await
                 .map_err(|e| format!("Query failed: {}", e))
         })
@@ -188,7 +229,10 @@ pub struct CacheManager {
 impl CacheManager {
     pub fn new(config: &RedisConfig) -> Result<Self, String> {
         let redis_url = if let Some(ref password) = config.password {
-            format!("redis://:{}@{}:{}/{}", password, config.host, config.port, config.db)
+            format!(
+                "redis://:{}@{}:{}/{}",
+                password, config.host, config.port, config.db
+            )
         } else {
             format!("redis://{}:{}/{}", config.host, config.port, config.db)
         };
@@ -205,65 +249,95 @@ impl CacheManager {
     }
 
     pub fn get(&self, key: &str) -> Result<Option<String>, String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
-        let val: Option<String> = redis::Commands::get(&mut *con, key)
-            .map_err(|e| format!("Cache get failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
+        let val: Option<String> =
+            redis::Commands::get(&mut *con, key).map_err(|e| format!("Cache get failed: {}", e))?;
         Ok(val)
     }
 
     pub fn set(&self, key: &str, value: &str) -> Result<(), String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         redis::Commands::set::<&str, &str, ()>(&mut *con, key, value)
             .map_err(|e| format!("Cache set failed: {}", e))
     }
 
     pub fn set_with_ttl(&self, key: &str, value: &str, ttl: u64) -> Result<(), String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         redis::Commands::set_ex(&mut *con, key, value, ttl)
             .map_err(|e| format!("Cache set_ex failed: {}", e))
     }
 
     pub fn delete(&self, key: &str) -> Result<(), String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         redis::Commands::del::<&str, ()>(&mut *con, key)
             .map_err(|e| format!("Cache delete failed: {}", e))
     }
 
     pub fn exists(&self, key: &str) -> Result<bool, String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         let val: bool = redis::Commands::exists(&mut *con, key)
             .map_err(|e| format!("Cache exists failed: {}", e))?;
         Ok(val)
     }
 
     pub fn incr(&self, key: &str) -> Result<i64, String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         let val: i64 = redis::Commands::incr(&mut *con, key, 1)
             .map_err(|e| format!("Cache incr failed: {}", e))?;
         Ok(val)
     }
 
     pub fn expire(&self, key: &str, ttl: u64) -> Result<(), String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         redis::Commands::expire(&mut *con, key, ttl as i64)
             .map_err(|e| format!("Cache expire failed: {}", e))
     }
 
     pub fn hset(&self, key: &str, field: &str, value: &str) -> Result<(), String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         redis::Commands::hset::<&str, &str, &str, ()>(&mut *con, key, field, value)
             .map_err(|e| format!("Cache hset failed: {}", e))
     }
 
     pub fn hget(&self, key: &str, field: &str) -> Result<Option<String>, String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         let val: Option<String> = redis::Commands::hget(&mut *con, key, field)
             .map_err(|e| format!("Cache hget failed: {}", e))?;
         Ok(val)
     }
 
     pub fn hgetall(&self, key: &str) -> Result<HashMap<String, String>, String> {
-        let mut con = self.client.lock().map_err(|e| format!("Cache lock failed: {}", e))?;
+        let mut con = self
+            .client
+            .lock()
+            .map_err(|e| format!("Cache lock failed: {}", e))?;
         let val: HashMap<String, String> = redis::Commands::hgetall(&mut *con, key)
             .map_err(|e| format!("Cache hgetall failed: {}", e))?;
         Ok(val)
@@ -283,7 +357,9 @@ impl SubWalletFetcher {
 }
 
 impl MasterFetcher for SubWalletFetcher {
-    fn name(&self) -> &str { "subwallets" }
+    fn name(&self) -> &str {
+        "subwallets"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
@@ -310,23 +386,27 @@ impl MasterFetcher for SubWalletFetcher {
 
         let rows = self.db_pool.query(query, &[&master_wallet_id])?;
 
-        let subwallets: Vec<serde_json::Value> = rows.iter().map(|row| {
-            json!({
-                "id": row.get::<_, String>("id"),
-                "master_wallet_id": row.get::<_, String>("master_wallet_id"),
-                "name": row.get::<_, String>("name"),
-                "address": row.get::<_, String>("address"),
-                "address_type": row.get::<_, String>("address_type"),
-                "is_active": row.get::<_, bool>("is_active"),
-                "total_balance": row.get::<_, f64>("total_balance"),
-                "user_count": row.get::<_, i64>("user_count"),
-                "created_at": row.get::<_, i64>("created_at"),
-                "updated_at": row.get::<_, i64>("updated_at")
+        let subwallets: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.get::<_, String>("id"),
+                    "master_wallet_id": row.get::<_, String>("master_wallet_id"),
+                    "name": row.get::<_, String>("name"),
+                    "address": row.get::<_, String>("address"),
+                    "address_type": row.get::<_, String>("address_type"),
+                    "is_active": row.get::<_, bool>("is_active"),
+                    "total_balance": row.get::<_, f64>("total_balance"),
+                    "user_count": row.get::<_, i64>("user_count"),
+                    "created_at": row.get::<_, i64>("created_at"),
+                    "updated_at": row.get::<_, i64>("updated_at")
+                })
             })
-        }).collect();
+            .collect();
 
         // Calculate total volume
-        let total_volume: f64 = subwallets.iter()
+        let total_volume: f64 = subwallets
+            .iter()
             .filter_map(|w| w.get("total_balance").and_then(|v| v.as_f64()))
             .sum();
 
@@ -384,7 +464,9 @@ impl AutoSignFetcher {
 }
 
 impl MasterFetcher for AutoSignFetcher {
-    fn name(&self) -> &str { "auto_sign" }
+    fn name(&self) -> &str {
+        "auto_sign"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
@@ -405,20 +487,23 @@ impl MasterFetcher for AutoSignFetcher {
 
         let rows = self.db_pool.query(query, &[&master_wallet_id])?;
 
-        let rules: Vec<serde_json::Value> = rows.iter().map(|row| {
-            json!({
-                "id": row.get::<_, String>("id"),
-                "master_wallet_id": row.get::<_, String>("master_wallet_id"),
-                "name": row.get::<_, String>("name"),
-                "maxAmount": row.get::<_, String>("max_amount"),
-                "chainIds": row.get::<_, Vec<String>>("chain_ids"),
-                "tokenIds": row.get::<_, Vec<String>>("token_ids"),
-                "enabled": row.get::<_, bool>("enabled"),
-                "conditions": row.get::<_, Vec<String>>("conditions"),
-                "createdAt": row.get::<_, i64>("created_at"),
-                "updatedAt": row.get::<_, i64>("updated_at")
+        let rules: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.get::<_, String>("id"),
+                    "master_wallet_id": row.get::<_, String>("master_wallet_id"),
+                    "name": row.get::<_, String>("name"),
+                    "maxAmount": row.get::<_, String>("max_amount"),
+                    "chainIds": row.get::<_, Vec<String>>("chain_ids"),
+                    "tokenIds": row.get::<_, Vec<String>>("token_ids"),
+                    "enabled": row.get::<_, bool>("enabled"),
+                    "conditions": row.get::<_, Vec<String>>("conditions"),
+                    "createdAt": row.get::<_, i64>("created_at"),
+                    "updatedAt": row.get::<_, i64>("updated_at")
+                })
             })
-        }).collect();
+            .collect();
 
         let result = json!({
             "rules": rules,
@@ -471,11 +556,16 @@ impl SignApprovalFetcher {
 }
 
 impl MasterFetcher for SignApprovalFetcher {
-    fn name(&self) -> &str { "sign_approval" }
+    fn name(&self) -> &str {
+        "sign_approval"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
-        let status = params.get("status").cloned().unwrap_or_else(|| "PENDING".to_string());
+        let status = params
+            .get("status")
+            .cloned()
+            .unwrap_or_else(|| "PENDING".to_string());
 
         let query = r#"
             SELECT id, master_wallet_id, sub_wallet_id, tx_hash, from_address,
@@ -489,25 +579,28 @@ impl MasterFetcher for SignApprovalFetcher {
 
         let rows = self.db_pool.query(query, &[&master_wallet_id, &status])?;
 
-        let transactions: Vec<serde_json::Value> = rows.iter().map(|row| {
-            json!({
-                "id": row.get::<_, String>("id"),
-                "masterWalletId": row.get::<_, String>("master_wallet_id"),
-                "subWalletId": row.get::<_, String>("sub_wallet_id"),
-                "txHash": row.get::<_, String>("tx_hash"),
-                "from": row.get::<_, String>("from_address"),
-                "to": row.get::<_, String>("to_address"),
-                "amount": row.get::<_, String>("amount"),
-                "tokenId": row.get::<_, String>("token_id"),
-                "chainId": row.get::<_, i64>("chain_id"),
-                "status": row.get::<_, String>("status"),
-                "approvedBy": row.get::<_, Option<String>>("approved_by"),
-                "rejectedBy": row.get::<_, Option<String>>("rejected_by"),
-                "rejectReason": row.get::<_, Option<String>>("reject_reason"),
-                "createdAt": row.get::<_, i64>("created_at"),
-                "updatedAt": row.get::<_, i64>("updated_at")
+        let transactions: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.get::<_, String>("id"),
+                    "masterWalletId": row.get::<_, String>("master_wallet_id"),
+                    "subWalletId": row.get::<_, String>("sub_wallet_id"),
+                    "txHash": row.get::<_, String>("tx_hash"),
+                    "from": row.get::<_, String>("from_address"),
+                    "to": row.get::<_, String>("to_address"),
+                    "amount": row.get::<_, String>("amount"),
+                    "tokenId": row.get::<_, String>("token_id"),
+                    "chainId": row.get::<_, i64>("chain_id"),
+                    "status": row.get::<_, String>("status"),
+                    "approvedBy": row.get::<_, Option<String>>("approved_by"),
+                    "rejectedBy": row.get::<_, Option<String>>("rejected_by"),
+                    "rejectReason": row.get::<_, Option<String>>("reject_reason"),
+                    "createdAt": row.get::<_, i64>("created_at"),
+                    "updatedAt": row.get::<_, i64>("updated_at")
+                })
             })
-        }).collect();
+            .collect();
 
         // Get counts for all statuses
         let pending_count: i64 = self.db_pool.query(
@@ -582,7 +675,9 @@ impl UserManagementFetcher {
 }
 
 impl MasterFetcher for UserManagementFetcher {
-    fn name(&self) -> &str { "user_management" }
+    fn name(&self) -> &str {
+        "user_management"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
@@ -614,20 +709,23 @@ impl MasterFetcher for UserManagementFetcher {
             self.db_pool.query(query, &[&master_wallet_id])?
         };
 
-        let users: Vec<serde_json::Value> = rows.iter().map(|row| {
-            json!({
-                "id": row.get::<_, String>("id"),
-                "walletId": row.get::<_, String>("wallet_id"),
-                "userId": row.get::<_, String>("user_id"),
-                "email": row.get::<_, String>("email"),
-                "name": row.get::<_, String>("name"),
-                "role": row.get::<_, String>("role"),
-                "permissions": row.get::<_, Vec<String>>("permissions"),
-                "isActive": row.get::<_, bool>("is_active"),
-                "createdAt": row.get::<_, i64>("created_at"),
-                "updatedAt": row.get::<_, i64>("updated_at")
+        let users: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.get::<_, String>("id"),
+                    "walletId": row.get::<_, String>("wallet_id"),
+                    "userId": row.get::<_, String>("user_id"),
+                    "email": row.get::<_, String>("email"),
+                    "name": row.get::<_, String>("name"),
+                    "role": row.get::<_, String>("role"),
+                    "permissions": row.get::<_, Vec<String>>("permissions"),
+                    "isActive": row.get::<_, bool>("is_active"),
+                    "createdAt": row.get::<_, i64>("created_at"),
+                    "updatedAt": row.get::<_, i64>("updated_at")
+                })
             })
-        }).collect();
+            .collect();
 
         Ok(json!({
             "users": users,
@@ -675,11 +773,16 @@ impl VolumeFetcher {
 }
 
 impl MasterFetcher for VolumeFetcher {
-    fn name(&self) -> &str { "volume" }
+    fn name(&self) -> &str {
+        "volume"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
-        let period = params.get("period").cloned().unwrap_or_else(|| "30d".to_string());
+        let period = params
+            .get("period")
+            .cloned()
+            .unwrap_or_else(|| "30d".to_string());
 
         let cache_key = format!("volume:{}:{}", master_wallet_id, period);
 
@@ -689,7 +792,10 @@ impl MasterFetcher for VolumeFetcher {
         }
 
         // Calculate time range
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let period_seconds: u64 = match period.as_str() {
             "1d" => 86400,
             "7d" => 604800,
@@ -708,7 +814,9 @@ impl MasterFetcher for VolumeFetcher {
             AND created_at >= $2
         "#;
 
-        let total_volume: f64 = self.db_pool.query(total_query, &[&master_wallet_id, &(start_time as i64)])?
+        let total_volume: f64 = self
+            .db_pool
+            .query(total_query, &[&master_wallet_id, &(start_time as i64)])?
             .first()
             .and_then(|r| Some(r.get::<_, f64>("total")))
             .unwrap_or(0.0);
@@ -725,17 +833,23 @@ impl MasterFetcher for VolumeFetcher {
             LIMIT 30
         "#;
 
-        let daily_rows = self.db_pool.query(daily_query, &[&master_wallet_id, &(start_time as i64)])?;
+        let daily_rows = self
+            .db_pool
+            .query(daily_query, &[&master_wallet_id, &(start_time as i64)])?;
 
-        let daily_volumes: Vec<serde_json::Value> = daily_rows.iter().map(|row| {
-            json!({
-                "date": row.get::<_, String>("day"),
-                "volume": row.get::<_, f64>("daily_total")
+        let daily_volumes: Vec<serde_json::Value> = daily_rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "date": row.get::<_, String>("day"),
+                    "volume": row.get::<_, f64>("daily_total")
+                })
             })
-        }).collect();
+            .collect();
 
         // Calculate monthly volume
-        let monthly_volume: f64 = daily_volumes.iter()
+        let monthly_volume: f64 = daily_volumes
+            .iter()
             .filter_map(|v| v.get("volume").and_then(|x| x.as_f64()))
             .sum();
 
@@ -747,7 +861,9 @@ impl MasterFetcher for VolumeFetcher {
             AND created_at >= $2
         "#;
 
-        let tx_count: i64 = self.db_pool.query(tx_count_query, &[&master_wallet_id, &(start_time as i64)])?
+        let tx_count: i64 = self
+            .db_pool
+            .query(tx_count_query, &[&master_wallet_id, &(start_time as i64)])?
             .first()
             .and_then(|r| Some(r.get::<_, i64>("count")))
             .unwrap_or(0);
@@ -789,7 +905,9 @@ impl MasterAnalyticsFetcher {
 }
 
 impl MasterFetcher for MasterAnalyticsFetcher {
-    fn name(&self) -> &str { "master_analytics" }
+    fn name(&self) -> &str {
+        "master_analytics"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
@@ -800,7 +918,10 @@ impl MasterFetcher for MasterAnalyticsFetcher {
             return serde_json::from_str(&cached).map_err(|e| format!("Cache parse failed: {}", e));
         }
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let day_ago = now - 86400;
         let week_ago = now - 604800;
         let month_ago = now - 2592000;
@@ -818,7 +939,9 @@ impl MasterFetcher for MasterAnalyticsFetcher {
             JOIN sub_wallets sw ON sw.id = wu.wallet_id
             WHERE sw.master_wallet_id = $1 AND wu.is_active = true
         "#;
-        let user_count: i64 = self.db_pool.query(user_count_query, &[&master_wallet_id])?
+        let user_count: i64 = self
+            .db_pool
+            .query(user_count_query, &[&master_wallet_id])?
             .first()
             .and_then(|r| Some(r.get::<_, i64>("count")))
             .unwrap_or(0);
@@ -829,7 +952,12 @@ impl MasterFetcher for MasterAnalyticsFetcher {
             FROM transaction_approvals
             WHERE master_wallet_id = $1 AND created_at >= $2
         "#;
-        let active_wallets: i64 = self.db_pool.query(active_wallets_query, &[&master_wallet_id, &(day_ago as i64)])?
+        let active_wallets: i64 = self
+            .db_pool
+            .query(
+                active_wallets_query,
+                &[&master_wallet_id, &(day_ago as i64)],
+            )?
             .first()
             .and_then(|r| Some(r.get::<_, i64>("count")))
             .unwrap_or(0);
@@ -840,7 +968,9 @@ impl MasterFetcher for MasterAnalyticsFetcher {
             FROM sub_wallets
             WHERE master_wallet_id = $1 AND created_at >= $2
         "#;
-        let new_wallets: i64 = self.db_pool.query(new_wallets_query, &[&master_wallet_id, &(week_ago as i64)])?
+        let new_wallets: i64 = self
+            .db_pool
+            .query(new_wallets_query, &[&master_wallet_id, &(week_ago as i64)])?
             .first()
             .and_then(|r| Some(r.get::<_, i64>("count")))
             .unwrap_or(0);
@@ -856,13 +986,24 @@ impl MasterFetcher for MasterAnalyticsFetcher {
             WHERE master_wallet_id = $1 AND status = 'APPROVED'
         "#;
 
-        let volume_rows = self.db_pool.query(volume_stats_query, &[&master_wallet_id, &(day_ago as i64), &(week_ago as i64)])?;
+        let volume_rows = self.db_pool.query(
+            volume_stats_query,
+            &[&master_wallet_id, &(day_ago as i64), &(week_ago as i64)],
+        )?;
         let volume_row = volume_rows.first();
 
-        let daily_volume: f64 = volume_row.and_then(|r| Some(r.get::<_, f64>("daily_volume"))).unwrap_or(0.0);
-        let weekly_volume: f64 = volume_row.and_then(|r| Some(r.get::<_, f64>("weekly_volume"))).unwrap_or(0.0);
-        let total_volume: f64 = volume_row.and_then(|r| Some(r.get::<_, f64>("total_volume"))).unwrap_or(0.0);
-        let total_txs: i64 = volume_row.and_then(|r| Some(r.get::<_, i64>("total_txs"))).unwrap_or(0);
+        let daily_volume: f64 = volume_row
+            .and_then(|r| Some(r.get::<_, f64>("daily_volume")))
+            .unwrap_or(0.0);
+        let weekly_volume: f64 = volume_row
+            .and_then(|r| Some(r.get::<_, f64>("weekly_volume")))
+            .unwrap_or(0.0);
+        let total_volume: f64 = volume_row
+            .and_then(|r| Some(r.get::<_, f64>("total_volume")))
+            .unwrap_or(0.0);
+        let total_txs: i64 = volume_row
+            .and_then(|r| Some(r.get::<_, i64>("total_txs")))
+            .unwrap_or(0);
 
         // Calculate growth
         let growth = if total_volume > 0.0 {
@@ -914,7 +1055,9 @@ impl PermissionsFetcher {
 }
 
 impl MasterFetcher for PermissionsFetcher {
-    fn name(&self) -> &str { "permissions" }
+    fn name(&self) -> &str {
+        "permissions"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
@@ -953,15 +1096,18 @@ impl MasterFetcher for PermissionsFetcher {
             self.db_pool.query(query, &[&master_wallet_id])?
         };
 
-        let permissions: Vec<serde_json::Value> = rows.iter().map(|row| {
-            json!({
-                "id": row.get::<_, String>("id"),
-                "userId": row.get::<_, String>("user_id"),
-                "email": row.get::<_, String>("email"),
-                "role": row.get::<_, String>("role"),
-                "permissions": row.get::<_, Vec<String>>("permissions")
+        let permissions: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.get::<_, String>("id"),
+                    "userId": row.get::<_, String>("user_id"),
+                    "email": row.get::<_, String>("email"),
+                    "role": row.get::<_, String>("role"),
+                    "permissions": row.get::<_, Vec<String>>("permissions")
+                })
             })
-        }).collect();
+            .collect();
 
         // Get role definitions
         let roles_query = r#"
@@ -971,7 +1117,8 @@ impl MasterFetcher for PermissionsFetcher {
 
         let roles_rows = self.db_pool.query(roles_query, &[&master_wallet_id])?;
 
-        let role_definitions: HashMap<String, Vec<String>> = roles_rows.iter()
+        let role_definitions: HashMap<String, Vec<String>> = roles_rows
+            .iter()
             .map(|row| {
                 let name: String = row.get("role_name");
                 let perms: Vec<String> = row.get("permissions");
@@ -1032,11 +1179,16 @@ impl WhitelistFetcher {
 }
 
 impl MasterFetcher for WhitelistFetcher {
-    fn name(&self) -> &str { "whitelist" }
+    fn name(&self) -> &str {
+        "whitelist"
+    }
 
     fn fetch(&self, params: HashMap<String, String>) -> Result<serde_json::Value, String> {
         let master_wallet_id = params.get("master_wallet_id").cloned().unwrap_or_default();
-        let whitelist_type = params.get("type").cloned().unwrap_or_else(|| "address".to_string());
+        let whitelist_type = params
+            .get("type")
+            .cloned()
+            .unwrap_or_else(|| "address".to_string());
 
         let cache_key = format!("whitelist:{}:{}", master_wallet_id, whitelist_type);
 
@@ -1052,19 +1204,24 @@ impl MasterFetcher for WhitelistFetcher {
             ORDER BY created_at DESC
         "#;
 
-        let rows = self.db_pool.query(query, &[&master_wallet_id, &whitelist_type])?;
+        let rows = self
+            .db_pool
+            .query(query, &[&master_wallet_id, &whitelist_type])?;
 
-        let whitelist: Vec<serde_json::Value> = rows.iter().map(|row| {
-            json!({
-                "id": row.get::<_, String>("id"),
-                "address": row.get::<_, String>("address"),
-                "addressType": row.get::<_, String>("address_type"),
-                "label": row.get::<_, Option<String>>("label"),
-                "isVerified": row.get::<_, bool>("is_verified"),
-                "addedBy": row.get::<_, String>("added_by"),
-                "createdAt": row.get::<_, i64>("created_at")
+        let whitelist: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.get::<_, String>("id"),
+                    "address": row.get::<_, String>("address"),
+                    "addressType": row.get::<_, String>("address_type"),
+                    "label": row.get::<_, Option<String>>("label"),
+                    "isVerified": row.get::<_, bool>("is_verified"),
+                    "addedBy": row.get::<_, String>("added_by"),
+                    "createdAt": row.get::<_, i64>("created_at")
+                })
             })
-        }).collect();
+            .collect();
 
         // Get count by type
         let count_query = r#"

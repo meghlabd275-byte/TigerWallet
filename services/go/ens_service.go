@@ -2,8 +2,9 @@
 
 // Standalone reference/demo service. Run individually with: go run <file>
 // (Tagged "ignore" so the services/go directory is not a broken package —
-//  these files are not part of any deployed build; deployed services live
-//  under their own modules, e.g. go/*, */go.)
+//
+//	these files are not part of any deployed build; deployed services live
+//	under their own modules, e.g. go/*, */go.)
 package main
 
 import (
@@ -26,33 +27,33 @@ import (
 
 // ENSResolver handles ENS domain resolution
 type ENSResolver struct {
-	ethRPC      string
-	ensRegistry string // 0x00000000000C2C969cB4AE8506f1dF1Aa2fAeA
+	ethRPC           string
+	ensRegistry      string // 0x00000000000C2C969cB4AE8506f1dF1Aa2fAeA
 	reverseRegistrar string // 0x906b758d3C6b2dA6d7b5d8F3C9E4F2e5b8C7F3E
-	client      *http.Client
+	client           *http.Client
 }
 
 // UnstoppableDomain represents a .crypto or .nft domain
 type UnstoppableDomain struct {
-	Domain    string   `json:"domain"`
-	TokenID  string   `json:"tokenId"`
-	Owner   string   `json:"owner"`
-	Records map[string]string `json:"records"`
-	Resolver string   `json:"resolver"`
-	TTL     int64    `json:"ttl"`
+	Domain   string            `json:"domain"`
+	TokenID  string            `json:"tokenId"`
+	Owner    string            `json:"owner"`
+	Records  map[string]string `json:"records"`
+	Resolver string            `json:"resolver"`
+	TTL      int64             `json:"ttl"`
 }
 
 // DomainRecord represents DNS/Blockchain records
 type DomainRecord struct {
 	RecordType string `json:"record_type"` // A, AAAA, CNAME, TXT, DWEBP, IPFS
-	Value    string `json:"value"`
-	TTL     int64  `json:"ttl"`
+	Value      string `json:"value"`
+	TTL        int64  `json:"ttl"`
 }
 
 // NewENSResolver creates a new ENS resolver
 func NewENSResolver(ethRPC string) *ENSResolver {
 	return &ENSResolver{
-		ethRPC:   ethRPC,
+		ethRPC: ethRPC,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -63,44 +64,44 @@ func NewENSResolver(ethRPC string) *ENSResolver {
 func (e *ENSResolver) ResolveENS(name string) (string, error) {
 	// Strip .eth if present
 	name = strings.TrimSuffix(name, ".eth")
-	
+
 	// Call ENS registry resolver
 	method := "ens_resolver"
 	params := map[string]interface{}{
 		"name": name + ".eth",
 	}
-	
+
 	result, err := e.ethCall(method, params)
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Parse result
 	var resolver string
 	if data, ok := result.(string); ok {
 		resolver = data
 	}
-	
+
 	// Resolve address from resolver
 	if resolver == "" {
 		return "", fmt.Errorf("no resolver found")
 	}
-	
+
 	// Call resolver to get address
 	params = map[string]interface{}{
 		"node": nameHash(name + ".eth"),
 		"name": "addr",
 	}
-	
+
 	addrResult, err := e.ethCallWithContract(resolver, "addr(bytes32)", params)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if addr, ok := addrResult.(string); ok {
 		return addr, nil
 	}
-	
+
 	return "", nil
 }
 
@@ -111,36 +112,36 @@ func (e *ENSResolver) ResolveAddress(address string) (string, error) {
 	params := map[string]interface{}{
 		"address": address,
 	}
-	
+
 	result, err := e.ethCall(method, params)
 	if err != nil {
 		return "", err
 	}
-	
+
 	var resolver string
 	if data, ok := result.(string); ok {
 		resolver = data
 	}
-	
+
 	if resolver == "" {
 		return "", nil
 	}
-	
+
 	// Get name from resolver
 	params = map[string]interface{}{
 		"node": reverseNameHash(address),
 		"name": "name",
 	}
-	
+
 	nameResult, err := e.ethCallWithContract(resolver, "name(bytes32)", params)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if name, ok := nameResult.(string); ok {
 		return name, nil
 	}
-	
+
 	return "", nil
 }
 
@@ -158,44 +159,44 @@ func (e *ENSResolver) SetReverseENS(address, name string) (string, error) {
 // GetTextRecord gets ENS text record
 func (e *ENSResolver) GetTextRecord(name, key string) (string, error) {
 	name = strings.TrimSuffix(name, ".eth")
-	
+
 	// Call resolver
 	method := "ens_text"
 	params := map[string]interface{}{
 		"node": nameHash(name + ".eth"),
 		"key":  key,
 	}
-	
+
 	result, err := e.ethCall(method, params)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if text, ok := result.(string); ok {
 		return text, nil
 	}
-	
+
 	return "", nil
 }
 
 // GetContentHash gets ENS content hash
 func (e *ENSResolver) GetContentHash(name string) (string, error) {
 	name = strings.TrimSuffix(name, ".eth")
-	
+
 	method := "ens_contenthash"
 	params := map[string]interface{}{
 		"name": name + ".eth",
 	}
-	
+
 	result, err := e.ethCall(method, params)
 	if err != nil {
 		return "", err
 	}
-	
+
 	if hash, ok := result.(string); ok {
 		return hash, nil
 	}
-	
+
 	return "", nil
 }
 
@@ -205,7 +206,7 @@ func (e *ENSResolver) GetContentHash(name string) (string, error) {
 
 // UnstoppableService handles .crypto/.nft domain resolution
 type UnstoppableService struct {
-	apiKey   string
+	apiKey  string
 	apiBase string
 	client  *http.Client
 }
@@ -224,21 +225,21 @@ func NewUnstoppableService(apiKey string) *UnstoppableService {
 // ResolveDomain resolves a .crypto or .nft domain
 func (u *UnstoppableService) ResolveDomain(domain string) (*UnstoppableDomain, error) {
 	url := fmt.Sprintf("%s/%s", u.apiBase, domain)
-	
+
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+u.apiKey)
-	
+
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	var domainData UnstoppableDomain
 	if err := json.NewDecoder(resp.Body).Decode(&domainData); err != nil {
 		return nil, err
 	}
-	
+
 	return &domainData, nil
 }
 
@@ -248,24 +249,24 @@ func (u *UnstoppableService) GetRecords(domain string) (map[string]DomainRecord,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	records := make(map[string]DomainRecord)
-	
+
 	// Parse standard records
 	if ipfs, ok := domainData.Records["ipfs.html"]; ok {
 		records["dweb"] = DomainRecord{
 			RecordType: "DWEBP",
-			Value:    ipfs,
+			Value:      ipfs,
 		}
 	}
-	
+
 	if email, ok := domainData.Records["email"]; ok {
 		records["email"] = DomainRecord{
 			RecordType: "TXT",
-			Value:    email,
+			Value:      email,
 		}
 	}
-	
+
 	return records, nil
 }
 
@@ -275,38 +276,38 @@ func (u *UnstoppableService) GetOwner(domain string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	return domainData.Owner, nil
 }
 
 // SetRecord sets a domain record
 func (u *UnstoppableService) SetRecord(domain, recordType, value string) (string, error) {
 	url := u.apiBase + "/" + domain + "/records"
-	
+
 	body := map[string]interface{}{
 		recordType: value,
 	}
-	
+
 	bodyBytes, _ := json.Marshal(body)
-	
+
 	req, _ := http.NewRequest("POST", url, strings.NewReader(string(bodyBytes)))
 	req.Header.Set("Authorization", "Bearer "+u.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := u.client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	
+
 	var result struct {
 		TransactionHash string `json:"transactionHash"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}
-	
+
 	return result.TransactionHash, nil
 }
 
@@ -316,21 +317,21 @@ func (u *UnstoppableService) SetRecord(domain, recordType, value string) (string
 
 // MultisigWallet represents a multi-signature wallet
 type MultisigWallet struct {
-	Address      string   `json:"address"`
-	Threshold   uint8    `json:"threshold"`
-	Owners      []string `json:"owners"`
-	Nonce       uint64   `json:"nonce"`
+	Address   string   `json:"address"`
+	Threshold uint8    `json:"threshold"`
+	Owners    []string `json:"owners"`
+	Nonce     uint64   `json:"nonce"`
 }
 
 // MultisigTransaction represents a multi-sig transaction
 type MultisigTransaction struct {
-	ID          string   `json:"id"`
-	To          string   `json:"to"`
-	Value       string   `json:"value"`
-	Data        string   `json:"data"`
-	Nonce       uint64   `json:"nonce"`
-	Signatures  []string `json:"signatures"`
-	Executed    bool     `json:"executed"`
+	ID            string   `json:"id"`
+	To            string   `json:"to"`
+	Value         string   `json:"value"`
+	Data          string   `json:"data"`
+	Nonce         uint64   `json:"nonce"`
+	Signatures    []string `json:"signatures"`
+	Executed      bool     `json:"executed"`
 	Confirmations []string `json:"confirmations"`
 }
 
@@ -356,24 +357,24 @@ func NewMultisigService(rpcURL, contract string) *MultisigService {
 func (m *MultisigService) CreateWallet(threshold uint8, owners []string) (*MultisigWallet, string, error) {
 	// In production, deploy contract and return address
 	wallet := &MultisigWallet{
-		Address:    "0x" + generateAddress(),
+		Address:   "0x" + generateAddress(),
 		Threshold: threshold,
 		Owners:    owners,
-		Nonce:    0,
+		Nonce:     0,
 	}
-	
+
 	return wallet, "txhash", nil
 }
 
 // GetTransaction gets a transaction by ID
 func (m *MultisigService) GetTransaction(id string) (*MultisigTransaction, error) {
 	return &MultisigTransaction{
-		ID:         id,
-		To:         "0x...",
-		Value:      "0",
-		Data:      "0x",
-		Nonce:     0,
-		Executed:   false,
+		ID:       id,
+		To:       "0x...",
+		Value:    "0",
+		Data:     "0x",
+		Nonce:    0,
+		Executed: false,
 	}, nil
 }
 
@@ -403,7 +404,7 @@ func (m *MultisigService) GetConfirmations(walletAddr, txHash string) ([]string,
 
 // CardConfig holds card configuration
 type CardConfig struct {
-	Provider    string `json:"provider"` // visa, mastercard
+	Provider   string `json:"provider"` // visa, mastercard
 	MerchantID string `json:"merchant_id"`
 	APIKey     string `json:"api_key"`
 	APIBase    string `json:"api_base"`
@@ -411,16 +412,16 @@ type CardConfig struct {
 
 // VirtualCard represents a virtual card
 type VirtualCard struct {
-	ID              string    `json:"id"`
-	CardNumber      string    `json:"card_number"`
-	CVV            string    `json:"cvv"`
-	ExpiryMonth    uint8     `json:"expiry_month"`
-	ExpiryYear     uint16    `json:"expiry_year"`
-	Balance        float64   `json:"balance"`
-	Limit          float64   `json:"limit"`
-	Status         string    `json:"status"`
-	CardHolder    string    `json:"card_holder"`
-	WalletAddress string    `json:"wallet_address"`
+	ID            string  `json:"id"`
+	CardNumber    string  `json:"card_number"`
+	CVV           string  `json:"cvv"`
+	ExpiryMonth   uint8   `json:"expiry_month"`
+	ExpiryYear    uint16  `json:"expiry_year"`
+	Balance       float64 `json:"balance"`
+	Limit         float64 `json:"limit"`
+	Status        string  `json:"status"`
+	CardHolder    string  `json:"card_holder"`
+	WalletAddress string  `json:"wallet_address"`
 }
 
 // CryptoCardService handles virtual crypto card operations
@@ -442,17 +443,17 @@ func NewCryptoCardService(config CardConfig) *CryptoCardService {
 // CreateCard creates a new virtual card
 func (c *CryptoCardService) CreateCard(walletAddress, currency string, limit float64) (*VirtualCard, error) {
 	card := &VirtualCard{
-		ID:              generateCardID(),
-		CardNumber:      generateCardNumber(),
-		CVV:            generateCVV(),
-		ExpiryMonth:    12,
-		ExpiryYear:   2027,
-		Balance:      0,
-		Limit:       limit,
-		Status:      "active",
+		ID:            generateCardID(),
+		CardNumber:    generateCardNumber(),
+		CVV:           generateCVV(),
+		ExpiryMonth:   12,
+		ExpiryYear:    2027,
+		Balance:       0,
+		Limit:         limit,
+		Status:        "active",
 		WalletAddress: walletAddress,
 	}
-	
+
 	return card, nil
 }
 
@@ -486,12 +487,12 @@ func (c *CryptoCardService) GetTransactions(cardID string) ([]CardTransaction, e
 
 // CardTransaction represents a card transaction
 type CardTransaction struct {
-	ID          string    `json:"id"`
-	Amount      float64   `json:"amount"`
-	Currency    string    `json:"currency"`
-	Merchant   string    `json:"merchant"`
-	Status     string    `json:"status"`
-	Timestamp  int64     `json:"timestamp"`
+	ID        string  `json:"id"`
+	Amount    float64 `json:"amount"`
+	Currency  string  `json:"currency"`
+	Merchant  string  `json:"merchant"`
+	Status    string  `json:"status"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 // ============================================================================
@@ -540,9 +541,9 @@ func (f *FiatOffRampService) GetExchangeRate(cryptoSymbol, fiatSymbol string) (f
 
 // MobileSDKConfig holds mobile SDK configuration
 type MobileSDKConfig struct {
-	ProjectID     string `json:"project_id"`
-	Network      string `json:"network"` // mainnet, testnet
-	AllowCustomRPC bool   `json:"allow_custom_rpc"`
+	ProjectID       string `json:"project_id"`
+	Network         string `json:"network"` // mainnet, testnet
+	AllowCustomRPC  bool   `json:"allow_custom_rpc"`
 	SupportedChains []int  `json:"supported_chains"`
 }
 
@@ -611,7 +612,7 @@ func (w *WalletSDK) WatchAsset(token string, callback func(string)) error {
 type Transaction struct {
 	To       string `json:"to"`
 	Value    string `json:"value"`
-	Data    string `json:"data"`
+	Data     string `json:"data"`
 	GasLimit uint64 `json:"gas_limit"`
 	GasPrice uint64 `json:"gas_price"`
 }
@@ -625,31 +626,31 @@ func (e *ENSResolver) ethCall(method string, params map[string]interface{}) (int
 		"jsonrpc": "2.0",
 		"method":  method,
 		"params":  []interface{}{params},
-		"id":     1,
+		"id":      1,
 	}
-	
+
 	bodyBytes, _ := json.Marshal(body)
-	
+
 	httpReq, _ := http.NewRequest("POST", e.ethRPC, strings.NewReader(string(bodyBytes)))
 	httpReq.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := e.client.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	var response struct {
 		Result json.RawMessage `json:"result"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, err
 	}
-	
+
 	var result interface{}
 	json.Unmarshal(response.Result, &result)
-	
+
 	return result, nil
 }
 
@@ -661,7 +662,7 @@ func (e *ENSResolver) ethCallWithContract(contract, method string, params map[st
 func nameHash(name string) string {
 	labels := strings.Split(name, ".")
 	var hash [32]byte
-	
+
 	for i := len(labels) - 1; i >= 0; i-- {
 		labelHash := sha256.Sum256([]byte(labels[i]))
 		var combined [64]byte
@@ -669,7 +670,7 @@ func nameHash(name string) string {
 		copy(combined[32:], labelHash[:])
 		hash = sha256.Sum256(combined[:])
 	}
-	
+
 	return "0x" + hex.EncodeToString(hash[:])
 }
 

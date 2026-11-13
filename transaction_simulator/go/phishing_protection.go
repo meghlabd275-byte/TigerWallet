@@ -45,11 +45,11 @@ const (
 // metaMaskPhishingConfig mirrors the relevant fields of the MetaMask
 // eth-phishing-detect config.json.
 type metaMaskPhishingConfig struct {
-	Blocklist   []string            `json:"blocklist"`
-	Allowlist   []string            `json:"allowlist"`
-	Fuzzylist   []string            `json:"fuzzylist"`
-	Whitelist   []string            `json:"whitelist"` // legacy alias some forks carry
-	Version     int                 `json:"version"`
+	Blocklist []string `json:"blocklist"`
+	Allowlist []string `json:"allowlist"`
+	Fuzzylist []string `json:"fuzzylist"`
+	Whitelist []string `json:"whitelist"` // legacy alias some forks carry
+	Version   int      `json:"version"`
 }
 
 // PhishingService holds the in-memory blocklist plus an optional Redis client
@@ -63,9 +63,9 @@ type PhishingService struct {
 	allowlist map[string]struct{}
 	fuzzylist map[string]struct{}
 
-	mu        sync.RWMutex
-	lastLoad  time.Time
-	loaded    bool
+	mu       sync.RWMutex
+	lastLoad time.Time
+	loaded   bool
 
 	redis *redis.Client
 
@@ -177,13 +177,13 @@ const (
 
 // URLVerdict is the JSON result of check-url.
 type URLVerdict struct {
-	URL         string   `json:"url"`
-	Host        string   `json:"host"`
-	Class       string   `json:"classification"`
-	RiskLevel   string   `json:"risk_level"`
-	Reasons     []string `json:"reasons"`
-	Cached      bool     `json:"cached"`
-	CheckedAt   int64    `json:"checked_at"`
+	URL       string   `json:"url"`
+	Host      string   `json:"host"`
+	Class     string   `json:"classification"`
+	RiskLevel string   `json:"risk_level"`
+	Reasons   []string `json:"reasons"`
+	Cached    bool     `json:"cached"`
+	CheckedAt int64    `json:"checked_at"`
 }
 
 // CheckURL classifies a dApp URL. Redis caches the verdict for verdictCacheTTL.
@@ -244,15 +244,15 @@ func (s *PhishingService) CheckURL(rawURL string) URLVerdict {
 
 // AddressVerdict is the JSON result of check-address.
 type AddressVerdict struct {
-	Address     string   `json:"address"`
-	Chain       string   `json:"chain"`
-	Class       string   `json:"classification"`
-	RiskLevel   string   `json:"risk_level"`
-	Reasons     []string `json:"reasons"`
-	IsContract  bool     `json:"is_contract"`
-	CodeSize    int      `json:"code_size"`
-	Cached      bool     `json:"cached"`
-	CheckedAt   int64    `json:"checked_at"`
+	Address    string   `json:"address"`
+	Chain      string   `json:"chain"`
+	Class      string   `json:"classification"`
+	RiskLevel  string   `json:"risk_level"`
+	Reasons    []string `json:"reasons"`
+	IsContract bool     `json:"is_contract"`
+	CodeSize   int      `json:"code_size"`
+	Cached     bool     `json:"cached"`
+	CheckedAt  int64    `json:"checked_at"`
 }
 
 // CheckAddress classifies a contract/wallet address. It checks the MetaMask
@@ -387,15 +387,15 @@ func (s *PhishingService) ScanHandler(c *gin.Context) {
 	}
 
 	result := gin.H{
-		"id":         fmt.Sprintf("scan-%d", time.Now().UnixNano()),
-		"address":    req.Address,
-		"risk":       risk,
-		"issues":     issues,
-		"scannedAt":  time.Now().UnixMilli(),
-		"url":        req.URL,
-		"chain":      req.Chain,
+		"id":             fmt.Sprintf("scan-%d", time.Now().UnixNano()),
+		"address":        req.Address,
+		"risk":           risk,
+		"issues":         issues,
+		"scannedAt":      time.Now().UnixMilli(),
+		"url":            req.URL,
+		"chain":          req.Chain,
 		"classification": av.Class,
-		"is_contract": av.IsContract,
+		"is_contract":    av.IsContract,
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }

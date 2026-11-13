@@ -28,27 +28,27 @@ import (
 
 // Configuration
 type Config struct {
-	ServerPort        string
-	RedisAddr         string
-	JWTSecret         string
-	EncryptionKey     string
-	FeeConfiguration  FeeConfig
-	Limits            LimitsConfig
+	ServerPort       string
+	RedisAddr        string
+	JWTSecret        string
+	EncryptionKey    string
+	FeeConfiguration FeeConfig
+	Limits           LimitsConfig
 }
 
 type FeeConfig struct {
-	CardIssueFee          int64
-	MonthlyFee            int64
-	TransactionFee        float64
-	CryptoConversionFee   float64
+	CardIssueFee        int64
+	MonthlyFee          int64
+	TransactionFee      float64
+	CryptoConversionFee float64
 }
 
 type LimitsConfig struct {
-	DailySpendLimit      int64
-	MonthlySpendLimit    int64
-	MaxTransaction       int64
-	MinTransaction       int64
-	MaxCardsPerUser      int
+	DailySpendLimit   int64
+	MonthlySpendLimit int64
+	MaxTransaction    int64
+	MinTransaction    int64
+	MaxCardsPerUser   int
 }
 
 // Card Types
@@ -59,7 +59,7 @@ type TransactionType string
 type TransactionStatus string
 
 const (
-	CardTypeVirtual         CardType = "VIRTUAL"
+	CardTypeVirtual        CardType = "VIRTUAL"
 	CardTypePhysical       CardType = "PHYSICAL"
 	CardTypeVirtualOneTime CardType = "VIRTUAL_ONE_TIME"
 	CardTypeMetal          CardType = "METAL"
@@ -71,10 +71,10 @@ const (
 	CardStatusCancelled CardStatus = "CANCELLED"
 	CardStatusFrozen    CardStatus = "FROZEN"
 
-	CardNetworkVisa      CardNetwork = "VISA"
+	CardNetworkVisa       CardNetwork = "VISA"
 	CardNetworkMastercard CardNetwork = "MASTERCARD"
-	CardNetworkAmex      CardNetwork = "AMEX"
-	CardNetworkUnionPay  CardNetwork = "UNIONPAY"
+	CardNetworkAmex       CardNetwork = "AMEX"
+	CardNetworkUnionPay   CardNetwork = "UNIONPAY"
 
 	TransactionTypePurchase   TransactionType = "PURCHASE"
 	TransactionTypeWithdrawal TransactionType = "WITHDRAWAL"
@@ -105,65 +105,65 @@ type CardHolder struct {
 }
 
 type CardData struct {
-	CardID                  string    `json:"card_id"`
-	UserID                  string    `json:"user_id"`
-	MaskedNumber            string    `json:"masked_number"`
-	LastFour                string    `json:"last_four"`
-	ExpiryMonth             uint16    `json:"expiry_month"`
-	ExpiryYear              uint16    `json:"expiry_year"`
-	CardType                CardType  `json:"card_type"`
-	Status                  CardStatus `json:"status"`
-	Network                 CardNetwork `json:"network"`
-	Currency                string    `json:"currency"`
-	CardHolderName          string    `json:"card_holder_name"`
-	BillingAddress          string    `json:"billing_address"`
-	DailyLimit              int64     `json:"daily_limit"`
-	MonthlyLimit            int64     `json:"monthly_limit"`
-	DailySpent              int64     `json:"daily_spent"`
-	MonthlySpent            int64     `json:"monthly_spent"`
-	MaxSingleTransaction   int64     `json:"max_single_transaction"`
-	MinSingleTransaction   int64     `json:"min_single_transaction"`
-	ContactlessEnabled      bool      `json:"contactless_enabled"`
-	OnlinePaymentsEnabled  bool      `json:"online_payments_enabled"`
-	InternationalEnabled   bool      `json:"international_enabled"`
-	CreatedAt               time.Time `json:"created_at"`
-	UpdatedAt               time.Time `json:"updated_at"`
-	ExpiresAt               time.Time `json:"expires_at"`
+	CardID                string      `json:"card_id"`
+	UserID                string      `json:"user_id"`
+	MaskedNumber          string      `json:"masked_number"`
+	LastFour              string      `json:"last_four"`
+	ExpiryMonth           uint16      `json:"expiry_month"`
+	ExpiryYear            uint16      `json:"expiry_year"`
+	CardType              CardType    `json:"card_type"`
+	Status                CardStatus  `json:"status"`
+	Network               CardNetwork `json:"network"`
+	Currency              string      `json:"currency"`
+	CardHolderName        string      `json:"card_holder_name"`
+	BillingAddress        string      `json:"billing_address"`
+	DailyLimit            int64       `json:"daily_limit"`
+	MonthlyLimit          int64       `json:"monthly_limit"`
+	DailySpent            int64       `json:"daily_spent"`
+	MonthlySpent          int64       `json:"monthly_spent"`
+	MaxSingleTransaction  int64       `json:"max_single_transaction"`
+	MinSingleTransaction  int64       `json:"min_single_transaction"`
+	ContactlessEnabled    bool        `json:"contactless_enabled"`
+	OnlinePaymentsEnabled bool        `json:"online_payments_enabled"`
+	InternationalEnabled  bool        `json:"international_enabled"`
+	CreatedAt             time.Time   `json:"created_at"`
+	UpdatedAt             time.Time   `json:"updated_at"`
+	ExpiresAt             time.Time   `json:"expires_at"`
 }
 
 type Transaction struct {
-	TransactionID      string            `json:"transaction_id"`
-	CardID             string            `json:"card_id"`
-	UserID             string            `json:"user_id"`
-	Type               TransactionType  `json:"type"`
-	Status             TransactionStatus `json:"status"`
-	Currency           string            `json:"currency"`
-	Amount             int64             `json:"amount"`
-	Fee                int64             `json:"fee"`
-	CryptoAmount       int64             `json:"crypto_amount,omitempty"`
-	CryptoCurrency     string            `json:"crypto_currency,omitempty"`
-	MerchantID         string            `json:"merchant_id"`
-	MerchantName       string            `json:"merchant_name"`
-	MerchantCategory   string            `json:"merchant_category"`
-	TerminalID         string            `json:"terminal_id"`
-	Location           string            `json:"location"`
-	IPAddress          string            `json:"ip_address"`
-	Description        string            `json:"description"`
+	TransactionID     string            `json:"transaction_id"`
+	CardID            string            `json:"card_id"`
+	UserID            string            `json:"user_id"`
+	Type              TransactionType   `json:"type"`
+	Status            TransactionStatus `json:"status"`
+	Currency          string            `json:"currency"`
+	Amount            int64             `json:"amount"`
+	Fee               int64             `json:"fee"`
+	CryptoAmount      int64             `json:"crypto_amount,omitempty"`
+	CryptoCurrency    string            `json:"crypto_currency,omitempty"`
+	MerchantID        string            `json:"merchant_id"`
+	MerchantName      string            `json:"merchant_name"`
+	MerchantCategory  string            `json:"merchant_category"`
+	TerminalID        string            `json:"terminal_id"`
+	Location          string            `json:"location"`
+	IPAddress         string            `json:"ip_address"`
+	Description       string            `json:"description"`
 	ReferenceID       string            `json:"reference_id"`
-	AuthorizationCode  string            `json:"authorization_code"`
+	AuthorizationCode string            `json:"authorization_code"`
 	Timestamp         time.Time         `json:"timestamp"`
 	SettledAt         *time.Time        `json:"settled_at,omitempty"`
-	BlockchainTxHash   string            `json:"blockchain_tx_hash,omitempty"`
-	RiskScore          uint8             `json:"risk_score"`
-	RiskReason         string            `json:"risk_reason"`
+	BlockchainTxHash  string            `json:"blockchain_tx_hash,omitempty"`
+	RiskScore         uint8             `json:"risk_score"`
+	RiskReason        string            `json:"risk_reason"`
 }
 
 type CardLimits struct {
-	DailyLimit            int64 `json:"daily_limit"`
-	MonthlyLimit          int64 `json:"monthly_limit"`
-	MaxSingleTransaction  int64 `json:"max_single_transaction"`
-	MinSingleTransaction  int64 `json:"min_single_transaction"`
-	DailyWithdrawalLimit  int64 `json:"daily_withdrawal_limit"`
+	DailyLimit             int64 `json:"daily_limit"`
+	MonthlyLimit           int64 `json:"monthly_limit"`
+	MaxSingleTransaction   int64 `json:"max_single_transaction"`
+	MinSingleTransaction   int64 `json:"min_single_transaction"`
+	DailyWithdrawalLimit   int64 `json:"daily_withdrawal_limit"`
 	MonthlyWithdrawalLimit int64 `json:"monthly_withdrawal_limit"`
 }
 
@@ -176,18 +176,18 @@ type CreateCardRequest struct {
 }
 
 type ProcessTransactionRequest struct {
-	CardID            string          `json:"card_id" binding:"required"`
-	UserID            string          `json:"user_id" binding:"required"`
-	Type              TransactionType `json:"type" binding:"required"`
-	Amount            int64           `json:"amount" binding:"required"`
-	Currency          string          `json:"currency"`
-	CryptoCurrency    string          `json:"crypto_currency"`
-	MerchantID        string          `json:"merchant_id"`
-	MerchantName      string          `json:"merchant_name"`
-	MerchantCategory  string          `json:"merchant_category"`
-	Location          string          `json:"location"`
-	IPAddress         string          `json:"ip_address"`
-	Description       string          `json:"description"`
+	CardID           string          `json:"card_id" binding:"required"`
+	UserID           string          `json:"user_id" binding:"required"`
+	Type             TransactionType `json:"type" binding:"required"`
+	Amount           int64           `json:"amount" binding:"required"`
+	Currency         string          `json:"currency"`
+	CryptoCurrency   string          `json:"crypto_currency"`
+	MerchantID       string          `json:"merchant_id"`
+	MerchantName     string          `json:"merchant_name"`
+	MerchantCategory string          `json:"merchant_category"`
+	Location         string          `json:"location"`
+	IPAddress        string          `json:"ip_address"`
+	Description      string          `json:"description"`
 }
 
 type UpdateLimitsRequest struct {
@@ -337,30 +337,30 @@ func (s *CardService) CreateCard(req CreateCardRequest) (*CardData, string, stri
 
 	now := time.Now()
 	card := &CardData{
-		CardID:                  "CARD_" + uuid.New().String()[:8],
-		UserID:                  req.UserID,
-		MaskedNumber:            cardNumber[:4] + " **** **** " + cardNumber[12:],
-		LastFour:                cardNumber[12:],
-		ExpiryMonth:             12,
-		ExpiryYear:              2029,
-		CardType:                req.CardType,
-		Status:                  CardStatusPending,
-		Network:                 req.Network,
-		Currency:                req.Currency,
-		CardHolderName:          req.Holder.Name,
-		BillingAddress:          req.Holder.BillingAddress,
-		DailyLimit:              s.config.Limits.DailySpendLimit,
-		MonthlyLimit:            s.config.Limits.MonthlySpendLimit,
-		DailySpent:              0,
-		MonthlySpent:            0,
-		MaxSingleTransaction:   s.config.Limits.MaxTransaction,
-		MinSingleTransaction:   s.config.Limits.MinTransaction,
-		ContactlessEnabled:     true,
-		OnlinePaymentsEnabled:  true,
-		InternationalEnabled:    true,
-		CreatedAt:               now,
-		UpdatedAt:               now,
-		ExpiresAt:               now.AddDate(3, 0, 0),
+		CardID:                "CARD_" + uuid.New().String()[:8],
+		UserID:                req.UserID,
+		MaskedNumber:          cardNumber[:4] + " **** **** " + cardNumber[12:],
+		LastFour:              cardNumber[12:],
+		ExpiryMonth:           12,
+		ExpiryYear:            2029,
+		CardType:              req.CardType,
+		Status:                CardStatusPending,
+		Network:               req.Network,
+		Currency:              req.Currency,
+		CardHolderName:        req.Holder.Name,
+		BillingAddress:        req.Holder.BillingAddress,
+		DailyLimit:            s.config.Limits.DailySpendLimit,
+		MonthlyLimit:          s.config.Limits.MonthlySpendLimit,
+		DailySpent:            0,
+		MonthlySpent:          0,
+		MaxSingleTransaction:  s.config.Limits.MaxTransaction,
+		MinSingleTransaction:  s.config.Limits.MinTransaction,
+		ContactlessEnabled:    true,
+		OnlinePaymentsEnabled: true,
+		InternationalEnabled:  true,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+		ExpiresAt:             now.AddDate(3, 0, 0),
 	}
 
 	s.cards[card.CardID] = card
@@ -927,21 +927,21 @@ func (s *CardService) SetupRoutes(r *gin.Engine) {
 
 func main() {
 	cfg := Config{
-		ServerPort:   getEnv("CARD_SERVICE_PORT", "8470"),
-		RedisAddr:   getEnv("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:   getEnv("JWT_SECRET", ""),
+		ServerPort: getEnv("CARD_SERVICE_PORT", "8470"),
+		RedisAddr:  getEnv("REDIS_ADDR", "localhost:6379"),
+		JWTSecret:  getEnv("JWT_SECRET", ""),
 		FeeConfiguration: FeeConfig{
-			CardIssueFee:          0,
-			MonthlyFee:            0,
-			TransactionFee:        0.029,
-			CryptoConversionFee:   0.01,
+			CardIssueFee:        0,
+			MonthlyFee:          0,
+			TransactionFee:      0.029,
+			CryptoConversionFee: 0.01,
 		},
 		Limits: LimitsConfig{
-			DailySpendLimit:     1000000,
-			MonthlySpendLimit:   10000000,
-			MaxTransaction:      500000,
-			MinTransaction:      100,
-			MaxCardsPerUser:     10,
+			DailySpendLimit:   1000000,
+			MonthlySpendLimit: 10000000,
+			MaxTransaction:    500000,
+			MinTransaction:    100,
+			MaxCardsPerUser:   10,
 		},
 	}
 

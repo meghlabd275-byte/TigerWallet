@@ -165,60 +165,60 @@ func TestPlatformTokensAreRegisteredInChainAndTokenRegistry(t *testing.T) {
 // a host the operator never chose; leaving one out means an unconfigured
 // deployment reports the chain as unreachable instead.
 func TestPlatformChainBundlesNoEndpoint(t *testing.T) {
-        c := chainByID(tigerSmartChainID)
-        if c == nil {
-                t.Fatalf("chain %d is not registered", tigerSmartChainID)
-        }
-        // Read the raw registry entry too: chainByID applies the env override, so
-        // it would mask a bundled URL.
-        for _, raw := range evmMainnet {
-                if raw.ID != tigerSmartChainID {
-                        continue
-                }
-                if raw.RPCEndpoint != "" {
-                        t.Fatalf("the TigerSmartChain registry entry bundles an endpoint: %q", raw.RPCEndpoint)
-                }
-        }
+	c := chainByID(tigerSmartChainID)
+	if c == nil {
+		t.Fatalf("chain %d is not registered", tigerSmartChainID)
+	}
+	// Read the raw registry entry too: chainByID applies the env override, so
+	// it would mask a bundled URL.
+	for _, raw := range evmMainnet {
+		if raw.ID != tigerSmartChainID {
+			continue
+		}
+		if raw.RPCEndpoint != "" {
+			t.Fatalf("the TigerSmartChain registry entry bundles an endpoint: %q", raw.RPCEndpoint)
+		}
+	}
 
-        // With no override the resolved endpoint stays empty. Both the generic
-        // and the platform-specific variable are cleared, because either can
-        // supply the endpoint and an operator running the platform's own node
-        // will have set the latter. Without this the assertion fails in exactly
-        // the deployment it describes.
-        t.Setenv("CHAIN_7710_RPC", "")
-        t.Setenv(tscRPCEnv, "")
-        if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "" {
-                t.Fatalf("resolved endpoint with no configuration = %q, want empty", got.RPCEndpoint)
-        }
+	// With no override the resolved endpoint stays empty. Both the generic
+	// and the platform-specific variable are cleared, because either can
+	// supply the endpoint and an operator running the platform's own node
+	// will have set the latter. Without this the assertion fails in exactly
+	// the deployment it describes.
+	t.Setenv("CHAIN_7710_RPC", "")
+	t.Setenv(tscRPCEnv, "")
+	if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "" {
+		t.Fatalf("resolved endpoint with no configuration = %q, want empty", got.RPCEndpoint)
+	}
 
-        // The platform-specific variable takes precedence when both are set, so
-        // the documented TSC_RPC_URL contract is what an operator relies on.
-        t.Setenv("CHAIN_7710_RPC", "http://generic.internal:8545")
-        t.Setenv(tscRPCEnv, "http://tsc.internal:8545")
-        if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "http://tsc.internal:8545" {
-                t.Fatalf("resolved endpoint = %q, want %s to take precedence", got.RPCEndpoint, tscRPCEnv)
-        }
+	// The platform-specific variable takes precedence when both are set, so
+	// the documented TSC_RPC_URL contract is what an operator relies on.
+	t.Setenv("CHAIN_7710_RPC", "http://generic.internal:8545")
+	t.Setenv(tscRPCEnv, "http://tsc.internal:8545")
+	if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "http://tsc.internal:8545" {
+		t.Fatalf("resolved endpoint = %q, want %s to take precedence", got.RPCEndpoint, tscRPCEnv)
+	}
 
-        // The generic override is honoured when the platform one is unset.
-        t.Setenv(tscRPCEnv, "")
-        t.Setenv("CHAIN_7710_RPC", "http://tsc.internal:8545")
-        if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "http://tsc.internal:8545" {
-                t.Fatalf("resolved endpoint = %q, want the configured override", got.RPCEndpoint)
-        }
+	// The generic override is honoured when the platform one is unset.
+	t.Setenv(tscRPCEnv, "")
+	t.Setenv("CHAIN_7710_RPC", "http://tsc.internal:8545")
+	if got := chainByID(tigerSmartChainID); got.RPCEndpoint != "http://tsc.internal:8545" {
+		t.Fatalf("resolved endpoint = %q, want the configured override", got.RPCEndpoint)
+	}
 }
 
 // A public chain must still work out of the box: only the platform's own chain
 // is allowed to be endpoint-less.
 func TestPublicChainsKeepTheirEndpoints(t *testing.T) {
-        for _, id := range []int64{1, 56, 137, 8453, 42161} {
-                c := chainByID(id)
-                if c == nil {
-                        t.Fatalf("chain %d is not registered", id)
-                }
-                if c.RPCEndpoint == "" {
-                        t.Errorf("public chain %d (%s) has no RPC endpoint", id, c.Name)
-                }
-        }
+	for _, id := range []int64{1, 56, 137, 8453, 42161} {
+		c := chainByID(id)
+		if c == nil {
+			t.Fatalf("chain %d is not registered", id)
+		}
+		if c.RPCEndpoint == "" {
+			t.Errorf("public chain %d (%s) has no RPC endpoint", id, c.Name)
+		}
+	}
 }
 
 func TestPlatformTokensStaticMetadata(t *testing.T) {

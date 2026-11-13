@@ -57,6 +57,137 @@ std::array<uint8_t, 32> CryptoUtils::double_sha256(const std::vector<uint8_t>& d
 
 namespace {
 
+// ---------------------------------------------------------------------------
+// Keccak-256 (the original Keccak, as Ethereum uses it)
+// ---------------------------------------------------------------------------
+//
+// OpenSSL 3 ships NIST SHA3-256, which is NOT the same function: Keccak-256
+// uses the 0x01 domain-separation byte while SHA3-256 uses 0x06, so the two
+// produce different digests for the same input. An Ethereum address computed
+// with SHA3-256 is simply wrong. OpenSSL only exposes "KECCAK-256" when the
+// legacy provider is loaded, which is not the default on most distributions
+// (Debian/Ubuntu ship it separately), so a correct pure-C++ fallback is
+// required for the module to be portable.
+
+constexpr uint64_t kKeccakRoundConstants[24] = {
+    0x0000000000000001ULL, 0x0000000000008082ULL, 0x800000000000808aULL,
+    0x8000000080008000ULL, 0x000000000000808bULL, 0x0000000080000001ULL,
+    0x8000000080008081ULL, 0x8000000000008009ULL, 0x000000000000008aULL,
+    0x0000000000000088ULL, 0x0000000080008009ULL, 0x000000008000000aULL,
+    0x000000008000808bULL, 0x800000000000008bULL, 0x8000000000008089ULL,
+    0x8000000000008003ULL, 0x8000000000008002ULL, 0x8000000000000080ULL,
+    0x000000000000800aULL, 0x800000008000000aULL, 0x8000000080008081ULL,
+    0x8000000000008080ULL, 0x0000000080000001ULL, 0x8000000080008008ULL};
+
+// Rho offsets, indexed by x + 5*y, i.e. the same lane order as the state
+// array. There are 25 lanes, so the table has 25 entries; lane (0,0) has a
+// zero rotation, which rotl64 handles explicitly.
+constexpr int kKeccakRotation[25] = {0,  1,  62, 28, 27, 36, 44, 6,  55,
+                                     20, 3,  10, 43, 25, 39, 41, 45, 15,
+                                     21, 8,  18, 2,  61, 56, 14};
+
+inline uint64_t rotl64(uint64_t value, int shift) {
+    // Lane (0,0) has a rotation of 0; shifting a 64-bit value by 64 is
+    // undefined behaviour, so return the value unchanged.
+    if (shift == 0) {
+        return value;
+    }
+    return (value << shift) | (value >> (64 - shift));
+}
+
+/// The Keccak-f[1600] permutation over a 25-lane state.
+void keccak_f1600(uint64_t state[25]) {
+    for (int round = 0; round < 24; round++) {
+        uint64_t c[5];
+        for (int x = 0; x < 5; x++) {
+            c[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^
+                   state[x + 20];
+        }
+
+        uint64_t d[5];
+        for (int x = 0; x < 5; x++) {
+            d[x] = c[(x + 4) % 5] ^ rotl64(c[(x + 1) % 5], 1);
+        }
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                state[x + 5 * y] ^= d[x];
+            }
+        }
+
+        // Rho and Pi.
+        uint64_t b[25];
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                b[y + 5 * ((2 * x + 3 * y) % 5)] =
+                    rotl64(state[x + 5 * y], kKeccakRotation[x + 5 * y]);
+            }
+        }
+
+        // Chi.
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                state[x + 5 * y] =
+                    b[x + 5 * y] ^
+                    ((~b[(x + 1) % 5 + 5 * y]) & b[(x + 2) % 5 + 5 * y]);
+            }
+        }
+
+        // Iota.
+        state[0] ^= kKeccakRoundConstants[round];
+    }
+}
+
+/// Keccak-256 with the original 0x01 padding (not SHA3-256's 0x06).
+std::array<uint8_t, 32> keccak256_pure(const uint8_t* data, size_t length) {
+    // Rate for Keccak-256 is 1088 bits = 136 bytes.
+    constexpr size_t kRate = 136;
+
+    uint64_t state[25] = {0};
+
+    size_t offset = 0;
+    while (length - offset >= kRate) {
+        for (size_t i = 0; i < kRate / 8; i++) {
+            uint64_t lane = 0;
+            for (int b = 0; b < 8; b++) {
+                lane |= static_cast<uint64_t>(data[offset + i * 8 +
+                                                   static_cast<size_t>(b)])
+                        << (8 * b);
+            }
+            state[i] ^= lane;
+        }
+        keccak_f1600(state);
+        offset += kRate;
+    }
+
+    uint8_t block[kRate] = {0};
+    const size_t remaining = length - offset;
+    if (remaining > 0) {
+        std::copy(data + offset, data + offset + remaining, block);
+    }
+    // Original Keccak padding: 0x01 ... 0x80.
+    block[remaining] ^= 0x01;
+    block[kRate - 1] ^= 0x80;
+
+    for (size_t i = 0; i < kRate / 8; i++) {
+        uint64_t lane = 0;
+        for (int b = 0; b < 8; b++) {
+            lane |= static_cast<uint64_t>(block[i * 8 + static_cast<size_t>(b)])
+                    << (8 * b);
+        }
+        state[i] ^= lane;
+    }
+    keccak_f1600(state);
+
+    std::array<uint8_t, 32> digest{};
+    for (size_t i = 0; i < 4; i++) {
+        for (int b = 0; b < 8; b++) {
+            digest[i * 8 + static_cast<size_t>(b)] =
+                static_cast<uint8_t>((state[i] >> (8 * b)) & 0xff);
+        }
+    }
+    return digest;
+}
+
 /// The value of a base58 character, or -1 when it is not in the alphabet.
 int base58_value(char c) {
     static const char* alphabet =
@@ -290,22 +421,31 @@ std::array<uint8_t, 4> CryptoUtils::uint32_to_big_endian(uint32_t value) {
 }
 
 std::array<uint8_t, 32> CryptoUtils::keccak256(const std::vector<uint8_t>& data) {
-    std::array<uint8_t, 32> digest{};
-
-    EVP_MD* md = EVP_MD_fetch(nullptr, "KECCAK-256", nullptr);
-    if (md == nullptr) {
-        throw std::runtime_error("Keccak-256 is not available in this OpenSSL build");
-    }
-
-    unsigned int length = 0;
-    if (EVP_Digest(data.data(), data.size(), digest.data(), &length, md, nullptr) != 1 ||
-        length != 32) {
+    // Prefer the OpenSSL provider when it is actually available: it is much
+    // faster than the portable fallback below.
+    if (EVP_MD* md = EVP_MD_fetch(nullptr, "KECCAK-256", nullptr)) {
+        std::array<uint8_t, 32> digest{};
+        unsigned int length = 0;
+        const int ok =
+            EVP_Digest(data.data(), data.size(), digest.data(), &length, md,
+                       nullptr);
         EVP_MD_free(md);
+        if (ok == 1 && length == 32) {
+            return digest;
+        }
         throw std::runtime_error("Keccak-256 failed");
     }
 
-    EVP_MD_free(md);
-    return digest;
+    // OpenSSL's default provider does not always ship Keccak-256 (only the
+    // legacy provider does, and it otherwise offers NIST SHA3-256, which is a
+    // different function). Fall back to the portable implementation so
+    // addresses are computed correctly on every platform.
+    return keccak256_portable(data);
+}
+
+std::array<uint8_t, 32> CryptoUtils::keccak256_portable(
+    const std::vector<uint8_t>& data) {
+    return keccak256_pure(data.empty() ? nullptr : data.data(), data.size());
 }
 
 std::array<uint8_t, 64> CryptoUtils::hmac_sha512(const std::vector<uint8_t>& key,

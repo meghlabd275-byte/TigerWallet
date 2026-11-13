@@ -1,5 +1,5 @@
 //! TigerWallet Trading Engine - Limit Orders, Stop-Loss, TWAP, DCA, Perpetuals
-//! 
+//!
 //! This module provides advanced trading functionality including:
 //! - Limit orders with conditional execution
 //! - Stop-loss and take-profit orders
@@ -8,7 +8,7 @@
 //! - Perpetual futures trading
 //! - Leverage management
 //! - Liquidation protection
-//! 
+//!
 //! All trading is execution is done with:
 //! - Atomic transactions
 //! - Slippage protection
@@ -26,34 +26,34 @@ use thiserror::Error;
 pub enum TradingError {
     #[error("Insufficient balance: have {have}, need {need}")]
     InsufficientBalance { have: f64, need: f64 },
-    
+
     #[error("Insufficient margin: have {have}, need {need}")]
     InsufficientMargin { have: f64, need: f64 },
-    
+
     #[error("Order not found: {0}")]
     OrderNotFound(String),
-    
+
     #[error("Order expired")]
     OrderExpired,
-    
+
     #[error("Order cancelled")]
     OrderCancelled,
-    
+
     #[error("Price condition not met")]
     PriceConditionNotMet,
-    
+
     #[error("Liquidation triggered")]
     LiquidationTriggered,
-    
+
     #[error("Invalid leverage: {0}")]
     InvalidLeverage(f64),
-    
+
     #[error("Position not found: {0}")]
     PositionNotFound(String),
-    
+
     #[error("Trading disabled")]
     TradingDisabled,
-    
+
     #[error("Position too large: max {max}, attempted {attempted}")]
     PositionTooLarge { max: f64, attempted: f64 },
 }
@@ -190,11 +190,7 @@ pub struct Order {
 }
 
 impl Order {
-    pub fn new(
-        id: String,
-        user_id: String,
-        request: OrderRequest,
-    ) -> Self {
+    pub fn new(id: String, user_id: String, request: OrderRequest) -> Self {
         Self {
             id,
             user_id,
@@ -215,26 +211,26 @@ impl Order {
             post_only: request.post_only,
         }
     }
-    
+
     pub fn remaining_size(&self) -> f64 {
         self.size - self.filled_size
     }
-    
+
     pub fn is_filled(&self) -> bool {
         self.filled_size >= self.size
     }
-    
+
     pub fn can_fill(&self, current_price: f64) -> bool {
         if self.status != OrderStatus::Pending {
             return false;
         }
-        
+
         if let Some(expires_at) = self.expires_at {
             if current_timestamp() > expires_at {
                 return false;
             }
         }
-        
+
         match self.order_type {
             OrderType::Market => true,
             OrderType::Limit => {
@@ -246,7 +242,7 @@ impl Order {
                 } else {
                     false
                 }
-            },
+            }
             OrderType::StopLoss | OrderType::TakeProfit => {
                 if let Some(stop_price) = self.stop_price {
                     match self.side {
@@ -256,7 +252,7 @@ impl Order {
                 } else {
                     false
                 }
-            },
+            }
             OrderType::StopLimit => {
                 if let Some(stop_price) = self.stop_price {
                     let triggered = match self.side {
@@ -278,7 +274,7 @@ impl Order {
                 } else {
                     false
                 }
-            },
+            }
         }
     }
 }
@@ -312,13 +308,13 @@ impl Position {
     ) -> Self {
         let margin = size / leverage;
         let liquidation_distance = 1.0 / leverage;
-        
+
         let liquidation_price = if side == OrderSide::Buy {
             entry_price * (1.0 - liquidation_distance)
         } else {
             entry_price * (1.0 + liquidation_distance)
         };
-        
+
         Self {
             id,
             user_id,
@@ -334,33 +330,33 @@ impl Position {
             updated_at: current_timestamp(),
         }
     }
-    
+
     pub fn check_liquidation(&self, current_price: f64) -> bool {
         match self.side {
             OrderSide::Buy => current_price <= self.liquidation_price,
             OrderSide::Sell => current_price >= self.liquidation_price,
         }
     }
-    
+
     pub fn calculate_pnl(&self, current_price: f64) -> f64 {
         let price_diff = if self.side == OrderSide::Buy {
             current_price - self.entry_price
         } else {
             self.entry_price - current_price
         };
-        
+
         price_diff * self.size
     }
-    
+
     pub fn calculate_roi(&self, current_price: f64) -> f64 {
         let pnl = self.calculate_pnl(current_price);
         (pnl / self.margin) * 100.0
     }
-    
+
     pub fn can_add_margin(&self, amount: f64) -> bool {
         amount > 0.0
     }
-    
+
     pub fn add_margin(&mut self, amount: f64) {
         self.margin += amount;
         self.updated_at = current_timestamp();
@@ -435,37 +431,37 @@ impl TradingEngine {
             max_position_size: 1_000_000.0,
         }
     }
-    
+
     /// Enable/disable trading
     pub fn set_trading_enabled(&self, enabled: bool) {
         let mut trading = self.trading_enabled.write().unwrap();
         *trading = enabled;
     }
-    
+
     /// Update price
     pub fn update_price(&self, pair: &str, price: f64) {
         let mut prices = self.prices.write().unwrap();
         prices.insert(pair.to_string(), price);
     }
-    
+
     /// Update balance
     pub fn update_balance(&self, user_id: &str, balance: f64) {
         let mut balances = self.balances.write().unwrap();
         balances.insert(user_id.to_string(), balance);
     }
-    
+
     /// Get balance
     pub fn get_balance(&self, user_id: &str) -> f64 {
         let balances = self.balances.read().unwrap();
         balances.get(user_id).copied().unwrap_or(0.0)
     }
-    
+
     /// Get price
     pub fn get_price(&self, pair: &str) -> Option<f64> {
         let prices = self.prices.read().unwrap();
         prices.get(pair).copied()
     }
-    
+
     /// Create order
     pub fn create_order(
         &self,
@@ -479,7 +475,7 @@ impl TradingEngine {
                 return Err(TradingError::TradingDisabled);
             }
         }
-        
+
         // Validate order size
         if request.size < request.pair.min_order_size {
             return Err(TradingError::InsufficientBalance {
@@ -487,17 +483,17 @@ impl TradingEngine {
                 need: request.pair.min_order_size,
             });
         }
-        
+
         if request.size > request.pair.max_order_size {
             return Err(TradingError::PositionTooLarge {
                 max: request.pair.max_order_size,
                 attempted: request.size,
             });
         }
-        
+
         // Check balance
         let balance = self.get_balance(user_id);
-        
+
         // For market orders, require balance upfront
         if request.order_type == OrderType::Market {
             let required = request.size;
@@ -508,19 +504,19 @@ impl TradingEngine {
                 });
             }
         }
-        
+
         // Generate order ID
         let order_id = generate_order_id();
-        
+
         // Create order
         let order = Order::new(order_id.clone(), user_id.to_string(), request);
-        
+
         // Store order
         {
             let mut orders = self.orders.write().unwrap();
             orders.insert(order_id.clone(), order.clone());
         }
-        
+
         Ok(OrderResponse {
             order_id,
             status: order.status,
@@ -531,51 +527,50 @@ impl TradingEngine {
             expires_at: order.expires_at,
         })
     }
-    
+
     /// Cancel order
-    pub fn cancel_order(
-        &self,
-        user_id: &str,
-        order_id: &str,
-    ) -> Result<(), TradingError> {
+    pub fn cancel_order(&self, user_id: &str, order_id: &str) -> Result<(), TradingError> {
         let mut orders = self.orders.write().unwrap();
-        
-        let order = orders.get_mut(order_id)
+
+        let order = orders
+            .get_mut(order_id)
             .ok_or_else(|| TradingError::OrderNotFound(order_id.to_string()))?;
-        
+
         if order.user_id != user_id {
             return Err(TradingError::OrderNotFound(order_id.to_string()));
         }
-        
+
         if order.status != OrderStatus::Pending {
             return Err(TradingError::OrderCancelled);
         }
-        
+
         order.status = OrderStatus::Cancelled;
         order.updated_at = current_timestamp();
-        
+
         Ok(())
     }
-    
+
     /// Get order
     pub fn get_order(&self, order_id: &str) -> Option<Order> {
         let orders = self.orders.read().unwrap();
         orders.get(order_id).cloned()
     }
-    
+
     /// Get orders for user
     pub fn get_orders(&self, user_id: &str) -> Vec<Order> {
         let orders = self.orders.read().unwrap();
-        orders.values()
+        orders
+            .values()
             .filter(|o| o.user_id == user_id)
             .cloned()
             .collect()
     }
-    
+
     /// Get pending orders for pair
     pub fn get_pending_orders(&self, pair: &str) -> Vec<Order> {
         let orders = self.orders.read().unwrap();
-        orders.values()
+        orders
+            .values()
             .filter(|o| {
                 let pair_key = format!("{}_{}", o.pair.base, o.pair.quote);
                 pair_key == pair && o.status == OrderStatus::Pending
@@ -583,7 +578,7 @@ impl TradingEngine {
             .cloned()
             .collect()
     }
-    
+
     /// Fill order
     pub fn fill_order(
         &self,
@@ -592,32 +587,33 @@ impl TradingEngine {
         fill_price: f64,
     ) -> Result<(), TradingError> {
         let mut orders = self.orders.write().unwrap();
-        
-        let order = orders.get_mut(order_id)
+
+        let order = orders
+            .get_mut(order_id)
             .ok_or_else(|| TradingError::OrderNotFound(order_id.to_string()))?;
-        
+
         let remaining = order.remaining_size();
         let to_fill = fill_size.min(remaining);
-        
+
         // Update filled size
         order.filled_size += to_fill;
-        
+
         // Update average price (weighted)
         let total_cost = order.average_price * order.filled_size + fill_price * to_fill;
         order.average_price = total_cost / order.filled_size;
-        
+
         order.updated_at = current_timestamp();
-        
+
         // Update status
         if order.is_filled() {
             order.status = OrderStatus::Filled;
         } else if to_fill > 0.0 {
             order.status = OrderStatus::PartiallyFilled;
         }
-        
+
         Ok(())
     }
-    
+
     /// Open position
     pub fn open_position(
         &self,
@@ -631,19 +627,19 @@ impl TradingEngine {
                 return Err(TradingError::TradingDisabled);
             }
         }
-        
+
         // Validate leverage
         if request.leverage > self.max_leverage {
             return Err(TradingError::InvalidLeverage(request.leverage));
         }
-        
+
         if request.leverage < 1.0 {
             return Err(TradingError::InvalidLeverage(request.leverage));
         }
-        
+
         // Calculate margin required
         let margin_required = request.size / request.leverage;
-        
+
         // Check balance
         let balance = self.get_balance(user_id);
         if balance < margin_required {
@@ -652,17 +648,18 @@ impl TradingEngine {
                 need: margin_required,
             });
         }
-        
+
         // Get price
         let pair_key = format!("{}_{}", request.pair.base, request.pair.quote);
-        let current_price = self.get_price(&pair_key)
+        let current_price = self
+            .get_price(&pair_key)
             .ok_or(TradingError::PriceConditionNotMet)?;
-        
+
         let entry_price = request.limit_price.unwrap_or(current_price);
-        
+
         // Generate position ID
         let position_id = generate_position_id();
-        
+
         // Create position
         let position = Position::new(
             position_id.clone(),
@@ -673,13 +670,13 @@ impl TradingEngine {
             entry_price,
             request.leverage,
         );
-        
+
         // Store position
         {
             let mut positions = self.positions.write().unwrap();
             positions.insert(position_id.clone(), position.clone());
         }
-        
+
         // Deduct margin from balance
         {
             let mut balances = self.balances.write().unwrap();
@@ -687,7 +684,7 @@ impl TradingEngine {
                 *balance -= margin_required;
             }
         }
-        
+
         Ok(PositionResponse {
             position_id,
             size: position.size,
@@ -698,7 +695,7 @@ impl TradingEngine {
             status: PositionStatus::Open,
         })
     }
-    
+
     /// Close position
     pub fn close_position(
         &self,
@@ -706,35 +703,37 @@ impl TradingEngine {
         position_id: &str,
     ) -> Result<PositionResponse, TradingError> {
         let mut positions = self.positions.write().unwrap();
-        
-        let position = positions.get_mut(position_id)
+
+        let position = positions
+            .get_mut(position_id)
             .ok_or_else(|| TradingError::PositionNotFound(position_id.to_string()))?;
-        
+
         if position.user_id != user_id {
             return Err(TradingError::PositionNotFound(position_id.to_string()));
         }
-        
+
         // Get current price
         let pair_key = format!("{}_{}", position.pair.base, position.pair.quote);
-        let current_price = self.get_price(&pair_key)
+        let current_price = self
+            .get_price(&pair_key)
             .ok_or(TradingError::PriceConditionNotMet)?;
-        
+
         // Calculate PnL
         let pnl = position.calculate_pnl(current_price);
         position.unrealized_pnl = pnl;
-        
+
         // Return margin + PnL
         let return_amount = position.margin + pnl;
-        
+
         {
             let mut balances = self.balances.write().unwrap();
             if let Some(balance) = balances.get_mut(user_id) {
                 *balance += return_amount;
             }
         }
-        
+
         position.updated_at = current_timestamp();
-        
+
         Ok(PositionResponse {
             position_id: position_id.to_string(),
             size: position.size,
@@ -745,7 +744,7 @@ impl TradingEngine {
             status: PositionStatus::Closed,
         })
     }
-    
+
     /// Add margin to position
     pub fn add_margin(
         &self,
@@ -754,14 +753,15 @@ impl TradingEngine {
         amount: f64,
     ) -> Result<(), TradingError> {
         let mut positions = self.positions.write().unwrap();
-        
-        let position = positions.get_mut(position_id)
+
+        let position = positions
+            .get_mut(position_id)
             .ok_or_else(|| TradingError::PositionNotFound(position_id.to_string()))?;
-        
+
         if position.user_id != user_id {
             return Err(TradingError::PositionNotFound(position_id.to_string()));
         }
-        
+
         // Check balance
         let balance = self.get_balance(user_id);
         if balance < amount {
@@ -770,9 +770,9 @@ impl TradingEngine {
                 need: amount,
             });
         }
-        
+
         position.add_margin(amount);
-        
+
         // Deduct from balance
         {
             let mut balances = self.balances.write().unwrap();
@@ -780,30 +780,31 @@ impl TradingEngine {
                 *balance -= amount;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Get position
     pub fn get_position(&self, position_id: &str) -> Option<Position> {
         let positions = self.positions.read().unwrap();
         positions.get(position_id).cloned()
     }
-    
+
     /// Get positions for user
     pub fn get_positions(&self, user_id: &str) -> Vec<Position> {
         let positions = self.positions.read().unwrap();
-        positions.values()
+        positions
+            .values()
             .filter(|p| p.user_id == user_id)
             .cloned()
             .collect()
     }
-    
+
     /// Check liquidations
     pub fn check_liquidations(&self, user_id: &str) -> Vec<LiquidationEvent> {
         let mut events = Vec::new();
         let positions = self.positions.read().unwrap();
-        
+
         for position in positions.values().filter(|p| p.user_id == user_id) {
             let pair_key = format!("{}_{}", position.pair.base, position.pair.quote);
             if let Some(current_price) = self.get_price(&pair_key) {
@@ -817,10 +818,10 @@ impl TradingEngine {
                 }
             }
         }
-        
+
         events
     }
-    
+
     /// Process pending orders (called by price feed)
     pub fn process_orders(&self, pair: &str) -> Vec<OrderFill> {
         let mut fills = Vec::new();
@@ -828,9 +829,9 @@ impl TradingEngine {
             Some(p) => p,
             None => return fills,
         };
-        
+
         let pending = self.get_pending_orders(pair);
-        
+
         for order in pending {
             if order.can_fill(current_price) {
                 let fill_size = order.remaining_size();
@@ -841,7 +842,7 @@ impl TradingEngine {
                 });
             }
         }
-        
+
         fills
     }
 }
@@ -894,13 +895,13 @@ fn current_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_create_order() {
         let engine = TradingEngine::new(1);
-        
+
         let pair = TradingPair::new("BTC".to_string(), "USD".to_string(), 1);
-        
+
         let request = OrderRequest {
             pair,
             order_type: OrderType::Limit,
@@ -913,15 +914,15 @@ mod tests {
             reduce_only: false,
             post_only: false,
         };
-        
+
         let result = engine.create_order("user1", request);
         assert!(result.is_ok());
     }
-    
+
     #[test]
     fn test_order_can_fill() {
         let pair = TradingPair::new("BTC".to_string(), "USD".to_string(), 1);
-        
+
         // Buy limit order
         let order = Order::new(
             "ord_1".to_string(),
@@ -939,7 +940,7 @@ mod tests {
                 post_only: false,
             },
         );
-        
+
         // A buy limit fills when the market is at or below the limit.
         assert!(order.can_fill(49000.0));
         assert!(order.can_fill(50000.0));
@@ -947,11 +948,11 @@ mod tests {
         // Above the limit there is no fill.
         assert!(!order.can_fill(51000.0));
     }
-    
+
     #[test]
     fn test_position() {
         let pair = TradingPair::new("BTC".to_string(), "USD".to_string(), 1);
-        
+
         let position = Position::new(
             "pos_1".to_string(),
             "user1".to_string(),
@@ -961,20 +962,20 @@ mod tests {
             50000.0,
             10.0,
         );
-        
+
         assert_eq!(position.leverage, 10.0);
         assert_eq!(position.margin, 0.1);
-        
+
         // Test liquidation
         let liquidation_price = position.liquidation_price;
         assert!(position.check_liquidation(liquidation_price - 1.0));
         assert!(!position.check_liquidation(liquidation_price + 1.0));
     }
-    
+
     #[test]
     fn test_pnl_calculation() {
         let pair = TradingPair::new("BTC".to_string(), "USD".to_string(), 1);
-        
+
         let position = Position::new(
             "pos_1".to_string(),
             "user1".to_string(),
@@ -984,15 +985,15 @@ mod tests {
             50000.0,
             10.0,
         );
-        
+
         // Profit
         let pnl = position.calculate_pnl(55000.0);
         assert!(pnl > 0.0);
-        
+
         // Loss
         let pnl = position.calculate_pnl(45000.0);
         assert!(pnl < 0.0);
-        
+
         // ROI
         let roi = position.calculate_roi(55000.0);
         assert!(roi > 0.0);

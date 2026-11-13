@@ -1,5 +1,5 @@
 //! TigerWallet Transaction Engine - High Performance Transaction Processing
-//! 
+//!
 //! This module provides ultra-low latency transaction processing for:
 //! - Transaction signing
 //! - Gas optimization
@@ -7,8 +7,8 @@
 //! - Nonce management
 //! - Multi-chain transaction coordination
 
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // ============================================================================
@@ -19,22 +19,22 @@ use std::time::{Duration, Instant};
 pub enum TransactionError {
     #[error("Insufficient funds: {0}")]
     InsufficientFunds(String),
-    
+
     #[error("Nonce too low: expected {0}, got {1}")]
     NonceTooLow(u64, u64),
-    
+
     #[error("Gas price too low: minimum {0}")]
     GasPriceTooLow(u64),
-    
+
     #[error("Transaction reverted: {0}")]
     Reverted(String),
-    
+
     #[error("Chain not supported: {0}")]
     UnsupportedChain(i64),
-    
+
     #[error("Signing error: {0}")]
     SigningError(String),
-    
+
     #[error("Network error: {0}")]
     NetworkError(String),
 
@@ -153,35 +153,40 @@ impl TransactionPool {
             nonce_manager: HashMap::new(),
         }
     }
-    
+
     /// Add transaction to pool
     pub fn add(&mut self, address: &str, tx: EvmTransaction) -> Result<()> {
         let key = format!("{}:{}", address.to_lowercase(), tx.nonce);
-        
+
         // Check nonce
         if let Some(nm) = self.nonce_manager.get(address) {
             if tx.nonce < nm.current_nonce {
-                return Err(TransactionError::NonceTooLow(
-                    nm.current_nonce, 
-                    tx.nonce
-                ));
+                return Err(TransactionError::NonceTooLow(nm.current_nonce, tx.nonce));
             }
         }
-        
-        self.pending.insert(key, PendingTx {
-            tx: tx.clone(),
-            submitted_at: Instant::now(),
-            replaced_by: None,
-        });
-        
+
+        self.pending.insert(
+            key,
+            PendingTx {
+                tx: tx.clone(),
+                submitted_at: Instant::now(),
+                replaced_by: None,
+            },
+        );
+
         // Update nonce manager
-        let nm = self.nonce_manager.entry(address.to_lowercase())
-            .or_insert_with(|| NonceManager { current_nonce: tx.nonce, pending_count: 0 });
+        let nm = self
+            .nonce_manager
+            .entry(address.to_lowercase())
+            .or_insert_with(|| NonceManager {
+                current_nonce: tx.nonce,
+                pending_count: 0,
+            });
         nm.pending_count += 1;
-        
+
         Ok(())
     }
-    
+
     /// Get next nonce for address
     pub fn get_next_nonce(&self, address: &str) -> u64 {
         self.nonce_manager
@@ -189,12 +194,12 @@ impl TransactionPool {
             .map(|nm| nm.current_nonce + nm.pending_count)
             .unwrap_or(0)
     }
-    
+
     /// Mark transaction as confirmed
     pub fn confirm(&mut self, address: &str, nonce: u64) {
         let key = format!("{}:{}", address.to_lowercase(), nonce);
         self.pending.remove(&key);
-        
+
         if let Some(nm) = self.nonce_manager.get_mut(&address.to_lowercase()) {
             if nonce >= nm.current_nonce {
                 nm.current_nonce = nonce + 1;
@@ -202,33 +207,40 @@ impl TransactionPool {
             }
         }
     }
-    
+
     /// Cancel pending transaction
     pub fn cancel(&mut self, address: &str, nonce: u64) -> Result<()> {
         let key = format!("{}:{}", address.to_lowercase(), nonce);
-        
+
         if let Some(pending) = self.pending.get_mut(&key) {
             pending.replaced_by = Some("cancelled".to_string());
         }
-        
+
         Ok(())
     }
-    
+
     /// Replace transaction with new gas price
-    pub fn speed_up(&mut self, address: &str, nonce: u64, new_gas_price: String) -> Result<EvmTransaction> {
+    pub fn speed_up(
+        &mut self,
+        address: &str,
+        nonce: u64,
+        new_gas_price: String,
+    ) -> Result<EvmTransaction> {
         let key = format!("{}:{}", address.to_lowercase(), nonce);
-        
+
         if let Some(pending) = self.pending.get_mut(&key) {
             pending.tx.gas_price = new_gas_price.clone();
-            
+
             if let Some(ref mut max_fee) = pending.tx.max_fee_per_gas {
                 *max_fee = new_gas_price.clone();
             }
-            
+
             return Ok(pending.tx.clone());
         }
-        
-        Err(TransactionError::SigningError("Transaction not found".to_string()))
+
+        Err(TransactionError::SigningError(
+            "Transaction not found".to_string(),
+        ))
     }
 }
 
@@ -255,9 +267,9 @@ const MIN_SAMPLES_PER_HOUR: usize = 4;
 /// has to come from the chain, and that is supplied by the caller.
 fn recommended_priority_fee(urgency: GasUrgency) -> u64 {
     match urgency {
-        GasUrgency::Low => 1_000_000_000,    // 1 gwei
-        GasUrgency::Medium => 2_000_000_000, // 2 gwei
-        GasUrgency::High => 5_000_000_000,   // 5 gwei
+        GasUrgency::Low => 1_000_000_000,     // 1 gwei
+        GasUrgency::Medium => 2_000_000_000,  // 2 gwei
+        GasUrgency::High => 5_000_000_000,    // 5 gwei
         GasUrgency::Urgent => 10_000_000_000, // 10 gwei
     }
 }
@@ -325,11 +337,7 @@ impl GasOptimizer {
     /// Fails when no base fee has been supplied for the chain. The total cost
     /// is computed in wei as a u128 because max_fee * gas_limit overflows u64
     /// for realistic values.
-    pub fn estimate_gas(
-        &mut self,
-        chain_id: u64,
-        urgency: GasUrgency,
-    ) -> Result<GasEstimate> {
+    pub fn estimate_gas(&mut self, chain_id: u64, urgency: GasUrgency) -> Result<GasEstimate> {
         let base_fee = self
             .base_fee(chain_id)
             .ok_or(TransactionError::MissingBaseFee(chain_id))?;
@@ -433,36 +441,36 @@ impl TransactionBuilder {
             access_list: None,
         }
     }
-    
+
     pub fn value(mut self, value: String) -> Self {
         self.value = Some(value);
         self
     }
-    
+
     pub fn data(mut self, data: String) -> Self {
         self.data = Some(data);
         self
     }
-    
+
     pub fn gas_limit(mut self, limit: u64) -> Self {
         self.gas_limit = Some(limit);
         self
     }
-    
+
     pub fn gas_price(mut self, price: String) -> Self {
         self.gas_price = Some(price);
         self
     }
-    
+
     pub fn nonce(mut self, nonce: u64) -> Self {
         self.nonce = Some(nonce);
         self
     }
-    
+
     pub fn build(self) -> EvmTransaction {
         let gas_price = self.gas_price.unwrap_or_else(|| "0x4".to_string()); // 4 gwei default
         let gas_limit = self.gas_limit.unwrap_or(21000);
-        
+
         EvmTransaction {
             chain_id: self.chain_id as u64,
             nonce: self.nonce.unwrap_or(0),
@@ -475,18 +483,22 @@ impl TransactionBuilder {
             max_fee_per_gas: Some(gas_price),
         }
     }
-    
+
     /// Validate transaction
     pub fn validate(&self) -> Result<()> {
         // Validate address format
         if !self.from.starts_with("0x") || self.from.len() != 42 {
-            return Err(TransactionError::SigningError("Invalid from address".to_string()));
+            return Err(TransactionError::SigningError(
+                "Invalid from address".to_string(),
+            ));
         }
-        
+
         if !self.to.starts_with("0x") || self.to.len() != 42 {
-            return Err(TransactionError::SigningError("Invalid to address".to_string()));
+            return Err(TransactionError::SigningError(
+                "Invalid to address".to_string(),
+            ));
         }
-        
+
         Ok(())
     }
 }
@@ -512,18 +524,18 @@ impl TransactionSimulator {
             vm_state: HashMap::new(),
         }
     }
-    
+
     /// Simulate transaction execution
     pub fn simulate(&mut self, tx: &EvmTransaction) -> SimulationResult {
         // In production, would use actual EVM
         // Simplified simulation
-        
+
         let gas_used = if tx.data.is_empty() {
             21000 // Basic transfer
         } else {
             65000 // Contract interaction
         };
-        
+
         SimulationResult {
             success: true,
             gas_used,
@@ -533,7 +545,7 @@ impl TransactionSimulator {
             revert_reason: None,
         }
     }
-    
+
     /// Simulate multiple transactions (bundle)
     pub fn simulate_bundle(&mut self, txs: &[EvmTransaction]) -> Vec<SimulationResult> {
         txs.iter().map(|tx| self.simulate(tx)).collect()
@@ -594,7 +606,7 @@ impl MultiChainCoordinator {
             pending_txs: HashMap::new(),
         }
     }
-    
+
     /// Add supported chain
     pub fn add_chain(&mut self, id: i64, rpc_url: String, confirmations: u64) {
         self.chains.push(ChainConfig {
@@ -603,20 +615,24 @@ impl MultiChainCoordinator {
             confirmations,
         });
     }
-    
+
     /// Execute multi-chain transaction
-    pub fn execute(&mut self, id: String, transactions: Vec<EvmTransaction>) -> Result<MultiChainTx> {
+    pub fn execute(
+        &mut self,
+        id: String,
+        transactions: Vec<EvmTransaction>,
+    ) -> Result<MultiChainTx> {
         let mc_tx = MultiChainTx {
             id: id.clone(),
             transactions,
             status: MultiChainStatus::Pending,
         };
-        
+
         self.pending_txs.insert(id, mc_tx.clone());
-        
+
         Ok(mc_tx)
     }
-    
+
     /// Check confirmation status
     pub fn check_status(&self, id: &str) -> Option<&MultiChainTx> {
         self.pending_txs.get(id)
@@ -648,24 +664,24 @@ impl RateLimiter {
             window_start: Instant::now(),
         }
     }
-    
+
     /// Check if allowed to submit
     pub fn allow(&mut self) -> bool {
         let elapsed = self.window_start.elapsed();
-        
+
         if elapsed > Duration::from_secs(1) {
             self.current_count = 0;
             self.window_start = Instant::now();
         }
-        
+
         if self.current_count < self.max_per_second {
             self.current_count += 1;
             return true;
         }
-        
+
         false
     }
-    
+
     /// Wait time until next submission
     pub fn wait_time(&self) -> Duration {
         let elapsed = self.window_start.elapsed();
@@ -724,7 +740,10 @@ mod tests {
 
         // 30 gwei base + 2 gwei medium tip.
         assert_eq!(estimate.gas_limit, 21_000);
-        assert_eq!(estimate.max_fee_per_gas, format!("0x{:x}", 32_000_000_000u64));
+        assert_eq!(
+            estimate.max_fee_per_gas,
+            format!("0x{:x}", 32_000_000_000u64)
+        );
         assert_eq!(
             estimate.max_priority_fee_per_gas,
             format!("0x{:x}", 2_000_000_000u64)

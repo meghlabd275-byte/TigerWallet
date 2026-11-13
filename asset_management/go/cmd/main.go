@@ -81,10 +81,10 @@ type Transaction struct {
 
 // Global variables
 var (
-	db     *pgxpool.Pool
-	redisClient  *redis.Client
-	config Config
-	logger *log.Logger
+	db          *pgxpool.Pool
+	redisClient *redis.Client
+	config      Config
+	logger      *log.Logger
 )
 
 // Initialize database

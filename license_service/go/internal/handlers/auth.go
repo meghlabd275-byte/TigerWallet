@@ -15,9 +15,9 @@ import (
 // Claims carried in every control-plane JWT. The role is either 'superadmin'
 // (TigerWallet-side) or 'wl_client' (a WL customer, limited actions only).
 type Claims struct {
-	AdminID   uuid.UUID `json:"admin_id"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"` // superadmin | wl_client
+	AdminID    uuid.UUID  `json:"admin_id"`
+	Email      string     `json:"email"`
+	Role       string     `json:"role"` // superadmin | wl_client
 	WLClientID *uuid.UUID `json:"wl_client_id,omitempty"`
 	jwt.RegisteredClaims
 }

@@ -17,9 +17,9 @@ type DAppEntry struct {
 	URL         string   `json:"url"`
 	Category    string   `json:"category"`
 	Description string   `json:"description"`
-	Logo        string   `json:"logo"`        // emoji glyph (portable, no asset CDN dependency)
-	Chains      []string `json:"chains"`      // e.g. ["ethereum","arbitrum","optimism"]
-	Verified    bool     `json:"verified"`    // true = official domain confirmed in curation
+	Logo        string   `json:"logo"`     // emoji glyph (portable, no asset CDN dependency)
+	Chains      []string `json:"chains"`   // e.g. ["ethereum","arbitrum","optimism"]
+	Verified    bool     `json:"verified"` // true = official domain confirmed in curation
 }
 
 // dappDirectory is the canonical curated list. Every entry's URL is a real,
@@ -33,7 +33,7 @@ var dappDirectory = []DAppEntry{
 	{ID: "sushi", Name: "SushiSwap", URL: "https://www.sushi.com", Category: "defi", Description: "Multi-chain DEX", Logo: "🍣", Chains: []string{"ethereum", "polygon", "arbitrum", "bsc"}, Verified: true},
 	{ID: "balancer", Name: "Balancer", URL: "https://app.balancer.fi", Category: "defi", Description: "Programmable liquidity pools", Logo: "⚖️", Chains: []string{"ethereum", "polygon", "arbitrum"}, Verified: true},
 	{ID: "jupiter", Name: "Jupiter", URL: "https://jup.ag", Category: "defi", Description: "Solana DEX aggregator", Logo: "🪐", Chains: []string{"solana"}, Verified: true},
-	     {ID: "raydium", Name: "Raydium", URL: "https://raydium.io", Category: "defi", Description: "Solana AMM and liquidity", Logo: "ray", Chains: []string{"solana"}, Verified: true},
+	{ID: "raydium", Name: "Raydium", URL: "https://raydium.io", Category: "defi", Description: "Solana AMM and liquidity", Logo: "ray", Chains: []string{"solana"}, Verified: true},
 
 	// ---- Lending ----
 	{ID: "aave", Name: "Aave", URL: "https://app.aave.com", Category: "defi", Description: "Non-custodial liquidity protocol", Logo: "👻", Chains: []string{"ethereum", "polygon", "avalanche", "arbitrum", "optimism"}, Verified: true},

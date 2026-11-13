@@ -109,7 +109,7 @@ func TestCosmosSignRoundtrip(t *testing.T) {
 	seed := seedFromMnemonic(t, abandonMnemonic)
 	doc := &CosmosSignDoc{
 		AccountNumber: "1",
-		ChainID:      "cosmoshub-4",
+		ChainID:       "cosmoshub-4",
 		Fee: CosmosFee{
 			Amount: []CosmosCoin{{Denom: "uatom", Amount: "5000"}},
 			Gas:    "200000",

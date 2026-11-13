@@ -8,8 +8,9 @@
 //   - everything else (license-alive + no blocking rule) => Auto-approved
 //
 // This reconciles the two product invariants:
-//   "user txs are auto-signed + auto-approved within a second" (fast path)
-//   "no fee/revenue withdrawal without SuperAdmin collaboration" (slow path)
+//
+//	"user txs are auto-signed + auto-approved within a second" (fast path)
+//	"no fee/revenue withdrawal without SuperAdmin collaboration" (slow path)
 package middleware
 
 import (
@@ -99,8 +100,10 @@ func ApproverIsAlive() bool { return approver.alive.Load() }
 // ClassifyTx decides the approval mode for an outgoing transaction.
 //
 // txType: "transfer"|"swap"|"stake"|"unstake"|"claim"|"nft_transfer"|
-//         "personal_sign"|"typed_data_sign"|"revenue_payout"|
-//         "treasury_transfer"|"treasury_sweep"|"fee_withdrawal"
+//
+//	"personal_sign"|"typed_data_sign"|"revenue_payout"|
+//	"treasury_transfer"|"treasury_sweep"|"fee_withdrawal"
+//
 // to:     recipient address (optional for sign-only).
 // token:  token contract address ("" = native).
 // amount: human-readable decimal amount ("" = no value).

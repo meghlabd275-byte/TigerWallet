@@ -28,9 +28,9 @@ import (
 // ============================================================================
 
 var (
-	logger     zerolog.Logger
+	logger      zerolog.Logger
 	redisClient *redis.Client
-	dbPool     *pgxpool.Pool
+	dbPool      *pgxpool.Pool
 )
 
 // Configuration
@@ -44,26 +44,26 @@ type Config struct {
 
 // Hierarchical White Label
 type HierarchicalWhiteLabel struct {
-	ID               string    `json:"id"`
-	ParentID         *string   `json:"parentId,omitempty"` // Pointer to handle null
-	RootID           string    `json:"rootId"` // Top-level parent ID
-	Level            int       `json:"level"` // 0 = root, 1 = child, 2 = grandchild, etc.
-	Name             string    `json:"name"`
-	Domain           string    `json:"domain"`
-	Slug             string    `json:"slug"`
-	Status           string    `json:"status"` // active, suspended, halted
-	CommissionRate   float64   `json:"commissionRate"` // Commission to parent
-	RevenueShare     float64   `json:"revenueShare"` // Share from transactions
-	MaxSubAccounts   int       `json:"maxSubAccounts"`
-	CurrentSubAccounts int     `json:"currentSubAccounts"`
-	TotalUsers       int       `json:"totalUsers"`
-	TotalRevenue     float64   `json:"totalRevenue"`
-	TotalCommission  float64   `json:"totalCommission"`
-	ChainAccess      []string  `json:"chainAccess"`
-	Features         []string  `json:"features"`
-	Branding         Branding  `json:"branding"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ID                 string    `json:"id"`
+	ParentID           *string   `json:"parentId,omitempty"` // Pointer to handle null
+	RootID             string    `json:"rootId"`             // Top-level parent ID
+	Level              int       `json:"level"`              // 0 = root, 1 = child, 2 = grandchild, etc.
+	Name               string    `json:"name"`
+	Domain             string    `json:"domain"`
+	Slug               string    `json:"slug"`
+	Status             string    `json:"status"`         // active, suspended, halted
+	CommissionRate     float64   `json:"commissionRate"` // Commission to parent
+	RevenueShare       float64   `json:"revenueShare"`   // Share from transactions
+	MaxSubAccounts     int       `json:"maxSubAccounts"`
+	CurrentSubAccounts int       `json:"currentSubAccounts"`
+	TotalUsers         int       `json:"totalUsers"`
+	TotalRevenue       float64   `json:"totalRevenue"`
+	TotalCommission    float64   `json:"totalCommission"`
+	ChainAccess        []string  `json:"chainAccess"`
+	Features           []string  `json:"features"`
+	Branding           Branding  `json:"branding"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 // Branding
@@ -76,37 +76,37 @@ type Branding struct {
 
 // White Label Hierarchy Node (for tree representation)
 type HierarchyNode struct {
-	WhiteLabel     *HierarchicalWhiteLabel `json:"whiteLabel"`
-	Children       []*HierarchyNode        `json:"children"`
-	Parent         *HierarchyNode          `json:"parent,omitempty"`
-	Path           []string                 `json:"path"` // Path from root to this node
-	Depth          int                      `json:"depth"`
+	WhiteLabel *HierarchicalWhiteLabel `json:"whiteLabel"`
+	Children   []*HierarchyNode        `json:"children"`
+	Parent     *HierarchyNode          `json:"parent,omitempty"`
+	Path       []string                `json:"path"` // Path from root to this node
+	Depth      int                     `json:"depth"`
 }
 
 // Commission Record
 type CommissionRecord struct {
-	ID            string    `json:"id"`
-	FromWhiteLabel string  `json:"fromWhiteLabel"` // Child who earned commission
-	ToWhiteLabel   string  `json:"toWhiteLabel"`   // Parent who receives commission
-	Amount         float64  `json:"amount"`
-	Currency       string    `json:"currency"`
-	Type           string    `json:"type"` // transaction, subscription, upgrade
-	ReferenceID    string    `json:"referenceId"`
-	Status         string    `json:"status"` // pending, paid, cancelled
+	ID             string     `json:"id"`
+	FromWhiteLabel string     `json:"fromWhiteLabel"` // Child who earned commission
+	ToWhiteLabel   string     `json:"toWhiteLabel"`   // Parent who receives commission
+	Amount         float64    `json:"amount"`
+	Currency       string     `json:"currency"`
+	Type           string     `json:"type"` // transaction, subscription, upgrade
+	ReferenceID    string     `json:"referenceId"`
+	Status         string     `json:"status"` // pending, paid, cancelled
 	PaidAt         *time.Time `json:"paidAt,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
+	CreatedAt      time.Time  `json:"createdAt"`
 }
 
 // Revenue Share Distribution
 type RevenueDistribution struct {
-	WhiteLabelID  string  `json:"whiteLabelId"`
-	TotalRevenue  float64 `json:"totalRevenue"`
-	ParentShare   float64 `json:"parentShare"`
-	RootShare     float64 `json:"rootShare"`
-	PlatformShare float64 `json:"platformShare"`
-	NetRevenue    float64 `json:"netRevenue"`
-	Period        string  `json:"period"`
-	CalculatedAt time.Time `json:"calculatedAt"`
+	WhiteLabelID  string    `json:"whiteLabelId"`
+	TotalRevenue  float64   `json:"totalRevenue"`
+	ParentShare   float64   `json:"parentShare"`
+	RootShare     float64   `json:"rootShare"`
+	PlatformShare float64   `json:"platformShare"`
+	NetRevenue    float64   `json:"netRevenue"`
+	Period        string    `json:"period"`
+	CalculatedAt  time.Time `json:"calculatedAt"`
 }
 
 // ============================================================================
@@ -195,9 +195,9 @@ func CreateHierarchicalWhiteLabel(c *gin.Context) {
 	// Check max levels
 	if wl.ParentID != nil {
 		var parentLevel int
-		err := dbPool.QueryRow(context.Background(), 
+		err := dbPool.QueryRow(context.Background(),
 			"SELECT level FROM hierarchical_white_labels WHERE id = $1", wl.ParentID).Scan(&parentLevel)
-		
+
 		if err == pgx.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Parent white label not found"})
 			return
@@ -227,9 +227,9 @@ func CreateHierarchicalWhiteLabel(c *gin.Context) {
 
 		// Get root ID from parent
 		var rootID string
-		dbPool.QueryRow(context.Background(), 
+		dbPool.QueryRow(context.Background(),
 			"SELECT root_id FROM hierarchical_white_labels WHERE id = $1", wl.ParentID).Scan(&rootID)
-		
+
 		wl.RootID = rootID
 		wl.Level = parentLevel + 1
 	} else {
@@ -425,12 +425,12 @@ func CalculateRevenueDistribution(whiteLabelID string, amount float64) []Revenue
 		parentShare := remainingAmount * (1 - parentWL.RevenueShare)
 
 		distributions = append(distributions, RevenueDistribution{
-			WhiteLabelID:  parentWL.ID,
-			TotalRevenue:   remainingAmount,
-			ParentShare:    parentShare,
-			NetRevenue:     remainingAmount - parentShare - commission,
-			Period:         time.Now().Format("2006-01"),
-			CalculatedAt:   time.Now(),
+			WhiteLabelID: parentWL.ID,
+			TotalRevenue: remainingAmount,
+			ParentShare:  parentShare,
+			NetRevenue:   remainingAmount - parentShare - commission,
+			Period:       time.Now().Format("2006-01"),
+			CalculatedAt: time.Now(),
 		})
 
 		remainingAmount = remainingAmount - parentShare - commission
@@ -455,7 +455,7 @@ func RecordCommission(fromID, toID string, amount float64, commissionType, refer
 		Amount:         amount,
 		Currency:       "USD",
 		Type:           commissionType,
-		ReferenceID:   referenceID,
+		ReferenceID:    referenceID,
 		Status:         "pending",
 		CreatedAt:      time.Now(),
 	}
@@ -558,8 +558,8 @@ func MoveWhiteLabel(c *gin.Context) {
 
 	// Get current parent
 	var oldParentID *string
-	err := dbPool.QueryRow(context.Background(), 
-		"SELECT parent_id FROM hierarchical_white_labels WHERE id = $1", 
+	err := dbPool.QueryRow(context.Background(),
+		"SELECT parent_id FROM hierarchical_white_labels WHERE id = $1",
 		request.WhiteLabelID).Scan(&oldParentID)
 
 	if err != nil {

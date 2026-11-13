@@ -84,10 +84,10 @@ type ThreatMatch struct {
 
 // ThreatDB is an in-memory, read-mostly index of known-bad addresses.
 type ThreatDB struct {
-	mu        sync.RWMutex
-	byChain   map[uint64]map[string]ThreatEntry // chain id -> lowercased address -> entry
-	global    map[string]ThreatEntry            // applies to every chain
-	loadedAt  time.Time
+	mu         sync.RWMutex
+	byChain    map[uint64]map[string]ThreatEntry // chain id -> lowercased address -> entry
+	global     map[string]ThreatEntry            // applies to every chain
+	loadedAt   time.Time
 	sourcePath string
 }
 
@@ -233,12 +233,12 @@ const eip1967ImplementationSlot = "0x360894a13ba1a3210667c828492db98dca3e2076cc3
 
 // ContractInfo is what the chain reports about a destination.
 type ContractInfo struct {
-	Checked     bool   // the chain answered
-	IsContract  bool   // there is code at the address
-	CodeSize    int    // bytes of runtime code
-	IsProxy     bool   // EIP-1967 implementation slot is set
+	Checked        bool   // the chain answered
+	IsContract     bool   // there is code at the address
+	CodeSize       int    // bytes of runtime code
+	IsProxy        bool   // EIP-1967 implementation slot is set
 	Implementation string // proxy implementation address, when known
-	ChainID     uint64
+	ChainID        uint64
 }
 
 // ContractChecker queries chain nodes over JSON-RPC.

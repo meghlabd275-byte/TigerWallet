@@ -14,18 +14,18 @@ func TestCheckURLRejectsInternalDestinations(t *testing.T) {
 	p := webhookURLPolicy{}
 
 	blocked := []string{
-		"http://127.0.0.1:8080/hook",       // loopback
-		"http://localhost:9093/hook",       // loopback by name
-		"http://169.254.169.254/latest",    // cloud metadata
-		"http://10.1.2.3/hook",             // RFC 1918
-		"http://192.168.1.10/hook",         // RFC 1918
-		"http://172.16.5.4/hook",           // RFC 1918
-		"http://[::1]:8080/hook",           // IPv6 loopback
-		"http://[fd00::1]/hook",            // unique local
-		"http://0.0.0.0/hook",              // this network
-		"file:///etc/passwd",               // not http(s)
-		"gopher://example.com:70/_x",       // not http(s)
-		"http:///hook",                     // no host
+		"http://127.0.0.1:8080/hook",    // loopback
+		"http://localhost:9093/hook",    // loopback by name
+		"http://169.254.169.254/latest", // cloud metadata
+		"http://10.1.2.3/hook",          // RFC 1918
+		"http://192.168.1.10/hook",      // RFC 1918
+		"http://172.16.5.4/hook",        // RFC 1918
+		"http://[::1]:8080/hook",        // IPv6 loopback
+		"http://[fd00::1]/hook",         // unique local
+		"http://0.0.0.0/hook",           // this network
+		"file:///etc/passwd",            // not http(s)
+		"gopher://example.com:70/_x",    // not http(s)
+		"http:///hook",                  // no host
 	}
 
 	for _, raw := range blocked {

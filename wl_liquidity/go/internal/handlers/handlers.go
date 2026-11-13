@@ -188,7 +188,7 @@ func bindSource(c *gin.Context) (*store.Source, bool) {
 		TokenB      string `json:"token_b" binding:"required"`
 		ReserveA    string `json:"reserve_a"`
 		ReserveB    string `json:"reserve_b"`
-		FeePct       string `json:"fee_pct"`
+		FeePct      string `json:"fee_pct"`
 		APY         string `json:"apy"`
 		IsActive    *bool  `json:"is_active"`
 	}
@@ -376,8 +376,8 @@ func (s *Svc) BestDEX(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"source":     sourceJSON(bestSource),
-		"output":     best.ToAmount,
+		"source":       sourceJSON(bestSource),
+		"output":       best.ToAmount,
 		"price_impact": best.PriceImpact,
 	})
 }
@@ -761,13 +761,13 @@ func (s *Svc) GetUserProfile(c *gin.Context) {
 func (s *Svc) Health(c *gin.Context) {
 	total, active, _ := s.store.SourceCount(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{
-		"status":        "healthy",
-		"service":       "wl-liquidity",
-		"licensed":      s.gate.IsAlive(),
-		"reason":        s.gate.Reason(),
-		"wl_client_id":  s.cfg.WLClientID,
-		"product":       s.cfg.Product,
-		"total_sources": total,
+		"status":         "healthy",
+		"service":        "wl-liquidity",
+		"licensed":       s.gate.IsAlive(),
+		"reason":         s.gate.Reason(),
+		"wl_client_id":   s.cfg.WLClientID,
+		"product":        s.cfg.Product,
+		"total_sources":  total,
 		"active_sources": active,
 	})
 }

@@ -116,9 +116,9 @@ func SolanaBuildSend(ctx context.Context, seed []byte, path, endpoint, to string
 	msg.Write(blockhash)
 	msg.Write(encodeUvarint(1)) // one instruction
 	var ix bytes.Buffer
-	ix.WriteByte(2)                      // programIdIndex
-	ix.Write(encodeUvarint(2))           // account count
-	ix.Write([]byte{0, 1})               // account indices
+	ix.WriteByte(2)            // programIdIndex
+	ix.Write(encodeUvarint(2)) // account count
+	ix.Write([]byte{0, 1})     // account indices
 	ix.Write(encodeUvarint(uint64(len(ixData))))
 	ix.Write(ixData)
 	msg.Write(ix.Bytes())

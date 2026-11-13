@@ -31,26 +31,26 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost        string `json:"db_host"`
-	DBPort        string `json:"db_port"`
-	DBUser        string `json:"db_user"`
-	DBPassword    string `json:"db_password"`
-	DBName        string `json:"db_name"`
-	RedisHost     string `json:"redis_host"`
-	RedisPort     string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 func LoadConfig() *Config {
 	return &Config{
 		ServerPort: getEnv("EXCHANGE_PORT", "9096"),
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "tigerwallet"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "tigerwallet"),
 		DBPassword: mustEnv("DB_PASSWORD"),
-		DBName:    getEnv("DB_NAME", "tigerwallet_exchange"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
+		DBName:     getEnv("DB_NAME", "tigerwallet_exchange"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
 	}
 }
 
@@ -78,85 +78,85 @@ func getEnv(key, defaultValue string) string {
 
 // Order represents trading orders
 type Order struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	OrderID       string    `gorm:"uniqueIndex" json:"order_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	PairID        string    `gorm:"index" json:"pair_id"`
-	Side          string    `json:"side"` // buy, sell
-	OrderType     string    `json:"order_type"` // limit, market, stop_loss, stop_limit
-	Price         string    `json:"price"`
-	TriggerPrice  string    `json:"trigger_price"`
-	Quantity      string    `json:"quantity"`
-	FilledQuantity string   `json:"filled_quantity"`
-	RemainingQty  string    `json:"remaining_qty"`
-	AvgFillPrice  string    `json:"avg_fill_price"`
-	Status        string    `json:"status"` // pending, partial, filled, cancelled, expired
-	Fee           string    `json:"fee"`
-	FeeToken      string    `json:"fee_token"`
-	ChainID       int64     `json:"chain_id"`
-	Nonce         uint64    `json:"nonce"`
-	Signature     string    `json:"signature"`
-	ExpiresAt     int64     `json:"expires_at"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID             uint      `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	OrderID        string    `gorm:"uniqueIndex" json:"order_id"`
+	UserID         string    `gorm:"index" json:"user_id"`
+	PairID         string    `gorm:"index" json:"pair_id"`
+	Side           string    `json:"side"`       // buy, sell
+	OrderType      string    `json:"order_type"` // limit, market, stop_loss, stop_limit
+	Price          string    `json:"price"`
+	TriggerPrice   string    `json:"trigger_price"`
+	Quantity       string    `json:"quantity"`
+	FilledQuantity string    `json:"filled_quantity"`
+	RemainingQty   string    `json:"remaining_qty"`
+	AvgFillPrice   string    `json:"avg_fill_price"`
+	Status         string    `json:"status"` // pending, partial, filled, cancelled, expired
+	Fee            string    `json:"fee"`
+	FeeToken       string    `json:"fee_token"`
+	ChainID        int64     `json:"chain_id"`
+	Nonce          uint64    `json:"nonce"`
+	Signature      string    `json:"signature"`
+	ExpiresAt      int64     `json:"expires_at"`
+	WhiteLabelID   *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // Trade represents executed trades
 type Trade struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	TradeID       string    `gorm:"uniqueIndex" json:"trade_id"`
-	OrderID       string    `gorm:"index" json:"order_id"`
-	PairID        string    `gorm:"index" json:"pair_id"`
-	MakerOrderID  string    `json:"maker_order_id"`
-	TakerOrderID  string    `json:"taker_order_id"`
-	Maker         string    `gorm:"index" json:"maker"`
-	Taker         string    `gorm:"index" json:"taker"`
-	Side          string    `json:"side"`
-	Price         string    `json:"price"`
-	Quantity      string    `json:"quantity"`
-	Fee           string    `json:"fee"`
-	FeeToken      string    `json:"fee_token"`
-	MakerFee      string    `json:"maker_fee"`
-	TakerFee      string    `json:"taker_fee"`
-	ChainID       int64     `json:"chain_id"`
-	TxHash        string    `json:"tx_hash"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	TradeID      string    `gorm:"uniqueIndex" json:"trade_id"`
+	OrderID      string    `gorm:"index" json:"order_id"`
+	PairID       string    `gorm:"index" json:"pair_id"`
+	MakerOrderID string    `json:"maker_order_id"`
+	TakerOrderID string    `json:"taker_order_id"`
+	Maker        string    `gorm:"index" json:"maker"`
+	Taker        string    `gorm:"index" json:"taker"`
+	Side         string    `json:"side"`
+	Price        string    `json:"price"`
+	Quantity     string    `json:"quantity"`
+	Fee          string    `json:"fee"`
+	FeeToken     string    `json:"fee_token"`
+	MakerFee     string    `json:"maker_fee"`
+	TakerFee     string    `json:"taker_fee"`
+	ChainID      int64     `json:"chain_id"`
+	TxHash       string    `json:"tx_hash"`
 }
 
 // Balance represents user balances
 type Balance struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	TokenAddress  string    `gorm:"index" json:"token_address"`
-	ChainID       int64     `json:"chain_id"`
-	Free          string    `json:"free"`
-	Locked        string    `json:"locked"`
-	Total         string    `json:"total"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint   `gorm:"primarykey" json:"id"`
+	UserID       string `gorm:"index" json:"user_id"`
+	TokenAddress string `gorm:"index" json:"token_address"`
+	ChainID      int64  `json:"chain_id"`
+	Free         string `json:"free"`
+	Locked       string `json:"locked"`
+	Total        string `json:"total"`
+	WhiteLabelID *uint  `gorm:"index" json:"white_label_id"`
 }
 
 // Ticker represents price ticker
 type Ticker struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	PairID        string    `gorm:"uniqueIndex" json:"pair_id"`
-	LastPrice     string    `json:"last_price"`
-	PriceChange   string    `json:"price_change"`
-	PriceChangePct string   `json:"price_change_pct"`
-	High24h       string    `json:"high_24h"`
-	Low24h        string    `json:"low_24h"`
-	Volume24h     string    `json:"volume_24h"`
-	QuoteVolume24h string   `json:"quote_volume_24h"`
-	Trades24h     int64     `json:"trades_24h"`
+	ID             uint      `gorm:"primarykey" json:"id"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	PairID         string    `gorm:"uniqueIndex" json:"pair_id"`
+	LastPrice      string    `json:"last_price"`
+	PriceChange    string    `json:"price_change"`
+	PriceChangePct string    `json:"price_change_pct"`
+	High24h        string    `json:"high_24h"`
+	Low24h         string    `json:"low_24h"`
+	Volume24h      string    `json:"volume_24h"`
+	QuoteVolume24h string    `json:"quote_volume_24h"`
+	Trades24h      int64     `json:"trades_24h"`
 }
 
 // OrderBook represents order book state
 type OrderBook struct {
-	PairID    string         `json:"pair_id"`
-	Bids      []OrderLevel  `json:"bids"`
-	Asks      []OrderLevel  `json:"asks"`
-	Timestamp int64          `json:"timestamp"`
+	PairID    string       `json:"pair_id"`
+	Bids      []OrderLevel `json:"bids"`
+	Asks      []OrderLevel `json:"asks"`
+	Timestamp int64        `json:"timestamp"`
 }
 
 type OrderLevel struct {
@@ -170,15 +170,15 @@ type OrderLevel struct {
 // ============================================================================
 
 type ExchangeService struct {
-	db           *gorm.DB
-	redis        *redis.Client
-	config       *Config
-	orderChan    chan Order
-	tradeChan    chan Trade
-	mu           sync.RWMutex
-	orderBooks   map[string]*OrderBook
-	feeTaker     float64
-	feeMaker     float64
+	db         *gorm.DB
+	redis      *redis.Client
+	config     *Config
+	orderChan  chan Order
+	tradeChan  chan Trade
+	mu         sync.RWMutex
+	orderBooks map[string]*OrderBook
+	feeTaker   float64
+	feeMaker   float64
 }
 
 func NewExchangeService(config *Config) (*ExchangeService, error) {
@@ -439,14 +439,14 @@ func (s *ExchangeService) updateTickers() {
 // ============================================================================
 
 type CreateOrderRequest struct {
-	UserID       string  `json:"user_id" binding:"required"`
-	PairID       string  `json:"pair_id" binding:"required"`
-	Side         string  `json:"side" binding:"required"` // buy, sell
-	OrderType    string  `json:"order_type" binding:"required"` // limit, market
-	Price        string  `json:"price"`
-	Quantity     string  `json:"quantity" binding:"required"`
-	TriggerPrice string  `json:"trigger_price"`
-	ChainID      int64   `json:"chain_id"`
+	UserID       string `json:"user_id" binding:"required"`
+	PairID       string `json:"pair_id" binding:"required"`
+	Side         string `json:"side" binding:"required"`       // buy, sell
+	OrderType    string `json:"order_type" binding:"required"` // limit, market
+	Price        string `json:"price"`
+	Quantity     string `json:"quantity" binding:"required"`
+	TriggerPrice string `json:"trigger_price"`
+	ChainID      int64  `json:"chain_id"`
 }
 
 func (s *ExchangeService) CreateOrder(ctx *gin.Context) {
@@ -478,7 +478,7 @@ func (s *ExchangeService) CreateOrder(ctx *gin.Context) {
 
 	order := Order{
 		OrderID:        uuid.New().String(),
-		UserID:          req.UserID,
+		UserID:         req.UserID,
 		PairID:         req.PairID,
 		Side:           req.Side,
 		OrderType:      req.OrderType,
@@ -501,11 +501,11 @@ func (s *ExchangeService) CreateOrder(ctx *gin.Context) {
 	s.orderChan <- order
 
 	ctx.JSON(200, gin.H{
-		"success":    true,
-		"order_id":  order.OrderID,
-		"status":    order.Status,
-		"price":     order.Price,
-		"quantity":  order.Quantity,
+		"success":  true,
+		"order_id": order.OrderID,
+		"status":   order.Status,
+		"price":    order.Price,
+		"quantity": order.Quantity,
 	})
 }
 
@@ -557,10 +557,10 @@ func (s *ExchangeService) GetOrderBook(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"pair_id":    pairID,
-		"bids":       bids,
-		"asks":       asks,
-		"timestamp":  book.Timestamp,
+		"pair_id":   pairID,
+		"bids":      bids,
+		"asks":      asks,
+		"timestamp": book.Timestamp,
 	})
 }
 
@@ -574,7 +574,7 @@ func (s *ExchangeService) GetTicker(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"pair_id":           ticker.PairID,
+		"pair_id":          ticker.PairID,
 		"last_price":       ticker.LastPrice,
 		"price_change":     ticker.PriceChange,
 		"price_change_pct": ticker.PriceChangePct,
@@ -684,7 +684,7 @@ func (s *ExchangeService) GetAllTickers(ctx *gin.Context) {
 	result := make([]gin.H, len(tickers))
 	for i, t := range tickers {
 		result[i] = gin.H{
-			"pair_id":           t.PairID,
+			"pair_id":          t.PairID,
 			"last_price":       t.LastPrice,
 			"price_change_pct": t.PriceChangePct,
 			"volume_24h":       t.Volume24h,

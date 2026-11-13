@@ -54,28 +54,28 @@ func (h *BlockchainHandler) GetBlockchain(c *gin.Context) {
 // createBlockchainRequest is permissive: it accepts both snake_case and
 // camelCase keys (the admin frontend sends camelCase).
 type createBlockchainRequest struct {
-	Name          string `json:"name"`
-	Symbol        string `json:"symbol"`
-	ChainID       int64  `json:"chainId"`
-	ChainIDSnake  int64  `json:"chain_id"`
-	Type          string `json:"type"`
-	RPCURL        string `json:"rpcUrl"`
-	RPCURLSnake   string `json:"rpc_url"`
-	WSRPCURL      string `json:"wsRpcUrl"`
-	WSRPCURLSnake string `json:"ws_rpc_url"`
-	ExplorerURL   string `json:"explorerUrl"`
+	Name             string `json:"name"`
+	Symbol           string `json:"symbol"`
+	ChainID          int64  `json:"chainId"`
+	ChainIDSnake     int64  `json:"chain_id"`
+	Type             string `json:"type"`
+	RPCURL           string `json:"rpcUrl"`
+	RPCURLSnake      string `json:"rpc_url"`
+	WSRPCURL         string `json:"wsRpcUrl"`
+	WSRPCURLSnake    string `json:"ws_rpc_url"`
+	ExplorerURL      string `json:"explorerUrl"`
 	ExplorerURLSnake string `json:"explorer_url"`
-	ExplorerAPI   string `json:"explorerApi"`
+	ExplorerAPI      string `json:"explorerApi"`
 	ExplorerAPISnake string `json:"explorer_api"`
-	NativeToken   string `json:"nativeToken"`
+	NativeToken      string `json:"nativeToken"`
 	NativeTokenSnake string `json:"native_token"`
-	Decimals      int    `json:"decimals"`
-	LogoURL       string `json:"logoUrl"`
-	LogoURLSnake  string `json:"logo_url"`
-	IsTestnet     bool   `json:"isTestnet"`
-	IsActive      bool   `json:"isActive"`
-	Status        string `json:"status"`
-	GasToken      string `json:"gasToken"`
+	Decimals         int    `json:"decimals"`
+	LogoURL          string `json:"logoUrl"`
+	LogoURLSnake     string `json:"logo_url"`
+	IsTestnet        bool   `json:"isTestnet"`
+	IsActive         bool   `json:"isActive"`
+	Status           string `json:"status"`
+	GasToken         string `json:"gasToken"`
 }
 
 // CreateBlockchain creates a new blockchain record.
@@ -114,22 +114,22 @@ func (h *BlockchainHandler) CreateBlockchain(c *gin.Context) {
 	}
 
 	blockchain := models.Blockchain{
-		Name:         name,
-		Symbol:       symbol,
-		ChainID:      chainID,
-		Type:         req.Type,
-		RPCURL:       firstNonEmpty(req.RPCURL, req.RPCURLSnake),
-		WSRPCURL:     firstNonEmpty(req.WSRPCURL, req.WSRPCURLSnake),
-		ExplorerURL:  firstNonEmpty(req.ExplorerURL, req.ExplorerURLSnake),
-		ExplorerAPI:  firstNonEmpty(req.ExplorerAPI, req.ExplorerAPISnake),
-		NativeToken:  firstNonEmpty(req.NativeToken, req.NativeTokenSnake),
-		Decimals:     req.Decimals,
-		LogoURL:      firstNonEmpty(req.LogoURL, req.LogoURLSnake),
-		IsTestnet:    req.IsTestnet,
-		IsActive:     req.IsActive,
-		Status:       status,
-		GasToken:     req.GasToken,
-		CreatedBy:    adminID,
+		Name:        name,
+		Symbol:      symbol,
+		ChainID:     chainID,
+		Type:        req.Type,
+		RPCURL:      firstNonEmpty(req.RPCURL, req.RPCURLSnake),
+		WSRPCURL:    firstNonEmpty(req.WSRPCURL, req.WSRPCURLSnake),
+		ExplorerURL: firstNonEmpty(req.ExplorerURL, req.ExplorerURLSnake),
+		ExplorerAPI: firstNonEmpty(req.ExplorerAPI, req.ExplorerAPISnake),
+		NativeToken: firstNonEmpty(req.NativeToken, req.NativeTokenSnake),
+		Decimals:    req.Decimals,
+		LogoURL:     firstNonEmpty(req.LogoURL, req.LogoURLSnake),
+		IsTestnet:   req.IsTestnet,
+		IsActive:    req.IsActive,
+		Status:      status,
+		GasToken:    req.GasToken,
+		CreatedBy:   adminID,
 	}
 
 	// An unreachable RPC endpoint would make the chain unusable for every wallet

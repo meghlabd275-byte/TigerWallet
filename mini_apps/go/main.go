@@ -20,10 +20,10 @@ type MiniApp struct {
 	Icon        string   `json:"icon"`
 	Category    string   `json:"category"`
 	Permissions []string `json:"permissions"`
-	Developer  string   `json:"developer"`
-	Version    string   `json:"version"`
-	Verified   bool     `json:"verified"`
-	Installs   int      `json:"installs"`
+	Developer   string   `json:"developer"`
+	Version     string   `json:"version"`
+	Verified    bool     `json:"verified"`
+	Installs    int      `json:"installs"`
 }
 
 // MiniApp runtime service
@@ -106,7 +106,7 @@ func (s *MiniAppService) executeApp(w http.ResponseWriter, r *http.Request) {
 	_ = vars["id"]
 
 	var req struct {
-		Action string `json:"action"`
+		Action string                 `json:"action"`
 		Data   map[string]interface{} `json:"data"`
 	}
 
@@ -117,7 +117,7 @@ func (s *MiniAppService) executeApp(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"result": map[string]interface{}{},
+		"result":  map[string]interface{}{},
 	})
 }
 

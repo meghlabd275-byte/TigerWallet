@@ -32,11 +32,11 @@ import (
 
 type Config struct {
 	ServerPort string `json:"server_port"`
-	DBHost    string `json:"db_host"`
-	DBPort    string `json:"db_port"`
-	DBUser    string `json:"db_user"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
 	DBPassword string `json:"db_password"`
-	DBName    string `json:"db_name"`
+	DBName     string `json:"db_name"`
 	RedisHost  string `json:"redis_host"`
 	RedisPort  string `json:"redis_port"`
 	ETHRPCURL  string `json:"eth_rpc_url"`
@@ -45,14 +45,14 @@ type Config struct {
 func LoadConfig() *Config {
 	return &Config{
 		ServerPort: getEnv("RPC_PORT", "9098"),
-		DBHost:    getEnv("DB_HOST", "localhost"),
-		DBPort:    getEnv("DB_PORT", "5432"),
-		DBUser:    getEnv("DB_USER", "tigerwallet"),
+		DBHost:     getEnv("DB_HOST", "localhost"),
+		DBPort:     getEnv("DB_PORT", "5432"),
+		DBUser:     getEnv("DB_USER", "tigerwallet"),
 		DBPassword: mustEnv("DB_PASSWORD"),
-		DBName:    getEnv("DB_NAME", "tigerwallet_rpc"),
-		RedisHost: getEnv("REDIS_HOST", "localhost"),
-		RedisPort: getEnv("REDIS_PORT", "6379"),
-		ETHRPCURL: getEnv("ETH_RPC_URL", ""),
+		DBName:     getEnv("DB_NAME", "tigerwallet_rpc"),
+		RedisHost:  getEnv("REDIS_HOST", "localhost"),
+		RedisPort:  getEnv("REDIS_PORT", "6379"),
+		ETHRPCURL:  getEnv("ETH_RPC_URL", ""),
 	}
 }
 
@@ -81,55 +81,55 @@ func getEnv(key, defaultValue string) string {
 // BlockchainNode represents blockchain RPC nodes
 type BlockchainNode struct {
 	ID          uint      `gorm:"primarykey" json:"id"`
-	CreatedAt  time.Time `json:"created_at"`
-	NodeID     string    `gorm:"uniqueIndex" json:"node_id"`
-	ChainID    int64     `gorm:"index" json:"chain_id"`
-	Name       string    `json:"name"`
-	URL        string    `json:"url"`
-	URLs       string    `json:"urls"`
-	Type       string    `json:"type"`
-	Priority   int       `json:"priority"`
-	IsHealthy  bool      `json:"is_healthy"`
-	LatencyMs  int64     `json:"latency_ms"`
-	LastCheck  int64     `json:"last_check"`
+	CreatedAt   time.Time `json:"created_at"`
+	NodeID      string    `gorm:"uniqueIndex" json:"node_id"`
+	ChainID     int64     `gorm:"index" json:"chain_id"`
+	Name        string    `json:"name"`
+	URL         string    `json:"url"`
+	URLs        string    `json:"urls"`
+	Type        string    `json:"type"`
+	Priority    int       `json:"priority"`
+	IsHealthy   bool      `json:"is_healthy"`
+	LatencyMs   int64     `json:"latency_ms"`
+	LastCheck   int64     `json:"last_check"`
 	SuccessRate float64   `json:"success_rate"`
-	Requests   int64     `json:"requests"`
-	Failures   int64     `json:"failures"`
-	Status     string    `json:"status"`
+	Requests    int64     `json:"requests"`
+	Failures    int64     `json:"failures"`
+	Status      string    `json:"status"`
 }
 
 // ChainConfig represents chain configuration
 type ChainConfig struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	ChainID         int64     `gorm:"uniqueIndex" json:"chain_id"`
-	Name            string    `json:"name"`
-	Symbol          string    `json:"symbol"`
-	Type            string    `json:"type"`
-	ChainIDHex      string    `json:"chain_id_hex"`
-	ExplorerURL     string    `json:"explorer_url"`
-	ExplorerAPI    string    `json:"explorer_api"`
-	Logo            string    `json:"logo"`
-	Decimals        int       `json:"decimals"`
-	MinConfirmations int     `json:"min_confirmations"`
-	BlockTime       int       `json:"block_time"`
-	GasLimit        uint64    `json:"gas_limit"`
-	IsEnabled       bool      `json:"is_enabled"`
-	AddedAt         int64     `json:"added_at"`
+	ID               uint   `gorm:"primarykey" json:"id"`
+	ChainID          int64  `gorm:"uniqueIndex" json:"chain_id"`
+	Name             string `json:"name"`
+	Symbol           string `json:"symbol"`
+	Type             string `json:"type"`
+	ChainIDHex       string `json:"chain_id_hex"`
+	ExplorerURL      string `json:"explorer_url"`
+	ExplorerAPI      string `json:"explorer_api"`
+	Logo             string `json:"logo"`
+	Decimals         int    `json:"decimals"`
+	MinConfirmations int    `json:"min_confirmations"`
+	BlockTime        int    `json:"block_time"`
+	GasLimit         uint64 `json:"gas_limit"`
+	IsEnabled        bool   `json:"is_enabled"`
+	AddedAt          int64  `json:"added_at"`
 }
 
 // TokenConfig represents token configuration
 type TokenConfig struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	ChainID       int64     `gorm:"index" json:"chain_id"`
-	TokenAddress  string    `gorm:"index" json:"token_address"`
-	Symbol        string    `json:"symbol"`
-	Name          string    `json:"name"`
-	Decimals      int       `json:"decimals"`
-	Logo          string    `json:"logo"`
-	IsNative      bool      `json:"is_native"`
-	IsStable      bool      `json:"is_stable"`
-	CoingeckoID   string    `json:"coingecko_id"`
-	IsEnabled     bool      `json:"is_enabled"`
+	ID           uint   `gorm:"primarykey" json:"id"`
+	ChainID      int64  `gorm:"index" json:"chain_id"`
+	TokenAddress string `gorm:"index" json:"token_address"`
+	Symbol       string `json:"symbol"`
+	Name         string `json:"name"`
+	Decimals     int    `json:"decimals"`
+	Logo         string `json:"logo"`
+	IsNative     bool   `json:"is_native"`
+	IsStable     bool   `json:"is_stable"`
+	CoingeckoID  string `json:"coingecko_id"`
+	IsEnabled    bool   `json:"is_enabled"`
 }
 
 // ============================================================================
@@ -137,13 +137,13 @@ type TokenConfig struct {
 // ============================================================================
 
 type RPCService struct {
-	db          *gorm.DB
-	redis       *redis.Client
-	config      *Config
-	nodeHealth  map[int64][]*BlockchainNode
-	mu          sync.RWMutex
-	chainCache  map[int64]*ChainConfig
-	eth         *ethclient.Client // nil when ETH_RPC_URL is not configured
+	db         *gorm.DB
+	redis      *redis.Client
+	config     *Config
+	nodeHealth map[int64][]*BlockchainNode
+	mu         sync.RWMutex
+	chainCache map[int64]*ChainConfig
+	eth        *ethclient.Client // nil when ETH_RPC_URL is not configured
 }
 
 func NewRPCService(config *Config) (*RPCService, error) {
@@ -477,10 +477,10 @@ func (s *RPCService) GetTransaction(ctx *gin.Context) {
 	}
 
 	resp := gin.H{
-		"tx_hash":      txHash,
-		"chain_id":     chainID,
-		"value":        tx.Value().String(),
-		"status":       status,
+		"tx_hash":  txHash,
+		"chain_id": chainID,
+		"value":    tx.Value().String(),
+		"status":   status,
 	}
 	if fromAddr != "" {
 		resp["from"] = fromAddr
@@ -522,7 +522,7 @@ func (s *RPCService) GetBalance(ctx *gin.Context) {
 
 func (s *RPCService) AddChain(ctx *gin.Context) {
 	var req struct {
-		ChainID   int64  `json:"chain_id" binding:"required"`
+		ChainID  int64  `json:"chain_id" binding:"required"`
 		Name     string `json:"name" binding:"required"`
 		Symbol   string `json:"symbol" binding:"required"`
 		Type     string `json:"type" binding:"required"`
@@ -535,18 +535,18 @@ func (s *RPCService) AddChain(ctx *gin.Context) {
 	}
 
 	chain := &ChainConfig{
-		ChainID:        req.ChainID,
-		Name:           req.Name,
-		Symbol:         req.Symbol,
-		Type:           req.Type,
-		ChainIDHex:     fmt.Sprintf("0x%x", req.ChainID),
-		ExplorerURL:    req.Explorer,
-		Decimals:       req.Decimals,
-		GasLimit:       21000,
-		BlockTime:      3,
+		ChainID:          req.ChainID,
+		Name:             req.Name,
+		Symbol:           req.Symbol,
+		Type:             req.Type,
+		ChainIDHex:       fmt.Sprintf("0x%x", req.ChainID),
+		ExplorerURL:      req.Explorer,
+		Decimals:         req.Decimals,
+		GasLimit:         21000,
+		BlockTime:        3,
 		MinConfirmations: 12,
-		IsEnabled:     true,
-		AddedAt:       time.Now().Unix(),
+		IsEnabled:        true,
+		AddedAt:          time.Now().Unix(),
 	}
 
 	if err := s.db.Create(chain).Error; err != nil {
@@ -561,10 +561,10 @@ func (s *RPCService) AddChain(ctx *gin.Context) {
 func (s *RPCService) AddNode(ctx *gin.Context) {
 	var req struct {
 		ChainID  int64  `json:"chain_id" binding:"required"`
-		Name    string `json:"name" binding:"required"`
-		URL     string `json:"url" binding:"required"`
-		Type    string `json:"type"`
-		Priority int   `json:"priority"`
+		Name     string `json:"name" binding:"required"`
+		URL      string `json:"url" binding:"required"`
+		Type     string `json:"type"`
+		Priority int    `json:"priority"`
 	}
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(400, gin.H{"error": err.Error()})

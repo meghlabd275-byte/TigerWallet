@@ -35,22 +35,22 @@ import (
 type HardwareWalletType string
 
 const (
-	WalletTypeLedger  HardwareWalletType = "ledger"
-	WalletTypeTrezor  HardwareWalletType = "trezor"
+	WalletTypeLedger   HardwareWalletType = "ledger"
+	WalletTypeTrezor   HardwareWalletType = "trezor"
 	WalletTypeKeystone HardwareWalletType = "keystone"
 )
 
 type HardwareWallet struct {
-	ID           string              `json:"id"`
-	UserID       string              `json:"user_id"`
-	Type         HardwareWalletType `json:"type"`
-	DeviceID     string              `json:"device_id"`
-	DeviceName   string              `json:"device_name"`
-	PublicKey    string              `json:"public_key"`
-	Addresses    []WalletAddress    `json:"addresses"`
-	IsConnected  bool               `json:"is_connected"`
-	LastUsed     time.Time          `json:"last_used"`
-	CreatedAt    time.Time          `json:"created_at"`
+	ID          string             `json:"id"`
+	UserID      string             `json:"user_id"`
+	Type        HardwareWalletType `json:"type"`
+	DeviceID    string             `json:"device_id"`
+	DeviceName  string             `json:"device_name"`
+	PublicKey   string             `json:"public_key"`
+	Addresses   []WalletAddress    `json:"addresses"`
+	IsConnected bool               `json:"is_connected"`
+	LastUsed    time.Time          `json:"last_used"`
+	CreatedAt   time.Time          `json:"created_at"`
 }
 
 type WalletAddress struct {
@@ -63,15 +63,15 @@ type WalletAddress struct {
 }
 
 type TransactionRequest struct {
-	Chain      string   `json:"chain"`
-	ChainID    int      `json:"chain_id"`
-	To         string   `json:"to"`
-	Amount     string   `json:"amount"`
-	TokenAddr  string   `json:"token_address,omitempty"`
-	GasLimit   string   `json:"gas_limit,omitempty"`
-	GasPrice   string   `json:"gas_price,omitempty"`
-	Nonce      *uint64  `json:"nonce,omitempty"`
-	Data       string   `json:"data,omitempty"`
+	Chain     string  `json:"chain"`
+	ChainID   int     `json:"chain_id"`
+	To        string  `json:"to"`
+	Amount    string  `json:"amount"`
+	TokenAddr string  `json:"token_address,omitempty"`
+	GasLimit  string  `json:"gas_limit,omitempty"`
+	GasPrice  string  `json:"gas_price,omitempty"`
+	Nonce     *uint64 `json:"nonce,omitempty"`
+	Data      string  `json:"data,omitempty"`
 }
 
 type SignedTransaction struct {
@@ -82,9 +82,9 @@ type SignedTransaction struct {
 }
 
 type SignMessageRequest struct {
-	Chain     string `json:"chain"`
-	Message   string `json:"message"`
-	Header    string `json:"header,omitempty"`
+	Chain   string `json:"chain"`
+	Message string `json:"message"`
+	Header  string `json:"header,omitempty"`
 }
 
 type DeviceInfo struct {
@@ -175,7 +175,7 @@ func (c *LedgerClient) GetAddress(ctx context.Context, chain string, derivationP
 }
 
 func (c *LedgerClient) SignTransaction(ctx context.Context, tx *TransactionRequest, derivationPath string) (*SignedTransaction, error) {
-	    // In production, use ledger for transaction signing
+	// In production, use ledger for transaction signing
 	// This simulates the signing process
 
 	var txData string
@@ -413,7 +413,9 @@ func (s *HardwareWalletService) RegisterWallet(ctx context.Context, userID strin
 	}
 
 	// Get addresses for all supported chains
-	var client interface{ GetAddress(context.Context, string, string) (string, error) }
+	var client interface {
+		GetAddress(context.Context, string, string) (string, error)
+	}
 	switch walletType {
 	case WalletTypeLedger:
 		client = s.ledgerClient
@@ -487,7 +489,9 @@ func (s *HardwareWalletService) SignTransaction(ctx context.Context, walletID st
 		return nil, err
 	}
 
-	var client interface{ SignTransaction(context.Context, *TransactionRequest, string) (*SignedTransaction, error) }
+	var client interface {
+		SignTransaction(context.Context, *TransactionRequest, string) (*SignedTransaction, error)
+	}
 
 	switch wallet.Type {
 	case WalletTypeLedger:
@@ -525,7 +529,9 @@ func (s *HardwareWalletService) SignMessage(ctx context.Context, walletID string
 		return "", err
 	}
 
-	var client interface{ SignMessage(context.Context, string, string, string) (string, error) }
+	var client interface {
+		SignMessage(context.Context, string, string, string) (string, error)
+	}
 
 	switch wallet.Type {
 	case WalletTypeLedger:

@@ -31,10 +31,10 @@ import (
 
 // KeystoreV3 is the Web3 Secret Storage V3 envelope (scrypt variant).
 type KeystoreV3 struct {
-	Address string      `json:"address"`
-	Crypto  CryptoV3    `json:"crypto"`
-	ID      string      `json:"id"`
-	Version int         `json:"version"`
+	Address string   `json:"address"`
+	Crypto  CryptoV3 `json:"crypto"`
+	ID      string   `json:"id"`
+	Version int      `json:"version"`
 }
 
 // CryptoV3 holds the cipher + KDF parameters of a V3 keystore.

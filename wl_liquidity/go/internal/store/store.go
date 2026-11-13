@@ -183,7 +183,7 @@ type Source struct {
 	TokenB      string
 	ReserveA    string
 	ReserveB    string
-	FeePct       string
+	FeePct      string
 	APY         string
 	IsActive    bool
 	CreatedAt   time.Time
@@ -318,12 +318,12 @@ func (s *Store) SourceCount(ctx context.Context) (total, active int, err error) 
 // ==================== Liquidity routes ====================
 
 type Route struct {
-	ID         uuid.UUID
-	SourceID   uuid.UUID
-	FromToken  string
-	ToToken    string
-	SharePct   string
-	CreatedAt  time.Time
+	ID        uuid.UUID
+	SourceID  uuid.UUID
+	FromToken string
+	ToToken   string
+	SharePct  string
+	CreatedAt time.Time
 }
 
 func (s *Store) CreateRoute(ctx context.Context, sourceID uuid.UUID, from, to, sharePct string) (*Route, error) {

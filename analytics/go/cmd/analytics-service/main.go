@@ -78,13 +78,13 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Event struct {
-	ID          uint      `gorm:"primarykey" json:"id"`
-	EventID     string    `gorm:"uniqueIndex;size:36" json:"event_id"`
-	EventType   string    `gorm:"index" json:"event_type"`
-	UserID      uint      `gorm:"index" json:"user_id"`
-	SessionID   string    `gorm:"index" json:"session_id"`
-	Properties  string    `json:"properties"`
-	Timestamp   time.Time `json:"timestamp"`
+	ID         uint      `gorm:"primarykey" json:"id"`
+	EventID    string    `gorm:"uniqueIndex;size:36" json:"event_id"`
+	EventType  string    `gorm:"index" json:"event_type"`
+	UserID     uint      `gorm:"index" json:"user_id"`
+	SessionID  string    `gorm:"index" json:"session_id"`
+	Properties string    `json:"properties"`
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 type Metric struct {
@@ -96,13 +96,13 @@ type Metric struct {
 }
 
 type Report struct {
-	ID          uint      `gorm:"primarykey" json:"id"`
-	ReportID    string    `gorm:"uniqueIndex;size:36" json:"report_id"`
-	ReportName  string    `json:"report_name"`
-	ReportType  string    `json:"report_type"`
-	Period      string    `json:"period"`
-	Data        string    `json:"data"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         uint      `gorm:"primarykey" json:"id"`
+	ReportID   string    `gorm:"uniqueIndex;size:36" json:"report_id"`
+	ReportName string    `json:"report_name"`
+	ReportType string    `json:"report_type"`
+	Period     string    `json:"period"`
+	Data       string    `json:"data"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type Dashboard struct {
@@ -201,8 +201,8 @@ func (s *AnalyticsService) RecordMetric(metricName string, value float64, dimens
 	metric := Metric{
 		MetricName:  metricName,
 		MetricValue: value,
-		Dimension:  dimension,
-		Timestamp:  time.Now(),
+		Dimension:   dimension,
+		Timestamp:   time.Now(),
 	}
 	return s.db.Create(&metric).Error
 }
@@ -334,10 +334,10 @@ func (s *AnalyticsService) GetOverviewStats() (*OverviewStats, error) {
 }
 
 type UserActivity struct {
-	Date       string `json:"date"`
-	NewUsers   int64  `json:"new_users"`
-	ActiveUsers int64 `json:"active_users"`
-	Transactions int64 `json:"transactions"`
+	Date         string `json:"date"`
+	NewUsers     int64  `json:"new_users"`
+	ActiveUsers  int64  `json:"active_users"`
+	Transactions int64  `json:"transactions"`
 }
 
 func (s *AnalyticsService) GetUserActivity(days int) ([]UserActivity, error) {
@@ -377,10 +377,10 @@ func (s *AnalyticsService) GetUserActivity(days int) ([]UserActivity, error) {
 }
 
 type TopAsset struct {
-	Symbol   string  `json:"symbol"`
-	Volume   float64 `json:"volume"`
-	Trades   int64   `json:"trades"`
-	Revenue  float64 `json:"revenue"`
+	Symbol  string  `json:"symbol"`
+	Volume  float64 `json:"volume"`
+	Trades  int64   `json:"trades"`
+	Revenue float64 `json:"revenue"`
 }
 
 func (s *AnalyticsService) GetTopAssets(limit int) ([]TopAsset, error) {
@@ -393,10 +393,10 @@ func (s *AnalyticsService) GetTopAssets(limit int) ([]TopAsset, error) {
 	topAssets := make([]TopAsset, 0, limit)
 	for _, m := range metrics {
 		topAssets = append(topAssets, TopAsset{
-			Symbol:   m.Dimension,
-			Volume:   m.MetricValue,
-			Trades:   0,
-			Revenue:  0,
+			Symbol:  m.Dimension,
+			Volume:  m.MetricValue,
+			Trades:  0,
+			Revenue: 0,
 		})
 	}
 
@@ -404,7 +404,7 @@ func (s *AnalyticsService) GetTopAssets(limit int) ([]TopAsset, error) {
 }
 
 type GeographicData struct {
-	Country     string  `json:"country"`
+	Country    string  `json:"country"`
 	Users      int64   `json:"users"`
 	Volume     float64 `json:"volume"`
 	Percentage float64 `json:"percentage"`
@@ -579,9 +579,9 @@ func (s *AnalyticsService) getMetricByDimension(c *gin.Context) {
 
 func (s *AnalyticsService) createDashboard(c *gin.Context) {
 	var req struct {
-		Name     string                   `json:"name" binding:"required"`
-		OwnerID  uint                    `json:"owner_id" binding:"required"`
-		Widgets  []map[string]interface{} `json:"widgets"`
+		Name    string                   `json:"name" binding:"required"`
+		OwnerID uint                     `json:"owner_id" binding:"required"`
+		Widgets []map[string]interface{} `json:"widgets"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

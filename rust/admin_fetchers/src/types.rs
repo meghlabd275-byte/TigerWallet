@@ -2,7 +2,6 @@
  * TigerWallet Admin Fetchers - Types Module
  * Complete type definitions for all admin operations
  */
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

@@ -15,8 +15,8 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	sharedauth "github.com/tigerwallet/sharedauth"
 	"github.com/tigerwallet/earn-service/earn"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 const port = ":8466"

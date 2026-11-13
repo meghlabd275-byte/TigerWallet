@@ -5,9 +5,9 @@
 //! fetcher code can be plain blocking call sites. No fake data, no stubs.
 
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio_postgres::{Client, NoTls, Row};
-use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
@@ -80,13 +80,20 @@ impl DatabasePool {
     }
 
     /// Execute a parameterized query and map each row via `mapper`.
-    pub fn query<T, F>(&self, sql: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)], mapper: F) -> Result<Vec<T>, String>
+    pub fn query<T, F>(
+        &self,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+        mapper: F,
+    ) -> Result<Vec<T>, String>
     where
         F: Fn(&Row) -> T,
     {
         self.runtime.block_on(async {
             let client = self.connect().await?;
-            let rows = client.query(sql, params).await
+            let rows = client
+                .query(sql, params)
+                .await
                 .map_err(|e| format!("Query failed: {}", e))?;
             Ok(rows.iter().map(mapper).collect::<Vec<T>>())
         })
@@ -99,7 +106,9 @@ impl DatabasePool {
     {
         self.runtime.block_on(async {
             let client = self.connect().await?;
-            let rows = client.query(sql, &[]).await
+            let rows = client
+                .query(sql, &[])
+                .await
                 .map_err(|e| format!("Query failed: {}", e))?;
             Ok(rows.iter().map(mapper).collect::<Vec<T>>())
         })
@@ -109,15 +118,25 @@ impl DatabasePool {
     pub fn query_rows(&self, sql: &str) -> Result<Vec<Row>, String> {
         self.runtime.block_on(async {
             let client = self.connect().await?;
-            client.query(sql, &[]).await.map_err(|e| format!("Query failed: {}", e))
+            client
+                .query(sql, &[])
+                .await
+                .map_err(|e| format!("Query failed: {}", e))
         })
     }
 
     /// Execute an INSERT/UPDATE/DELETE; returns affected row count.
-    pub fn execute(&self, sql: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<u64, String> {
+    pub fn execute(
+        &self,
+        sql: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, String> {
         self.runtime.block_on(async {
             let client = self.connect().await?;
-            client.execute(sql, params).await.map_err(|e| format!("Execute failed: {}", e))
+            client
+                .execute(sql, params)
+                .await
+                .map_err(|e| format!("Execute failed: {}", e))
         })
     }
 
@@ -125,7 +144,10 @@ impl DatabasePool {
     pub fn execute_simple(&self, sql: &str) -> Result<u64, String> {
         self.runtime.block_on(async {
             let client = self.connect().await?;
-            client.execute(sql, &[]).await.map_err(|e| format!("Execute failed: {}", e))
+            client
+                .execute(sql, &[])
+                .await
+                .map_err(|e| format!("Execute failed: {}", e))
         })
     }
 

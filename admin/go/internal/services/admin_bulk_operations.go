@@ -2,7 +2,7 @@
  * TigerWallet Admin Bulk Operations Service
  * Complete Bulk Operations for Users, Tokens, and Withdrawals
  * High-Performance, Distributed
- * 
+ *
  * Features:
  * - Bulk user operations (suspend, activate, update KYC)
  * - Bulk token operations (activate, deactivate, update fees)
@@ -36,22 +36,22 @@ import (
 // ============================================================================
 
 type BulkConfig struct {
-	Port          string
-	RedisURL      string
-	AdminDBURL    string
-	ExportDir     string
+	Port         string
+	RedisURL     string
+	AdminDBURL   string
+	ExportDir    string
 	MaxBatchSize int
-	Workers       int
+	Workers      int
 }
 
 func LoadBulkConfig() *BulkConfig {
 	return &BulkConfig{
-		Port:          getEnv("BULK_PORT", "9098"),
-		RedisURL:       getEnv("REDIS_BULK_URL", "redis://localhost:6379"),
-		AdminDBURL:     getEnv("ADMIN_DB_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet"),
-		ExportDir:      getEnv("EXPORT_DIR", "/exports"),
-		MaxBatchSize:   getEnvInt("MAX_BATCH_SIZE", 1000),
-		Workers:        getEnvInt("BULK_WORKERS", 10),
+		Port:         getEnv("BULK_PORT", "9098"),
+		RedisURL:     getEnv("REDIS_BULK_URL", "redis://localhost:6379"),
+		AdminDBURL:   getEnv("ADMIN_DB_URL", "postgres://tigerwallet:password@localhost:5432/tigerwallet"),
+		ExportDir:    getEnv("EXPORT_DIR", "/exports"),
+		MaxBatchSize: getEnvInt("MAX_BATCH_SIZE", 1000),
+		Workers:      getEnvInt("BULK_WORKERS", 10),
 	}
 }
 
@@ -60,43 +60,43 @@ func LoadBulkConfig() *BulkConfig {
 // ============================================================================
 
 type BulkOperation struct {
-	ID            string                   `json:"id"`
-	Type          string                   `json:"type"`           // users, tokens, withdrawals
-	Action        string                   `json:"action"`         // suspend, activate, approve, reject, update
-	IDs           []string                 `json:"ids"`
-	Status        string                   `json:"status"`         // pending, processing, completed, failed
-	Progress      int                      `json:"progress"`
-	Total         int                      `json:"total"`
-	SuccessCount  int                      `json:"success_count"`
-	FailedCount   int                      `json:"failed_count"`
-	Errors        []string                 `json:"errors"`
-	CreatedBy    string                   `json:"created_by"`
-	CreatedAt    time.Time                `json:"created_at"`
-	CompletedAt  *time.Time               `json:"completed_at"`
+	ID           string                 `json:"id"`
+	Type         string                 `json:"type"`   // users, tokens, withdrawals
+	Action       string                 `json:"action"` // suspend, activate, approve, reject, update
+	IDs          []string               `json:"ids"`
+	Status       string                 `json:"status"` // pending, processing, completed, failed
+	Progress     int                    `json:"progress"`
+	Total        int                    `json:"total"`
+	SuccessCount int                    `json:"success_count"`
+	FailedCount  int                    `json:"failed_count"`
+	Errors       []string               `json:"errors"`
+	CreatedBy    string                 `json:"created_by"`
+	CreatedAt    time.Time              `json:"created_at"`
+	CompletedAt  *time.Time             `json:"completed_at"`
 	Result       map[string]interface{} `json:"result,omitempty"`
 }
 
 type ExportRequest struct {
-	Type        string   `json:"type"`         // users, transactions, kyc, tokens, withdrawals
-	Format      string   `json:"format"`       // csv, pdf
-	Filters     map[string]string `json:"filters"`
-	Columns     []string `json:"columns"`
-	DateFrom    string   `json:"date_from"`
-	DateTo      string   `json:"date_to"`
-	CreatedBy   string   `json:"created_by"`
+	Type      string            `json:"type"`   // users, transactions, kyc, tokens, withdrawals
+	Format    string            `json:"format"` // csv, pdf
+	Filters   map[string]string `json:"filters"`
+	Columns   []string          `json:"columns"`
+	DateFrom  string            `json:"date_from"`
+	DateTo    string            `json:"date_to"`
+	CreatedBy string            `json:"created_by"`
 }
 
 type ExportJob struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"`
-	Format      string    `json:"format"`
-	Status      string    `json:"status"` // pending, processing, completed, failed
-	FilePath    string    `json:"file_path,omitempty"`
-	RecordCount int       `json:"record_count"`
-	CreatedBy   string    `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	Type        string     `json:"type"`
+	Format      string     `json:"format"`
+	Status      string     `json:"status"` // pending, processing, completed, failed
+	FilePath    string     `json:"file_path,omitempty"`
+	RecordCount int        `json:"record_count"`
+	CreatedBy   string     `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	Error       string     `json:"error,omitempty"`
 }
 
 // ============================================================================
@@ -116,7 +116,7 @@ type BulkService struct {
 func NewBulkService(config *BulkConfig, db *gorm.DB, redisClient *redis.Client) *BulkService {
 	// Create export directory
 	os.MkdirAll(config.ExportDir, 0755)
-	
+
 	service := &BulkService{
 		config:    config,
 		db:        db,
@@ -125,27 +125,27 @@ func NewBulkService(config *BulkConfig, db *gorm.DB, redisClient *redis.Client) 
 		workers:   config.Workers,
 		jobQueue:  make(chan *BulkOperation, 100),
 	}
-	
+
 	// Start worker pool
 	for i := 0; i < config.Workers; i++ {
 		service.wg.Add(1)
 		go service.worker(i)
 	}
-	
+
 	return service
 }
 
 func (s *BulkService) worker(id int) {
 	defer s.wg.Done()
-	
+
 	log.Printf("Bulk worker %d started", id)
-	
+
 	for job := range s.jobQueue {
 		log.Printf("Worker %d processing bulk operation %s", id, job.ID)
-		
+
 		s.processBulkOperation(job)
 	}
-	
+
 	log.Printf("Bulk worker %d stopped", id)
 }
 
@@ -153,7 +153,7 @@ func (s *BulkService) processBulkOperation(op *BulkOperation) {
 	ctx := context.Background()
 	op.Status = "processing"
 	s.redis.Set(ctx, "bulk:"+op.ID, toJSON(op), 24*time.Hour)
-	
+
 	switch op.Type {
 	case "users":
 		s.processUserBulkOperation(op)
@@ -165,20 +165,20 @@ func (s *BulkService) processBulkOperation(op *BulkOperation) {
 		op.Status = "failed"
 		op.Errors = append(op.Errors, "Unknown operation type")
 	}
-	
+
 	if op.Status == "processing" {
 		op.Status = "completed"
 		now := time.Now()
 		op.CompletedAt = &now
 	}
-	
+
 	s.redis.Set(ctx, "bulk:"+op.ID, toJSON(op), 24*time.Hour)
 }
 
 func (s *BulkService) processUserBulkOperation(op *BulkOperation) {
 	for i, userID := range op.IDs {
 		op.Progress = i + 1
-		
+
 		switch op.Action {
 		case "suspend":
 			if err := s.db.Model(&User{}).Where("id = ?", userID).Update("status", "suspended").Error; err != nil {
@@ -187,7 +187,7 @@ func (s *BulkService) processUserBulkOperation(op *BulkOperation) {
 			} else {
 				op.SuccessCount++
 			}
-			
+
 		case "activate":
 			if err := s.db.Model(&User{}).Where("id = ?", userID).Update("status", "active").Error; err != nil {
 				op.FailedCount++
@@ -195,11 +195,11 @@ func (s *BulkService) processUserBulkOperation(op *BulkOperation) {
 			} else {
 				op.SuccessCount++
 			}
-			
+
 		case "verify_kyc":
 			if err := s.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]interface{}{
 				"kyc_status":  "verified",
-				"kyc_level":    2,
+				"kyc_level":   2,
 				"verified_at": time.Now(),
 			}).Error; err != nil {
 				op.FailedCount++
@@ -207,7 +207,7 @@ func (s *BulkService) processUserBulkOperation(op *BulkOperation) {
 			} else {
 				op.SuccessCount++
 			}
-			
+
 		case "delete":
 			if err := s.db.Model(&User{}).Where("id = ?", userID).Update("status", "deleted").Error; err != nil {
 				op.FailedCount++
@@ -216,7 +216,7 @@ func (s *BulkService) processUserBulkOperation(op *BulkOperation) {
 				op.SuccessCount++
 			}
 		}
-		
+
 		// Update progress in Redis every 10 items
 		if i%10 == 0 {
 			s.redis.Set(context.Background(), "bulk:"+op.ID, toJSON(op), 24*time.Hour)
@@ -227,7 +227,7 @@ func (s *BulkService) processUserBulkOperation(op *BulkOperation) {
 func (s *BulkService) processTokenBulkOperation(op *BulkOperation) {
 	for i, tokenID := range op.IDs {
 		op.Progress = i + 1
-		
+
 		switch op.Action {
 		case "activate":
 			if err := s.db.Model(&BulkToken{}).Where("id = ?", tokenID).Update("is_active", true).Error; err != nil {
@@ -236,7 +236,7 @@ func (s *BulkService) processTokenBulkOperation(op *BulkOperation) {
 			} else {
 				op.SuccessCount++
 			}
-			
+
 		case "deactivate":
 			if err := s.db.Model(&BulkToken{}).Where("id = ?", tokenID).Update("is_active", false).Error; err != nil {
 				op.FailedCount++
@@ -244,7 +244,7 @@ func (s *BulkService) processTokenBulkOperation(op *BulkOperation) {
 			} else {
 				op.SuccessCount++
 			}
-			
+
 		case "verify":
 			if err := s.db.Model(&BulkToken{}).Where("id = ?", tokenID).Update("is_verified", true).Error; err != nil {
 				op.FailedCount++
@@ -253,7 +253,7 @@ func (s *BulkService) processTokenBulkOperation(op *BulkOperation) {
 				op.SuccessCount++
 			}
 		}
-		
+
 		if i%10 == 0 {
 			s.redis.Set(context.Background(), "bulk:"+op.ID, toJSON(op), 24*time.Hour)
 		}
@@ -263,12 +263,12 @@ func (s *BulkService) processTokenBulkOperation(op *BulkOperation) {
 func (s *BulkService) processWithdrawalBulkOperation(op *BulkOperation) {
 	for i, withdrawalID := range op.IDs {
 		op.Progress = i + 1
-		
+
 		switch op.Action {
 		case "approve":
 			if err := s.db.Model(&Withdrawal{}).Where("id = ?", withdrawalID).Updates(map[string]interface{}{
 				"status":      "approved",
-				"approved_at":  time.Now(),
+				"approved_at": time.Now(),
 				"approved_by": op.CreatedBy,
 			}).Error; err != nil {
 				op.FailedCount++
@@ -276,12 +276,12 @@ func (s *BulkService) processWithdrawalBulkOperation(op *BulkOperation) {
 			} else {
 				op.SuccessCount++
 			}
-			
+
 		case "reject":
 			if err := s.db.Model(&Withdrawal{}).Where("id = ?", withdrawalID).Updates(map[string]interface{}{
-				"status":       "rejected",
-				"rejected_at":   time.Now(),
-				"rejected_by":  op.CreatedBy,
+				"status":      "rejected",
+				"rejected_at": time.Now(),
+				"rejected_by": op.CreatedBy,
 			}).Error; err != nil {
 				op.FailedCount++
 				op.Errors = append(op.Errors, fmt.Sprintf("Failed to reject withdrawal %s: %v", withdrawalID, err))
@@ -289,7 +289,7 @@ func (s *BulkService) processWithdrawalBulkOperation(op *BulkOperation) {
 				op.SuccessCount++
 			}
 		}
-		
+
 		if i%10 == 0 {
 			s.redis.Set(context.Background(), "bulk:"+op.ID, toJSON(op), 24*time.Hour)
 		}
@@ -309,7 +309,7 @@ type ExportService struct {
 
 func NewExportService(config *BulkConfig, db *gorm.DB, redisClient *redis.Client) *ExportService {
 	os.MkdirAll(config.ExportDir, 0755)
-	
+
 	return &ExportService{
 		config:    config,
 		db:        db,
@@ -327,13 +327,13 @@ func (s *ExportService) CreateExportJob(req ExportRequest) *ExportJob {
 		CreatedBy: req.CreatedBy,
 		CreatedAt: time.Now(),
 	}
-	
+
 	// Store job in Redis
 	s.redis.Set(context.Background(), "export:"+job.ID, toJSON(job), 24*time.Hour)
-	
+
 	// Process in background
 	go s.processExportJob(job, req)
-	
+
 	return job
 }
 
@@ -341,10 +341,10 @@ func (s *ExportService) processExportJob(job *ExportJob, req ExportRequest) {
 	ctx := context.Background()
 	job.Status = "processing"
 	s.redis.Set(ctx, "export:"+job.ID, toJSON(job), 24*time.Hour)
-	
+
 	var data []map[string]interface{}
 	var err error
-	
+
 	switch req.Type {
 	case "users":
 		data, err = s.exportUsers(req.Filters)
@@ -359,16 +359,16 @@ func (s *ExportService) processExportJob(job *ExportJob, req ExportRequest) {
 	default:
 		err = fmt.Errorf("unknown export type: %s", req.Type)
 	}
-	
+
 	if err != nil {
 		job.Status = "failed"
 		job.Error = err.Error()
 		s.redis.Set(ctx, "export:"+job.ID, toJSON(job), 24*time.Hour)
 		return
 	}
-	
+
 	job.RecordCount = len(data)
-	
+
 	// Generate file
 	var filePath string
 	switch req.Format {
@@ -379,7 +379,7 @@ func (s *ExportService) processExportJob(job *ExportJob, req ExportRequest) {
 	default:
 		err = fmt.Errorf("unknown format: %s", req.Format)
 	}
-	
+
 	if err != nil {
 		job.Status = "failed"
 		job.Error = err.Error()
@@ -389,14 +389,14 @@ func (s *ExportService) processExportJob(job *ExportJob, req ExportRequest) {
 		now := time.Now()
 		job.CompletedAt = &now
 	}
-	
+
 	s.redis.Set(ctx, "export:"+job.ID, toJSON(job), 24*time.Hour)
 }
 
 func (s *ExportService) exportUsers(filters map[string]string) ([]map[string]interface{}, error) {
 	var users []User
 	query := s.db.Model(&User{})
-	
+
 	if status, ok := filters["status"]; ok {
 		query = query.Where("status = ?", status)
 	}
@@ -406,11 +406,11 @@ func (s *ExportService) exportUsers(filters map[string]string) ([]map[string]int
 	if search, ok := filters["search"]; ok {
 		query = query.Where("email ILIKE ? OR username ILIKE ?", "%"+search+"%", "%"+search+"%")
 	}
-	
+
 	if err := query.Find(&users).Error; err != nil {
 		return nil, err
 	}
-	
+
 	result := make([]map[string]interface{}, len(users))
 	for i, u := range users {
 		result[i] = map[string]interface{}{
@@ -422,122 +422,122 @@ func (s *ExportService) exportUsers(filters map[string]string) ([]map[string]int
 			"created_at": u.CreatedAt,
 		}
 	}
-	
+
 	return result, nil
 }
 
 func (s *ExportService) exportTransactions(filters map[string]string) ([]map[string]interface{}, error) {
 	var txs []Transaction
 	query := s.db.Model(&Transaction{})
-	
+
 	if txType, ok := filters["type"]; ok {
 		query = query.Where("type = ?", txType)
 	}
 	if status, ok := filters["status"]; ok {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if err := query.Find(&txs).Error; err != nil {
 		return nil, err
 	}
-	
+
 	result := make([]map[string]interface{}, len(txs))
 	for i, t := range txs {
 		result[i] = map[string]interface{}{
-			"id":          t.ID,
-			"user_id":     t.UserID,
-			"type":        t.Type,
-			"amount":      t.Amount,
-			"token":       t.Token,
-			"chain":       t.Chain,
-			"status":      t.Status,
-			"created_at":  t.CreatedAt,
+			"id":         t.ID,
+			"user_id":    t.UserID,
+			"type":       t.Type,
+			"amount":     t.Amount,
+			"token":      t.Token,
+			"chain":      t.Chain,
+			"status":     t.Status,
+			"created_at": t.CreatedAt,
 		}
 	}
-	
+
 	return result, nil
 }
 
 func (s *ExportService) exportKYC(filters map[string]string) ([]map[string]interface{}, error) {
 	var kycRecords []KYCRecord
 	query := s.db.Model(&KYCRecord{})
-	
+
 	if status, ok := filters["status"]; ok {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if err := query.Find(&kycRecords).Error; err != nil {
 		return nil, err
 	}
-	
+
 	result := make([]map[string]interface{}, len(kycRecords))
 	for i, k := range kycRecords {
 		result[i] = map[string]interface{}{
-			"id":          k.ID,
-			"user_id":     k.UserID,
-			"type":        k.Type,
-			"status":      k.Status,
+			"id":           k.ID,
+			"user_id":      k.UserID,
+			"type":         k.Type,
+			"status":       k.Status,
 			"submitted_at": k.SubmittedAt,
-			"reviewed_at": k.ReviewedAt,
+			"reviewed_at":  k.ReviewedAt,
 		}
 	}
-	
+
 	return result, nil
 }
 
 func (s *ExportService) exportTokens(filters map[string]string) ([]map[string]interface{}, error) {
 	var tokens []BulkToken
 	query := s.db.Model(&BulkToken{})
-	
+
 	if chain, ok := filters["chain"]; ok {
 		query = query.Where("chain = ?", chain)
 	}
-	
+
 	if err := query.Find(&tokens).Error; err != nil {
 		return nil, err
 	}
-	
+
 	result := make([]map[string]interface{}, len(tokens))
 	for i, t := range tokens {
 		result[i] = map[string]interface{}{
-			"id":           t.ID,
-			"name":         t.Name,
-			"symbol":       t.Symbol,
-			"chain":        t.Chain,
-			"is_active":    t.IsActive,
-			"is_verified":  t.IsVerified,
-			"created_at":   t.CreatedAt,
+			"id":          t.ID,
+			"name":        t.Name,
+			"symbol":      t.Symbol,
+			"chain":       t.Chain,
+			"is_active":   t.IsActive,
+			"is_verified": t.IsVerified,
+			"created_at":  t.CreatedAt,
 		}
 	}
-	
+
 	return result, nil
 }
 
 func (s *ExportService) exportWithdrawals(filters map[string]string) ([]map[string]interface{}, error) {
 	var withdrawals []Withdrawal
 	query := s.db.Model(&Withdrawal{})
-	
+
 	if status, ok := filters["status"]; ok {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if err := query.Find(&withdrawals).Error; err != nil {
 		return nil, err
 	}
-	
+
 	result := make([]map[string]interface{}, len(withdrawals))
 	for i, w := range withdrawals {
 		result[i] = map[string]interface{}{
-			"id":           w.ID,
-			"user_id":      w.UserID,
-			"amount":       w.Amount,
-			"token":        w.Token,
-			"chain":        w.Chain,
-			"status":       w.Status,
-			"created_at":   w.CreatedAt,
+			"id":         w.ID,
+			"user_id":    w.UserID,
+			"amount":     w.Amount,
+			"token":      w.Token,
+			"chain":      w.Chain,
+			"status":     w.Status,
+			"created_at": w.CreatedAt,
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -545,27 +545,27 @@ func (s *ExportService) generateCSV(jobID string, data []map[string]interface{},
 	if len(data) == 0 {
 		return "", fmt.Errorf("no data to export")
 	}
-	
+
 	// Get all keys if columns not specified
 	if len(columns) == 0 {
 		for k := range data[0] {
 			columns = append(columns, k)
 		}
 	}
-	
+
 	filePath := fmt.Sprintf("%s/%s.csv", s.exportDir, jobID)
 	file, err := os.Create(filePath)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
-	
+
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
-	
+
 	// Write header
 	writer.Write(columns)
-	
+
 	// Write data
 	for _, row := range data {
 		rowData := make([]string, len(columns))
@@ -576,7 +576,7 @@ func (s *ExportService) generateCSV(jobID string, data []map[string]interface{},
 		}
 		writer.Write(rowData)
 	}
-	
+
 	return filePath, nil
 }
 
@@ -645,16 +645,16 @@ func (s *ExportService) generatePDF(jobID string, data []map[string]interface{},
 func (s *BulkService) CreateBulkOperation(c *gin.Context) {
 	var req struct {
 		Type      string   `json:"type" binding:"required"`
-		Action   string   `json:"action" binding:"required"`
+		Action    string   `json:"action" binding:"required"`
 		IDs       []string `json:"ids" binding:"required"`
-		CreatedBy string  `json:"created_by" binding:"required"`
+		CreatedBy string   `json:"created_by" binding:"required"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Validate batch size
 	if len(req.IDs) > s.config.MaxBatchSize {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -662,24 +662,24 @@ func (s *BulkService) CreateBulkOperation(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	op := &BulkOperation{
-		ID:         uuid.New().String(),
-		Type:       req.Type,
-		Action:     req.Action,
-		IDs:        req.IDs,
-		Status:     "pending",
-		Total:      len(req.IDs),
-		CreatedBy:  req.CreatedBy,
-		CreatedAt:  time.Now(),
+		ID:        uuid.New().String(),
+		Type:      req.Type,
+		Action:    req.Action,
+		IDs:       req.IDs,
+		Status:    "pending",
+		Total:     len(req.IDs),
+		CreatedBy: req.CreatedBy,
+		CreatedAt: time.Now(),
 	}
-	
+
 	// Store in Redis
 	s.redis.Set(context.Background(), "bulk:"+op.ID, toJSON(op), 24*time.Hour)
-	
+
 	// Queue for processing
 	s.jobQueue <- op
-	
+
 	c.JSON(http.StatusAccepted, gin.H{
 		"id":      op.ID,
 		"status":  "pending",
@@ -690,16 +690,16 @@ func (s *BulkService) CreateBulkOperation(c *gin.Context) {
 
 func (s *BulkService) GetBulkOperationStatus(c *gin.Context) {
 	opID := c.Param("id")
-	
+
 	opJSON, err := s.redis.Get(context.Background(), "bulk:"+opID).Result()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Operation not found"})
 		return
 	}
-	
+
 	var op BulkOperation
 	json.Unmarshal([]byte(opJSON), &op)
-	
+
 	c.JSON(http.StatusOK, op)
 }
 
@@ -709,54 +709,54 @@ func (s *ExportService) CreateExport(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Validate format
 	if req.Format != "csv" && req.Format != "pdf" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Format must be csv or pdf"})
 		return
 	}
-	
+
 	job := s.CreateExportJob(req)
-	
+
 	c.JSON(http.StatusAccepted, gin.H{
-		"id":           job.ID,
-		"status":       job.Status,
-		"message":      "Export job created",
+		"id":      job.ID,
+		"status":  job.Status,
+		"message": "Export job created",
 	})
 }
 
 func (s *ExportService) GetExportStatus(c *gin.Context) {
 	jobID := c.Param("id")
-	
+
 	jobJSON, err := s.redis.Get(context.Background(), "export:"+jobID).Result()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Export job not found"})
 		return
 	}
-	
+
 	var job ExportJob
 	json.Unmarshal([]byte(jobJSON), &job)
-	
+
 	c.JSON(http.StatusOK, job)
 }
 
 func (s *ExportService) DownloadExport(c *gin.Context) {
 	jobID := c.Param("id")
-	
+
 	jobJSON, err := s.redis.Get(context.Background(), "export:"+jobID).Result()
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Export job not found"})
 		return
 	}
-	
+
 	var job ExportJob
 	json.Unmarshal([]byte(jobJSON), &job)
-	
+
 	if job.Status != "completed" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Export not ready"})
 		return
 	}
-	
+
 	c.File(job.FilePath)
 }
 
@@ -774,14 +774,14 @@ func toJSON(v interface{}) string {
 // ============================================================================
 
 type User struct {
-	ID           uint      `gorm:"primarykey" json:"id"`
-	Email        string    `gorm:"index" json:"email"`
-	Username     string    `json:"username"`
-	Status       string    `json:"status"`
-	KYCStatus    string    `json:"kyc_status"`
-	KYCULevel    int       `json:"kyc_level"`
-	VerifiedAt   *time.Time `json:"verified_at,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID         uint       `gorm:"primarykey" json:"id"`
+	Email      string     `gorm:"index" json:"email"`
+	Username   string     `json:"username"`
+	Status     string     `json:"status"`
+	KYCStatus  string     `json:"kyc_status"`
+	KYCULevel  int        `json:"kyc_level"`
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 type Transaction struct {
@@ -800,28 +800,28 @@ type KYCRecord struct {
 	UserID      uint       `json:"user_id"`
 	Type        string     `json:"type"`
 	Status      string     `json:"status"`
-	SubmittedAt time.Time `json:"submitted_at"`
+	SubmittedAt time.Time  `json:"submitted_at"`
 	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
 }
 
 type BulkToken struct {
-	ID          uint      `gorm:"primarykey" json:"id"`
-	Name        string    `json:"name"`
-	Symbol      string    `json:"symbol"`
-	Chain       string    `json:"chain"`
-	IsActive    bool      `json:"is_active"`
-	IsVerified  bool      `json:"is_verified"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         uint      `gorm:"primarykey" json:"id"`
+	Name       string    `json:"name"`
+	Symbol     string    `json:"symbol"`
+	Chain      string    `json:"chain"`
+	IsActive   bool      `json:"is_active"`
+	IsVerified bool      `json:"is_verified"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type Withdrawal struct {
-	ID          uint       `gorm:"primarykey" json:"id"`
-	UserID      uint       `json:"user_id"`
-	Amount      string     `json:"amount"`
-	Token       string     `json:"token"`
-	Chain       string     `json:"chain"`
-	Status      string     `json:"status"`
-	ApprovedAt  *time.Time `json:"approved_at,omitempty"`
-	RejectedAt   *time.Time `json:"rejected_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID         uint       `gorm:"primarykey" json:"id"`
+	UserID     uint       `json:"user_id"`
+	Amount     string     `json:"amount"`
+	Token      string     `json:"token"`
+	Chain      string     `json:"chain"`
+	Status     string     `json:"status"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+	RejectedAt *time.Time `json:"rejected_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
 }

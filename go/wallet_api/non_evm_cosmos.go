@@ -34,8 +34,8 @@ var cosmosHTTP = &http.Client{Timeout: 20 * time.Second}
 
 // CosmosSendRequest carries a MsgSend request to the builder.
 type CosmosSendRequest struct {
-	ChainID   int64  `json:"chain_id"`   // registry id (resolves bech32 prefix)
-	ToAddress string `json:"to"`         // bech32 destination
+	ChainID   int64  `json:"chain_id"` // registry id (resolves bech32 prefix)
+	ToAddress string `json:"to"`       // bech32 destination
 	Denom     string `json:"denom"`
 	Amount    string `json:"amount"`     // base-unit integer string
 	GasLimit  uint64 `json:"gas_limit"`  // default 100000 if zero
@@ -46,11 +46,11 @@ type CosmosSendRequest struct {
 
 // CosmosResult carries the signed tx (broadcast hash when not simulated).
 type CosmosResult struct {
-	Prefix   string `json:"prefix"`
-	FromAddr string `json:"from_address"`
-	TxBytes  string `json:"tx_bytes_base64"`
-	TxHash   string `json:"tx_hash,omitempty"`
-	Broadcast bool  `json:"broadcasted"`
+	Prefix    string `json:"prefix"`
+	FromAddr  string `json:"from_address"`
+	TxBytes   string `json:"tx_bytes_base64"`
+	TxHash    string `json:"tx_hash,omitempty"`
+	Broadcast bool   `json:"broadcasted"`
 }
 
 // cosmosLCD resolves the LCD REST base for a registry cosmos chain id.
@@ -163,8 +163,8 @@ func cosmosCoin(denom, amount string) []byte {
 // cosmosMsgSend builds a cosmos.bank.v1beta1.MsgSend wrapped in Any.
 func cosmosMsgSend(from, to, denom, amount string) []byte {
 	inner := &protoBuf{}
-	inner.str(1, from)   // from_address
-	inner.str(2, to)     // to_address
+	inner.str(1, from) // from_address
+	inner.str(2, to)   // to_address
 	inner.msg(3, cosmosCoin(denom, amount))
 	body := inner.out()
 	any := &protoBuf{}
@@ -198,14 +198,14 @@ func cosmosAuthInfo(pubCompressed []byte, feeDenom, feeAmount string, gasLimit, 
 	pubAny.bytesField(2, pubMsg.out())
 
 	signerInfo := &protoBuf{}
-	signerInfo.msg(1, pubAny.out())                  // public_key (Any)
+	signerInfo.msg(1, pubAny.out()) // public_key (Any)
 	// mode_info: ModeInfo.Single { mode }: enum SIGN_MODE_DIRECT=1
 	single := &protoBuf{}
 	single.uint64Field(1, 1)
 	modeInfo := &protoBuf{}
 	modeInfo.msg(1, single.out())
-	signerInfo.msg(2, modeInfo.out())                // mode_info
-	signerInfo.uint64Field(3, sequence)              // sequence
+	signerInfo.msg(2, modeInfo.out())   // mode_info
+	signerInfo.uint64Field(3, sequence) // sequence
 
 	fee := &protoBuf{}
 	if feeAmount != "" {
@@ -445,9 +445,9 @@ func CosmosExecuteSend(ctx context.Context, seed []byte, path string, req Cosmos
 		return nil, err
 	}
 	res := &CosmosResult{
-		Prefix:    prefix,
-		FromAddr:  fromAddr,
-		TxBytes:   base64.StdEncoding.EncodeToString(txRaw),
+		Prefix:   prefix,
+		FromAddr: fromAddr,
+		TxBytes:  base64.StdEncoding.EncodeToString(txRaw),
 	}
 	if !req.Simulate {
 		hash, err := cosmosBroadcast(ctx, lcd, txRaw)

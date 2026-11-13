@@ -218,7 +218,7 @@ impl FetcherResult {
             timestamp: chrono::Utc::now().timestamp(),
         }
     }
-    
+
     pub fn error(message: &str) -> Self {
         Self {
             success: false,

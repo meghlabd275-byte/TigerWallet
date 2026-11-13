@@ -27,14 +27,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // ============================================================================
@@ -43,53 +43,53 @@ type Config struct {
 
 // GridStrategy represents a grid trading strategy
 type GridStrategy struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	UserAddress     string    `gorm:"index" json:"user_address"`
-	Symbol          string    `json:"symbol"`
-	Exchange        string    `json:"exchange"` // BINANCE, BYBIT, OKX
-	GridLevels      int       `json:"grid_levels"`
-	MinPrice        float64   `json:"min_price"`
-	MaxPrice        float64   `json:"max_price"`
-	InvestmentTotal float64   `json:"investment_total"`
-	InvestmentPerGrid float64 `json:"investment_per_grid"`
-	CurrentPrice    float64   `json:"current_price"`
-	TotalProfit    float64   `json:"total_profit"`
-	Status         string    `json:"status"` // ACTIVE, PAUSED, STOPPED
-	Side           string    `json:"side"` // LONG, SHORT, BOTH
-	TakeProfitPct  float64   `json:"take_profit_pct"`
-	StopLossPct    float64   `json:"stop_loss_pct"`
-	ChainID        int64     `json:"chain_id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID                uint      `gorm:"primaryKey" json:"id"`
+	UserAddress       string    `gorm:"index" json:"user_address"`
+	Symbol            string    `json:"symbol"`
+	Exchange          string    `json:"exchange"` // BINANCE, BYBIT, OKX
+	GridLevels        int       `json:"grid_levels"`
+	MinPrice          float64   `json:"min_price"`
+	MaxPrice          float64   `json:"max_price"`
+	InvestmentTotal   float64   `json:"investment_total"`
+	InvestmentPerGrid float64   `json:"investment_per_grid"`
+	CurrentPrice      float64   `json:"current_price"`
+	TotalProfit       float64   `json:"total_profit"`
+	Status            string    `json:"status"` // ACTIVE, PAUSED, STOPPED
+	Side              string    `json:"side"`   // LONG, SHORT, BOTH
+	TakeProfitPct     float64   `json:"take_profit_pct"`
+	StopLossPct       float64   `json:"stop_loss_pct"`
+	ChainID           int64     `json:"chain_id"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // GridOrder represents a grid level order
 type GridOrder struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	StrategyID    uint      `gorm:"index" json:"strategy_id"`
-	Level         int       `json:"level"`
-	Side          string    `json:"side"` // BUY or SELL
-	Price         float64   `json:"price"`
-	Amount        float64   `json:"amount"`
-	Status        string    `json:"status"` // PENDING, FILLED, CANCELLED
-	FilledPrice   float64   `json:"filled_price"`
-	Profit        float64   `json:"profit"`
-	FilledAt      *time.Time `json:"filled_at"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	StrategyID  uint       `gorm:"index" json:"strategy_id"`
+	Level       int        `json:"level"`
+	Side        string     `json:"side"` // BUY or SELL
+	Price       float64    `json:"price"`
+	Amount      float64    `json:"amount"`
+	Status      string     `json:"status"` // PENDING, FILLED, CANCELLED
+	FilledPrice float64    `json:"filled_price"`
+	Profit      float64    `json:"profit"`
+	FilledAt    *time.Time `json:"filled_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // GridTrade represents executed trades
 type GridTrade struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	StrategyID    uint      `json:"strategy_id"`
-	OrderID       uint      `json:"order_id"`
-	Level         int       `json:"level"`
-	Side          string    `json:"side"`
-	Price         float64   `json:"price"`
-	Amount        float64   `json:"amount"`
-	Profit        float64   `json:"profit"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	StrategyID uint      `json:"strategy_id"`
+	OrderID    uint      `json:"order_id"`
+	Level      int       `json:"level"`
+	Side       string    `json:"side"`
+	Price      float64   `json:"price"`
+	Amount     float64   `json:"amount"`
+	Profit     float64   `json:"profit"`
+	ChainID    int64     `json:"chain_id"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // ============================================================================
@@ -97,10 +97,10 @@ type GridTrade struct {
 // ============================================================================
 
 type GridTradingService struct {
-	db     *gorm.DB
-	redis  *redis.Client
-	config Config
-	mu     sync.RWMutex
+	db               *gorm.DB
+	redis            *redis.Client
+	config           Config
+	mu               sync.RWMutex
 	activeStrategies map[uint]*GridStrategy
 }
 
@@ -129,9 +129,9 @@ func NewGridTradingService(config Config) (*GridTradingService, error) {
 	})
 
 	service := &GridTradingService{
-		db:     db,
-		redis:  rdb,
-		config: config,
+		db:               db,
+		redis:            rdb,
+		config:           config,
 		activeStrategies: make(map[uint]*GridStrategy),
 	}
 
@@ -155,16 +155,16 @@ func (s *GridTradingService) loadActiveStrategies() {
 
 type CreateStrategyRequest struct {
 	UserAddress     string  `json:"user_address" binding:"required"`
-	Symbol         string  `json:"symbol" binding:"required"`
-	Exchange       string  `json:"exchange"`
-	GridLevels     int     `json:"grid_levels" binding:"required"`
-	MinPrice       float64 `json:"min_price" binding:"required"`
-	MaxPrice       float64 `json:"max_price" binding:"required"`
+	Symbol          string  `json:"symbol" binding:"required"`
+	Exchange        string  `json:"exchange"`
+	GridLevels      int     `json:"grid_levels" binding:"required"`
+	MinPrice        float64 `json:"min_price" binding:"required"`
+	MaxPrice        float64 `json:"max_price" binding:"required"`
 	InvestmentTotal float64 `json:"investment_total" binding:"required"`
-	Side           string  `json:"side"`
-	TakeProfitPct  float64 `json:"take_profit_pct"`
-	StopLossPct    float64 `json:"stop_loss_pct"`
-	ChainID        int64   `json:"chain_id"`
+	Side            string  `json:"side"`
+	TakeProfitPct   float64 `json:"take_profit_pct"`
+	StopLossPct     float64 `json:"stop_loss_pct"`
+	ChainID         int64   `json:"chain_id"`
 }
 
 func (s *GridTradingService) CreateStrategy(ctx *gin.Context) {
@@ -188,21 +188,21 @@ func (s *GridTradingService) CreateStrategy(ctx *gin.Context) {
 	investmentPerGrid := req.InvestmentTotal / float64(req.GridLevels)
 
 	strategy := GridStrategy{
-		UserAddress:      req.UserAddress,
-		Symbol:           req.Symbol,
-		Exchange:         req.Exchange,
-		GridLevels:       req.GridLevels,
-		MinPrice:         req.MinPrice,
-		MaxPrice:         req.MaxPrice,
-		InvestmentTotal:  req.InvestmentTotal,
+		UserAddress:       req.UserAddress,
+		Symbol:            req.Symbol,
+		Exchange:          req.Exchange,
+		GridLevels:        req.GridLevels,
+		MinPrice:          req.MinPrice,
+		MaxPrice:          req.MaxPrice,
+		InvestmentTotal:   req.InvestmentTotal,
 		InvestmentPerGrid: investmentPerGrid,
-		CurrentPrice:     (req.MinPrice + req.MaxPrice) / 2,
-		TotalProfit:      0,
-		Status:           "ACTIVE",
-		Side:            req.Side,
-		TakeProfitPct:   req.TakeProfitPct,
-		StopLossPct:     req.StopLossPct,
-		ChainID:         req.ChainID,
+		CurrentPrice:      (req.MinPrice + req.MaxPrice) / 2,
+		TotalProfit:       0,
+		Status:            "ACTIVE",
+		Side:              req.Side,
+		TakeProfitPct:     req.TakeProfitPct,
+		StopLossPct:       req.StopLossPct,
+		ChainID:           req.ChainID,
 	}
 
 	if err := s.db.Create(&strategy).Error; err != nil {
@@ -216,11 +216,11 @@ func (s *GridTradingService) CreateStrategy(ctx *gin.Context) {
 	s.activeStrategies[strategy.ID] = &strategy
 
 	ctx.JSON(200, gin.H{
-		"success":       true,
-		"strategy_id":    strategy.ID,
-		"grid_levels":    strategy.GridLevels,
-		"min_price":      strategy.MinPrice,
-		"max_price":      strategy.MaxPrice,
+		"success":             true,
+		"strategy_id":         strategy.ID,
+		"grid_levels":         strategy.GridLevels,
+		"min_price":           strategy.MinPrice,
+		"max_price":           strategy.MaxPrice,
 		"investment_per_grid": strategy.InvestmentPerGrid,
 	})
 }
@@ -235,22 +235,22 @@ func (s *GridTradingService) createGridOrders(strategy *GridStrategy) {
 		// Create buy order at this level
 		buyOrder := GridOrder{
 			StrategyID: strategy.ID,
-			Level:     i,
-			Side:      "BUY",
-			Price:     price,
-			Amount:    strategy.InvestmentPerGrid / price,
-			Status:    "PENDING",
+			Level:      i,
+			Side:       "BUY",
+			Price:      price,
+			Amount:     strategy.InvestmentPerGrid / price,
+			Status:     "PENDING",
 		}
 		s.db.Create(&buyOrder)
 
 		// Create sell order at this level
 		sellOrder := GridOrder{
 			StrategyID: strategy.ID,
-			Level:     i,
-			Side:      "SELL",
-			Price:     price,
-			Amount:    strategy.InvestmentPerGrid / price,
-			Status:    "PENDING",
+			Level:      i,
+			Side:       "SELL",
+			Price:      price,
+			Amount:     strategy.InvestmentPerGrid / price,
+			Status:     "PENDING",
 		}
 		s.db.Create(&sellOrder)
 	}
@@ -345,8 +345,8 @@ func (s *GridTradingService) StopStrategy(ctx *gin.Context) {
 	delete(s.activeStrategies, strategy.ID)
 
 	ctx.JSON(200, gin.H{
-		"success":    true,
-		"status":     "STOPPED",
+		"success":      true,
+		"status":       "STOPPED",
 		"total_profit": strategy.TotalProfit,
 	})
 }
@@ -390,7 +390,7 @@ func (s *GridTradingService) executeGridOrders(strategy *GridStrategy, prevPrice
 
 	for i := range pendingOrders {
 		order := &pendingOrders[i]
-		
+
 		var shouldExecute bool
 		if order.Side == "BUY" {
 			// Execute if price crossed below or at the buy price

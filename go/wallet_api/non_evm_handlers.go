@@ -727,4 +727,3 @@ func withAccountIndex(path string, index int) string {
 	}
 	return strings.Join(parts, "/")
 }
-

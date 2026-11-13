@@ -42,15 +42,15 @@ func featureKey(name string) string {
 
 // Gated feature names. These gate the matching wallet_api operations.
 const (
-	FeatureSwapTrading         = "swap_trading"         // /swap/quote, /swap/execute, /amm/*
-	FeatureSendTransactions    = "send_transactions"    // /send
-	FeatureStaking             = "staking"              // /staking/*
-	FeatureLending             = "lending"              // /lending/* (when present)
-	FeatureNFTTransfer         = "nft_transfer"         // /nft/transfer
-	FeatureAccountAbstraction  = "account_abstraction"  // /aa/*
-	FeatureBridge              = "bridge"               // /bridge/*
-	FeatureFiatOnramp          = "fiat_onramp"          // /ramp/* onramp
-	FeatureFiatOfframp         = "fiat_offramp"         // /ramp/* offramp
+	FeatureSwapTrading        = "swap_trading"        // /swap/quote, /swap/execute, /amm/*
+	FeatureSendTransactions   = "send_transactions"   // /send
+	FeatureStaking            = "staking"             // /staking/*
+	FeatureLending            = "lending"             // /lending/* (when present)
+	FeatureNFTTransfer        = "nft_transfer"        // /nft/transfer
+	FeatureAccountAbstraction = "account_abstraction" // /aa/*
+	FeatureBridge             = "bridge"              // /bridge/*
+	FeatureFiatOnramp         = "fiat_onramp"         // /ramp/* onramp
+	FeatureFiatOfframp        = "fiat_offramp"        // /ramp/* offramp
 )
 
 // featureCacheTTL bounds how long a fetched state is trusted in-memory before

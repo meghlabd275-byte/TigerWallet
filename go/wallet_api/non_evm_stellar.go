@@ -146,20 +146,20 @@ func StellarBuildSend(ctx context.Context, seed []byte, path, horizon, chainType
 	}
 
 	tx := &xdr{}
-	tx.u32(0)                  // PublicKey variant: ED25519
-	tx.raw(pub[0:32])          // source account
+	tx.u32(0)         // PublicKey variant: ED25519
+	tx.raw(pub[0:32]) // source account
 	tx.u32(fee)
 	tx.u64(sequenceNum)
-	tx.u32(0)                  // timeBounds absent (legacy)
-	tx.u32(0)                  // MEMO_NONE
-	tx.u32(1)                  // operations vec: 1
-	tx.u32(0)                  // op.sourceAccount absent
-	tx.u32(2)                  // op body: PAYMENT
-	tx.u32(0)                  // dest MuxedAccount variant: ED25519
-	tx.raw(toDecoded)          // dest
-	tx.u32(0)                  // ASSET_TYPE_NATIVE
+	tx.u32(0)         // timeBounds absent (legacy)
+	tx.u32(0)         // MEMO_NONE
+	tx.u32(1)         // operations vec: 1
+	tx.u32(0)         // op.sourceAccount absent
+	tx.u32(2)         // op body: PAYMENT
+	tx.u32(0)         // dest MuxedAccount variant: ED25519
+	tx.raw(toDecoded) // dest
+	tx.u32(0)         // ASSET_TYPE_NATIVE
 	tx.i64(amountStrop)
-	tx.u32(0)                  // TransactionExt variant 0
+	tx.u32(0) // TransactionExt variant 0
 	txB := tx.b
 
 	network := stellarNetworkPass(chainType)
@@ -171,13 +171,13 @@ func StellarBuildSend(ctx context.Context, seed []byte, path, horizon, chainType
 	hint := pub[len(pub)-4:]
 
 	sigs := &xdr{}
-	sigs.u32(1)                // one decorated signature
+	sigs.u32(1) // one decorated signature
 	sigs.raw(hint)
 	sigs.u32(uint32(len(sig)))
 	sigs.raw(sig)
 
 	env := &xdr{}
-	env.u32(2)                 // ENVELOPE_TYPE_TX
+	env.u32(2) // ENVELOPE_TYPE_TX
 	env.raw(txB)
 	env.raw(sigs.b)
 	xdrB := env.b

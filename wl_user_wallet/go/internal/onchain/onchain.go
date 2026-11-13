@@ -330,7 +330,7 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 	var result struct {
 		Status  string `json:"status"`
 		Message string `json:"message"`
-		Result []struct {
+		Result  []struct {
 			Hash      string `json:"hash"`
 			From      string `json:"from"`
 			To        string `json:"to"`

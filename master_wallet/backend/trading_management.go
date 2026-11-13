@@ -190,12 +190,12 @@ var tradingVerticals = map[string]bool{
 // point. Every call site already passes a literal from this set, and the check
 // keeps it that way if the helpers are ever reused.
 var tradingTables = map[string]bool{
-	"trading_contracts":      true,
-	"liquidity_pools":        true,
-	"managed_trading_pairs":  true,
-	"margin_markets":         true,
-	"options_series":         true,
-	"copy_trader_registry":   true,
+	"trading_contracts":     true,
+	"liquidity_pools":       true,
+	"managed_trading_pairs": true,
+	"margin_markets":        true,
+	"options_series":        true,
+	"copy_trader_registry":  true,
 }
 
 func validTradingTable(table string) bool {

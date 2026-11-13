@@ -55,18 +55,18 @@ type Config struct {
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:   getEnv("PAYMENT_PORT", "9105"),
-		DBHost:       getEnv("DB_HOST", "localhost"),
-		DBPort:       getEnv("DB_PORT", "5432"),
-		DBUser:       getEnv("DB_USER", "tigerwallet"),
-		DBPassword:   mustEnv("DB_PASSWORD"),
-		DBName:       getEnv("DB_NAME", "tigerwallet"),
-		RedisHost:    getEnv("REDIS_HOST", "localhost"),
-		RedisPort:    getEnv("REDIS_PORT", "6379"),
-		StripeKey:    getEnv("STRIPE_KEY", ""),
-		PayPalClient: getEnv("PAYPAL_CLIENT", ""),
-		PayPalSecret: getEnv("PAYPAL_SECRET", ""),
-		MasterSeed:    loadMasterSeed(),
+		ServerPort:     getEnv("PAYMENT_PORT", "9105"),
+		DBHost:         getEnv("DB_HOST", "localhost"),
+		DBPort:         getEnv("DB_PORT", "5432"),
+		DBUser:         getEnv("DB_USER", "tigerwallet"),
+		DBPassword:     mustEnv("DB_PASSWORD"),
+		DBName:         getEnv("DB_NAME", "tigerwallet"),
+		RedisHost:      getEnv("REDIS_HOST", "localhost"),
+		RedisPort:      getEnv("REDIS_PORT", "6379"),
+		StripeKey:      getEnv("STRIPE_KEY", ""),
+		PayPalClient:   getEnv("PAYPAL_CLIENT", ""),
+		PayPalSecret:   getEnv("PAYPAL_SECRET", ""),
+		MasterSeed:     loadMasterSeed(),
 		TreasuryRPCURL: getEnv("TREASURY_RPC_URL", ""),
 	}
 }

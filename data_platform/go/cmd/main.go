@@ -31,37 +31,37 @@ type Config struct {
 
 // Data Models
 type AnalyticsEvent struct {
-	ID          uuid.UUID              `json:"id"`
-	EventType   string                 `json:"event_type"`
-	UserID      *uuid.UUID            `json:"user_id"`
-	SessionID   string                 `json:"session_id"`
-	Properties  map[string]interface{} `json:"properties"`
-	IPAddress   string                 `json:"ip_address"`
-	UserAgent   string                 `json:"user_agent"`
-	Timestamp   time.Time              `json:"timestamp"`
+	ID         uuid.UUID              `json:"id"`
+	EventType  string                 `json:"event_type"`
+	UserID     *uuid.UUID             `json:"user_id"`
+	SessionID  string                 `json:"session_id"`
+	Properties map[string]interface{} `json:"properties"`
+	IPAddress  string                 `json:"ip_address"`
+	UserAgent  string                 `json:"user_agent"`
+	Timestamp  time.Time              `json:"timestamp"`
 }
 
 type UserActivity struct {
-	ID          uuid.UUID              `json:"id"`
-	UserID      uuid.UUID              `json:"user_id"`
-	Action      string                 `json:"action"`
-	Resource    string                 `json:"resource"`
-	ResourceID  string                 `json:"resource_id"`
-	Properties  map[string]interface{} `json:"properties"`
-	IPAddress   string                 `json:"ip_address"`
-	Timestamp   time.Time              `json:"timestamp"`
+	ID         uuid.UUID              `json:"id"`
+	UserID     uuid.UUID              `json:"user_id"`
+	Action     string                 `json:"action"`
+	Resource   string                 `json:"resource"`
+	ResourceID string                 `json:"resource_id"`
+	Properties map[string]interface{} `json:"properties"`
+	IPAddress  string                 `json:"ip_address"`
+	Timestamp  time.Time              `json:"timestamp"`
 }
 
 type Report struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	ReportType  string    `json:"report_type"` // daily, weekly, monthly, custom
-	DateFrom    time.Time `json:"date_from"`
-	DateTo      time.Time `json:"date_to"`
-	Status      string    `json:"status"` // pending, processing, completed, failed
-	ResultURL   string    `json:"result_url"`
-	CreatedBy   uuid.UUID `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	ReportType  string     `json:"report_type"` // daily, weekly, monthly, custom
+	DateFrom    time.Time  `json:"date_from"`
+	DateTo      time.Time  `json:"date_to"`
+	Status      string     `json:"status"` // pending, processing, completed, failed
+	ResultURL   string     `json:"result_url"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at"`
 }
 
@@ -77,32 +77,32 @@ type Dashboard struct {
 }
 
 type Metric struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	MetricType  string    `json:"metric_type"` // counter, gauge, histogram
-	Unit        string    `json:"unit"`
-	Value       float64   `json:"value"`
-	Tags        string    `json:"tags"` // JSON object
-	Timestamp   time.Time `json:"timestamp"`
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	MetricType string    `json:"metric_type"` // counter, gauge, histogram
+	Unit       string    `json:"unit"`
+	Value      float64   `json:"value"`
+	Tags       string    `json:"tags"` // JSON object
+	Timestamp  time.Time `json:"timestamp"`
 }
 
 type DataSource struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	SourceType   string    `json:"source_type"` // database, api, file
-	Connection   string    `json:"connection"` // connection string or API endpoint
-	Query        string    `json:"query"` // SQL query or API parameters
-	LastSyncAt   *time.Time `json:"last_sync_at"`
-	Status       string    `json:"status"` // active, inactive, error
-	CreatedAt    time.Time `json:"created_at"`
+	ID         uuid.UUID  `json:"id"`
+	Name       string     `json:"name"`
+	SourceType string     `json:"source_type"` // database, api, file
+	Connection string     `json:"connection"`  // connection string or API endpoint
+	Query      string     `json:"query"`       // SQL query or API parameters
+	LastSyncAt *time.Time `json:"last_sync_at"`
+	Status     string     `json:"status"` // active, inactive, error
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // Global variables
 var (
-	db     *pgxpool.Pool
+	db          *pgxpool.Pool
 	redisClient *redis.Client
-	config Config
-	logger *log.Logger
+	config      Config
+	logger      *log.Logger
 )
 
 // Initialize database
@@ -538,10 +538,10 @@ func GetMetrics(c *gin.Context) {
 // GetAnalyticsSummary - Get analytics summary
 func GetAnalyticsSummary(c *gin.Context) {
 	var result struct {
-		TotalEvents      int64   `json:"total_events"`
-		TotalUsers       int64   `json:"total_users"`
-		TotalActivities  int64   `json:"total_activities"`
-		ActiveUsers24h   int64   `json:"active_users_24h"`
+		TotalEvents     int64 `json:"total_events"`
+		TotalUsers      int64 `json:"total_users"`
+		TotalActivities int64 `json:"total_activities"`
+		ActiveUsers24h  int64 `json:"active_users_24h"`
 	}
 
 	db.QueryRow(context.Background(), `SELECT COUNT(*) FROM analytics_events`).Scan(&result.TotalEvents)
@@ -555,22 +555,22 @@ func GetAnalyticsSummary(c *gin.Context) {
 // Health check
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "ok",
-		"database":   dbStatus,
-		"redis":      redisStatus,
-		"timestamp":  time.Now(),
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
+		"timestamp": time.Now(),
 	})
 }
 

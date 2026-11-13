@@ -274,11 +274,11 @@ func (s *Server) verifyTransactionSignature(w http.ResponseWriter, r *http.Reque
 	}
 
 	WriteJSON(w, r, http.StatusOK, map[string]any{
-		"valid":     true,
-		"address":   recovered.Hex(),
-		"deviceId":  device.ID,
-		"vendor":    device.Vendor,
-		"model":     device.Model,
+		"valid":      true,
+		"address":    recovered.Hex(),
+		"deviceId":   device.ID,
+		"vendor":     device.Vendor,
+		"model":      device.Model,
 		"verifiedAt": time.Now().Unix(),
 	})
 }

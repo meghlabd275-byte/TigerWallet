@@ -1,7 +1,7 @@
 /**
  * TigerWallet Liquid Staking Service
  * Production-ready liquid staking platform
- * 
+ *
  * Features:
  * - Liquid staking (like Phantom's PSOL)
  * - Stake/unstake with immediate liquidity
@@ -43,54 +43,54 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort         string
-	DBHost             string
-	DBPort             string
-	DBUser             string
-	DBPassword         string
-	DBName             string
-	JWTSecret          string
-	
+	ServerPort string
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+	JWTSecret  string
+
 	// Blockchain
-	EthereumRPC        string
-	PolygonRPC         string
-	SolanaRPC          string
-	PrivateKey         string
-	
+	EthereumRPC string
+	PolygonRPC  string
+	SolanaRPC   string
+	PrivateKey  string
+
 	// Staking Contracts
-	StakingContractETH string
+	StakingContractETH   string
 	StakingContractMATIC string
-	RewardDistributor  string
-	
+	RewardDistributor    string
+
 	// Staking Parameters
-	MinStakeAmount    float64
-	MaxStakeAmount    float64
-	UnstakeFee        float64
-	RewardAPY         float64
-	LockPeriod        time.Duration
+	MinStakeAmount float64
+	MaxStakeAmount float64
+	UnstakeFee     float64
+	RewardAPY      float64
+	LockPeriod     time.Duration
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		ServerPort:         getEnv("LIQUID_STAKING_PORT", "9100"),
-		DBHost:             getEnv("DB_HOST", "localhost"),
-		DBPort:             getEnv("DB_PORT", "5432"),
-		DBUser:             getEnv("DB_USER", "tigerwallet"),
-		DBPassword:         mustEnv("DB_PASSWORD"),
-		DBName:             getEnv("DB_NAME", "tigerwallet"),
-		JWTSecret:          getEnv("JWT_SECRET", ""),
-		EthereumRPC:       getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
-		PolygonRPC:         getEnv("POLYGON_RPC", "https://polygon-rpc.com"),
-		SolanaRPC:          getEnv("SOLANA_RPC", "https://api.mainnet-beta.solana.com"),
-		PrivateKey:         getEnv("PRIVATE_KEY", ""),
-		StakingContractETH: getEnv("STAKING_CONTRACT_ETH", "0x0000000000000000000000000000000000000001"),
+		ServerPort:           getEnv("LIQUID_STAKING_PORT", "9100"),
+		DBHost:               getEnv("DB_HOST", "localhost"),
+		DBPort:               getEnv("DB_PORT", "5432"),
+		DBUser:               getEnv("DB_USER", "tigerwallet"),
+		DBPassword:           mustEnv("DB_PASSWORD"),
+		DBName:               getEnv("DB_NAME", "tigerwallet"),
+		JWTSecret:            getEnv("JWT_SECRET", ""),
+		EthereumRPC:          getEnv("ETHEREUM_RPC", "https://eth.llamarpc.com"),
+		PolygonRPC:           getEnv("POLYGON_RPC", "https://polygon-rpc.com"),
+		SolanaRPC:            getEnv("SOLANA_RPC", "https://api.mainnet-beta.solana.com"),
+		PrivateKey:           getEnv("PRIVATE_KEY", ""),
+		StakingContractETH:   getEnv("STAKING_CONTRACT_ETH", "0x0000000000000000000000000000000000000001"),
 		StakingContractMATIC: getEnv("STAKING_CONTRACT_MATIC", "0x0000000000000000000000000000000000000002"),
-		RewardDistributor:  getEnv("REWARD_DISTRIBUTOR", "0x0000000000000000000000000000000000000003"),
-		MinStakeAmount:    0.01,
-		MaxStakeAmount:    1000000,
-		UnstakeFee:        0.001,
-		RewardAPY:         5.5, // 5.5% APY
-		LockPeriod:        14 * 24 * time.Hour, // 14 days
+		RewardDistributor:    getEnv("REWARD_DISTRIBUTOR", "0x0000000000000000000000000000000000000003"),
+		MinStakeAmount:       0.01,
+		MaxStakeAmount:       1000000,
+		UnstakeFee:           0.001,
+		RewardAPY:            5.5,                 // 5.5% APY
+		LockPeriod:           14 * 24 * time.Hour, // 14 days
 	}
 }
 
@@ -117,115 +117,115 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type StakingPosition struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	UserID            uint      `gorm:"index" json:"user_id"`
-	PositionID        string    `gorm:"uniqueIndex" json:"position_id"`
-	WalletAddress     string    `gorm:"index" json:"wallet_address"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	UserID        uint   `gorm:"index" json:"user_id"`
+	PositionID    string `gorm:"uniqueIndex" json:"position_id"`
+	WalletAddress string `gorm:"index" json:"wallet_address"`
+
 	// Chain
-	Chain             string    `json:"chain"` // ethereum, polygon, solana
-	
+	Chain string `json:"chain"` // ethereum, polygon, solana
+
 	// Staking
-	Token             string    `json:"token"` // ETH, MATIC, SOL
-	LiquidToken       string    `json:"liquid_token"` // stETH, stMATIC, stSOL
-	StakedAmount      float64   `json:"staked_amount"`
-	LiquidTokenAmount float64   `json:"liquid_token_amount"`
-	
+	Token             string  `json:"token"`        // ETH, MATIC, SOL
+	LiquidToken       string  `json:"liquid_token"` // stETH, stMATIC, stSOL
+	StakedAmount      float64 `json:"staked_amount"`
+	LiquidTokenAmount float64 `json:"liquid_token_amount"`
+
 	// Rewards
 	PendingRewards   float64   `json:"pending_rewards"`
 	TotalRewards     float64   `json:"total_rewards"`
 	LastRewardUpdate time.Time `json:"last_reward_update"`
-	
+
 	// Status
-	Status            string    `json:"status"` // active, unstaking, withdrawn
+	Status           string     `json:"status"` // active, unstaking, withdrawn
 	UnstakeRequestAt *time.Time `json:"unstake_request_at"`
-	UnlockAt          *time.Time `json:"unlock_at"`
+	UnlockAt         *time.Time `json:"unlock_at"`
 }
 
 type Validator struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	ValidatorID       string    `gorm:"uniqueIndex" json:"validator_id"`
-	Chain            string    `json:"chain"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	ValidatorID string `gorm:"uniqueIndex" json:"validator_id"`
+	Chain       string `json:"chain"`
+
 	// Validator details
-	Address           string    `json:"address"`
-	Commission        float64   `json:"commission"`
-	TotalStaked      float64   `json:"total_staked"`
-	Active            bool      `json:"active"`
-	
+	Address     string  `json:"address"`
+	Commission  float64 `json:"commission"`
+	TotalStaked float64 `json:"total_staked"`
+	Active      bool    `json:"active"`
+
 	// Performance
-	APY              float64   `json:"apy"`
-	Uptime           float64   `json:"uptime"`
-	LastSyncHeight   uint64    `json:"last_sync_height"`
+	APY            float64 `json:"apy"`
+	Uptime         float64 `json:"uptime"`
+	LastSyncHeight uint64  `json:"last_sync_height"`
 }
 
 type StakingPool struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	
-	Chain             string    `gorm:"uniqueIndex" json:"chain"`
-	Token            string    `json:"token"`
-	LiquidToken       string    `json:"liquid_token"`
-	
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	Chain       string `gorm:"uniqueIndex" json:"chain"`
+	Token       string `json:"token"`
+	LiquidToken string `json:"liquid_token"`
+
 	// Pool stats
-	TotalStaked      float64   `json:"total_staked"`
-	TotalLiquidToken float64   `json:"total_liquid_token"`
-	TotalRewards     float64   `json:"total_rewards"`
-	
+	TotalStaked      float64 `json:"total_staked"`
+	TotalLiquidToken float64 `json:"total_liquid_token"`
+	TotalRewards     float64 `json:"total_rewards"`
+
 	// Current APY
-	CurrentAPY        float64   `json:"current_apy"`
-	
+	CurrentAPY float64 `json:"current_apy"`
+
 	// Exchange rate (liquid token / stake token)
-	ExchangeRate      float64   `json:"exchange_rate"`
-	
+	ExchangeRate float64 `json:"exchange_rate"`
+
 	// Limits
-	MinStakeAmount    float64   `json:"min_stake_amount"`
-	MaxStakeAmount    float64   `json:"max_stake_amount"`
-	
-	Status            string    `json:"status"` // active, paused, stopped
+	MinStakeAmount float64 `json:"min_stake_amount"`
+	MaxStakeAmount float64 `json:"max_stake_amount"`
+
+	Status string `json:"status"` // active, paused, stopped
 }
 
 type StakingTransaction struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	UserID            uint      `gorm:"index" json:"user_id"`
-	PositionID        string    `gorm:"index" json:"position_id"`
-	TransactionHash   string    `gorm:"uniqueIndex" json:"transaction_hash"`
-	
-	Type              string    `json:"type"` // stake, unstake, claim, deposit, withdraw
-	Chain             string    `json:"chain"`
-	Token             string    `json:"token"`
-	
-	Amount            float64   `json:"amount"`
-	GasUsed           uint64    `json:"gas_used"`
-	GasPrice          float64   `json:"gas_price"`
-	Status            string    `json:"status"` // pending, confirmed, failed
-	BlockNumber       uint64    `json:"block_number"`
-	ConfirmedAt       *time.Time `json:"confirmed_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	UserID          uint   `gorm:"index" json:"user_id"`
+	PositionID      string `gorm:"index" json:"position_id"`
+	TransactionHash string `gorm:"uniqueIndex" json:"transaction_hash"`
+
+	Type  string `json:"type"` // stake, unstake, claim, deposit, withdraw
+	Chain string `json:"chain"`
+	Token string `json:"token"`
+
+	Amount      float64    `json:"amount"`
+	GasUsed     uint64     `json:"gas_used"`
+	GasPrice    float64    `json:"gas_price"`
+	Status      string     `json:"status"` // pending, confirmed, failed
+	BlockNumber uint64     `json:"block_number"`
+	ConfirmedAt *time.Time `json:"confirmed_at"`
 }
 
 type RewardDistribution struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	
-	UserID            uint      `gorm:"index" json:"user_id"`
-	PositionID        string    `gorm:"index" json:"position_id"`
-	
-	Amount            float64   `json:"amount"`
-	Chain             string    `json:"chain"`
-	Token             string    `json:"token"`
-	
-	Status            string    `json:"status"` // pending, distributed, claimed
-	TransactionHash   string    `json:"transaction_hash,omitempty"`
-	DistributedAt     *time.Time `json:"distributed_at"`
-	ClaimedAt         *time.Time `json:"claimed_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+
+	UserID     uint   `gorm:"index" json:"user_id"`
+	PositionID string `gorm:"index" json:"position_id"`
+
+	Amount float64 `json:"amount"`
+	Chain  string  `json:"chain"`
+	Token  string  `json:"token"`
+
+	Status          string     `json:"status"` // pending, distributed, claimed
+	TransactionHash string     `json:"transaction_hash,omitempty"`
+	DistributedAt   *time.Time `json:"distributed_at"`
+	ClaimedAt       *time.Time `json:"claimed_at"`
 }
 
 // ============================================================================
@@ -529,7 +529,7 @@ func (s *StakingService) Unstake(userID uint, positionID string, amount float64)
 
 	// Create transaction record
 	stakingTx := StakingTransaction{
-		UserID:      userID,
+		UserID:     userID,
 		PositionID: position.PositionID,
 		Type:       "unstake",
 		Chain:      position.Chain,
@@ -561,12 +561,12 @@ func (s *StakingService) ClaimRewards(userID uint, positionID string) ([]RewardD
 
 	// Create reward distribution record
 	distribution := RewardDistribution{
-		UserID:       userID,
-		PositionID:   positionID,
-		Amount:       position.PendingRewards,
-		Chain:        position.Chain,
-		Token:        position.Token,
-		Status:       "distributed",
+		UserID:        userID,
+		PositionID:    positionID,
+		Amount:        position.PendingRewards,
+		Chain:         position.Chain,
+		Token:         position.Token,
+		Status:        "distributed",
 		DistributedAt: func() *time.Time { t := time.Now(); return &t }(),
 	}
 
@@ -638,7 +638,7 @@ func (s *StakingService) UpdateRewards() error {
 }
 
 const (
-	hoursPerYear   = 365 * 24
+	hoursPerYear    = 365 * 24
 	maxAccrualHours = 24 * 31
 )
 
@@ -664,7 +664,7 @@ func (s *StakingService) GetPosition(positionID string) (*StakingPosition, error
 func (s *StakingService) ProcessUnstakeQueue() error {
 	var positions []StakingPosition
 	now := time.Now()
-	
+
 	if err := s.db.Where("status = ? AND unlock_at <= ?", "unstaking", now).Find(&positions).Error; err != nil {
 		return err
 	}
@@ -675,13 +675,13 @@ func (s *StakingService) ProcessUnstakeQueue() error {
 
 		// Create withdrawal transaction
 		stakingTx := StakingTransaction{
-			UserID:      positions[i].UserID,
-			PositionID:  positions[i].PositionID,
-			Type:        "withdraw",
-			Chain:       positions[i].Chain,
-			Token:       positions[i].Token,
-			Amount:      positions[i].StakedAmount,
-			Status:      "confirmed",
+			UserID:     positions[i].UserID,
+			PositionID: positions[i].PositionID,
+			Type:       "withdraw",
+			Chain:      positions[i].Chain,
+			Token:      positions[i].Token,
+			Amount:     positions[i].StakedAmount,
+			Status:     "confirmed",
 		}
 		s.db.Create(&stakingTx)
 	}
@@ -777,7 +777,7 @@ func (s *StakingService) ClaimRewardsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":      true,
+		"success":       true,
 		"distributions": distributions,
 	})
 }
@@ -796,7 +796,7 @@ func (s *StakingService) GetPositionsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":  true,
+		"success":   true,
 		"positions": positions,
 	})
 }
@@ -890,12 +890,12 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusOK)
 			return
 		}
-		
+
 		c.Next()
 	})
 
@@ -919,7 +919,7 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			if err := service.UpdateRewards(); err != nil {
 				log.Printf("Failed to update rewards: %v", err)
@@ -952,7 +952,7 @@ func main() {
 	log.Println("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}

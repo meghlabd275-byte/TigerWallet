@@ -1,11 +1,11 @@
 //! TigerWallet Biometric Authentication
-//! 
+//!
 //! This module provides biometric authentication for the wallet:
 //! - Face ID (iOS)
 //! - Touch ID (iOS/macOS)
 //! - Fingerprint (Android)
 //! - Windows Hello
-//! 
+//!
 //! Security:
 //! - Hardware-backed biometric storage
 //! - Liveness detection
@@ -22,16 +22,16 @@ use thiserror::Error;
 pub enum BiometricError {
     #[error("Biometric not available: {0}")]
     NotAvailable(String),
-    
+
     #[error("Authentication failed: {0}")]
     AuthFailed(String),
-    
+
     #[error("Enrollment failed: {0}")]
     EnrollmentFailed(String),
-    
+
     #[error("Hardware error: {0}")]
     HardwareError(String),
-    
+
     #[error("Not enrolled")]
     NotEnrolled,
 }
@@ -63,13 +63,13 @@ pub enum AuthLevel {
 pub struct Enrollment {
     /// Enrollment ID
     pub id: String,
-    
+
     /// Biometric type used
     pub biometric_type: BiometricType,
-    
+
     /// Created at
     pub created_at: u64,
-    
+
     /// Last used
     pub last_used: u64,
 }
@@ -79,13 +79,13 @@ pub struct Enrollment {
 pub struct AuthRequest {
     /// Reason for authentication
     pub reason: String,
-    
+
     /// Maximum time to wait (seconds)
     pub timeout: u32,
-    
+
     /// Required biometric type
     pub biometric_type: BiometricType,
-    
+
     /// Fallback to device passcode
     pub fallback_to_passcode: bool,
 }
@@ -95,13 +95,13 @@ pub struct AuthRequest {
 pub struct AuthResult {
     /// Success
     pub success: bool,
-    
+
     /// Error message (if failed)
     pub error: Option<String>,
-    
+
     /// Authentication timestamp
     pub timestamp: u64,
-    
+
     /// Credential ID (for key retrieval)
     pub credential_id: Option<String>,
 }
@@ -364,12 +364,9 @@ impl BiometricService {
 
     /// Run one authentication attempt, without touching the failure counters.
     fn attempt(&self, request: &AuthRequest, now: u64) -> Result<AuthResult, BiometricError> {
-        let verifier = self
-            .verifier
-            .as_ref()
-            .ok_or_else(|| BiometricError::NotAvailable(
-                "no platform biometric verifier is installed".to_string(),
-            ))?;
+        let verifier = self.verifier.as_ref().ok_or_else(|| {
+            BiometricError::NotAvailable("no platform biometric verifier is installed".to_string())
+        })?;
 
         if !verifier.is_enrolled() {
             return Err(BiometricError::NotEnrolled);
@@ -581,7 +578,9 @@ mod tests {
 
     #[test]
     fn a_denied_ceremony_is_reported_not_swallowed() {
-        let service = service_with(Err(BiometricError::AuthFailed("user cancelled".to_string())));
+        let service = service_with(Err(BiometricError::AuthFailed(
+            "user cancelled".to_string(),
+        )));
 
         assert!(matches!(
             service.authenticate_at(&request(), 1_000),

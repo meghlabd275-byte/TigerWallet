@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/rpc"
@@ -82,9 +83,9 @@ func newRPCError(code int, msg string) rpcError { return rpcError{code: code, ms
 
 // The point of the whole layer: a dead primary must not fail the call.
 func TestRPCCallFallsBackToAlternate(t *testing.T) {
-	var primaryHits, backupHits int
+	var primaryHits, backupHits atomic.Int64
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		primaryHits++
+		primaryHits.Add(1)
 		// Simulate a dead node: close without a response.
 		hj, _ := w.(http.Hijacker)
 		if conn, _, err := hj.Hijack(); err == nil {
@@ -93,7 +94,7 @@ func TestRPCCallFallsBackToAlternate(t *testing.T) {
 	}))
 	defer primary.Close()
 	backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		backupHits++
+		backupHits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"jsonrpc":"2.0","id":1,"result":"0x1"}`)
 	}))
@@ -113,10 +114,10 @@ func TestRPCCallFallsBackToAlternate(t *testing.T) {
 	if out != "0x1" {
 		t.Errorf("result = %q, want 0x1", out)
 	}
-	if backupHits == 0 {
+	if backupHits.Load() == 0 {
 		t.Error("the alternate was never tried")
 	}
-	if primaryHits == 0 {
+	if primaryHits.Load() == 0 {
 		t.Error("the primary should be tried first")
 	}
 }

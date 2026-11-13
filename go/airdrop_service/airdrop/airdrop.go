@@ -27,7 +27,7 @@ type AirdropCampaign struct {
 	TokenAddress  string `json:"token_address"`
 	ChainID       uint64 `json:"chain_id"`
 	TotalAmount   string `json:"total_amount"`
-	ClaimedAmount  string `json:"claimed_amount"`
+	ClaimedAmount string `json:"claimed_amount"`
 	StartTime     int64  `json:"start_time"`
 	EndTime       int64  `json:"end_time"`
 	Status        string `json:"status"`
@@ -39,16 +39,16 @@ type AirdropCampaign struct {
 
 // AirdropClaim represents an airdrop claim
 type AirdropClaim struct {
-	ID             string `json:"id"`
-	CampaignID     string `json:"campaign_id"`
-	UserID         string `json:"user_id"`
-	Address        string `json:"address"`
-	Amount         string `json:"amount"`
-	ClaimedAmount  string `json:"claimed_amount"`
-	Status         string `json:"status"`
-	ClaimTxHash    string `json:"claim_tx_hash"`
-	ClaimedAt      int64  `json:"claimed_at"`
-	CreatedAt      int64  `json:"created_at"`
+	ID            string `json:"id"`
+	CampaignID    string `json:"campaign_id"`
+	UserID        string `json:"user_id"`
+	Address       string `json:"address"`
+	Amount        string `json:"amount"`
+	ClaimedAmount string `json:"claimed_amount"`
+	Status        string `json:"status"`
+	ClaimTxHash   string `json:"claim_tx_hash"`
+	ClaimedAt     int64  `json:"claimed_at"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 // AirdropService manages airdrop operations backed by PostgreSQL.

@@ -27,26 +27,26 @@ func NewLiquiditySourcesHandler(db *gorm.DB) *LiquiditySourcesHandler {
 
 // LiquiditySource mirrors the admin_liquidity_sources governance table.
 type LiquiditySource struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	SourceID      string    `gorm:"uniqueIndex;not null" json:"source_id"`
-	Name          string    `gorm:"not null" json:"name"`
-	SourceType    string    `gorm:"not null" json:"source_type"` // dex, cex, aggregator, market_maker
-	ChainID       *int64    `gorm:"index" json:"chain_id"`
-	RouterAddress string    `json:"router_address"`
-	APIEndpoint   string    `json:"api_endpoint"`
-	APIKeyID      string    `json:"api_key_id"`
-	Status        string    `gorm:"not null;default:'active';index" json:"status"`
-	Priority      int       `gorm:"default:0" json:"priority"`
-	FeeBps        float64   `gorm:"default:0" json:"fee_bps"`
-	SlippageBps   float64   `gorm:"default:0" json:"slippage_bps"`
-	MaxCapacity   float64   `gorm:"default:0" json:"max_capacity"`
-	CurrentLiquidity float64 `gorm:"default:0" json:"current_liquidity"`
-	SupportedPairs string   `json:"supported_pairs"`
-	Metadata      string    `json:"metadata"`
-	LastHealthCheck *time.Time `json:"last_health_check"`
-	HealthStatus  string    `gorm:"default:'unknown'" json:"health_status"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID               uint       `gorm:"primaryKey" json:"id"`
+	SourceID         string     `gorm:"uniqueIndex;not null" json:"source_id"`
+	Name             string     `gorm:"not null" json:"name"`
+	SourceType       string     `gorm:"not null" json:"source_type"` // dex, cex, aggregator, market_maker
+	ChainID          *int64     `gorm:"index" json:"chain_id"`
+	RouterAddress    string     `json:"router_address"`
+	APIEndpoint      string     `json:"api_endpoint"`
+	APIKeyID         string     `json:"api_key_id"`
+	Status           string     `gorm:"not null;default:'active';index" json:"status"`
+	Priority         int        `gorm:"default:0" json:"priority"`
+	FeeBps           float64    `gorm:"default:0" json:"fee_bps"`
+	SlippageBps      float64    `gorm:"default:0" json:"slippage_bps"`
+	MaxCapacity      float64    `gorm:"default:0" json:"max_capacity"`
+	CurrentLiquidity float64    `gorm:"default:0" json:"current_liquidity"`
+	SupportedPairs   string     `json:"supported_pairs"`
+	Metadata         string     `json:"metadata"`
+	LastHealthCheck  *time.Time `json:"last_health_check"`
+	HealthStatus     string     `gorm:"default:'unknown'" json:"health_status"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 func (LiquiditySource) TableName() string { return "admin_liquidity_sources" }
@@ -200,15 +200,15 @@ func (h *LiquiditySourcesHandler) UpdatePriority(c *gin.Context) {
 // GetStats returns aggregate liquidity-source statistics.
 func (h *LiquiditySourcesHandler) GetStats(c *gin.Context) {
 	var stats struct {
-		Total             int64   `json:"total"`
-		Active            int64   `json:"active"`
-		Paused            int64   `json:"paused"`
-		Stopped           int64   `json:"stopped"`
-		TotalLiquidity    float64 `json:"total_liquidity"`
-		DEXCount          int64   `json:"dex_count"`
-		CEXCount          int64   `json:"cex_count"`
-		AggregatorCount   int64   `json:"aggregator_count"`
-		MarketMakerCount  int64   `json:"market_maker_count"`
+		Total            int64   `json:"total"`
+		Active           int64   `json:"active"`
+		Paused           int64   `json:"paused"`
+		Stopped          int64   `json:"stopped"`
+		TotalLiquidity   float64 `json:"total_liquidity"`
+		DEXCount         int64   `json:"dex_count"`
+		CEXCount         int64   `json:"cex_count"`
+		AggregatorCount  int64   `json:"aggregator_count"`
+		MarketMakerCount int64   `json:"market_maker_count"`
 	}
 	h.db.Model(&LiquiditySource{}).Count(&stats.Total)
 	h.db.Model(&LiquiditySource{}).Where("status = ?", "active").Count(&stats.Active)
@@ -230,7 +230,7 @@ func (h *LiquiditySourcesHandler) HealthCheck(c *gin.Context) {
 		return
 	}
 	var req struct {
-		HealthStatus string `json:"health_status"`
+		HealthStatus string  `json:"health_status"`
 		Liquidity    float64 `json:"liquidity"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

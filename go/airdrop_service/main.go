@@ -17,8 +17,8 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	sharedauth "github.com/tigerwallet/sharedauth"
 	"github.com/tigerwallet/airdrop-service/airdrop"
+	sharedauth "github.com/tigerwallet/sharedauth"
 )
 
 const port = ":8465"

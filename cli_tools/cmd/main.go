@@ -1,9 +1,9 @@
 /**
  * TigerWallet CLI Tools
- * 
+ *
  * Production-ready CLI tools for developers
  * Similar to Hardhat, Foundry, and Phantom's CLI
- * 
+ *
  * Commands:
  * - wallet:create - Create a new wallet
  * - wallet:import - Import existing wallet
@@ -15,7 +15,7 @@
  * - chain:add - Add custom chain
  * - swap:quote - Get swap quote
  * - swap:execute - Execute swap
- * 
+ *
  * This is a REAL PRODUCTION implementation, NOT a stub
  */
 
@@ -48,10 +48,10 @@ import (
 // ============================================================================
 
 var (
-	version   = "1.0.0"
-	rpcURL    = "https://eth.llamarpc.com"
-	chainID   uint64 = 1
-	debug     bool   = false
+	version        = "1.0.0"
+	rpcURL         = "https://eth.llamarpc.com"
+	chainID uint64 = 1
+	debug   bool   = false
 )
 
 // ============================================================================
@@ -98,7 +98,7 @@ Example:
 			if chain == "" {
 				continue
 			}
-			
+
 			address, err := wallet.DeriveAddress(mnemonic, chain)
 			if err != nil {
 				continue
@@ -198,7 +198,7 @@ Example:
 			if chain == "" {
 				continue
 			}
-			
+
 			address, err := wallet.DeriveAddressFromSeed(seed, chain)
 			if err != nil {
 				continue
@@ -719,19 +719,19 @@ Example:
 		}
 
 		chainConfig := map[string]interface{}{
-			"chainId":       chainID,
-			"name":          name,
-			"rpcUrl":        rpcURL,
-			"explorerUrl":   explorer,
+			"chainId":     chainID,
+			"name":        name,
+			"rpcUrl":      rpcURL,
+			"explorerUrl": explorer,
 			"nativeCurrency": map[string]string{
-				"name":   symbol,
-				"symbol": symbol,
+				"name":     symbol,
+				"symbol":   symbol,
 				"decimals": "18",
 			},
 		}
 
 		jsonBytes, _ := json.MarshalIndent(chainConfig, "", "  ")
-		
+
 		// Save to config
 		configPath := getConfigPath()
 		os.WriteFile(configPath+"/chains/"+fmt.Sprintf("%d.json", chainID), jsonBytes, 0644)
@@ -766,17 +766,17 @@ func formatBalance(balance *big.Int, symbol string) string {
 	// Convert wei to ETH (assuming 18 decimals)
 	eth := new(big.Float).SetInt(balance)
 	eth.Quo(eth, big.NewFloat(1e18))
-	
+
 	return fmt.Sprintf("%.6f %s", eth, symbol)
 }
 
 func getDefaultRPC(chainID int64) string {
 	rpcs := map[int64]string{
-		1:   "https://eth.llamarpc.com",
-		56:  "https://bsc-dataseed.binance.org",
-		137: "https://polygon-rpc.com",
-		10:  "https://mainnet.optimism.io",
-		8453: "https://mainnet.base.org",
+		1:     "https://eth.llamarpc.com",
+		56:    "https://bsc-dataseed.binance.org",
+		137:   "https://polygon-rpc.com",
+		10:    "https://mainnet.optimism.io",
+		8453:  "https://mainnet.base.org",
 		42161: "https://arb1.arbitrum.io/rpc",
 		43114: "https://api.avax.network/ext/bc/C/rpc",
 	}
@@ -808,11 +808,11 @@ func getChainName(chainID int64) string {
 
 func getNativeSymbol(chainID int64) string {
 	symbols := map[int64]string{
-		1:   "ETH",
-		56:  "BNB",
-		137: "MATIC",
-		10:  "ETH",
-		8453: "ETH",
+		1:     "ETH",
+		56:    "BNB",
+		137:   "MATIC",
+		10:    "ETH",
+		8453:  "ETH",
 		42161: "ETH",
 		43114: "AVAX",
 	}
@@ -868,22 +868,22 @@ Get started:
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:        "rpc",
-				Usage:       "Default RPC URL",
-				EnvVars:     []string{"TIGERWALLET_RPC"},
-				Value:       "https://eth.llamarpc.com",
+				Name:    "rpc",
+				Usage:   "Default RPC URL",
+				EnvVars: []string{"TIGERWALLET_RPC"},
+				Value:   "https://eth.llamarpc.com",
 			},
 			&cli.Int64Flag{
-				Name:        "chain",
-				Usage:       "Default chain ID",
-				EnvVars:     []string{"TIGERWALLET_CHAIN"},
-				Value:       1,
+				Name:    "chain",
+				Usage:   "Default chain ID",
+				EnvVars: []string{"TIGERWALLET_CHAIN"},
+				Value:   1,
 			},
 			&cli.BoolFlag{
-				Name:        "debug",
-				Usage:       "Enable debug output",
-				EnvVars:     []string{"TIGERWALLET_DEBUG"},
-				Value:       false,
+				Name:    "debug",
+				Usage:   "Enable debug output",
+				EnvVars: []string{"TIGERWALLET_DEBUG"},
+				Value:   false,
 			},
 		},
 		Before: func(c *cli.Context) error {

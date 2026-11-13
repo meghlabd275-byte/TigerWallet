@@ -9,8 +9,8 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 use tiger_fetcher::{
-    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherMetrics, FetcherState,
-    FetcherStatus, FetcherType,
+    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherMetrics, FetcherState, FetcherStatus,
+    FetcherType,
 };
 
 /// Blockchain data fetcher for EVM and non-EVM chains
@@ -89,12 +89,20 @@ impl Fetcher for BlockchainFetcher {
 
     async fn fetch(&self, params: FetchParams) -> Result<FetchResult> {
         let start = Instant::now();
-        
-        let chain = params.chain.clone().unwrap_or_else(|| "ethereum".to_string());
-        
+
+        let chain = params
+            .chain
+            .clone()
+            .unwrap_or_else(|| "ethereum".to_string());
+
         // Try cache first
-        let cache_key = format!("blockchain:{}:{}:{:?}", chain, params.address.as_deref().unwrap_or("latest"), params.limit);
-        
+        let cache_key = format!(
+            "blockchain:{}:{}:{:?}",
+            chain,
+            params.address.as_deref().unwrap_or("latest"),
+            params.limit
+        );
+
         if !params.force_refresh {
             if let Ok(cached) = self.cache.get(&cache_key).await {
                 return Ok(FetchResult::success(
@@ -111,39 +119,24 @@ impl Fetcher for BlockchainFetcher {
             "ethereum" | "sepolia" | "bsc" | "polygon" | "arbitrum" | "optimism" | "avalanche" => {
                 self.fetch_evm_chain(&chain, &params).await
             }
-            "solana" => {
-                self.fetch_solana(&params).await
-            }
-            "aptos" => {
-                self.fetch_aptos(&params).await
-            }
-            "ton" => {
-                self.fetch_ton(&params).await
-            }
+            "solana" => self.fetch_solana(&params).await,
+            "aptos" => self.fetch_aptos(&params).await,
+            "ton" => self.fetch_ton(&params).await,
             _ => Err(anyhow::anyhow!("Unsupported chain: {}", chain)),
         };
 
         let elapsed = start.elapsed().as_millis() as u64;
-        
+
         match data {
             Ok(result_data) => {
                 // Cache the result
                 let _ = self.cache.set(&cache_key, &result_data, 300).await; // 5 min cache
-                
-                Ok(FetchResult::success(
-                    result_data,
-                    chain,
-                    elapsed,
-                    false,
-                ))
+
+                Ok(FetchResult::success(result_data, chain, elapsed, false))
             }
             Err(e) => {
                 error!("Blockchain fetch error: {}", e);
-                Ok(FetchResult::error(
-                    chain,
-                    e.to_string(),
-                    elapsed,
-                ))
+                Ok(FetchResult::error(chain, e.to_string(), elapsed))
             }
         }
     }
@@ -165,7 +158,11 @@ impl Fetcher for BlockchainFetcher {
 }
 
 impl BlockchainFetcher {
-    async fn fetch_evm_chain(&self, chain: &str, _params: &FetchParams) -> Result<serde_json::Value> {
+    async fn fetch_evm_chain(
+        &self,
+        chain: &str,
+        _params: &FetchParams,
+    ) -> Result<serde_json::Value> {
         // Fail-closed: a real fetch requires an HTTP JSON-RPC POST to the
         // chain's RPC endpoint (eth_blockNumber / eth_getBlockByNumber /
         // eth_gasPrice). No HTTP client (reqwest) is wired into this fetcher,

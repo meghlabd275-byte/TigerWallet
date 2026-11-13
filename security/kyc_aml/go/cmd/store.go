@@ -469,14 +469,14 @@ func (s *Store) LogAudit(ctx context.Context, entityType string, entityID *uuid.
 
 // ComplianceSummary is the aggregated compliance report.
 type ComplianceSummary struct {
-	TotalApplications int            `json:"total_applications"`
-	Approved          int            `json:"approved"`
-	Rejected          int            `json:"rejected"`
-	Pending           int            `json:"pending"`
-	InReview          int            `json:"in_review"`
-	NeedsMoreInfo     int            `json:"needs_more_info"`
-	AMLChecksPassed   int            `json:"aml_checks_passed"`
-	AMLChecksFailed   int            `json:"aml_checks_failed"`
+	TotalApplications int `json:"total_applications"`
+	Approved          int `json:"approved"`
+	Rejected          int `json:"rejected"`
+	Pending           int `json:"pending"`
+	InReview          int `json:"in_review"`
+	NeedsMoreInfo     int `json:"needs_more_info"`
+	AMLChecksPassed   int `json:"aml_checks_passed"`
+	AMLChecksFailed   int `json:"aml_checks_failed"`
 }
 
 // ComplianceReport aggregates application and AML counts for a period.

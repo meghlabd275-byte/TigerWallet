@@ -2,8 +2,9 @@
 
 // Standalone reference/demo service. Run individually with: go run <file>
 // (Tagged "ignore" so the services/go directory is not a broken package —
-//  these files are not part of any deployed build; deployed services live
-//  under their own modules, e.g. go/*, */go.)
+//
+//	these files are not part of any deployed build; deployed services live
+//	under their own modules, e.g. go/*, */go.)
 package main
 
 import (
@@ -36,23 +37,23 @@ import (
 type Exchange string
 
 const (
-	ExchangeBinance Exchange = "binance"
+	ExchangeBinance  Exchange = "binance"
 	ExchangeCoinbase Exchange = "coinbase"
-	ExchangeOKX     Exchange = "okx"
-	ExchangeBybit   Exchange = "bybit"
-	ExchangeBitGet Exchange = "bitget"
+	ExchangeOKX      Exchange = "okx"
+	ExchangeBybit    Exchange = "bybit"
+	ExchangeBitGet   Exchange = "bitget"
 )
 
 // ExchangeConfig holds API credentials for an exchange
 type ExchangeConfig struct {
-	APIKey        string `json:"api_key"`
-	SecretKey    string `json:"secret_key"`
-	Passphrase   string `json:"passphrase,omitempty"` // For exchanges that require it
-	APIBase      string `json:"api_base"`
-	WSBase       string `json:"ws_base"`
-	UseProxy     bool   `json:"use_proxy"`
-	HTTPTimeout  int    `json:"http_timeout"` // seconds
-	RateLimit    int    `json:"rate_limit"`  // requests per second
+	APIKey      string `json:"api_key"`
+	SecretKey   string `json:"secret_key"`
+	Passphrase  string `json:"passphrase,omitempty"` // For exchanges that require it
+	APIBase     string `json:"api_base"`
+	WSBase      string `json:"ws_base"`
+	UseProxy    bool   `json:"use_proxy"`
+	HTTPTimeout int    `json:"http_timeout"` // seconds
+	RateLimit   int    `json:"rate_limit"`   // requests per second
 }
 
 // ExchangeClient is the main client for exchange operations
@@ -68,7 +69,7 @@ type ExchangeClient struct {
 func NewExchangeClient(exchange Exchange, config ExchangeConfig) *ExchangeClient {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		MaxIdleConns:   100,
+		MaxIdleConns:    100,
 		IdleConnTimeout: 30 * time.Second,
 	}
 
@@ -77,7 +78,7 @@ func NewExchangeClient(exchange Exchange, config ExchangeConfig) *ExchangeClient
 		config:   config,
 		client: &http.Client{
 			Transport: transport,
-			Timeout: time.Duration(config.HTTPTimeout) * time.Second,
+			Timeout:   time.Duration(config.HTTPTimeout) * time.Second,
 		},
 		rates: make(map[string]time.Time),
 	}
@@ -99,16 +100,16 @@ func NewBinanceAPI(client *ExchangeClient) *BinanceAPI {
 
 // Binance ticker response
 type BinanceTickerResponse struct {
-	Symbol           string `json:"symbol"`
-	PriceChange      string `json:"priceChange"`
+	Symbol             string `json:"symbol"`
+	PriceChange        string `json:"priceChange"`
 	PriceChangePercent string `json:"priceChangePercent"`
-	LastPrice       string `json:"lastPrice"`
-	BidPrice        string `json:"bidPrice"`
-	AskPrice        string `json:"askPrice"`
-	HighPrice       string `json:"highPrice"`
-	LowPrice        string `json:"lowPrice"`
-	Volume          string `json:"volume"`
-	QuoteVolume     string `json:"quoteVolume"`
+	LastPrice          string `json:"lastPrice"`
+	BidPrice           string `json:"bidPrice"`
+	AskPrice           string `json:"askPrice"`
+	HighPrice          string `json:"highPrice"`
+	LowPrice           string `json:"lowPrice"`
+	Volume             string `json:"volume"`
+	QuoteVolume        string `json:"quoteVolume"`
 }
 
 // GetTicker fetches ticker data for a symbol
@@ -146,9 +147,9 @@ func (b *BinanceAPI) GetTicker(symbol string) (*PriceData, error) {
 
 // Binance order book response
 type BinanceOrderBook struct {
-	LastUpdateID int64       `json:"lastUpdateId"`
-	Bids       [][]string  `json:"bids"`
-	Asks       [][]string  `json:"asks"`
+	LastUpdateID int64      `json:"lastUpdateId"`
+	Bids         [][]string `json:"bids"`
+	Asks         [][]string `json:"asks"`
 }
 
 // GetOrderBook fetches the order book for a symbol
@@ -172,7 +173,7 @@ func (b *BinanceAPI) GetOrderBook(symbol string, limit int) (*OrderBook, error) 
 		Symbol:     symbol,
 		Bids:       make([][2]float64, len(book.Bids)),
 		Asks:       make([][2]float64, len(book.Asks)),
-		LastUpdate:  book.LastUpdateID,
+		LastUpdate: book.LastUpdateID,
 	}
 
 	for i, bid := range book.Bids {
@@ -217,8 +218,8 @@ func (b *BinanceAPI) GetAccountBalances() (map[string]Balance, error) {
 		if free+locked > 0 {
 			balances[balance.Asset] = Balance{
 				Available: free,
-				Locked:   locked,
-				Total:    free + locked,
+				Locked:    locked,
+				Total:     free + locked,
 			}
 		}
 	}
@@ -228,25 +229,25 @@ func (b *BinanceAPI) GetAccountBalances() (map[string]Balance, error) {
 
 // Binance order response
 type BinanceOrderResponse struct {
-	OrderID       int64   `json:"orderId"`
-	Symbol        string  `json:"symbol"`
-	Price        float64 `json:"price"`
-	OrigQty      float64 `json:"origQty"`
-	ExecutedQty  float64 `json:"executedQty"`
-	Status       string  `json:"status"`
+	OrderID     int64   `json:"orderId"`
+	Symbol      string  `json:"symbol"`
+	Price       float64 `json:"price"`
+	OrigQty     float64 `json:"origQty"`
+	ExecutedQty float64 `json:"executedQty"`
+	Status      string  `json:"status"`
 	Side        string  `json:"side"`
-	Type         string  `json:"type"`
-	TimeInForce  string  `json:"timeInForce"`
+	Type        string  `json:"type"`
+	TimeInForce string  `json:"timeInForce"`
 }
 
 // PlaceOrder places a new order
 func (b *BinanceAPI) PlaceOrder(order *Order) (string, error) {
 	params := map[string]string{
-		"symbol":            order.Symbol,
-		"side":              order.Side,
-		"type":              order.Type,
-		"quantity":          fmt.Sprintf("%.8f", order.Quantity),
-		"timeInForce":        "GTC",
+		"symbol":      order.Symbol,
+		"side":        order.Side,
+		"type":        order.Type,
+		"quantity":    fmt.Sprintf("%.8f", order.Quantity),
+		"timeInForce": "GTC",
 	}
 
 	if order.Price > 0 {
@@ -297,14 +298,14 @@ func (b *BinanceAPI) GetOpenOrders(symbol string) ([]Order, error) {
 	result := make([]Order, len(orders))
 	for i, o := range orders {
 		result[i] = Order{
-			ID:         fmt.Sprintf("%d", o.OrderID),
-			Symbol:     o.Symbol,
-			Side:       o.Side,
-			Type:       o.Type,
-			Quantity:   o.OrigQty,
+			ID:        fmt.Sprintf("%d", o.OrderID),
+			Symbol:    o.Symbol,
+			Side:      o.Side,
+			Type:      o.Type,
+			Quantity:  o.OrigQty,
 			Price:     o.Price,
-			Status:     o.Status,
-			Timestamp:  time.Now().Unix(),
+			Status:    o.Status,
+			Timestamp: time.Now().Unix(),
 		}
 	}
 
@@ -327,11 +328,11 @@ func NewCoinbaseAPI(client *ExchangeClient) *CoinbaseAPI {
 
 // Coinbase product ticker
 type CoinbaseProduct struct {
-	TradeID       int64   `json:"trade_id"`
-	Price        string `json:"price"`
-	Size         string `json:"size"`
-	Volume       string `json:"volume"`
-	Time         string `json:"time"`
+	TradeID int64  `json:"trade_id"`
+	Price   string `json:"price"`
+	Size    string `json:"size"`
+	Volume  string `json:"volume"`
+	Time    string `json:"time"`
 }
 
 // GetTicker fetches ticker data
@@ -412,13 +413,13 @@ func NewOKXAPI(client *ExchangeClient) *OKXAPI {
 
 // OKX ticker response
 type OKXTicker struct {
-	InstID  string `json:"instId"`
+	InstID string `json:"instId"`
 	Last   string `json:"last"`
 	Open   string `json:"open"`
 	High   string `json:"high"`
 	Low    string `json:"low"`
 	VolCcy string `json:"volCcy"`
-	Vol   string `json:"vol"`
+	Vol    string `json:"vol"`
 }
 
 // GetTicker fetches ticker data
@@ -475,12 +476,12 @@ func NewBybitAPI(client *ExchangeClient) *BybitAPI {
 
 // Bybit ticker
 type BybitTicker struct {
-	Symbol         string `json:"symbol1"`
-	LastPrice     string `json:"lastPrice"`
-	Price24h      string `json:"price24h"`
-	Volume24h     string `json:"volume24h1"`
-	HighPrice24h  string `json:"highPrice24h"`
-	LowPrice24h   string `json:"lowPrice24h"`
+	Symbol       string `json:"symbol1"`
+	LastPrice    string `json:"lastPrice"`
+	Price24h     string `json:"price24h"`
+	Volume24h    string `json:"volume24h1"`
+	HighPrice24h string `json:"highPrice24h"`
+	LowPrice24h  string `json:"lowPrice24h"`
 }
 
 // GetTicker fetches ticker data
@@ -551,12 +552,12 @@ func (bg *BitGetAPI) GetTicker(symbol string) (*PriceData, error) {
 // PriceData represents price information
 type PriceData struct {
 	Symbol    string  `json:"symbol"`
-	Price    float64 `json:"price"`
+	Price     float64 `json:"price"`
 	Change24h float64 `json:"change_24h"`
 	Volume24h float64 `json:"volume_24h"`
-	High24h  float64 `json:"high_24h"`
-	Low24h   float64 `json:"low_24h"`
-	Timestamp int64  `json:"timestamp"`
+	High24h   float64 `json:"high_24h"`
+	Low24h    float64 `json:"low_24h"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 // Balance represents a balance
@@ -570,20 +571,20 @@ type Balance struct {
 type Order struct {
 	ID        string  `json:"id"`
 	Symbol    string  `json:"symbol"`
-	Side      string  `json:"side"`       // BUY or SELL
-	Type      string  `json:"type"`       // LIMIT or MARKET
+	Side      string  `json:"side"` // BUY or SELL
+	Type      string  `json:"type"` // LIMIT or MARKET
 	Quantity  float64 `json:"quantity"`
 	Price     float64 `json:"price"`
 	Status    string  `json:"status"`
-	Timestamp int64  `json:"timestamp"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 // OrderBook represents an order book
 type OrderBook struct {
-	Symbol    string       `json:"symbol"`
-	Bids      [][2]float64 `json:"bids"`
-	Asks      [][2]float64 `json:"asks"`
-	LastUpdate int64       `json:"last_update"`
+	Symbol     string       `json:"symbol"`
+	Bids       [][2]float64 `json:"bids"`
+	Asks       [][2]float64 `json:"asks"`
+	LastUpdate int64        `json:"last_update"`
 }
 
 // request makes an API request
@@ -684,7 +685,7 @@ func NewExchange(exchange Exchange, config ExchangeConfig) interface{} {
 
 // FiatRampConfig holds configuration for fiat on-ramp providers
 type FiatRampConfig struct {
-	Provider    string `json:"provider"` // moonpay, transak, wyre
+	Provider   string `json:"provider"` // moonpay, transak, wyre
 	APIKey     string `json:"api_key"`
 	APIBase    string `json:"api_base"`
 	WebhookURL string `json:"webhook_url"`
@@ -700,40 +701,40 @@ type FiatRampProvider interface {
 // FiatTransactionRequest represents a fiat transaction request
 type FiatTransactionRequest struct {
 	WalletAddress string  `json:"wallet_address"`
-	CryptoSymbol   string  `json:"crypto_symbol"`
+	CryptoSymbol  string  `json:"crypto_symbol"`
 	FiatSymbol    string  `json:"fiat_symbol"`
 	Amount        float64 `json:"amount"`
-	FiatAmount   float64 `json:"fiat_amount"`
-	RedirectURL  string  `json:"redirect_url"`
+	FiatAmount    float64 `json:"fiat_amount"`
+	RedirectURL   string  `json:"redirect_url"`
 }
 
 // FiatTransaction represents a fiat transaction
 type FiatTransaction struct {
-	ID              string  `json:"id"`
-	Status          string  `json:"status"`
-	CryptoAmount    float64 `json:"crypto_amount"`
-	FiatAmount     float64 `json:"fiat_amount"`
-	CryptoSymbol   string  `json:"crypto_symbol"`
-	FiatSymbol     string  `json:"fiat_symbol"`
-	CryptoAddress  string  `json:"crypto_address"`
-	RedirectURL    string  `json:"redirect_url"`
-	Timestamp      int64   `json:"timestamp"`
+	ID            string  `json:"id"`
+	Status        string  `json:"status"`
+	CryptoAmount  float64 `json:"crypto_amount"`
+	FiatAmount    float64 `json:"fiat_amount"`
+	CryptoSymbol  string  `json:"crypto_symbol"`
+	FiatSymbol    string  `json:"fiat_symbol"`
+	CryptoAddress string  `json:"crypto_address"`
+	RedirectURL   string  `json:"redirect_url"`
+	Timestamp     int64   `json:"timestamp"`
 }
 
 // FiatQuoteRequest represents a fiat quote request
 type FiatQuoteRequest struct {
 	CryptoSymbol string  `json:"crypto_symbol"`
-	FiatSymbol  string  `json:"fiat_symbol"`
-	Amount     float64 `json:"amount"`
-	Side       string  `json:"side"` // buy or sell
+	FiatSymbol   string  `json:"fiat_symbol"`
+	Amount       float64 `json:"amount"`
+	Side         string  `json:"side"` // buy or sell
 }
 
 // FiatQuote represents a fiat quote
 type FiatQuote struct {
-	CryptoAmount   float64 `json:"crypto_amount"`
-	FiatAmount    float64 `json:"fiat_amount"`
-	CryptoSymbol  string  `json:"crypto_symbol"`
-	FiatSymbol    string  `json:"fiat_symbol"`
+	CryptoAmount float64 `json:"crypto_amount"`
+	FiatAmount   float64 `json:"fiat_amount"`
+	CryptoSymbol string  `json:"crypto_symbol"`
+	FiatSymbol   string  `json:"fiat_symbol"`
 	ExchangeRate float64 `json:"exchange_rate"`
 	ExpiresAt    int64   `json:"expires_at"`
 }
@@ -758,8 +759,8 @@ func (m *MoonPayProvider) CreateTransaction(req *FiatTransactionRequest) (*FiatT
 		"walletAddress": req.WalletAddress,
 		"baseCurrency":  req.FiatSymbol,
 		"quoteCurrency": req.CryptoSymbol,
-		"baseAmount":   req.FiatAmount,
-		"redirectURL":  req.RedirectURL,
+		"baseAmount":    req.FiatAmount,
+		"redirectURL":   req.RedirectURL,
 	})
 
 	httpReq, err := http.NewRequest("POST", m.config.APIBase+"/v1/transactions", bytes.NewBuffer(body))
@@ -782,13 +783,13 @@ func (m *MoonPayProvider) CreateTransaction(req *FiatTransactionRequest) (*FiatT
 	}
 
 	return &FiatTransaction{
-		ID:             result["id"].(string),
-		Status:         "pending",
-		CryptoAddress:  req.WalletAddress,
-		FiatAmount:     req.FiatAmount,
+		ID:            result["id"].(string),
+		Status:        "pending",
+		CryptoAddress: req.WalletAddress,
+		FiatAmount:    req.FiatAmount,
 		CryptoSymbol:  req.CryptoSymbol,
-		FiatSymbol:     req.FiatSymbol,
-		RedirectURL:    result["url"].(string),
+		FiatSymbol:    req.FiatSymbol,
+		RedirectURL:   result["url"].(string),
 		Timestamp:     time.Now().Unix(),
 	}, nil
 }
@@ -819,7 +820,7 @@ func (m *MoonPayProvider) GetTransaction(id string) (*FiatTransaction, error) {
 func (m *MoonPayProvider) GetQuote(req *FiatQuoteRequest) (*FiatQuote, error) {
 	// In production, this would call MoonPay's quote API
 	return &FiatQuote{
-		CryptoAmount:  req.Amount * 0.001, // Simplified
+		CryptoAmount: req.Amount * 0.001, // Simplified
 		FiatAmount:   req.Amount,
 		CryptoSymbol: req.CryptoSymbol,
 		FiatSymbol:   req.FiatSymbol,
@@ -846,9 +847,9 @@ type NotificationConfig struct {
 
 // NotificationService handles all notification types
 type NotificationService struct {
-	config NotificationConfig
-	email  *SMTPClient
-	push   *PushNotificationClient
+	config   NotificationConfig
+	email    *SMTPClient
+	push     *PushNotificationClient
 	telegram *TelegramClient
 }
 
@@ -956,12 +957,12 @@ func main() {
 
 	// Example: Create Binance client
 	binanceConfig := ExchangeConfig{
-		APIKey:       getRequiredEnv("EXCHANGE_API_KEY"),
-		SecretKey:    getRequiredEnv("EXCHANGE_API_SECRET"),
-		APIBase:      "https://api.binance.com",
-		WSBase:       "wss://stream.binance.com:9443",
-		HTTPTimeout:  30,
-		RateLimit:    10,
+		APIKey:      getRequiredEnv("EXCHANGE_API_KEY"),
+		SecretKey:   getRequiredEnv("EXCHANGE_API_SECRET"),
+		APIBase:     "https://api.binance.com",
+		WSBase:      "wss://stream.binance.com:9443",
+		HTTPTimeout: 30,
+		RateLimit:   10,
 	}
 
 	binance := NewExchange(ExchangeBinance, binanceConfig)

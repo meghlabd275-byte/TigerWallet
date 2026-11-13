@@ -448,90 +448,90 @@ func (s *AccountAbstractionService) processOperation(opID string) {
 // fabricated: when the node cannot be reached, the operation is rejected
 // rather than filled with made-up numbers.
 func (s *AccountAbstractionService) estimateGas(ctx context.Context, userOp *UserOperation) (GasFees, error) {
-        rpcURL := s.rpcURLFor(userOp.ChainID)
-        if rpcURL == "" {
-                return GasFees{}, fmt.Errorf("no RPC endpoint configured for chain %d", userOp.ChainID)
-        }
+	rpcURL := s.rpcURLFor(userOp.ChainID)
+	if rpcURL == "" {
+		return GasFees{}, fmt.Errorf("no RPC endpoint configured for chain %d", userOp.ChainID)
+	}
 
-        client := rpcClientFor(rpcURL)
+	client := rpcClientFor(rpcURL)
 
-        // The fee fields come from the node.
-        var gasPriceHex string
-        if err := client.CallContext(ctx, &gasPriceHex, "eth_gasPrice"); err != nil {
-                return GasFees{}, fmt.Errorf("eth_gasPrice failed: %w", err)
-        }
-        gasPrice, ok := new(big.Int).SetString(strings.TrimPrefix(gasPriceHex, "0x"), 16)
-        if !ok {
-                return GasFees{}, fmt.Errorf("eth_gasPrice returned %q, which is not a number", gasPriceHex)
-        }
+	// The fee fields come from the node.
+	var gasPriceHex string
+	if err := client.CallContext(ctx, &gasPriceHex, "eth_gasPrice"); err != nil {
+		return GasFees{}, fmt.Errorf("eth_gasPrice failed: %w", err)
+	}
+	gasPrice, ok := new(big.Int).SetString(strings.TrimPrefix(gasPriceHex, "0x"), 16)
+	if !ok {
+		return GasFees{}, fmt.Errorf("eth_gasPrice returned %q, which is not a number", gasPriceHex)
+	}
 
-        maxPriorityFee := new(big.Int).Div(gasPrice, big.NewInt(10))
-        maxFeePerGas := new(big.Int).Add(gasPrice, maxPriorityFee)
+	maxPriorityFee := new(big.Int).Div(gasPrice, big.NewInt(10))
+	maxFeePerGas := new(big.Int).Add(gasPrice, maxPriorityFee)
 
-        // The caller's explicit values win.
-        if userOp.MaxFeePerGas != "" {
-                if v, ok := new(big.Int).SetString(userOp.MaxFeePerGas, 10); ok {
-                        maxFeePerGas = v
-                }
-        }
-        if userOp.MaxPriorityFeePerGas != "" {
-                if v, ok := new(big.Int).SetString(userOp.MaxPriorityFeePerGas, 10); ok {
-                        maxPriorityFee = v
-                }
-        }
+	// The caller's explicit values win.
+	if userOp.MaxFeePerGas != "" {
+		if v, ok := new(big.Int).SetString(userOp.MaxFeePerGas, 10); ok {
+			maxFeePerGas = v
+		}
+	}
+	if userOp.MaxPriorityFeePerGas != "" {
+		if v, ok := new(big.Int).SetString(userOp.MaxPriorityFeePerGas, 10); ok {
+			maxPriorityFee = v
+		}
+	}
 
-        preVerificationGas := new(big.Int)
-        if userOp.PreVerificationGas != "" {
-                if v, ok := new(big.Int).SetString(userOp.PreVerificationGas, 10); ok {
-                        preVerificationGas = v
-                }
-        }
+	preVerificationGas := new(big.Int)
+	if userOp.PreVerificationGas != "" {
+		if v, ok := new(big.Int).SetString(userOp.PreVerificationGas, 10); ok {
+			preVerificationGas = v
+		}
+	}
 
-        verificationGas := new(big.Int)
-        if userOp.VerificationGasLimit != "" {
-                if v, ok := new(big.Int).SetString(userOp.VerificationGasLimit, 10); ok {
-                        verificationGas = v
-                }
-        }
+	verificationGas := new(big.Int)
+	if userOp.VerificationGasLimit != "" {
+		if v, ok := new(big.Int).SetString(userOp.VerificationGasLimit, 10); ok {
+			verificationGas = v
+		}
+	}
 
-        callGas := new(big.Int)
-        if userOp.CallGasLimit != "" {
-                if v, ok := new(big.Int).SetString(userOp.CallGasLimit, 10); ok {
-                        callGas = v
-                }
-        }
+	callGas := new(big.Int)
+	if userOp.CallGasLimit != "" {
+		if v, ok := new(big.Int).SetString(userOp.CallGasLimit, 10); ok {
+			callGas = v
+		}
+	}
 
-        // Ask the node for the call gas limit when the caller did not supply
-        // one and the operation carries calldata.
-        if callGas.Sign() == 0 && userOp.CallData != "" {
-                call := ethCallObject{
-                        From: userOp.Sender,
-                        To:   s.entryPointAddress,
-                        Data: userOp.CallData,
-                }
-                var estimated string
-                if err := client.CallContext(ctx, &estimated, "eth_estimateGas", call); err == nil {
-                        if v, ok := new(big.Int).SetString(strings.TrimPrefix(estimated, "0x"), 16); ok {
-                                callGas = v
-                        }
-                }
-                // An estimator failure leaves the limit at zero for the caller
-                // to fill; it is never replaced with a guess.
-        }
+	// Ask the node for the call gas limit when the caller did not supply
+	// one and the operation carries calldata.
+	if callGas.Sign() == 0 && userOp.CallData != "" {
+		call := ethCallObject{
+			From: userOp.Sender,
+			To:   s.entryPointAddress,
+			Data: userOp.CallData,
+		}
+		var estimated string
+		if err := client.CallContext(ctx, &estimated, "eth_estimateGas", call); err == nil {
+			if v, ok := new(big.Int).SetString(strings.TrimPrefix(estimated, "0x"), 16); ok {
+				callGas = v
+			}
+		}
+		// An estimator failure leaves the limit at zero for the caller
+		// to fill; it is never replaced with a guess.
+	}
 
-        total := new(big.Int).Add(preVerificationGas, verificationGas)
-        total = new(big.Int).Add(total, callGas)
-        totalGasCost := new(big.Int).Mul(total, maxFeePerGas)
+	total := new(big.Int).Add(preVerificationGas, verificationGas)
+	total = new(big.Int).Add(total, callGas)
+	totalGasCost := new(big.Int).Mul(total, maxFeePerGas)
 
-        return GasFees{
-                PreVerificationGas: preVerificationGas.String(),
-                VerificationGas:    verificationGas.String(),
-                CallGasLimit:       callGas.String(),
-                MaxFeePerGas:       maxFeePerGas.String(),
-                MaxPriorityFee:     maxPriorityFee.String(),
-                TotalGasCost:       totalGasCost.String(),
-                UserOpHash:         s.generateUserOpHash(userOp),
-        }, nil
+	return GasFees{
+		PreVerificationGas: preVerificationGas.String(),
+		VerificationGas:    verificationGas.String(),
+		CallGasLimit:       callGas.String(),
+		MaxFeePerGas:       maxFeePerGas.String(),
+		MaxPriorityFee:     maxPriorityFee.String(),
+		TotalGasCost:       totalGasCost.String(),
+		UserOpHash:         s.generateUserOpHash(userOp),
+	}, nil
 }
 
 // ============================================================================

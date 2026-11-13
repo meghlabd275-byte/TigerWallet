@@ -52,8 +52,8 @@ func slip10DeriveEd25519(seed []byte, path string) ([]byte, error) {
 	mac := hmac.New(sha512.New, []byte("ed25519 seed"))
 	mac.Write(seed)
 	I := mac.Sum(nil)
-	il := I[:32]  // master private key
-	ir := I[32:]  // master chain code
+	il := I[:32] // master private key
+	ir := I[32:] // master chain code
 
 	segments, err := parsePath(path)
 	if err != nil {
@@ -461,7 +461,7 @@ func decodeP2PKHAddress(addr string) ([]byte, error) {
 type CosmosSignDoc struct {
 	AccountNumber string                   `json:"account_number"`
 	ChainID       string                   `json:"chain_id"`
-	Fee           CosmosFee                 `json:"fee"`
+	Fee           CosmosFee                `json:"fee"`
 	Memo          string                   `json:"memo"`
 	Msgs          []map[string]interface{} `json:"msgs"`
 	Sequence      string                   `json:"sequence"`

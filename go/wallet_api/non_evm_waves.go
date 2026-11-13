@@ -13,8 +13,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	edwards "filippo.io/edwards25519"
+	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/blake2b"
 )
 

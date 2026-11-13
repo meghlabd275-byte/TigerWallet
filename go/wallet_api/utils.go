@@ -54,18 +54,18 @@ func etherToWei(ether *big.Float) *big.Int {
 // Returns nil for empty or unparsable input so callers can fall back to the
 // chain-suggested fee.
 func gweiToWei(gwei string) *big.Int {
-        gwei = strings.TrimSpace(gwei)
-        if gwei == "" {
-                return nil
-        }
-        f, ok := new(big.Float).SetString(gwei)
-        if !ok || f.Sign() < 0 {
-                return nil
-        }
-        weiPerGwei := new(big.Float).SetFloat64(1e9)
-        weiFloat := new(big.Float).Mul(f, weiPerGwei)
-        wei, _ := weiFloat.Int(nil)
-        return wei
+	gwei = strings.TrimSpace(gwei)
+	if gwei == "" {
+		return nil
+	}
+	f, ok := new(big.Float).SetString(gwei)
+	if !ok || f.Sign() < 0 {
+		return nil
+	}
+	weiPerGwei := new(big.Float).SetFloat64(1e9)
+	weiFloat := new(big.Float).Mul(f, weiPerGwei)
+	wei, _ := weiFloat.Int(nil)
+	return wei
 }
 
 // weiToGweiFloat converts wei to gwei as a float.

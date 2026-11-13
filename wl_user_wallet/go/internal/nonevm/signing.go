@@ -222,7 +222,7 @@ type BTCInput struct {
 // BTCOutput describes one transaction output.
 type BTCOutput struct {
 	Address   string `json:"address"`
-	AmountSat int64 `json:"amount_sat"`
+	AmountSat int64  `json:"amount_sat"`
 }
 
 // BTCSign builds a signed legacy Bitcoin transaction and returns the raw tx hex.

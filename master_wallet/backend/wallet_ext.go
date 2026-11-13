@@ -32,11 +32,11 @@ import (
 // ---------------------------------------------------------------------------
 
 type updateWalletReq struct {
-	Name                 *string                `json:"name"`
-	IsActive             *bool                  `json:"is_active"`
-	DailyLimit           *string                `json:"daily_limit"`
-	PerTransactionLimit  *string                `json:"per_transaction_limit"`
-	Metadata             map[string]interface{} `json:"metadata"`
+	Name                *string                `json:"name"`
+	IsActive            *bool                  `json:"is_active"`
+	DailyLimit          *string                `json:"daily_limit"`
+	PerTransactionLimit *string                `json:"per_transaction_limit"`
+	Metadata            map[string]interface{} `json:"metadata"`
 }
 
 func (svc *Service) UpdateMasterWallet(c *gin.Context) {
@@ -257,11 +257,11 @@ func (svc *Service) GetMultisigWalletDetail(c *gin.Context) {
 // ---------------------------------------------------------------------------
 
 type passkeyRegisterReq struct {
-	CredentialID    string   `json:"credential_id" binding:"required"` // base64url
-	PublicKey       string   `json:"public_key" binding:"required"`    // base64url SPKI (SubjectPublicKeyInfo)
-	SignCount       uint32   `json:"sign_count"`
-	Transports      []string `json:"transports"`
-	Label           string   `json:"label"`
+	CredentialID string   `json:"credential_id" binding:"required"` // base64url
+	PublicKey    string   `json:"public_key" binding:"required"`    // base64url SPKI (SubjectPublicKeyInfo)
+	SignCount    uint32   `json:"sign_count"`
+	Transports   []string `json:"transports"`
+	Label        string   `json:"label"`
 	// Optional attestation fields for audit (not verified server-side; the
 	// client performs the registration ceremony against the platform).
 	AttestationObject string `json:"attestation_object"`
@@ -389,10 +389,10 @@ func (svc *Service) DeletePasskey(c *gin.Context) {
 // passkeyVerifyReq is a WebAuthn assertion payload produced by the client
 // navigator.credentials.get() / ASAuthorizationPlatformPublicKeyCredentialAssertion.
 type passkeyVerifyReq struct {
-	CredentialID    string `json:"credential_id" binding:"required"`
+	CredentialID      string `json:"credential_id" binding:"required"`
 	AuthenticatorData string `json:"authenticator_data" binding:"required"` // base64url
-	ClientDataJSON  string `json:"client_data_json" binding:"required"`    // base64url
-	Signature       string `json:"signature" binding:"required"`           // base64url DER ECDSA sig
+	ClientDataJSON    string `json:"client_data_json" binding:"required"`   // base64url
+	Signature         string `json:"signature" binding:"required"`          // base64url DER ECDSA sig
 }
 
 // VerifyPasskeyAssertion verifies a WebAuthn assertion against the stored
@@ -453,8 +453,8 @@ func (svc *Service) VerifyPasskeyAssertion(c *gin.Context) {
 
 	// Verify the clientDataJSON "type" is webauthn.get and origin is trusted.
 	var cd struct {
-		Type   string `json:"type"`
-		Origin string `json:"origin"`
+		Type      string `json:"type"`
+		Origin    string `json:"origin"`
 		Challenge string `json:"challenge"`
 	}
 	if err := json.Unmarshal(clientData, &cd); err != nil {

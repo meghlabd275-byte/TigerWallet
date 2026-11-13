@@ -584,4 +584,3 @@ func renderTemplate(body string, vars map[string]string) (string, error) {
 
 	return out.String(), nil
 }
-

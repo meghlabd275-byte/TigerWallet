@@ -972,7 +972,7 @@ func verifyToken(tokenString string) (map[string]interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-return jwtSecret, nil
+		return jwtSecret, nil
 	}, jwt.WithValidMethods([]string{"HS256"}))
 
 	if err != nil {

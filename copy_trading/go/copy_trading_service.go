@@ -30,25 +30,25 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 	// White-label license gate (fail-closed). The copy-trading product is a WL
 	// product; without a valid license validated against the TigerWallet
 	// SuperAdmin control plane, no request is served.
-	ControlPlaneURL    string `json:"control_plane_url"`
-	ControlPlaneToken  string `json:"control_plane_token"`
-	WLClientID         string `json:"wl_client_id"`
-	LicenseKey         string `json:"license_key"`
-	Product            string `json:"product"`
-	InstanceID         string `json:"instance_id"`
-	HeartbeatInterval  time.Duration `json:"heartbeat_interval"`
-	JWTSecret          string        `json:"jwt_secret"`
+	ControlPlaneURL   string        `json:"control_plane_url"`
+	ControlPlaneToken string        `json:"control_plane_token"`
+	WLClientID        string        `json:"wl_client_id"`
+	LicenseKey        string        `json:"license_key"`
+	Product           string        `json:"product"`
+	InstanceID        string        `json:"instance_id"`
+	HeartbeatInterval time.Duration `json:"heartbeat_interval"`
+	JWTSecret         string        `json:"jwt_secret"`
 }
 
 // ============================================================================
@@ -57,85 +57,85 @@ type Config struct {
 
 // Trader represents an expert trader
 type Trader struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	TraderID       string    `gorm:"uniqueIndex" json:"trader_id"`
-	UserAddress    string    `gorm:"index" json:"user_address"`
-	Username       string    `json:"username"`
-	Avatar         string    `json:"avatar"`
-	Bio            string    `json:"bio"`
-	TotalPnl       float64   `json:"total_pnl"`
-	WinRate        float64   `json:"win_rate"`
-	TotalTrades    int       `json:"total_trades"`
-	Followers      int       `json:"followers"`
-	TotalAum       float64   `json:"total_aum"` // Assets Under Management
-	Verified      bool      `json:"verified"`
-	Status        string    `json:"status"` // ACTIVE, PAUSED, BANNED
-	Commission    float64   `json:"commission"` // % of profits
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	TraderID    string    `gorm:"uniqueIndex" json:"trader_id"`
+	UserAddress string    `gorm:"index" json:"user_address"`
+	Username    string    `json:"username"`
+	Avatar      string    `json:"avatar"`
+	Bio         string    `json:"bio"`
+	TotalPnl    float64   `json:"total_pnl"`
+	WinRate     float64   `json:"win_rate"`
+	TotalTrades int       `json:"total_trades"`
+	Followers   int       `json:"followers"`
+	TotalAum    float64   `json:"total_aum"` // Assets Under Management
+	Verified    bool      `json:"verified"`
+	Status      string    `json:"status"`     // ACTIVE, PAUSED, BANNED
+	Commission  float64   `json:"commission"` // % of profits
+	ChainID     int64     `json:"chain_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // Follower represents a user following a trader
 type Follower struct {
 	ID            uint      `gorm:"primaryKey" json:"id"`
 	FollowerID    string    `gorm:"uniqueIndex" json:"follower_id"`
-	TraderID     string    `gorm:"index" json:"trader_id"`
-	TraderAddress string   `json:"trader_address"`
-	UserAddress  string    `gorm:"index" json:"user_address"`
-	Allocation   float64   `json:"allocation"` // Amount allocated to copy
-	CopyRatio    float64   `json:"copy_ratio"` // 0.1 to 10.0
-	Status       string    `json:"status"` // ACTIVE, PAUSED, STOPPED
-	TotalPnl     float64   `json:"total_pnl"`
-	ChainID      int64     `json:"chain_id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	TraderID      string    `gorm:"index" json:"trader_id"`
+	TraderAddress string    `json:"trader_address"`
+	UserAddress   string    `gorm:"index" json:"user_address"`
+	Allocation    float64   `json:"allocation"` // Amount allocated to copy
+	CopyRatio     float64   `json:"copy_ratio"` // 0.1 to 10.0
+	Status        string    `json:"status"`     // ACTIVE, PAUSED, STOPPED
+	TotalPnl      float64   `json:"total_pnl"`
+	ChainID       int64     `json:"chain_id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // CopiedTrade represents a copied trade
 type CopiedTrade struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	CopiedTradeID string    `gorm:"uniqueIndex" json:"copied_trade_id"`
-	FollowerID    string    `json:"follower_id"`
-	TraderID      string    `json:"trader_id"`
-	UserAddress   string    `json:"user_address"`
-	Symbol        string    `json:"symbol"`
-	Side          string    `json:"side"` // BUY or SELL
-	Amount        float64   `json:"amount"`
-	Price         float64   `json:"price"`
-	Pnl           float64   `json:"pnl"`
-	Status        string    `json:"status"` // OPEN, CLOSED
-	ChainID       int64     `json:"chain_id"`
-	OpenedAt      time.Time `json:"opened_at"`
+	ID            uint       `gorm:"primaryKey" json:"id"`
+	CopiedTradeID string     `gorm:"uniqueIndex" json:"copied_trade_id"`
+	FollowerID    string     `json:"follower_id"`
+	TraderID      string     `json:"trader_id"`
+	UserAddress   string     `json:"user_address"`
+	Symbol        string     `json:"symbol"`
+	Side          string     `json:"side"` // BUY or SELL
+	Amount        float64    `json:"amount"`
+	Price         float64    `json:"price"`
+	Pnl           float64    `json:"pnl"`
+	Status        string     `json:"status"` // OPEN, CLOSED
+	ChainID       int64      `json:"chain_id"`
+	OpenedAt      time.Time  `json:"opened_at"`
 	ClosedAt      *time.Time `json:"closed_at"`
 }
 
 // TraderTrade represents a trader's trade
 type TraderTrade struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	TradeID       string    `gorm:"uniqueIndex" json:"trade_id"`
-	TraderID      string    `gorm:"index" json:"trader_id"`
-	UserAddress   string    `json:"user_address"`
-	Symbol        string    `json:"symbol"`
-	Side          string    `json:"side"`
-	Amount        float64   `json:"amount"`
-	Price         float64   `json:"price"`
-	Pnl           float64   `json:"pnl"`
-	OpenedAt      time.Time `json:"opened_at"`
-	ClosedAt      *time.Time `json:"closed_at"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	TradeID     string     `gorm:"uniqueIndex" json:"trade_id"`
+	TraderID    string     `gorm:"index" json:"trader_id"`
+	UserAddress string     `json:"user_address"`
+	Symbol      string     `json:"symbol"`
+	Side        string     `json:"side"`
+	Amount      float64    `json:"amount"`
+	Price       float64    `json:"price"`
+	Pnl         float64    `json:"pnl"`
+	OpenedAt    time.Time  `json:"opened_at"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	ChainID     int64      `json:"chain_id"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // LeaderboardEntry for ranking traders
 type LeaderboardEntry struct {
-	TraderID   string  `json:"trader_id"`
-	Username   string  `json:"username"`
-	Avatar     string  `json:"avatar"`
-	TotalPnl   float64 `json:"total_pnl"`
-	WinRate    float64 `json:"win_rate"`
-	TotalTrades int   `json:"total_trades"`
-	Followers  int    `json:"followers"`
+	TraderID    string  `json:"trader_id"`
+	Username    string  `json:"username"`
+	Avatar      string  `json:"avatar"`
+	TotalPnl    float64 `json:"total_pnl"`
+	WinRate     float64 `json:"win_rate"`
+	TotalTrades int     `json:"total_trades"`
+	Followers   int     `json:"followers"`
 }
 
 // ============================================================================
@@ -144,9 +144,9 @@ type LeaderboardEntry struct {
 
 type CopyTradingService struct {
 	db     *gorm.DB
-	redis *redis.Client
+	redis  *redis.Client
 	config Config
-	mu    sync.RWMutex
+	mu     sync.RWMutex
 }
 
 func NewCopyTradingService(config Config) (*CopyTradingService, error) {
@@ -187,9 +187,9 @@ func NewCopyTradingService(config Config) (*CopyTradingService, error) {
 }
 
 func (s *CopyTradingService) initializeSampleTraders() {
-        // No sample/seed traders. Trader profiles must come from real on-chain
-        // performance data (verified via the backend), not fabricated placeholder
-        // addresses (0x1111...), PnL, or win rates. Do not seed fake copy-trading leaders.
+	// No sample/seed traders. Trader profiles must come from real on-chain
+	// performance data (verified via the backend), not fabricated placeholder
+	// addresses (0x1111...), PnL, or win rates. Do not seed fake copy-trading leaders.
 }
 
 // ====+
@@ -198,11 +198,11 @@ func (s *CopyTradingService) initializeSampleTraders() {
 
 type RegisterTraderRequest struct {
 	UserAddress string  `json:"user_address" binding:"required"`
-	Username   string  `json:"username" binding:"required"`
-	Avatar    string  `json:"avatar"`
-	Bio       string  `json:"bio"`
-	Commission float64 `json:"commission"`
-	ChainID   int64   `json:"chain_id"`
+	Username    string  `json:"username" binding:"required"`
+	Avatar      string  `json:"avatar"`
+	Bio         string  `json:"bio"`
+	Commission  float64 `json:"commission"`
+	ChainID     int64   `json:"chain_id"`
 }
 
 func (s *CopyTradingService) RegisterTrader(ctx *gin.Context) {
@@ -227,18 +227,18 @@ func (s *CopyTradingService) RegisterTrader(ctx *gin.Context) {
 	trader := Trader{
 		TraderID:    generateTraderID(req.UserAddress),
 		UserAddress: req.UserAddress,
-		Username:   req.Username,
-		Avatar:     req.Avatar,
-		Bio:        req.Bio,
-		TotalPnl:   0,
+		Username:    req.Username,
+		Avatar:      req.Avatar,
+		Bio:         req.Bio,
+		TotalPnl:    0,
 		WinRate:     0,
 		TotalTrades: 0,
 		Followers:   0,
-		TotalAum:   0,
-		Verified:   false,
-		Status:     "ACTIVE",
-		Commission: commission,
-		ChainID:    req.ChainID,
+		TotalAum:    0,
+		Verified:    false,
+		Status:      "ACTIVE",
+		Commission:  commission,
+		ChainID:     req.ChainID,
 	}
 
 	if err := s.db.Create(&trader).Error; err != nil {
@@ -247,8 +247,8 @@ func (s *CopyTradingService) RegisterTrader(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"success":    true,
-		"trader_id":  trader.TraderID,
+		"success":   true,
+		"trader_id": trader.TraderID,
 		"status":    "ACTIVE",
 	})
 }
@@ -303,11 +303,11 @@ func (s *CopyTradingService) FollowTrader(ctx *gin.Context) {
 			FollowerID:    generateFollowerID(req.UserAddress, req.TraderID),
 			TraderID:      req.TraderID,
 			TraderAddress: trader.UserAddress,
-			UserAddress:  req.UserAddress,
-			Allocation:   req.Allocation,
-			CopyRatio:    copyRatio,
-			Status:       "ACTIVE",
-			TotalPnl:     0,
+			UserAddress:   req.UserAddress,
+			Allocation:    req.Allocation,
+			CopyRatio:     copyRatio,
+			Status:        "ACTIVE",
+			TotalPnl:      0,
 			ChainID:       req.ChainID,
 		}
 		s.db.Create(&follower)
@@ -365,7 +365,7 @@ func (s *CopyTradingService) UnfollowTrader(ctx *gin.Context) {
 // ============================================================================
 
 type CopyTradeRequest struct {
-	FollowerID string  `json:"follower_id" binding:"required"`
+	FollowerID string      `json:"follower_id" binding:"required"`
 	Trade      TraderTrade `json:"trade" binding:"required"`
 }
 
@@ -397,25 +397,25 @@ func (s *CopyTradingService) OnTraderTrade(ctx *gin.Context) {
 
 		copiedTrade := CopiedTrade{
 			CopiedTradeID: generateCopiedTradeID(follower.FollowerID, req.Trade.TradeID),
-			FollowerID:   follower.FollowerID,
-			TraderID:     req.Trade.TraderID,
-			UserAddress:  follower.UserAddress,
-			Symbol:       req.Trade.Symbol,
-			Side:         req.Trade.Side,
-			Amount:       copiedAmount,
-			Price:        req.Trade.Price,
-			Pnl:          0,
-			Status:       "OPEN",
-			ChainID:      req.Trade.ChainID,
-			OpenedAt:     time.Now(),
+			FollowerID:    follower.FollowerID,
+			TraderID:      req.Trade.TraderID,
+			UserAddress:   follower.UserAddress,
+			Symbol:        req.Trade.Symbol,
+			Side:          req.Trade.Side,
+			Amount:        copiedAmount,
+			Price:         req.Trade.Price,
+			Pnl:           0,
+			Status:        "OPEN",
+			ChainID:       req.Trade.ChainID,
+			OpenedAt:      time.Now(),
 		}
 
 		s.db.Create(&copiedTrade)
 	}
 
 	ctx.JSON(200, gin.H{
-		"success":     true,
-		"copied_to":   len(followers),
+		"success":   true,
+		"copied_to": len(followers),
 	})
 }
 
@@ -519,8 +519,8 @@ func (s *CopyTradingService) GetTrader(ctx *gin.Context) {
 	s.db.Model(&Follower{}).Where("trader_id = ? AND status = ?", traderID, "ACTIVE").Count(&followerCount)
 
 	ctx.JSON(200, gin.H{
-		"trader":        trader,
-		"recent_trades": trades,
+		"trader":         trader,
+		"recent_trades":  trades,
 		"follower_count": followerCount,
 	})
 }
@@ -535,13 +535,13 @@ func (s *CopyTradingService) GetLeaderboard(ctx *gin.Context) {
 	entries := make([]LeaderboardEntry, len(traders))
 	for i, trader := range traders {
 		entries[i] = LeaderboardEntry{
-			TraderID:   trader.TraderID,
-			Username:   trader.Username,
-			Avatar:     trader.Avatar,
-			TotalPnl:   trader.TotalPnl,
-			WinRate:    trader.WinRate,
+			TraderID:    trader.TraderID,
+			Username:    trader.Username,
+			Avatar:      trader.Avatar,
+			TotalPnl:    trader.TotalPnl,
+			WinRate:     trader.WinRate,
 			TotalTrades: trader.TotalTrades,
-			Followers:  trader.Followers,
+			Followers:   trader.Followers,
 		}
 	}
 
@@ -621,13 +621,13 @@ func generateCopiedTradeID(followerID, tradeID string) string {
 func main() {
 	config := Config{
 		ServerPort:        "8099",
-		DBHost:           getEnv("DB_HOST", "localhost"),
-		DBPort:           getEnv("DB_PORT", "5432"),
-		DBUser:           getEnv("DB_USER", "tigerwallet"),
-		DBPassword:       mustEnv("DB_PASSWORD"),
-		DBName:           getEnv("DB_NAME", "tigerwallet_copytrading"),
-		RedisHost:        getEnv("REDIS_HOST", "localhost"),
-		RedisPort:        getEnv("REDIS_PORT", "6379"),
+		DBHost:            getEnv("DB_HOST", "localhost"),
+		DBPort:            getEnv("DB_PORT", "5432"),
+		DBUser:            getEnv("DB_USER", "tigerwallet"),
+		DBPassword:        mustEnv("DB_PASSWORD"),
+		DBName:            getEnv("DB_NAME", "tigerwallet_copytrading"),
+		RedisHost:         getEnv("REDIS_HOST", "localhost"),
+		RedisPort:         getEnv("REDIS_PORT", "6379"),
 		ControlPlaneURL:   getEnv("TWO_PARTY_GATE_URL", ""),
 		ControlPlaneToken: getEnv("TWO_PARTY_GATE_TOKEN", ""),
 		WLClientID:        getEnv("WL_CLIENT_ID", ""),
@@ -687,8 +687,8 @@ func main() {
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"status":  "healthy",
-			"service": "copytrading",
+			"status":   "healthy",
+			"service":  "copytrading",
 			"licensed": gate.IsAlive(),
 		})
 	})

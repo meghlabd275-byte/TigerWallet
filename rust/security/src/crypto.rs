@@ -45,7 +45,13 @@ pub mod aead {
             .map_err(|e| format!("secure random unavailable: {e}"))?;
 
         let ciphertext = cipher
-            .encrypt(Nonce::from_slice(&nonce_bytes), Payload { msg: plaintext, aad })
+            .encrypt(
+                Nonce::from_slice(&nonce_bytes),
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
             .map_err(|e| format!("encryption failed: {e}"))?;
 
         let mut out = Vec::with_capacity(NONCE_LEN + ciphertext.len());
@@ -64,8 +70,17 @@ pub mod aead {
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| format!("invalid key: {e}"))?;
 
         cipher
-            .decrypt(Nonce::from_slice(nonce_bytes), Payload { msg: ciphertext, aad })
-            .map_err(|_| "decryption failed: wrong key, wrong associated data, or tampered ciphertext".to_string())
+            .decrypt(
+                Nonce::from_slice(nonce_bytes),
+                Payload {
+                    msg: ciphertext,
+                    aad,
+                },
+            )
+            .map_err(|_| {
+                "decryption failed: wrong key, wrong associated data, or tampered ciphertext"
+                    .to_string()
+            })
     }
 
     #[cfg(test)]

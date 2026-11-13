@@ -53,9 +53,9 @@ type Config struct {
 	MinClaimAmount       string
 
 	// Risk Thresholds
-	HighRiskThreshold  float64
+	HighRiskThreshold   float64
 	MediumRiskThreshold float64
-	LowRiskThreshold   float64
+	LowRiskThreshold    float64
 
 	// ML Model
 	MLModelEndpoint string
@@ -81,16 +81,16 @@ func LoadConfig() *Config {
 
 		InsuranceFundAddress: getEnv("INSURANCE_FUND_ADDRESS", "0x000000000000000000000000000000000000000000"),
 		InsuranceFundBalance: getEnv("INSURANCE_FUND_BALANCE", "100000000"), // 100M USD
-		PremiumRate:         0.5, // 0.5% annual
-		MaxClaimAmount:      getEnv("MAX_CLAIM_AMOUNT", "100000"), // 100k USD
-		MinClaimAmount:      getEnv("MIN_CLAIM_AMOUNT", "100"), // 100 USD
+		PremiumRate:          0.5,                                           // 0.5% annual
+		MaxClaimAmount:       getEnv("MAX_CLAIM_AMOUNT", "100000"),          // 100k USD
+		MinClaimAmount:       getEnv("MIN_CLAIM_AMOUNT", "100"),             // 100 USD
 
 		HighRiskThreshold:   0.8,
 		MediumRiskThreshold: 0.5,
 		LowRiskThreshold:    0.2,
 
 		MLModelEndpoint: getEnv("ML_MODEL_ENDPOINT", ""),
-		MLAPIKey:       getEnv("ML_API_KEY", ""),
+		MLAPIKey:        getEnv("ML_API_KEY", ""),
 
 		ThreatListPath: getEnv("THREAT_LIST_PATH", ""),
 		ChainRPCURLs:   getEnv("CHAIN_RPC_URLS", ""),
@@ -120,91 +120,91 @@ func getEnv(key, defaultValue string) string {
 // ============================================================================
 
 type Transaction struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
-	TxHash        string    `gorm:"uniqueIndex" json:"tx_hash"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	ChainID      uint64    `json:"chain_id"`
-	ToAddress    string    `json:"to_address"`
-	TokenAddress string    `json:"token_address"`
-	Amount       string    `json:"amount"`
-	Fee          string    `json:"fee"`
+	TxHash       string `gorm:"uniqueIndex" json:"tx_hash"`
+	UserAddress  string `gorm:"index" json:"user_address"`
+	ChainID      uint64 `json:"chain_id"`
+	ToAddress    string `json:"to_address"`
+	TokenAddress string `json:"token_address"`
+	Amount       string `json:"amount"`
+	Fee          string `json:"fee"`
 
 	// Risk Analysis
-	RiskScore     float64   `json:"risk_score"`
-	RiskLevel     string    `json:"risk_level"`
-	RiskFactors   string    `json:"risk_factors"` // JSON array
+	RiskScore   float64 `json:"risk_score"`
+	RiskLevel   string  `json:"risk_level"`
+	RiskFactors string  `json:"risk_factors"` // JSON array
 
 	// Shield Status
-	IsShielded       bool      `json:"is_shielded"`
+	IsShielded       bool       `json:"is_shielded"`
 	ShieldApprovedAt *time.Time `json:"shield_approved_at"`
-	ShieldExpiresAt *time.Time `json:"shield_expires_at"`
+	ShieldExpiresAt  *time.Time `json:"shield_expires_at"`
 
 	// Status
-	Status         string    `json:"status"` // pending, blocked, allowed, flagged
-	BlockReason    string    `json:"block_reason"`
-	MLPrediction  float64   `json:"ml_prediction"`
+	Status       string  `json:"status"` // pending, blocked, allowed, flagged
+	BlockReason  string  `json:"block_reason"`
+	MLPrediction float64 `json:"ml_prediction"`
 }
 
 type UserRiskProfile struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	UserAddress      string    `gorm:"uniqueIndex" json:"user_address"`
-	ChainID          uint64    `json:"chain_id"`
+	ID          uint   `gorm:"primarykey" json:"id"`
+	UserAddress string `gorm:"uniqueIndex" json:"user_address"`
+	ChainID     uint64 `json:"chain_id"`
 
 	// Risk Scores (0-1)
-	OverallRiskScore    float64 `json:"overall_risk_score"`
-	TransactionRisk    float64 `json:"transaction_risk"`
-	BehavioralRisk     float64 `json:"behavioral_risk"`
-	HistoricalRisk     float64 `json:"historical_risk"`
-	NetworkRisk       float64 `json:"network_risk"`
+	OverallRiskScore float64 `json:"overall_risk_score"`
+	TransactionRisk  float64 `json:"transaction_risk"`
+	BehavioralRisk   float64 `json:"behavioral_risk"`
+	HistoricalRisk   float64 `json:"historical_risk"`
+	NetworkRisk      float64 `json:"network_risk"`
 
 	// Statistics
-	TotalTransactions    uint64  `json:"total_transactions"`
-	SuccessfulTx        uint64  `json:"successful_tx"`
-	FailedTx            uint64  `json:"failed_tx"`
-	TotalVolumeUSD      float64 `json:"total_volume_usd"`
+	TotalTransactions uint64  `json:"total_transactions"`
+	SuccessfulTx      uint64  `json:"successful_tx"`
+	FailedTx          uint64  `json:"failed_tx"`
+	TotalVolumeUSD    float64 `json:"total_volume_usd"`
 
 	// Anomaly Detection
 	LastAnomalyDetected *time.Time `json:"last_anomaly_detected"`
-	AnomalyCount         uint32    `json:"anomaly_count"`
+	AnomalyCount        uint32     `json:"anomaly_count"`
 
 	// Insurance
-	IsInsured         bool    `json:"is_insured"`
-	InsurancePremium   float64 `json:"insurance_premium"`
-	InsuranceCoverage float64 `json:"insurance_coverage"`
-	PolicyStartDate    *time.Time `json:"policy_start_date"`
+	IsInsured         bool       `json:"is_insured"`
+	InsurancePremium  float64    `json:"insurance_premium"`
+	InsuranceCoverage float64    `json:"insurance_coverage"`
+	PolicyStartDate   *time.Time `json:"policy_start_date"`
 	PolicyEndDate     *time.Time `json:"policy_end_date"`
 
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type InsuranceClaim struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
-	ClaimID       string    `gorm:"uniqueIndex" json:"claim_id"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	TxHash        string    `json:"tx_hash"`
-	ChainID       uint64    `json:"chain_id"`
+	ClaimID     string `gorm:"uniqueIndex" json:"claim_id"`
+	UserAddress string `gorm:"index" json:"user_address"`
+	TxHash      string `json:"tx_hash"`
+	ChainID     uint64 `json:"chain_id"`
 
 	// Claim Details
-	Amount          string    `json:"amount"`
-	Currency       string    `json:"currency"` // USDT, USDC, etc.
-	IncidentType   string    `json:"incident_type"` // hack, phishing, exploit
-	Description   string    `json:"description"`
-	Evidence       string    `json:"evidence"` // JSON
+	Amount       string `json:"amount"`
+	Currency     string `json:"currency"`      // USDT, USDC, etc.
+	IncidentType string `json:"incident_type"` // hack, phishing, exploit
+	Description  string `json:"description"`
+	Evidence     string `json:"evidence"` // JSON
 
 	// Status
-	Status         string    `json:"status"` // pending, reviewing, approved, rejected, paid
-	ReviewerNotes string    `json:"reviewer_notes"`
-	ApprovedAmount string   `json:"approved_amount"`
-	PaidAt        *time.Time `json:"paid_at"`
+	Status         string     `json:"status"` // pending, reviewing, approved, rejected, paid
+	ReviewerNotes  string     `json:"reviewer_notes"`
+	ApprovedAmount string     `json:"approved_amount"`
+	PaidAt         *time.Time `json:"paid_at"`
 
 	// Timeline
-	SubmittedAt time.Time `json:"submitted_at"`
+	SubmittedAt time.Time  `json:"submitted_at"`
 	ReviewedAt  *time.Time `json:"reviewed_at"`
 }
 
@@ -230,20 +230,20 @@ type ShieldService struct {
 	anomalyDetector *AnomalyDetector
 
 	// Rate limiting
-	mu             sync.RWMutex
-	requestCounts   map[string]*RateLimit
-	anomalyCounts   map[string]*AnomalyCount
+	mu            sync.RWMutex
+	requestCounts map[string]*RateLimit
+	anomalyCounts map[string]*AnomalyCount
 
 	// Stats
 	stats Stats
 }
 
 type Stats struct {
-	TotalScanned     uint64 `json:"total_scanned"`
-	BlockedTx        uint64 `json:"blocked_tx"`
-	AllowedTx        uint64 `json:"allowed_tx"`
-	FlaggedTx        uint64 `json:"flagged_tx"`
-	InsuranceClaims  uint64 `json:"insurance_claims"`
+	TotalScanned    uint64 `json:"total_scanned"`
+	BlockedTx       uint64 `json:"blocked_tx"`
+	AllowedTx       uint64 `json:"allowed_tx"`
+	FlaggedTx       uint64 `json:"flagged_tx"`
+	InsuranceClaims uint64 `json:"insurance_claims"`
 	TotalPaidOut    string `json:"total_paid_out"`
 	ActivePolicies  uint64 `json:"active_policies"`
 }
@@ -319,7 +319,7 @@ func NewShieldService(config *Config) (*ShieldService, error) {
 		anomalyDetector: anomalyDetector,
 		requestCounts:   make(map[string]*RateLimit),
 		anomalyCounts:   make(map[string]*AnomalyCount),
-		stats:          Stats{},
+		stats:           Stats{},
 	}
 
 	// Start background tasks
@@ -334,7 +334,7 @@ func NewShieldService(config *Config) (*ShieldService, error) {
 // ============================================================================
 
 type AnalyzeRequest struct {
-	UserAddress   string `json:"user_address" binding:"required"`
+	UserAddress  string `json:"user_address" binding:"required"`
 	ToAddress    string `json:"to_address" binding:"required"`
 	Amount       string `json:"amount" binding:"required"`
 	TokenAddress string `json:"token_address"`
@@ -343,18 +343,18 @@ type AnalyzeRequest struct {
 	// Optional on-chain tx hash, supplied by the client when analyzing an
 	// already-broadcast transaction. Not fabricated when absent (pre-flight
 	// analysis of a proposed tx has no on-chain hash yet).
-	TxHash       string `json:"tx_hash"`
+	TxHash string `json:"tx_hash"`
 }
 
 type AnalyzeResponse struct {
-	TxHash           string        `json:"tx_hash"`
-	RiskScore        float64       `json:"risk_score"`
-	RiskLevel        string        `json:"risk_level"`
-	RiskFactors      []RiskFactor  `json:"risk_factors"`
-	MLPrediction    float64       `json:"ml_prediction"`
-	Recommendations  []string      `json:"recommendations"`
-	ShieldRequired   bool          `json:"shield_required"`
-	BlockTransaction bool          `json:"block_transaction"`
+	TxHash           string       `json:"tx_hash"`
+	RiskScore        float64      `json:"risk_score"`
+	RiskLevel        string       `json:"risk_level"`
+	RiskFactors      []RiskFactor `json:"risk_factors"`
+	MLPrediction     float64      `json:"ml_prediction"`
+	Recommendations  []string     `json:"recommendations"`
+	ShieldRequired   bool         `json:"shield_required"`
+	BlockTransaction bool         `json:"block_transaction"`
 }
 
 func (s *ShieldService) analyzeTransaction(c *gin.Context) {
@@ -399,7 +399,7 @@ func (s *ShieldService) analyzeTransaction(c *gin.Context) {
 
 	// Save transaction record
 	tx := &Transaction{
-		UserAddress:   req.UserAddress,
+		UserAddress:  req.UserAddress,
 		ToAddress:    req.ToAddress,
 		Amount:       req.Amount,
 		TokenAddress: req.TokenAddress,
@@ -425,7 +425,7 @@ func (s *ShieldService) analyzeTransaction(c *gin.Context) {
 	s.stats.TotalScanned++
 
 	response := AnalyzeResponse{
-		TxHash:          req.TxHash,
+		TxHash:           req.TxHash,
 		RiskScore:        combinedScore,
 		RiskLevel:        riskLevel,
 		RiskFactors:      riskFactors,
@@ -450,7 +450,7 @@ type RiskEngine struct {
 }
 
 type RiskWeights struct {
-	AddressWeight     float64
+	AddressWeight    float64
 	AmountWeight     float64
 	TimingWeight     float64
 	HistoricalWeight float64
@@ -464,7 +464,7 @@ func NewRiskEngine(config *Config, threats *ThreatDB, chain *ContractChecker) *R
 		threats: threats,
 		chain:   chain,
 		weights: RiskWeights{
-			AddressWeight:     0.25,
+			AddressWeight:    0.25,
 			AmountWeight:     0.20,
 			TimingWeight:     0.15,
 			HistoricalWeight: 0.20,
@@ -705,17 +705,17 @@ type AnomalyDetector struct {
 }
 
 type AnomalyThresholds struct {
-	ZScoreThreshold   float64
+	ZScoreThreshold float64
 	EWMAAlpha       float64
-	MinDataPoints    int
+	MinDataPoints   int
 }
 
 func NewAnomalyDetector() *AnomalyDetector {
 	return &AnomalyDetector{
 		thresholds: AnomalyThresholds{
 			ZScoreThreshold: 3.0,
-			EWMAAlpha:     0.3,
-			MinDataPoints:  10,
+			EWMAAlpha:       0.3,
+			MinDataPoints:   10,
 		},
 	}
 }
@@ -764,18 +764,18 @@ type MLModelClient struct {
 
 // mlPredictRequest is the payload sent to the model service.
 type mlPredictRequest struct {
-	UserAddress   string  `json:"user_address"`
-	ToAddress     string  `json:"to_address"`
-	Amount        string  `json:"amount"`
-	TokenAddress  string  `json:"token_address"`
-	ChainID       uint64  `json:"chain_id"`
-	GasPrice      string  `json:"gas_price"`
-	RuleScore     float64 `json:"rule_score"`
+	UserAddress  string  `json:"user_address"`
+	ToAddress    string  `json:"to_address"`
+	Amount       string  `json:"amount"`
+	TokenAddress string  `json:"token_address"`
+	ChainID      uint64  `json:"chain_id"`
+	GasPrice     string  `json:"gas_price"`
+	RuleScore    float64 `json:"rule_score"`
 }
 
 type mlPredictResponse struct {
-	Score       float64 `json:"score"`
-	ModelVersion string `json:"model_version"`
+	Score        float64 `json:"score"`
+	ModelVersion string  `json:"model_version"`
 }
 
 // Predict asks the model service for a risk score.
@@ -852,7 +852,7 @@ type PurchaseInsuranceRequest struct {
 }
 
 type InsuranceClaimRequest struct {
-	UserAddress   string `json:"user_address" binding:"required"`
+	UserAddress  string `json:"user_address" binding:"required"`
 	TxHash       string `json:"tx_hash" binding:"required"`
 	Amount       string `json:"amount" binding:"required"`
 	IncidentType string `json:"incident_type" binding:"required"`
@@ -887,13 +887,13 @@ func (s *ShieldService) purchaseInsurance(c *gin.Context) {
 	s.stats.ActivePolicies++
 
 	c.JSON(200, gin.H{
-		"status":           "active",
-		"coverage":         req.Coverage,
-		"premium":         premium,
-		"premium_annual":  fmt.Sprintf("%.2f", premium),
-		"policy_start":     now,
-		"policy_end":      oneYearFromNow,
-		"fund_balance":    s.config.InsuranceFundBalance,
+		"status":         "active",
+		"coverage":       req.Coverage,
+		"premium":        premium,
+		"premium_annual": fmt.Sprintf("%.2f", premium),
+		"policy_start":   now,
+		"policy_end":     oneYearFromNow,
+		"fund_balance":   s.config.InsuranceFundBalance,
 	})
 }
 
@@ -922,14 +922,14 @@ func (s *ShieldService) submitClaim(c *gin.Context) {
 	claim := &InsuranceClaim{
 		ClaimID:      fmt.Sprintf("CLAIM-%d", time.Now().Unix()),
 		UserAddress:  req.UserAddress,
-		TxHash:      req.TxHash,
+		TxHash:       req.TxHash,
 		ChainID:      tx.ChainID,
-		Amount:      req.Amount,
+		Amount:       req.Amount,
 		IncidentType: req.IncidentType,
-		Description: req.Description,
+		Description:  req.Description,
 		Evidence:     req.Evidence,
 		Status:       "pending",
-		SubmittedAt: time.Now(),
+		SubmittedAt:  time.Now(),
 	}
 
 	s.db.Create(claim)
@@ -937,10 +937,10 @@ func (s *ShieldService) submitClaim(c *gin.Context) {
 	s.stats.InsuranceClaims++
 
 	c.JSON(200, gin.H{
-		"claim_id":    claim.ClaimID,
-		"status":      "pending",
+		"claim_id":     claim.ClaimID,
+		"status":       "pending",
 		"submitted_at": claim.SubmittedAt,
-		"max_amount":  s.config.MaxClaimAmount,
+		"max_amount":   s.config.MaxClaimAmount,
 	})
 }
 
@@ -966,7 +966,7 @@ func (s *ShieldService) getOrCreateRiskProfile(userAddress string, chainID uint6
 
 	if result.Error != nil {
 		profile = UserRiskProfile{
-			UserAddress:        userAddress,
+			UserAddress:       userAddress,
 			ChainID:           chainID,
 			OverallRiskScore:  0.1,
 			TransactionRisk:   0.1,

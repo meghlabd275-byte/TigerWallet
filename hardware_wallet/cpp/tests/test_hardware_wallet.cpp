@@ -260,6 +260,59 @@ void test_keccak() {
     check(CryptoUtils::hex_encode(sha3.data(), 32) !=
               CryptoUtils::hex_encode(digest.data(), 32),
           "keccak256 is not sha256");
+
+    // Independent reference vectors. The multi-block cases matter: Keccak-256
+    // absorbs 136 bytes per permutation, so an input of exactly 136 bytes and
+    // one of 137 bytes exercise the padding boundary where an off-by-one in
+    // the rate or padding produces a wrong digest.
+    //
+    // Each vector is checked against BOTH the OpenSSL provider path and the
+    // portable implementation. The portable path must be tested explicitly:
+    // hosts whose OpenSSL does ship KECCAK-256 (most current builds) never
+    // reach it, so without this the fallback could be broken and still pass.
+    struct Vector {
+        const char* label;
+        std::vector<uint8_t> input;
+        const char* expected;
+    };
+    const std::vector<Vector> vectors = {
+        {"keccak256 of 'abc'",
+         {'a', 'b', 'c'},
+         "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"},
+        {"keccak256 of 'test'",
+         {'t', 'e', 's', 't'},
+         "9c22ff5f21f0b81b113e63f7db6da94fedef11b2119b4088b89664fb9a3cb658"},
+        {"keccak256 of 64 bytes",
+         std::vector<uint8_t>(64, 'a'),
+         "1036d73cc8350b0635393d79759b10488165e792073f84d4462e22edec243b92"},
+        {"keccak256 of exactly one rate block (136 bytes)",
+         std::vector<uint8_t>(136, 'b'),
+         "121b76d0b19f3c2c7632310b92c54cddd59d16a6b5aafe84696426f10e5733bf"},
+        {"keccak256 of one rate block plus one byte (137 bytes)",
+         std::vector<uint8_t>(137, 'c'),
+         "75fa65a2b7c62a0b55ccf8961895f9019fa2c054a293bb2a7f2bfba9d750e9ab"},
+    };
+
+    for (const auto& v : vectors) {
+        auto provider = CryptoUtils::keccak256(v.input);
+        check_equal(CryptoUtils::hex_encode(provider.data(), 32), v.expected,
+                    std::string(v.label) + " (provider path)");
+
+        auto portable = CryptoUtils::keccak256_portable(v.input);
+        check_equal(CryptoUtils::hex_encode(portable.data(), 32), v.expected,
+                    std::string(v.label) + " (portable path)");
+
+        check_equal(CryptoUtils::hex_encode(portable.data(), 32),
+                    CryptoUtils::hex_encode(provider.data(), 32),
+                    std::string(v.label) + " (both paths agree)");
+    }
+
+    // The portable path must handle the empty input too.
+    check_equal(
+        CryptoUtils::hex_encode(
+            CryptoUtils::keccak256_portable({}).data(), 32),
+        "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+        "portable keccak256 of an empty input");
 }
 
 /// ECDSA verification accepts a real signature and rejects a tampered one.

@@ -356,18 +356,18 @@ type webhookURLPolicy struct {
 var blockedWebhookNets = func() []*net.IPNet {
 	var out []*net.IPNet
 	for _, cidr := range []string{
-		"0.0.0.0/8",          // this network
-		"10.0.0.0/8",         // RFC 1918
-		"100.64.0.0/10",      // CGNAT
-		"127.0.0.0/8",        // loopback
-		"169.254.0.0/16",     // link-local, includes cloud metadata
-		"172.16.0.0/12",      // RFC 1918
-		"192.0.0.0/24",       // IETF protocol assignments
-		"192.168.0.0/16",     // RFC 1918
-		"198.18.0.0/15",      // benchmarking
-		"::1/128",            // loopback
-		"fc00::/7",           // unique local
-		"fe80::/10",          // link-local
+		"0.0.0.0/8",      // this network
+		"10.0.0.0/8",     // RFC 1918
+		"100.64.0.0/10",  // CGNAT
+		"127.0.0.0/8",    // loopback
+		"169.254.0.0/16", // link-local, includes cloud metadata
+		"172.16.0.0/12",  // RFC 1918
+		"192.0.0.0/24",   // IETF protocol assignments
+		"192.168.0.0/16", // RFC 1918
+		"198.18.0.0/15",  // benchmarking
+		"::1/128",        // loopback
+		"fc00::/7",       // unique local
+		"fe80::/10",      // link-local
 	} {
 		_, n, err := net.ParseCIDR(cidr)
 		if err != nil {

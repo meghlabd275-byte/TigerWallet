@@ -116,9 +116,9 @@ func TestRewardAccrualUsesPrincipalNotRunningTotal(t *testing.T) {
 
 	// A position with rewards already banked must accrue the same amount.
 	position := StakingPosition{
-		StakedAmount:     principal,
-		PendingRewards:   firstPeriod,
-		TotalRewards:     firstPeriod,
+		StakedAmount:   principal,
+		PendingRewards: firstPeriod,
+		TotalRewards:   firstPeriod,
 	}
 	secondPeriod := position.StakedAmount * rate * hours
 

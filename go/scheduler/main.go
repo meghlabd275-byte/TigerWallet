@@ -21,7 +21,7 @@ import (
 type Task struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Type     string `json:"type"` // optional handler key for registered handlers
+	Type     string `json:"type"`     // optional handler key for registered handlers
 	Schedule string `json:"schedule"` // cron
 	Endpoint string `json:"endpoint"` // optional URL to invoke
 	LastRun  int64  `json:"last_run"`

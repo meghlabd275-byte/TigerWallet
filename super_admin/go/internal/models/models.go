@@ -22,13 +22,13 @@ type AdminUser struct {
 }
 
 type Session struct {
-	ID         uuid.UUID `json:"id"`
-	AdminID    uuid.UUID `json:"admin_id"`
-	TokenHash  string    `json:"-"`
-	IPAddress  string    `json:"ip_address"`
-	UserAgent  string    `json:"user_agent"`
-	ExpiresAt  time.Time `json:"expires_at"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        uuid.UUID `json:"id"`
+	AdminID   uuid.UUID `json:"admin_id"`
+	TokenHash string    `json:"-"`
+	IPAddress string    `json:"ip_address"`
+	UserAgent string    `json:"user_agent"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type IPWhitelist struct {
@@ -42,51 +42,51 @@ type IPWhitelist struct {
 
 type FeatureFlag struct {
 	ID                uuid.UUID `json:"id"`
-	Name             string    `json:"name"`
-	Description      string    `json:"description"`
-	IsEnabled        bool      `json:"is_enabled"`
-	RolloutPercentage int      `json:"rollout_percentage"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	UpdatedBy        uuid.UUID `json:"updated_by"`
+	Name              string    `json:"name"`
+	Description       string    `json:"description"`
+	IsEnabled         bool      `json:"is_enabled"`
+	RolloutPercentage int       `json:"rollout_percentage"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	UpdatedBy         uuid.UUID `json:"updated_by"`
 }
 
 type AuditLog struct {
-	ID            uuid.UUID              `json:"id"`
-	AdminID       *uuid.UUID            `json:"admin_id"`
-	Action        string                 `json:"action"`
-	ResourceType  string                 `json:"resource_type"`
-	ResourceID    string                 `json:"resource_id"`
-	Details       map[string]interface{} `json:"details"`
-	IPAddress     string                 `json:"ip_address"`
-	UserAgent     string                 `json:"user_agent"`
-	CreatedAt     time.Time              `json:"created_at"`
+	ID           uuid.UUID              `json:"id"`
+	AdminID      *uuid.UUID             `json:"admin_id"`
+	Action       string                 `json:"action"`
+	ResourceType string                 `json:"resource_type"`
+	ResourceID   string                 `json:"resource_id"`
+	Details      map[string]interface{} `json:"details"`
+	IPAddress    string                 `json:"ip_address"`
+	UserAgent    string                 `json:"user_agent"`
+	CreatedAt    time.Time              `json:"created_at"`
 }
 
 type Notification struct {
 	ID               uuid.UUID `json:"id"`
-	AdminID         uuid.UUID `json:"admin_id"`
-	Title           string    `json:"title"`
-	Message         string    `json:"message"`
-	NotificationType string   `json:"notification_type"`
-	IsRead          bool      `json:"is_read"`
-	CreatedAt       time.Time `json:"created_at"`
+	AdminID          uuid.UUID `json:"admin_id"`
+	Title            string    `json:"title"`
+	Message          string    `json:"message"`
+	NotificationType string    `json:"notification_type"`
+	IsRead           bool      `json:"is_read"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type User struct {
-	ID              uuid.UUID  `json:"id"`
-	Email           string     `json:"email"`
-	Username        string     `json:"username"`
-	WalletAddress   string     `json:"wallet_address"`
-	KYCStatus       string     `json:"kyc_status"`
-	Status          string     `json:"status"`
-	TwoFactorEnabled bool      `json:"two_factor_enabled"`
-	IPAddress       string     `json:"ip_address"`
-	Country         string     `json:"country"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	LastLogin       *time.Time `json:"last_login"`
-	Balance         map[string]interface{} `json:"balance"`
+	ID               uuid.UUID              `json:"id"`
+	Email            string                 `json:"email"`
+	Username         string                 `json:"username"`
+	WalletAddress    string                 `json:"wallet_address"`
+	KYCStatus        string                 `json:"kyc_status"`
+	Status           string                 `json:"status"`
+	TwoFactorEnabled bool                   `json:"two_factor_enabled"`
+	IPAddress        string                 `json:"ip_address"`
+	Country          string                 `json:"country"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
+	LastLogin        *time.Time             `json:"last_login"`
+	Balance          map[string]interface{} `json:"balance"`
 }
 
 type KYCRequest struct {
@@ -117,23 +117,23 @@ type Transaction struct {
 }
 
 type Withdrawal struct {
-	ID           uuid.UUID  `json:"id"`
-	UserID       uuid.UUID  `json:"user_id"`
-	Amount       string     `json:"amount"`
-	Currency     string     `json:"currency"`
-	Status       string     `json:"status"`
-	Address      string     `json:"address"`
-	TXHash       string     `json:"tx_hash"`
-	ApprovedBy   *uuid.UUID `json:"approved_by"`
-	ProcessedAt  *time.Time `json:"processed_at"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Amount      string     `json:"amount"`
+	Currency    string     `json:"currency"`
+	Status      string     `json:"status"`
+	Address     string     `json:"address"`
+	TXHash      string     `json:"tx_hash"`
+	ApprovedBy  *uuid.UUID `json:"approved_by"`
+	ProcessedAt *time.Time `json:"processed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type Token struct {
 	ID              uuid.UUID `json:"id"`
 	Symbol          string    `json:"symbol"`
 	Name            string    `json:"name"`
-	ContractAddress string   `json:"contract_address"`
+	ContractAddress string    `json:"contract_address"`
 	Decimals        int       `json:"decimals"`
 	IsActive        bool      `json:"is_active"`
 	IsVerified      bool      `json:"is_verified"`
@@ -143,32 +143,32 @@ type Token struct {
 }
 
 type TradingPair struct {
-	ID          uuid.UUID `json:"id"`
-	BaseTokenID uuid.UUID `json:"base_token_id"`
+	ID           uuid.UUID `json:"id"`
+	BaseTokenID  uuid.UUID `json:"base_token_id"`
 	QuoteTokenID uuid.UUID `json:"quote_token_id"`
-	PairName    string    `json:"pair_name"`
-	Price       string    `json:"price"`
-	Volume24h   string    `json:"volume_24h"`
-	Liquidity   string    `json:"liquidity"`
-	Status      string    `json:"status"`
-	ChainID     int       `json:"chain_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	PairName     string    `json:"pair_name"`
+	Price        string    `json:"price"`
+	Volume24h    string    `json:"volume_24h"`
+	Liquidity    string    `json:"liquidity"`
+	Status       string    `json:"status"`
+	ChainID      int       `json:"chain_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type FeeStructure struct {
-	ID          uuid.UUID `json:"id"`
-	FeeType     string    `json:"fee_type"`
-	Asset       string    `json:"asset"`
-	FeePercent  string    `json:"fee_percent"`
-	FeeFixed    string    `json:"fee_fixed"`
-	MinFee      string    `json:"min_fee"`
-	MaxFee       string    `json:"max_fee"`
-	Tier        string    `json:"tier"`
-	IsActive    bool      `json:"is_active"`
-	ChainID     int       `json:"chain_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	FeeType    string    `json:"fee_type"`
+	Asset      string    `json:"asset"`
+	FeePercent string    `json:"fee_percent"`
+	FeeFixed   string    `json:"fee_fixed"`
+	MinFee     string    `json:"min_fee"`
+	MaxFee     string    `json:"max_fee"`
+	Tier       string    `json:"tier"`
+	IsActive   bool      `json:"is_active"`
+	ChainID    int       `json:"chain_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type Blockchain struct {
@@ -187,14 +187,14 @@ type Blockchain struct {
 }
 
 type Webhook struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	URL         string    `json:"url"`
-	Secret      string    `json:"-"`
-	Events      []string  `json:"events"`
-	IsActive    bool      `json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	CreatedBy   uuid.UUID `json:"created_by"`
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	Secret    string    `json:"-"`
+	Events    []string  `json:"events"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy uuid.UUID `json:"created_by"`
 }
 
 type WhiteLabel struct {
@@ -243,12 +243,12 @@ type Backup struct {
 }
 
 type ApprovalWorkflow struct {
-	ID                 uuid.UUID `json:"id"`
-	Name               string    `json:"name"`
-	Description        string    `json:"description"`
-	WorkflowType       string    `json:"workflow_type"`
-	ThresholdAmount    string    `json:"threshold_amount"`
-	RequiredApprovals  int       `json:"required_approvals"`
+	ID                uuid.UUID `json:"id"`
+	Name              string    `json:"name"`
+	Description       string    `json:"description"`
+	WorkflowType      string    `json:"workflow_type"`
+	ThresholdAmount   string    `json:"threshold_amount"`
+	RequiredApprovals int       `json:"required_approvals"`
 	Approvers         []string  `json:"approvers"`
 	IsActive          bool      `json:"is_active"`
 	CreatedAt         time.Time `json:"created_at"`
@@ -257,14 +257,14 @@ type ApprovalWorkflow struct {
 
 type ApprovalRequest struct {
 	ID           uuid.UUID              `json:"id"`
-	WorkflowID   *uuid.UUID            `json:"workflow_id"`
+	WorkflowID   *uuid.UUID             `json:"workflow_id"`
 	RequestType  string                 `json:"request_type"`
 	ResourceID   string                 `json:"resource_id"`
 	RequesterID  uuid.UUID              `json:"requester_id"`
 	Status       string                 `json:"status"`
 	Details      map[string]interface{} `json:"details"`
-	ApprovedBy   *uuid.UUID            `json:"approved_by"`
-	ApprovedAt   *time.Time            `json:"approved_at"`
+	ApprovedBy   *uuid.UUID             `json:"approved_by"`
+	ApprovedAt   *time.Time             `json:"approved_at"`
 	RejectReason string                 `json:"reject_reason"`
 	CreatedAt    time.Time              `json:"created_at"`
 }
@@ -272,7 +272,7 @@ type ApprovalRequest struct {
 type PlatformStats struct {
 	TotalUsers        int64   `json:"total_users"`
 	ActiveUsers       int64   `json:"active_users"`
-	TotalVolume      float64 `json:"total_volume"`
+	TotalVolume       float64 `json:"total_volume"`
 	TotalTransactions int64   `json:"total_transactions"`
 	TotalFees         float64 `json:"total_fees"`
 	ActiveBots        int     `json:"active_bots"`

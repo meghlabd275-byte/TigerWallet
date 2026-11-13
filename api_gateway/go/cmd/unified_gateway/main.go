@@ -26,21 +26,21 @@ import (
 
 // Config holds all gateway configuration.
 type Config struct {
-	Port            string
-	WalletAPI       string // canonical wallet_api (:8443)
-	StakingService  string // :8001
-	LendingService  string // :8009
-	BridgeService   string // :8010
-	SwapService     string // :8004
-	NFTService      string // :8085
-	PerpetualSvc    string // :8464
-	GovernanceSvc   string // :8454
-	CopyTradingSvc  string // :8006
-	PredictionSvc   string // :8455
-	FiatRampSvc     string // :8008
-	JWTSecret       string
-	RedisHost       string
-	RedisPort       string
+	Port           string
+	WalletAPI      string // canonical wallet_api (:8443)
+	StakingService string // :8001
+	LendingService string // :8009
+	BridgeService  string // :8010
+	SwapService    string // :8004
+	NFTService     string // :8085
+	PerpetualSvc   string // :8464
+	GovernanceSvc  string // :8454
+	CopyTradingSvc string // :8006
+	PredictionSvc  string // :8455
+	FiatRampSvc    string // :8008
+	JWTSecret      string
+	RedisHost      string
+	RedisPort      string
 }
 
 var (

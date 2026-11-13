@@ -30,63 +30,63 @@ type Config struct {
 
 // Observability Models
 type LogEntry struct {
-	ID          uuid.UUID              `json:"id"`
-	Service     string                 `json:"service"`
-	Level       string                 `json:"level"` // debug, info, warn, error, fatal
-	Message     string                 `json:"message"`
-	Metadata    map[string]interface{} `json:"metadata"`
-	TraceID     string                 `json:"trace_id"`
-	SpanID      string                 `json:"span_id"`
-	Source      string                 `json:"source"`
-	Timestamp   time.Time              `json:"timestamp"`
+	ID        uuid.UUID              `json:"id"`
+	Service   string                 `json:"service"`
+	Level     string                 `json:"level"` // debug, info, warn, error, fatal
+	Message   string                 `json:"message"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	TraceID   string                 `json:"trace_id"`
+	SpanID    string                 `json:"span_id"`
+	Source    string                 `json:"source"`
+	Timestamp time.Time              `json:"timestamp"`
 }
 
 type MetricEntry struct {
-	ID          uuid.UUID              `json:"id"`
-	Service     string                 `json:"service"`
-	MetricName  string                 `json:"metric_name"`
-	Value       float64                `json:"value"`
-	Unit        string                 `json:"unit"`
-	Tags        map[string]interface{} `json:"tags"`
-	Timestamp   time.Time              `json:"timestamp"`
+	ID         uuid.UUID              `json:"id"`
+	Service    string                 `json:"service"`
+	MetricName string                 `json:"metric_name"`
+	Value      float64                `json:"value"`
+	Unit       string                 `json:"unit"`
+	Tags       map[string]interface{} `json:"tags"`
+	Timestamp  time.Time              `json:"timestamp"`
 }
 
 type TraceSpan struct {
-	ID          uuid.UUID   `json:"id"`
-	TraceID     string      `json:"trace_id"`
-	SpanID      string      `json:"span_id"`
-	ParentID    string      `json:"parent_id"`
-	Service     string      `json:"service"`
-	Operation   string      `json:"operation"`
-	StartTime   time.Time   `json:"start_time"`
-	EndTime     *time.Time `json:"end_time"`
-	Duration    int64       `json:"duration"` // in milliseconds
-	Status      string      `json:"status"` // ok, error
-	Tags        string      `json:"tags"` // JSON object
-	Logs        string      `json:"logs"` // JSON array
+	ID        uuid.UUID  `json:"id"`
+	TraceID   string     `json:"trace_id"`
+	SpanID    string     `json:"span_id"`
+	ParentID  string     `json:"parent_id"`
+	Service   string     `json:"service"`
+	Operation string     `json:"operation"`
+	StartTime time.Time  `json:"start_time"`
+	EndTime   *time.Time `json:"end_time"`
+	Duration  int64      `json:"duration"` // in milliseconds
+	Status    string     `json:"status"`   // ok, error
+	Tags      string     `json:"tags"`     // JSON object
+	Logs      string     `json:"logs"`     // JSON array
 }
 
 type Alert struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	AlertType   string    `json:"alert_type"` // metric, log, trace
-	Condition   string    `json:"condition"` // JSON expression
-	Severity    string    `json:"severity"` // critical, high, medium, low
-	Status      string    `json:"status"` // active, resolved, silenced
-	Service      string    `json:"service"`
-	Message      string    `json:"message"`
-	Metadata    string    `json:"metadata"` // JSON object
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	AlertType   string     `json:"alert_type"` // metric, log, trace
+	Condition   string     `json:"condition"`  // JSON expression
+	Severity    string     `json:"severity"`   // critical, high, medium, low
+	Status      string     `json:"status"`     // active, resolved, silenced
+	Service     string     `json:"service"`
+	Message     string     `json:"message"`
+	Metadata    string     `json:"metadata"` // JSON object
 	TriggeredAt *time.Time `json:"triggered_at"`
 	ResolvedAt  *time.Time `json:"resolved_at"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type ServiceHealth struct {
 	ID          uuid.UUID `json:"id"`
 	Service     string    `json:"service"`
-	Status      string    `json:"status"` // healthy, degraded, down
-	Uptime      float64   `json:"uptime"` // percentage
-	Latency     float64   `json:"latency"` // ms
+	Status      string    `json:"status"`     // healthy, degraded, down
+	Uptime      float64   `json:"uptime"`     // percentage
+	Latency     float64   `json:"latency"`    // ms
 	ErrorRate   float64   `json:"error_rate"` // percentage
 	RequestsMin int       `json:"requests_min"`
 	LastCheckAt time.Time `json:"last_check_at"`
@@ -94,13 +94,13 @@ type ServiceHealth struct {
 }
 
 type Dashboard struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Panels      string    `json:"panels"` // JSON array
-	Service     string    `json:"service"`
-	OwnerID     uuid.UUID `json:"owner_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Panels    string    `json:"panels"` // JSON array
+	Service   string    `json:"service"`
+	OwnerID   uuid.UUID `json:"owner_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // Global variables
@@ -408,7 +408,7 @@ func StartSpan(c *gin.Context) {
 // EndSpan - End trace span
 func EndSpan(c *gin.Context) {
 	spanID := c.Param("span_id")
-	
+
 	endTime := time.Now()
 	duration := endTime.UnixMilli()
 
@@ -640,22 +640,22 @@ func GetDashboards(c *gin.Context) {
 // Health check
 func HealthCheck(c *gin.Context) {
 	ctx := context.Background()
-	
+
 	dbStatus := "healthy"
 	if err := db.Ping(ctx); err != nil {
 		dbStatus = "unhealthy"
 	}
-	
+
 	redisStatus := "healthy"
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		redisStatus = "unhealthy"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "ok",
-		"database":   dbStatus,
-		"redis":      redisStatus,
-		"timestamp":  time.Now(),
+		"status":    "ok",
+		"database":  dbStatus,
+		"redis":     redisStatus,
+		"timestamp": time.Now(),
 	})
 }
 

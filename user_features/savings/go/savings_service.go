@@ -28,14 +28,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort    string `json:"server_port"`
-	DBHost       string `json:"db_host"`
-	DBPort       string `json:"db_port"`
-	DBUser       string `json:"db_user"`
-	DBPassword   string `json:"db_password"`
-	DBName       string `json:"db_name"`
-	RedisHost    string `json:"redis_host"`
-	RedisPort    string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // ============================================================================
@@ -47,55 +47,55 @@ type SavingsProduct struct {
 	ID               uint      `gorm:"primaryKey" json:"id"`
 	Name             string    `json:"name"`
 	Description      string    `json:"description"`
-	AssetAddress    string    `gorm:"index" json:"asset_address"`
-	AssetSymbol     string    `json:"asset_symbol"`
-	AssetDecimals   uint8     `json:"asset_decimals"`
-	ProductType     string    `json:"product_type"` // FLEXIBLE, FIXED
-	TermDays        int       `json:"term_days"` // 0 for flexible
-	APY             float64   `json:"apy"`
-	MinDeposit      float64   `json:"min_deposit"`
-	MaxDeposit      float64   `json:"max_deposit"`
+	AssetAddress     string    `gorm:"index" json:"asset_address"`
+	AssetSymbol      string    `json:"asset_symbol"`
+	AssetDecimals    uint8     `json:"asset_decimals"`
+	ProductType      string    `json:"product_type"` // FLEXIBLE, FIXED
+	TermDays         int       `json:"term_days"`    // 0 for flexible
+	APY              float64   `json:"apy"`
+	MinDeposit       float64   `json:"min_deposit"`
+	MaxDeposit       float64   `json:"max_deposit"`
+	TotalDeposited   float64   `json:"total_deposited"`
+	TotalWithdrawn   float64   `json:"total_withdrawn"`
+	MinLockPeriod    int       `json:"min_lock_period"`    // seconds
+	EarlyWithdrawFee float64   `json:"early_withdraw_fee"` // percentage
+	IsActive         bool      `json:"is_active"`
+	ChainID          int64     `json:"chain_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// SavingsAccount represents a user's savings account
+type SavingsAccount struct {
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	UserAddress     string    `gorm:"index" json:"user_address"`
+	ProductID       uint      `gorm:"index" json:"product_id"`
+	AssetAddress    string    `json:"asset_address"`
+	Balance         float64   `json:"balance"`
+	AccruedInterest float64   `json:"accrued_interest"`
 	TotalDeposited  float64   `json:"total_deposited"`
 	TotalWithdrawn  float64   `json:"total_withdrawn"`
-	MinLockPeriod   int       `json:"min_lock_period"` // seconds
-	EarlyWithdrawFee float64  `json:"early_withdraw_fee"` // percentage
-	IsActive        bool      `json:"is_active"`
+	APY             float64   `json:"apy"`
+	Status          string    `json:"status"` // ACTIVE, WITHDRAWN, LIQUIDATED
+	StartTime       int64     `json:"start_time"`
+	TermEndTime     *int64    `json:"term_end_time"`
 	ChainID         int64     `json:"chain_id"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
-// SavingsAccount represents a user's savings account
-type SavingsAccount struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	UserAddress    string    `gorm:"index" json:"user_address"`
-	ProductID     uint      `gorm:"index" json:"product_id"`
-	AssetAddress  string    `json:"asset_address"`
-	Balance       float64   `json:"balance"`
-	AccruedInterest float64 `json:"accrued_interest"`
-	TotalDeposited float64  `json:"total_deposited"`
-	TotalWithdrawn float64  `json:"total_withdrawn"`
-	APY           float64   `json:"apy"`
-	Status        string    `json:"status"` // ACTIVE, WITHDRAWN, LIQUIDATED
-	StartTime     int64     `json:"start_time"`
-	TermEndTime   *int64    `json:"term_end_time"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-}
-
 // SavingsTransaction represents deposit/withdraw transactions
 type SavingsTransaction struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	UserAddress   string    `gorm:"index" json:"user_address"`
-	ProductID     uint      `json:"product_id"`
-	AssetAddress  string    `json:"asset_address"`
-	Amount        float64   `json:"amount"`
-	Interest      float64   `json:"interest"`
-	Type          string    `json:"type"` // DEPOSIT, WITHDRAW, INTEREST
-	TxHash        string    `json:"tx_hash"`
-	ChainID       int64     `json:"chain_id"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserAddress  string    `gorm:"index" json:"user_address"`
+	ProductID    uint      `json:"product_id"`
+	AssetAddress string    `json:"asset_address"`
+	Amount       float64   `json:"amount"`
+	Interest     float64   `json:"interest"`
+	Type         string    `json:"type"` // DEPOSIT, WITHDRAW, INTEREST
+	TxHash       string    `json:"tx_hash"`
+	ChainID      int64     `json:"chain_id"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // ============================================================================
@@ -149,104 +149,104 @@ func (s *SavingsService) initializeProducts() {
 		{
 			Name:             "Flexible USDT Savings",
 			Description:      "Earn interest on your USDT with flexible withdrawal",
-			AssetAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-			AssetSymbol:     "USDT",
-			AssetDecimals:   6,
-			ProductType:     "FLEXIBLE",
-			TermDays:        0,
-			APY:             4.5,
-			MinDeposit:      1,
-			MaxDeposit:      1000000,
-			MinLockPeriod:   0,
+			AssetAddress:     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+			AssetSymbol:      "USDT",
+			AssetDecimals:    6,
+			ProductType:      "FLEXIBLE",
+			TermDays:         0,
+			APY:              4.5,
+			MinDeposit:       1,
+			MaxDeposit:       1000000,
+			MinLockPeriod:    0,
 			EarlyWithdrawFee: 0,
-			IsActive:        true,
-			ChainID:         1,
+			IsActive:         true,
+			ChainID:          1,
 		},
 		{
 			Name:             "Flexible USDC Savings",
 			Description:      "Earn interest on your USDC with flexible withdrawal",
-			AssetAddress:    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-			AssetSymbol:     "USDC",
-			AssetDecimals:   6,
-			ProductType:     "FLEXIBLE",
-			TermDays:        0,
-			APY:             4.2,
-			MinDeposit:      1,
-			MaxDeposit:      1000000,
-			MinLockPeriod:   0,
+			AssetAddress:     "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+			AssetSymbol:      "USDC",
+			AssetDecimals:    6,
+			ProductType:      "FLEXIBLE",
+			TermDays:         0,
+			APY:              4.2,
+			MinDeposit:       1,
+			MaxDeposit:       1000000,
+			MinLockPeriod:    0,
 			EarlyWithdrawFee: 0,
-			IsActive:        true,
-			ChainID:         1,
+			IsActive:         true,
+			ChainID:          1,
 		},
 		{
 			Name:             "Flexible ETH Savings",
 			Description:      "Earn interest on your ETH with flexible withdrawal",
-			AssetAddress:    "0x0000000000000000000000000000000000000000",
-			AssetSymbol:     "ETH",
-			AssetDecimals:   18,
-			ProductType:     "FLEXIBLE",
-			TermDays:        0,
-			APY:             3.8,
-			MinDeposit:      0.01,
-			MaxDeposit:      10000,
-			MinLockPeriod:   0,
+			AssetAddress:     "0x0000000000000000000000000000000000000000",
+			AssetSymbol:      "ETH",
+			AssetDecimals:    18,
+			ProductType:      "FLEXIBLE",
+			TermDays:         0,
+			APY:              3.8,
+			MinDeposit:       0.01,
+			MaxDeposit:       10000,
+			MinLockPeriod:    0,
 			EarlyWithdrawFee: 0,
-			IsActive:        true,
-			ChainID:         1,
+			IsActive:         true,
+			ChainID:          1,
 		},
 		{
 			Name:             "30-Day Fixed USDT",
 			Description:      "Higher APY with 30-day lock period",
-			AssetAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-			AssetSymbol:     "USDT",
-			AssetDecimals:   6,
-			ProductType:     "FIXED",
-			TermDays:        30,
-			APY:             6.5,
-			MinDeposit:      100,
-			MaxDeposit:      1000000,
-			MinLockPeriod:   2592000, // 30 days in seconds
-			EarlyWithdrawFee: 0.5, // 0.5% fee
-			IsActive:        true,
-			ChainID:         1,
+			AssetAddress:     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+			AssetSymbol:      "USDT",
+			AssetDecimals:    6,
+			ProductType:      "FIXED",
+			TermDays:         30,
+			APY:              6.5,
+			MinDeposit:       100,
+			MaxDeposit:       1000000,
+			MinLockPeriod:    2592000, // 30 days in seconds
+			EarlyWithdrawFee: 0.5,     // 0.5% fee
+			IsActive:         true,
+			ChainID:          1,
 		},
 		{
 			Name:             "60-Day Fixed USDT",
 			Description:      "Even higher APY with 60-day lock period",
-			AssetAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-			AssetSymbol:     "USDT",
-			AssetDecimals:   6,
-			ProductType:     "FIXED",
-			TermDays:        60,
-			APY:             7.5,
-			MinDeposit:      100,
-			MaxDeposit:      1000000,
-			MinLockPeriod:   5184000, // 60 days in seconds
-			EarlyWithdrawFee: 1.0, // 1% fee
-			IsActive:        true,
-			ChainID:         1,
+			AssetAddress:     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+			AssetSymbol:      "USDT",
+			AssetDecimals:    6,
+			ProductType:      "FIXED",
+			TermDays:         60,
+			APY:              7.5,
+			MinDeposit:       100,
+			MaxDeposit:       1000000,
+			MinLockPeriod:    5184000, // 60 days in seconds
+			EarlyWithdrawFee: 1.0,     // 1% fee
+			IsActive:         true,
+			ChainID:          1,
 		},
 		{
 			Name:             "90-Day Fixed USDT",
 			Description:      "Best APY with 90-day lock period",
-			AssetAddress:    "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-			AssetSymbol:     "USDT",
-			AssetDecimals:   6,
-			ProductType:     "FIXED",
-			TermDays:        90,
-			APY:             8.5,
-			MinDeposit:      100,
-			MaxDeposit:      1000000,
-			MinLockPeriod:   7776000, // 90 days in seconds
-			EarlyWithdrawFee: 1.5, // 1.5% fee
-			IsActive:        true,
-			ChainID:         1,
+			AssetAddress:     "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+			AssetSymbol:      "USDT",
+			AssetDecimals:    6,
+			ProductType:      "FIXED",
+			TermDays:         90,
+			APY:              8.5,
+			MinDeposit:       100,
+			MaxDeposit:       1000000,
+			MinLockPeriod:    7776000, // 90 days in seconds
+			EarlyWithdrawFee: 1.5,     // 1.5% fee
+			IsActive:         true,
+			ChainID:          1,
 		},
 	}
 
 	for _, product := range products {
 		var existing SavingsProduct
-		if s.db.Where("asset_address = ? AND product_type = ? AND term_days = ?", 
+		if s.db.Where("asset_address = ? AND product_type = ? AND term_days = ?",
 			product.AssetAddress, product.ProductType, product.TermDays).First(&existing).RowsAffected == 0 {
 			s.db.Create(&product)
 		}
@@ -258,10 +258,10 @@ func (s *SavingsService) initializeProducts() {
 // ============================================================================
 
 type DepositRequest struct {
-	UserAddress   string  `json:"user_address" binding:"required"`
-	ProductID     uint    `json:"product_id" binding:"required"`
-	Amount        float64 `json:"amount" binding:"required"`
-	ChainID       int64   `json:"chain_id"`
+	UserAddress string  `json:"user_address" binding:"required"`
+	ProductID   uint    `json:"product_id" binding:"required"`
+	Amount      float64 `json:"amount" binding:"required"`
+	ChainID     int64   `json:"chain_id"`
 }
 
 type DepositResponse struct {
@@ -301,7 +301,7 @@ func (s *SavingsService) Deposit(ctx *gin.Context) {
 
 	// Check existing account or create new
 	var account SavingsAccount
-	result := s.db.Where("user_address = ? AND product_id = ? AND status = ?", 
+	result := s.db.Where("user_address = ? AND product_id = ? AND status = ?",
 		req.UserAddress, req.ProductID, "ACTIVE").First(&account)
 
 	var maturityDate *int64
@@ -312,18 +312,18 @@ func (s *SavingsService) Deposit(ctx *gin.Context) {
 
 	if result.RowsAffected == 0 {
 		account = SavingsAccount{
-			UserAddress:       req.UserAddress,
-			ProductID:         req.ProductID,
-			AssetAddress:      product.AssetAddress,
-			Balance:           req.Amount,
-			AccruedInterest:   0,
-			TotalDeposited:    req.Amount,
-			TotalWithdrawn:    0,
-			APY:               product.APY,
-			Status:            "ACTIVE",
-			StartTime:         time.Now().Unix(),
-			TermEndTime:       maturityDate,
-			ChainID:           req.ChainID,
+			UserAddress:     req.UserAddress,
+			ProductID:       req.ProductID,
+			AssetAddress:    product.AssetAddress,
+			Balance:         req.Amount,
+			AccruedInterest: 0,
+			TotalDeposited:  req.Amount,
+			TotalWithdrawn:  0,
+			APY:             product.APY,
+			Status:          "ACTIVE",
+			StartTime:       time.Now().Unix(),
+			TermEndTime:     maturityDate,
+			ChainID:         req.ChainID,
 		}
 		s.db.Create(&account)
 	} else {
@@ -342,12 +342,12 @@ func (s *SavingsService) Deposit(ctx *gin.Context) {
 	// Create transaction record
 	transaction := SavingsTransaction{
 		UserAddress:  req.UserAddress,
-		ProductID:   req.ProductID,
+		ProductID:    req.ProductID,
 		AssetAddress: product.AssetAddress,
-		Amount:      req.Amount,
-		Type:        "DEPOSIT",
-		TxHash:      "",
-		ChainID:     req.ChainID,
+		Amount:       req.Amount,
+		Type:         "DEPOSIT",
+		TxHash:       "",
+		ChainID:      req.ChainID,
 	}
 	s.db.Create(&transaction)
 
@@ -366,10 +366,10 @@ func (s *SavingsService) Deposit(ctx *gin.Context) {
 // ============================================================================
 
 type WithdrawRequest struct {
-	UserAddress   string  `json:"user_address" binding:"required"`
-	AccountID     uint    `json:"account_id" binding:"required"`
-	Amount        float64 `json:"amount" binding:"required"`
-	ChainID       int64   `json:"chain_id"`
+	UserAddress string  `json:"user_address" binding:"required"`
+	AccountID   uint    `json:"account_id" binding:"required"`
+	Amount      float64 `json:"amount" binding:"required"`
+	ChainID     int64   `json:"chain_id"`
 }
 
 type WithdrawResponse struct {
@@ -377,8 +377,8 @@ type WithdrawResponse struct {
 	TransactionHash  string  `json:"transaction_hash,omitempty"`
 	AmountReceived   float64 `json:"amount_received"`
 	InterestReceived float64 `json:"interest_received"`
-	FeeApplied      float64 `json:"fee_applied"`
-	NewBalance      float64 `json:"new_balance"`
+	FeeApplied       float64 `json:"fee_applied"`
+	NewBalance       float64 `json:"new_balance"`
 	Error            string  `json:"error,omitempty"`
 }
 
@@ -458,13 +458,13 @@ func (s *SavingsService) Withdraw(ctx *gin.Context) {
 
 	transaction := SavingsTransaction{
 		UserAddress:  req.UserAddress,
-		ProductID:   req.ProductID,
+		ProductID:    req.ProductID,
 		AssetAddress: product.AssetAddress,
-		Amount:      withdrawAmount,
-		Interest:    interestReceived,
-		Type:        "WITHDRAW",
-		TxHash:      "",
-		ChainID:     req.ChainID,
+		Amount:       withdrawAmount,
+		Interest:     interestReceived,
+		Type:         "WITHDRAW",
+		TxHash:       "",
+		ChainID:      req.ChainID,
 	}
 	s.db.Create(&transaction)
 
@@ -510,7 +510,7 @@ func (s *SavingsService) ClaimInterest(ctx *gin.Context) {
 	s.db.Save(&account)
 
 	ctx.JSON(200, gin.H{
-		"success":         true,
+		"success":          true,
 		"transaction_hash": "",
 		"amount_claimed":   interest,
 	})
@@ -521,18 +521,18 @@ func (s *SavingsService) ClaimInterest(ctx *gin.Context) {
 // ============================================================================
 
 type AccountResponse struct {
-	ID                uint    `json:"id"`
-	ProductID         uint    `json:"product_id"`
-	ProductName       string  `json:"product_name"`
-	AssetSymbol       string  `json:"asset_symbol"`
-	Balance           float64 `json:"balance"`
-	AccruedInterest   float64 `json:"accrued_interest"`
-	APY               float64 `json:"apy"`
-	TotalDeposited    float64 `json:"total_deposited"`
-	TotalWithdrawn    float64 `json:"total_withdrawn"`
-	Status            string  `json:"status"`
-	StartTime         int64   `json:"start_time"`
-	TermEndTime       *int64  `json:"term_end_time"`
+	ID              uint    `json:"id"`
+	ProductID       uint    `json:"product_id"`
+	ProductName     string  `json:"product_name"`
+	AssetSymbol     string  `json:"asset_symbol"`
+	Balance         float64 `json:"balance"`
+	AccruedInterest float64 `json:"accrued_interest"`
+	APY             float64 `json:"apy"`
+	TotalDeposited  float64 `json:"total_deposited"`
+	TotalWithdrawn  float64 `json:"total_withdrawn"`
+	Status          string  `json:"status"`
+	StartTime       int64   `json:"start_time"`
+	TermEndTime     *int64  `json:"term_end_time"`
 }
 
 func (s *SavingsService) GetAccounts(ctx *gin.Context) {

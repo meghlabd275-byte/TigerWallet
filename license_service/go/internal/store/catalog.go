@@ -13,13 +13,13 @@ package store
 
 // Product identifiers. These MUST match WL_PRODUCT on the self-hosted backend.
 const (
-	ProductMasterWallet   = "master_wallet"
-	ProductUserWallet     = "user_wallet"
-	ProductBots           = "bots"
-	ProductProjectParty   = "project_party"
-	ProductCard           = "card"
-	ProductLiquidity      = "liquidity"
-	ProductWLAdminPanel   = "white_label_admin"
+	ProductMasterWallet = "master_wallet"
+	ProductUserWallet   = "user_wallet"
+	ProductBots         = "bots"
+	ProductProjectParty = "project_party"
+	ProductCard         = "card"
+	ProductLiquidity    = "liquidity"
+	ProductWLAdminPanel = "white_label_admin"
 )
 
 // ValidProducts is the closed set of self-hosted, White-level-tier products.
@@ -28,13 +28,13 @@ const (
 // kill_switch, permission_service, gateway, security, etc.) are intentionally
 // absent: a WL client can never be licensed for, nor self-host, those.
 var ValidProducts = map[string]bool{
-	ProductMasterWallet:  true,
-	ProductUserWallet:    true,
-	ProductBots:          true,
-	ProductProjectParty:  true,
-	ProductCard:          true,
-	ProductLiquidity:     true,
-	ProductWLAdminPanel:  true,
+	ProductMasterWallet: true,
+	ProductUserWallet:   true,
+	ProductBots:         true,
+	ProductProjectParty: true,
+	ProductCard:         true,
+	ProductLiquidity:    true,
+	ProductWLAdminPanel: true,
 }
 
 // FetchersByProduct enumerates the per-product functional categories that the

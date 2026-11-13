@@ -30,47 +30,47 @@ type nonEvmFamily string
 const familyUnknown nonEvmFamily = "unknown"
 
 const (
-	familyUTXO           nonEvmFamily = "utxo"
-	familyCosmos         nonEvmFamily = "cosmos"
-	familySolana         nonEvmFamily = "solana"
-	familyAptos          nonEvmFamily = "aptos"
-	familySui            nonEvmFamily = "sui"
-	familyNear           nonEvmFamily = "near"
-	familyStellar        nonEvmFamily = "stellar" // stellar + pi
-	familyAlgorand       nonEvmFamily = "algorand"
-	familyNano           nonEvmFamily = "nano"
-	familyMultiversX     nonEvmFamily = "multiversx"
-	familyTezos          nonEvmFamily = "tezos"
-	familyTON            nonEvmFamily = "ton"
-	familyCardano        nonEvmFamily = "cardano"
-	familyWaves          nonEvmFamily = "waves"
-	familyTron           nonEvmFamily = "tron"
-	familyVeChain        nonEvmFamily = "vechain"
-	familyRipple         nonEvmFamily = "ripple"
-	familyICP            nonEvmFamily = "internetcomputer"
-	familyZilliqa        nonEvmFamily = "zilliqa"
-	familyKaspa          nonEvmFamily = "kaspa"
-	familyNervos         nonEvmFamily = "nervos"
-	familyFilecoin       nonEvmFamily = "filecoin"
-	familyAleo           nonEvmFamily = "aleo"
-	familyHedera         nonEvmFamily = "hedera"
-	familyFlow           nonEvmFamily = "flow"
-	familySubstrate      nonEvmFamily = "substrate" // polkadot/kusama
-	familyGraphene       nonEvmFamily = "graphene"  // steem/hive/bitshares
-	familyNEM            nonEvmFamily = "nem"       // nem/symbol
-	familySiacoin        nonEvmFamily = "siacoin"
-	familyStarknet       nonEvmFamily = "starknet"
-	familyMonero         nonEvmFamily = "monero"
-	familyArweave        nonEvmFamily = "arweave"
-	familyStacks         nonEvmFamily = "stacks"
-	familyMina           nonEvmFamily = "mina"
-	familyErgo           nonEvmFamily = "ergo"
-	familyNEO            nonEvmFamily = "neo"
+	familyUTXO       nonEvmFamily = "utxo"
+	familyCosmos     nonEvmFamily = "cosmos"
+	familySolana     nonEvmFamily = "solana"
+	familyAptos      nonEvmFamily = "aptos"
+	familySui        nonEvmFamily = "sui"
+	familyNear       nonEvmFamily = "near"
+	familyStellar    nonEvmFamily = "stellar" // stellar + pi
+	familyAlgorand   nonEvmFamily = "algorand"
+	familyNano       nonEvmFamily = "nano"
+	familyMultiversX nonEvmFamily = "multiversx"
+	familyTezos      nonEvmFamily = "tezos"
+	familyTON        nonEvmFamily = "ton"
+	familyCardano    nonEvmFamily = "cardano"
+	familyWaves      nonEvmFamily = "waves"
+	familyTron       nonEvmFamily = "tron"
+	familyVeChain    nonEvmFamily = "vechain"
+	familyRipple     nonEvmFamily = "ripple"
+	familyICP        nonEvmFamily = "internetcomputer"
+	familyZilliqa    nonEvmFamily = "zilliqa"
+	familyKaspa      nonEvmFamily = "kaspa"
+	familyNervos     nonEvmFamily = "nervos"
+	familyFilecoin   nonEvmFamily = "filecoin"
+	familyAleo       nonEvmFamily = "aleo"
+	familyHedera     nonEvmFamily = "hedera"
+	familyFlow       nonEvmFamily = "flow"
+	familySubstrate  nonEvmFamily = "substrate" // polkadot/kusama
+	familyGraphene   nonEvmFamily = "graphene"  // steem/hive/bitshares
+	familyNEM        nonEvmFamily = "nem"       // nem/symbol
+	familySiacoin    nonEvmFamily = "siacoin"
+	familyStarknet   nonEvmFamily = "starknet"
+	familyMonero     nonEvmFamily = "monero"
+	familyArweave    nonEvmFamily = "arweave"
+	familyStacks     nonEvmFamily = "stacks"
+	familyMina       nonEvmFamily = "mina"
+	familyErgo       nonEvmFamily = "ergo"
+	familyNEO        nonEvmFamily = "neo"
 	// familyUnsupported marks registry chains whose address scheme needs
 	// data this backend cannot obtain offline. They resolve to a named
 	// family so the failure message names the chain, and every operation on
 	// them fails closed instead of emitting a plausible-looking value.
-	familyUnsupported    nonEvmFamily = "unsupported"
+	familyUnsupported nonEvmFamily = "unsupported"
 )
 
 // utxoParams parameterizes one UTXO-family chain.
@@ -177,6 +177,7 @@ func cosmosPrefixByID(id int64) string {
 
 // cosmosFamilyIDs lists the registry ids claimed by the cosmos family.
 var cosmosFamilyIDs = map[int64]bool{}
+
 func init() {
 	for id := range cosmosIDPrefix {
 		cosmosFamilyIDs[id] = true

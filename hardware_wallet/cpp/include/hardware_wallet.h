@@ -223,6 +223,12 @@ public:
     /// Keccak-256, the hash Ethereum uses. It is not SHA3-256.
     static std::array<uint8_t, 32> keccak256(const std::vector<uint8_t>& data);
 
+    /// The portable Keccak-256 implementation, bypassing the OpenSSL provider.
+    /// Exposed so tests can exercise it on hosts where OpenSSL does ship
+    /// KECCAK-256 and would otherwise mask a defect in this path.
+    static std::array<uint8_t, 32> keccak256_portable(
+        const std::vector<uint8_t>& data);
+
     /// HMAC-SHA512, the primitive BIP32 is built on.
     static std::array<uint8_t, 64> hmac_sha512(const std::vector<uint8_t>& key,
                                                const std::vector<uint8_t>& data);

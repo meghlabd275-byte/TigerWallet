@@ -39,15 +39,15 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort  string `json:"server_port"`
-	DBHost      string `json:"db_host"`
-	DBPort      string `json:"db_port"`
-	DBUser      string `json:"db_user"`
-	DBPassword  string `json:"db_password"`
-	DBName      string `json:"db_name"`
-	RedisHost   string `json:"redis_host"`
-	RedisPort   string `json:"redis_port"`
-	JWTSecret   string `json:"jwt_secret"`
+	ServerPort    string `json:"server_port"`
+	DBHost        string `json:"db_host"`
+	DBPort        string `json:"db_port"`
+	DBUser        string `json:"db_user"`
+	DBPassword    string `json:"db_password"`
+	DBName        string `json:"db_name"`
+	RedisHost     string `json:"redis_host"`
+	RedisPort     string `json:"redis_port"`
+	JWTSecret     string `json:"jwt_secret"`
 	EncryptionKey string `json:"encryption_key"`
 }
 
@@ -90,219 +90,219 @@ func getEnv(key, defaultValue string) string {
 
 // Admin represents platform administrators
 type Admin struct {
-	ID           uint      `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Username    string    `gorm:"uniqueIndex" json:"username"`
-	Email       string    `gorm:"index" json:"email"`
-	PasswordHash string   `json:"-"`
-	Role        string    `json:"role"` // super_admin, admin, support, finance, compliance, trader
-	Permissions string    `json:"permissions"` // JSON array of permissions
-	Status      string    `json:"status"` // active, suspended, inactive
-	LastLoginAt *time.Time `json:"last_login_at"`
-	IPWhitelist string    `json:"ip_whitelist"`
-	CreatedBy   uint      `json:"created_by"`
+	ID           uint       `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Username     string     `gorm:"uniqueIndex" json:"username"`
+	Email        string     `gorm:"index" json:"email"`
+	PasswordHash string     `json:"-"`
+	Role         string     `json:"role"`        // super_admin, admin, support, finance, compliance, trader
+	Permissions  string     `json:"permissions"` // JSON array of permissions
+	Status       string     `json:"status"`      // active, suspended, inactive
+	LastLoginAt  *time.Time `json:"last_login_at"`
+	IPWhitelist  string     `json:"ip_whitelist"`
+	CreatedBy    uint       `json:"created_by"`
 }
 
 // User represents platform users
 type User struct {
-	ID                uint      `gorm:"primarykey" json:"id"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	UserID            string    `gorm:"uniqueIndex" json:"user_id"`
-	Username          string    `gorm:"index" json:"username"`
-	Email             string    `gorm:"index" json:"email"`
-	Phone             string    `json:"phone"`
-	PasswordHash      string    `json:"-"`
-	MasterWalletAddr  string    `json:"master_wallet_address"`
-	Status            string    `json:"status"` // active, suspended, banned
-	Tier              int       `json:"tier"` // 0: basic, 1: verified, 2: premium, 3: VIP
-	IsEmailVerified   bool      `json:"is_email_verified"`
-	IsPhoneVerified   bool      `json:"is_phone_verified"`
-	KYCStatus         string    `json:"kyc_status"` // none, pending, level1, level2, level3, approved, rejected
-	KYCLevel         int       `json:"kyc_level"`
-	WhiteLabelID     *uint     `gorm:"index" json:"white_label_id"`
-	ReferrerID        *string   `json:"referrer_id"`
-	ReferralCode     string    `gorm:"uniqueIndex" json:"referral_code"`
-	TotalVolume      float64   `json:"total_volume"`
-	TotalDeposit     float64   `json:"total_deposit"`
-	TotalWithdraw    float64   `json:"total_withdraw"`
+	ID               uint       `gorm:"primarykey" json:"id"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	UserID           string     `gorm:"uniqueIndex" json:"user_id"`
+	Username         string     `gorm:"index" json:"username"`
+	Email            string     `gorm:"index" json:"email"`
+	Phone            string     `json:"phone"`
+	PasswordHash     string     `json:"-"`
+	MasterWalletAddr string     `json:"master_wallet_address"`
+	Status           string     `json:"status"` // active, suspended, banned
+	Tier             int        `json:"tier"`   // 0: basic, 1: verified, 2: premium, 3: VIP
+	IsEmailVerified  bool       `json:"is_email_verified"`
+	IsPhoneVerified  bool       `json:"is_phone_verified"`
+	KYCStatus        string     `json:"kyc_status"` // none, pending, level1, level2, level3, approved, rejected
+	KYCLevel         int        `json:"kyc_level"`
+	WhiteLabelID     *uint      `gorm:"index" json:"white_label_id"`
+	ReferrerID       *string    `json:"referrer_id"`
+	ReferralCode     string     `gorm:"uniqueIndex" json:"referral_code"`
+	TotalVolume      float64    `json:"total_volume"`
+	TotalDeposit     float64    `json:"total_deposit"`
+	TotalWithdraw    float64    `json:"total_withdraw"`
 	LastLoginAt      *time.Time `json:"last_login_at"`
 }
 
 // KYCRecord represents KYC verification records
 type KYCRecord struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UserID          uint      `gorm:"index" json:"user_id"`
-	Level           int       `json:"level"`
-	DocumentType    string    `json:"document_type"` // passport, id_card, drivers_license
-	DocumentNumber  string    `json:"document_number"`
-	DocumentFront   string    `json:"document_front"` // encrypted URL
-	DocumentBack    string    `json:"document_back"`
-	SelfieImage     string    `json:"selfie_image"`
-	FirstName       string    `json:"first_name"`
-	LastName        string    `json:"last_name"`
-	DateOfBirth     string    `json:"date_of_birth"`
-	Country         string    `json:"country"`
-	Address         string    `json:"address"`
-	Status          string    `json:"status"` // pending, approved, rejected
-	RejectReason    string    `json:"reject_reason"`
-	ReviewedBy      uint      `json:"reviewed_by"`
-	ReviewedAt      *time.Time `json:"reviewed_at"`
+	ID             uint       `gorm:"primarykey" json:"id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UserID         uint       `gorm:"index" json:"user_id"`
+	Level          int        `json:"level"`
+	DocumentType   string     `json:"document_type"` // passport, id_card, drivers_license
+	DocumentNumber string     `json:"document_number"`
+	DocumentFront  string     `json:"document_front"` // encrypted URL
+	DocumentBack   string     `json:"document_back"`
+	SelfieImage    string     `json:"selfie_image"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	DateOfBirth    string     `json:"date_of_birth"`
+	Country        string     `json:"country"`
+	Address        string     `json:"address"`
+	Status         string     `json:"status"` // pending, approved, rejected
+	RejectReason   string     `json:"reject_reason"`
+	ReviewedBy     uint       `json:"reviewed_by"`
+	ReviewedAt     *time.Time `json:"reviewed_at"`
 }
 
 // TradingPair represents trading pairs
 type TradingPair struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	PairID        string    `gorm:"uniqueIndex" json:"pair_id"`
-	PairName      string    `json:"pair_name"` // ETH/USDT
-	BaseToken     string    `json:"base_token"`
-	QuoteToken    string    `json:"quote_token"` // USDT, BUSD, etc.
-	ChainID       int64     `json:"chain_id"`
-	DEX           string    `json:"dex"` // uniswap, pancakeswap, etc.
-	PoolAddress   string    `json:"pool_address"`
-	Status        string    `json:"status"` // active, suspended, halted, delisted
-	TradingFee    string    `json:"trading_fee"` // 0.3%
-	ListingFee    string    `json:"listing_fee"`
-	Tier          string    `json:"tier"` // tier1, tier2, tier3, tier4
-	IsStable      bool      `json:"is_stable"`
-	MinTrade      string    `json:"min_trade"`
-	MaxTrade      string    `json:"max_trade"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	PairID       string    `gorm:"uniqueIndex" json:"pair_id"`
+	PairName     string    `json:"pair_name"` // ETH/USDT
+	BaseToken    string    `json:"base_token"`
+	QuoteToken   string    `json:"quote_token"` // USDT, BUSD, etc.
+	ChainID      int64     `json:"chain_id"`
+	DEX          string    `json:"dex"` // uniswap, pancakeswap, etc.
+	PoolAddress  string    `json:"pool_address"`
+	Status       string    `json:"status"`      // active, suspended, halted, delisted
+	TradingFee   string    `json:"trading_fee"` // 0.3%
+	ListingFee   string    `json:"listing_fee"`
+	Tier         string    `json:"tier"` // tier1, tier2, tier3, tier4
+	IsStable     bool      `json:"is_stable"`
+	MinTrade     string    `json:"min_trade"`
+	MaxTrade     string    `json:"max_trade"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // LiquidityPool represents liquidity pools
 type LiquidityPool struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	PoolID        string    `gorm:"uniqueIndex" json:"pool_id"`
-	PairID        string    `gorm:"index" json:"pair_id"`
-	TokenA        string    `json:"token_a"`
-	TokenB        string    `json:"token_b"`
-	ChainID       int64     `json:"chain_id"`
-	DEX           string    `json:"dex"`
-	PoolAddress   string    `json:"pool_address"`
-	LiquidityA    string    `json:"liquidity_a"`
-	LiquidityB    string    `json:"liquidity_b"`
-	LiquidityUSD  float64   `json:"liquidity_usd"`
-	Status        string    `json:"status"` // active, removed
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	PoolID       string    `gorm:"uniqueIndex" json:"pool_id"`
+	PairID       string    `gorm:"index" json:"pair_id"`
+	TokenA       string    `json:"token_a"`
+	TokenB       string    `json:"token_b"`
+	ChainID      int64     `json:"chain_id"`
+	DEX          string    `json:"dex"`
+	PoolAddress  string    `json:"pool_address"`
+	LiquidityA   string    `json:"liquidity_a"`
+	LiquidityB   string    `json:"liquidity_b"`
+	LiquidityUSD float64   `json:"liquidity_usd"`
+	Status       string    `json:"status"` // active, removed
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // FeeConfig represents fee configurations
 type FeeConfig struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	FeeType         string    `json:"fee_type"` // trading, withdrawal, deposit, transfer
-	ChainID         int64     `json:"chain_id"`
-	FeePercent      float64   `json:"fee_percent"`
-	FeeFixed        string    `json:"fee_fixed"`
-	MinFee          string    `json:"min_fee"`
-	MaxFee          string    `json:"max_fee"`
-	IsEnabled       bool      `json:"is_enabled"`
-	WhiteLabelID    *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	FeeType      string    `json:"fee_type"` // trading, withdrawal, deposit, transfer
+	ChainID      int64     `json:"chain_id"`
+	FeePercent   float64   `json:"fee_percent"`
+	FeeFixed     string    `json:"fee_fixed"`
+	MinFee       string    `json:"min_fee"`
+	MaxFee       string    `json:"max_fee"`
+	IsEnabled    bool      `json:"is_enabled"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // MarketMakerBot represents market maker bots
 type MarketMakerBot struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	BotID         string    `gorm:"uniqueIndex" json:"bot_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	PairID        string    `gorm:"index" json:"pair_id"`
-	Strategy      string    `json:"strategy"` // arbitrage, liquidity, spread
-	Status        string    `json:"status"` // active, paused, stopped
-	MinBalance    string    `json:"min_balance"`
-	MaxBalance    string    `json:"max_balance"`
-	Spread        float64   `json:"spread"`
-	MinTradeSize  float64   `json:"min_trade_size"`
-	MaxTradeSize  float64   `json:"max_trade_size"`
-	ProfitTarget  float64   `json:"profit_target"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	BotID        string    `gorm:"uniqueIndex" json:"bot_id"`
+	UserID       string    `gorm:"index" json:"user_id"`
+	PairID       string    `gorm:"index" json:"pair_id"`
+	Strategy     string    `json:"strategy"` // arbitrage, liquidity, spread
+	Status       string    `json:"status"`   // active, paused, stopped
+	MinBalance   string    `json:"min_balance"`
+	MaxBalance   string    `json:"max_balance"`
+	Spread       float64   `json:"spread"`
+	MinTradeSize float64   `json:"min_trade_size"`
+	MaxTradeSize float64   `json:"max_trade_size"`
+	ProfitTarget float64   `json:"profit_target"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // VirtualToken represents virtual/IOU tokens
 type VirtualToken struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	TokenID       string    `gorm:"uniqueIndex" json:"token_id"`
-	Name          string    `json:"name"`
-	Symbol        string    `json:"symbol"`
-	Decimals      int       `json:"decimals"`
-	TotalSupply   string    `json:"total_supply"`
-	Circulating   string    `json:"circulating"`
-	Issuer        string    `json:"issuer"`
-	Status        string    `json:"status"` // active, frozen, revoked
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	TokenID      string    `gorm:"uniqueIndex" json:"token_id"`
+	Name         string    `json:"name"`
+	Symbol       string    `json:"symbol"`
+	Decimals     int       `json:"decimals"`
+	TotalSupply  string    `json:"total_supply"`
+	Circulating  string    `json:"circulating"`
+	Issuer       string    `json:"issuer"`
+	Status       string    `json:"status"` // active, frozen, revoked
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // BrokerageClient represents institutional/brokerage clients
 type BrokerageClient struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	CreatedAt       time.Time `json:"created_at"`
-	ClientID        string    `gorm:"uniqueIndex" json:"client_id"`
-	CompanyName     string    `json:"company_name"`
-	AdminEmail      string    `json:"admin_email"`
-	WalletAddress   string    `json:"wallet_address"`
-	Status          string    `json:"status"` // active, suspended, pending
-	Tier            int       `json:"tier"` // 1: bronze, 2: silver, 3: gold, 4: platinum
-	TradingLimit    float64   `json:"trading_limit"`
-	FeeDiscount     float64   `json:"fee_discount"`
-	WhiteLabelID    *uint     `gorm:"index" json:"white_label_id"`
+	ID            uint      `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time `json:"created_at"`
+	ClientID      string    `gorm:"uniqueIndex" json:"client_id"`
+	CompanyName   string    `json:"company_name"`
+	AdminEmail    string    `json:"admin_email"`
+	WalletAddress string    `json:"wallet_address"`
+	Status        string    `json:"status"` // active, suspended, pending
+	Tier          int       `json:"tier"`   // 1: bronze, 2: silver, 3: gold, 4: platinum
+	TradingLimit  float64   `json:"trading_limit"`
+	FeeDiscount   float64   `json:"fee_discount"`
+	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // NFTCollection represents NFT collections
 type NFTCollection struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	CollectionID  string    `gorm:"uniqueIndex" json:"collection_id"`
-	Name          string    `json:"name"`
-	Symbol        string    `json:"symbol"`
-	ContractAddr  string    `json:"contract_address"`
-	ChainID       int64     `json:"chain_id"`
-	Creator       string    `json:"creator"`
-	Royalty       float64   `json:"royalty"`
-	Status        string    `json:"status"` // active, paused, delisted
-	TotalSupply   int       `json:"total_supply"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	CollectionID string    `gorm:"uniqueIndex" json:"collection_id"`
+	Name         string    `json:"name"`
+	Symbol       string    `json:"symbol"`
+	ContractAddr string    `json:"contract_address"`
+	ChainID      int64     `json:"chain_id"`
+	Creator      string    `json:"creator"`
+	Royalty      float64   `json:"royalty"`
+	Status       string    `json:"status"` // active, paused, delisted
+	TotalSupply  int       `json:"total_supply"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // TokenCreateRequest represents token creation requests
 type TokenCreateRequest struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	RequestID     string    `gorm:"uniqueIndex" json:"request_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	Name          string    `json:"name"`
-	Symbol        string    `json:"symbol"`
-	Decimals      int       `json:"decimals"`
-	TotalSupply   string    `json:"total_supply"`
-	ChainID       int64     `json:"chain_id"`
-	Type          string    `json:"type"` // erc20, trc20, spl, etc.
-	ContractAddr  string    `json:"contract_address"`
-	Status        string    `json:"status"` // pending, deployed, failed
-	TxHash        string    `json:"tx_hash"`
-	WhiteLabelID  *uint     `gorm:"index" json:"white_label_id"`
+	ID           uint      `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	RequestID    string    `gorm:"uniqueIndex" json:"request_id"`
+	UserID       string    `gorm:"index" json:"user_id"`
+	Name         string    `json:"name"`
+	Symbol       string    `json:"symbol"`
+	Decimals     int       `json:"decimals"`
+	TotalSupply  string    `json:"total_supply"`
+	ChainID      int64     `json:"chain_id"`
+	Type         string    `json:"type"` // erc20, trc20, spl, etc.
+	ContractAddr string    `json:"contract_address"`
+	Status       string    `json:"status"` // pending, deployed, failed
+	TxHash       string    `json:"tx_hash"`
+	WhiteLabelID *uint     `gorm:"index" json:"white_label_id"`
 }
 
 // APIKey represents API keys for users
 type APIKey struct {
-	ID            uint      `gorm:"primarykey" json:"id"`
-	CreatedAt     time.Time `json:"created_at"`
-	KeyID         string    `gorm:"uniqueIndex" json:"key_id"`
-	UserID        string    `gorm:"index" json:"user_id"`
-	Key           string    `gorm:"uniqueIndex" json:"key"`
-	Secret        string    `json:"-"` // encrypted
-	Name          string    `json:"name"`
-	Permissions   string    `json:"permissions"` // JSON: ["read", "trade", "withdraw"]
-	IPWhitelist   string    `json:"ip_whitelist"`
-	RateLimit     int       `json:"rate_limit"` // requests per minute
-	Status        string    `json:"status"` // active, suspended
-	LastUsedAt    *time.Time `json:"last_used_at"`
-	ExpiresAt     *time.Time `json:"expires_at"`
+	ID          uint       `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	KeyID       string     `gorm:"uniqueIndex" json:"key_id"`
+	UserID      string     `gorm:"index" json:"user_id"`
+	Key         string     `gorm:"uniqueIndex" json:"key"`
+	Secret      string     `json:"-"` // encrypted
+	Name        string     `json:"name"`
+	Permissions string     `json:"permissions"` // JSON: ["read", "trade", "withdraw"]
+	IPWhitelist string     `json:"ip_whitelist"`
+	RateLimit   int        `json:"rate_limit"` // requests per minute
+	Status      string     `json:"status"`     // active, suspended
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
 }
 
 // AuditLog represents audit logs
@@ -326,10 +326,10 @@ type AuditLog struct {
 // ============================================================================
 
 type AdminService struct {
-	db           *gorm.DB
-	redis        *redis.Client
-	config       *Config
-	mu           sync.RWMutex
+	db     *gorm.DB
+	redis  *redis.Client
+	config *Config
+	mu     sync.RWMutex
 }
 
 func NewAdminService(config *Config) (*AdminService, error) {
@@ -379,12 +379,12 @@ func (s *AdminService) initDefaultAdmin() {
 	// Create default super admin: admin@tigerwallet.com / Admin@123
 	passwordHash, _ := HashPassword("Admin@123")
 	admin := &Admin{
-		Username:    "superadmin",
-		Email:      "admin@tigerwallet.com",
+		Username:     "superadmin",
+		Email:        "admin@tigerwallet.com",
 		PasswordHash: passwordHash,
-		Role:       "super_admin",
-		Permissions: `["all"]`,
-		Status:     "active",
+		Role:         "super_admin",
+		Permissions:  `["all"]`,
+		Status:       "active",
 	}
 	s.db.Create(admin)
 }
@@ -420,10 +420,10 @@ func (s *AdminService) Login(ctx *gin.Context) {
 
 	// Generate JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"admin_id":  admin.ID,
-		"username":  admin.Username,
-		"role":      admin.Role,
-		"exp":       time.Now().Add(24 * time.Hour).Unix(),
+		"admin_id": admin.ID,
+		"username": admin.Username,
+		"role":     admin.Role,
+		"exp":      time.Now().Add(24 * time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte(s.config.JWTSecret))
 
@@ -437,10 +437,10 @@ func (s *AdminService) Login(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"token": tokenString,
 		"admin": gin.H{
-			"id":         admin.ID,
-			"username":   admin.Username,
-			"email":      admin.Email,
-			"role":       admin.Role,
+			"id":          admin.ID,
+			"username":    admin.Username,
+			"email":       admin.Email,
+			"role":        admin.Role,
 			"permissions": admin.Permissions,
 		},
 	})
@@ -451,12 +451,12 @@ func (s *AdminService) Login(ctx *gin.Context) {
 // ============================================================================
 
 type CreateAdminRequest struct {
-	Username    string  `json:"username" binding:"required"`
-	Email       string  `json:"email" binding:"required"`
-	Password    string  `json:"password" binding:"required"`
-	Role        string  `json:"role" binding:"required"`
-	Permissions string  `json:"permissions"`
-	IPWhitelist string  `json:"ip_whitelist"`
+	Username    string `json:"username" binding:"required"`
+	Email       string `json:"email" binding:"required"`
+	Password    string `json:"password" binding:"required"`
+	Role        string `json:"role" binding:"required"`
+	Permissions string `json:"permissions"`
+	IPWhitelist string `json:"ip_whitelist"`
 }
 
 func (s *AdminService) CreateAdmin(ctx *gin.Context) {
@@ -498,13 +498,13 @@ func (s *AdminService) ListAdmins(ctx *gin.Context) {
 	result := make([]gin.H, len(admins))
 	for i, a := range admins {
 		result[i] = gin.H{
-			"id":          a.ID,
-			"username":    a.Username,
-			"email":       a.Email,
-			"role":        a.Role,
-			"status":      a.Status,
-			"last_login":  a.LastLoginAt,
-			"created_at":  a.CreatedAt,
+			"id":         a.ID,
+			"username":   a.Username,
+			"email":      a.Email,
+			"role":       a.Role,
+			"status":     a.Status,
+			"last_login": a.LastLoginAt,
+			"created_at": a.CreatedAt,
 		}
 	}
 
@@ -599,10 +599,10 @@ func (s *AdminService) ListUsers(ctx *gin.Context) {
 	query.Offset(offset).Limit(limit).Find(&users)
 
 	ctx.JSON(200, gin.H{
-		"users":  users,
-		"total":  total,
-		"page":   page,
-		"limit":  limit,
+		"users": users,
+		"total": total,
+		"page":  page,
+		"limit": limit,
 	})
 }
 
@@ -620,8 +620,8 @@ func (s *AdminService) GetUser(ctx *gin.Context) {
 	s.db.Where("user_id = ?", user.ID).Find(&kycRecords)
 
 	ctx.JSON(200, gin.H{
-		"user":         user,
-		"kyc_records":  kycRecords,
+		"user":        user,
+		"kyc_records": kycRecords,
 	})
 }
 
@@ -630,10 +630,10 @@ func (s *AdminService) UpdateUser(ctx *gin.Context) {
 	userID := ctx.Param("id")
 
 	var req struct {
-		Status      string `json:"status"`
-		Tier        int    `json:"tier"`
-		KYCStatus   string `json:"kyc_status"`
-		KYCLevel    int    `json:"kyc_level"`
+		Status    string `json:"status"`
+		Tier      int    `json:"tier"`
+		KYCStatus string `json:"kyc_status"`
+		KYCLevel  int    `json:"kyc_level"`
 	}
 	ctx.ShouldBindJSON(&req)
 
@@ -806,28 +806,28 @@ func (s *AdminService) CreatePair(ctx *gin.Context) {
 	adminID := ctx.GetUint("admin_id")
 
 	var req struct {
-		PairName    string  `json:"pair_name" binding:"required"`
-		BaseToken   string  `json:"base_token" binding:"required"`
-		QuoteToken  string  `json:"quote_token" binding:"required"`
-		ChainID     int64   `json:"chain_id" binding:"required"`
-		DEX         string  `json:"dex"`
-		PoolAddress string  `json:"pool_address"`
-		TradingFee  string  `json:"trading_fee"`
-		Tier        string  `json:"tier"`
+		PairName    string `json:"pair_name" binding:"required"`
+		BaseToken   string `json:"base_token" binding:"required"`
+		QuoteToken  string `json:"quote_token" binding:"required"`
+		ChainID     int64  `json:"chain_id" binding:"required"`
+		DEX         string `json:"dex"`
+		PoolAddress string `json:"pool_address"`
+		TradingFee  string `json:"trading_fee"`
+		Tier        string `json:"tier"`
 	}
 	ctx.ShouldBindJSON(&req)
 
 	pair := &TradingPair{
-		PairID:     uuid.New().String(),
-		PairName:   req.PairName,
-		BaseToken:  req.BaseToken,
-		QuoteToken: req.QuoteToken,
-		ChainID:    req.ChainID,
-		DEX:        req.DEX,
+		PairID:      uuid.New().String(),
+		PairName:    req.PairName,
+		BaseToken:   req.BaseToken,
+		QuoteToken:  req.QuoteToken,
+		ChainID:     req.ChainID,
+		DEX:         req.DEX,
 		PoolAddress: req.PoolAddress,
-		Status:     "active",
-		TradingFee: req.TradingFee,
-		Tier:       req.Tier,
+		Status:      "active",
+		TradingFee:  req.TradingFee,
+		Tier:        req.Tier,
 	}
 
 	s.db.Create(pair)
@@ -841,11 +841,11 @@ func (s *AdminService) UpdatePair(ctx *gin.Context) {
 	pairID := ctx.Param("id")
 
 	var req struct {
-		Status      string `json:"status"`
-		TradingFee  string `json:"trading_fee"`
-		Tier        string `json:"tier"`
-		MinTrade    string `json:"min_trade"`
-		MaxTrade    string `json:"max_trade"`
+		Status     string `json:"status"`
+		TradingFee string `json:"trading_fee"`
+		Tier       string `json:"tier"`
+		MinTrade   string `json:"min_trade"`
+		MaxTrade   string `json:"max_trade"`
 	}
 	ctx.ShouldBindJSON(&req)
 
@@ -910,14 +910,14 @@ func (s *AdminService) AddLiquidity(ctx *gin.Context) {
 	adminID := ctx.GetUint("admin_id")
 
 	var req struct {
-		PairID      string  `json:"pair_id" binding:"required"`
-		TokenA      string  `json:"token_a" binding:"required"`
-		TokenB      string  `json:"token_b" binding:"required"`
-		ChainID     int64   `json:"chain_id" binding:"required"`
-		DEX         string  `json:"dex" binding:"required"`
-		PoolAddress string  `json:"pool_address" binding:"required"`
-		LiquidityA  string  `json:"liquidity_a"`
-		LiquidityB  string  `json:"liquidity_b"`
+		PairID       string  `json:"pair_id" binding:"required"`
+		TokenA       string  `json:"token_a" binding:"required"`
+		TokenB       string  `json:"token_b" binding:"required"`
+		ChainID      int64   `json:"chain_id" binding:"required"`
+		DEX          string  `json:"dex" binding:"required"`
+		PoolAddress  string  `json:"pool_address" binding:"required"`
+		LiquidityA   string  `json:"liquidity_a"`
+		LiquidityB   string  `json:"liquidity_b"`
 		LiquidityUSD float64 `json:"liquidity_usd"`
 	}
 	ctx.ShouldBindJSON(&req)
@@ -1160,12 +1160,12 @@ func (s *AdminService) CreateBrokerage(ctx *gin.Context) {
 	adminID := ctx.GetUint("admin_id")
 
 	var req struct {
-		CompanyName  string  `json:"company_name" binding:"required"`
-		AdminEmail  string  `json:"admin_email" binding:"required"`
-		WalletAddress string `json:"wallet_address" binding:"required"`
-		Tier        int     `json:"tier"`
-		TradingLimit float64 `json:"trading_limit"`
-		FeeDiscount float64 `json:"fee_discount"`
+		CompanyName   string  `json:"company_name" binding:"required"`
+		AdminEmail    string  `json:"admin_email" binding:"required"`
+		WalletAddress string  `json:"wallet_address" binding:"required"`
+		Tier          int     `json:"tier"`
+		TradingLimit  float64 `json:"trading_limit"`
+		FeeDiscount   float64 `json:"fee_discount"`
 	}
 	ctx.ShouldBindJSON(&req)
 
@@ -1301,14 +1301,14 @@ func (s *AdminService) ListAPIKeys(ctx *gin.Context) {
 	result := make([]gin.H, len(keys))
 	for i, k := range keys {
 		result[i] = gin.H{
-			"key_id":       k.KeyID,
-			"user_id":      k.UserID,
-			"name":         k.Name,
-			"permissions":  k.Permissions,
-			"status":       k.Status,
-			"last_used":    k.LastUsedAt,
-			"expires_at":   k.ExpiresAt,
-			"created_at":   k.CreatedAt,
+			"key_id":      k.KeyID,
+			"user_id":     k.UserID,
+			"name":        k.Name,
+			"permissions": k.Permissions,
+			"status":      k.Status,
+			"last_used":   k.LastUsedAt,
+			"expires_at":  k.ExpiresAt,
+			"created_at":  k.CreatedAt,
 		}
 	}
 
@@ -1317,12 +1317,12 @@ func (s *AdminService) ListAPIKeys(ctx *gin.Context) {
 
 func (s *AdminService) CreateAPIKey(ctx *gin.Context) {
 	var req struct {
-		UserID      string   `json:"user_id" binding:"required"`
-		Name        string   `json:"name" binding:"required"`
-		Permissions string   `json:"permissions"`
-		IPWhitelist string   `json:"ip_whitelist"`
-		RateLimit   int      `json:"rate_limit"`
-		ExpiresAt   *string  `json:"expires_at"`
+		UserID      string  `json:"user_id" binding:"required"`
+		Name        string  `json:"name" binding:"required"`
+		Permissions string  `json:"permissions"`
+		IPWhitelist string  `json:"ip_whitelist"`
+		RateLimit   int     `json:"rate_limit"`
+		ExpiresAt   *string `json:"expires_at"`
 	}
 	ctx.ShouldBindJSON(&req)
 
@@ -1346,9 +1346,9 @@ func (s *AdminService) CreateAPIKey(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"success": true,
 		"api_key": gin.H{
-			"key_id":   apiKey.Key,
-			"secret":   secret,
-			"name":     apiKey.Name,
+			"key_id":     apiKey.Key,
+			"secret":     secret,
+			"name":       apiKey.Name,
 			"expires_at": apiKey.ExpiresAt,
 		},
 	})

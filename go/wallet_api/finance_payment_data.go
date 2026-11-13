@@ -17,7 +17,7 @@ import "strings"
 type paymentMethod struct {
 	Code      string   `json:"code"`
 	Name      string   `json:"name"`
-	Kind      string   `json:"kind"` // bank | mobile
+	Kind      string   `json:"kind"`                // bank | mobile
 	Countries []string `json:"countries,omitempty"` // empty = all 238
 }
 

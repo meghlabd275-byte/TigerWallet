@@ -13,23 +13,23 @@ import (
 
 // User profile
 type Profile struct {
-	ID          string   `json:"id"`
-	Username    string   `json:"username"`
-	DisplayName string   `json:"displayName"`
-	Avatar      string   `json:"avatar"`
-	Bio         string   `json:"bio"`
-	Followers   int     `json:"followers"`
-	Following   int     `json:"following"`
-	Wallet      string   `json:"wallet"`
-	Verified    bool    `json:"verified"`
-	CreatedAt   int64   `json:"createdAt"`
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"displayName"`
+	Avatar      string `json:"avatar"`
+	Bio         string `json:"bio"`
+	Followers   int    `json:"followers"`
+	Following   int    `json:"following"`
+	Wallet      string `json:"wallet"`
+	Verified    bool   `json:"verified"`
+	CreatedAt   int64  `json:"createdAt"`
 }
 
 // Follow relationship
 type Follow struct {
 	Follower string `json:"follower"`
 	Followee string `json:"followee"`
-	Time    int64  `json:"time"`
+	Time     int64  `json:"time"`
 }
 
 // Group chat
@@ -37,17 +37,17 @@ type Group struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
 	Members   []string `json:"members"`
-	Admin    string   `json:"admin"`
+	Admin     string   `json:"admin"`
 	CreatedAt int64    `json:"createdAt"`
 }
 
 // Message
 type Message struct {
-	ID        string `json:"id"`
-	GroupID  string `json:"groupId"`
-	Sender   string `json:"sender"`
-	Content  string `json:"content"`
-	Time     int64  `json:"time"`
+	ID      string `json:"id"`
+	GroupID string `json:"groupId"`
+	Sender  string `json:"sender"`
+	Content string `json:"content"`
+	Time    int64  `json:"time"`
 }
 
 // SocialService

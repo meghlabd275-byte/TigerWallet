@@ -218,7 +218,6 @@ func TestSupportedChains(t *testing.T) {
 	}
 }
 
-
 // TestSignTypedDataV4UsesEIP712Digest ensures signatures recover against the
 // EIP-712 digest (0x1901 || domain separator || struct hash), not the domain
 // separator alone.
@@ -271,10 +270,10 @@ func TestSignEVMTransactionRejectsInvalidInputs(t *testing.T) {
 	validValue := big.NewInt(0)
 	validFee := big.NewInt(1_000_000_000)
 	tests := []struct {
-		name string
+		name                                  string
 		chainID, value, gasPrice, maxFee, tip *big.Int
-		gas uint64
-		keyPresent bool
+		gas                                   uint64
+		keyPresent                            bool
 	}{
 		{name: "nil chain id", value: validValue, gasPrice: validFee, gas: 21000, keyPresent: true},
 		{name: "negative chain id", chainID: big.NewInt(-1), value: validValue, gasPrice: validFee, gas: 21000, keyPresent: true},

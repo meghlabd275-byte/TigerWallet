@@ -194,5 +194,9 @@ func (s *Svc) reviewOfframpOrder(c *gin.Context, status, action string) {
 	c.JSON(http.StatusOK, gin.H{action: id})
 }
 
-func (s *Svc) ApproveOfframpOrder(c *gin.Context) { s.reviewOfframpOrder(c, "completed", "offramp.approve") }
-func (s *Svc) RejectOfframpOrder(c *gin.Context)  { s.reviewOfframpOrder(c, "rejected", "offramp.reject") }
+func (s *Svc) ApproveOfframpOrder(c *gin.Context) {
+	s.reviewOfframpOrder(c, "completed", "offramp.approve")
+}
+func (s *Svc) RejectOfframpOrder(c *gin.Context) {
+	s.reviewOfframpOrder(c, "rejected", "offramp.reject")
+}

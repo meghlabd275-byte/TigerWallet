@@ -6,10 +6,13 @@
 //! fail-closed until a real ed25519/Bitcoin signer is wired (they return
 //! `Err` rather than fabricating a signature).
 
-use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
-use secp256k1::{Message, Secp256k1, SecretKey, ecdsa::{RecoverableSignature, RecoveryId}};
+use secp256k1::{
+    ecdsa::{RecoverableSignature, RecoveryId},
+    Message, Secp256k1, SecretKey,
+};
 use sha3::{Digest, Keccak256};
 
 /// Signer interface for different chain types
@@ -94,12 +97,18 @@ impl EVMSigner {
         if v < 27 {
             return false;
         }
-        let Ok(recovery_id) = RecoveryId::from_i32((v - 27) as i32) else { return false };
-        let Ok(sig) = RecoverableSignature::from_compact(&signature[1..65], recovery_id) else { return false };
+        let Ok(recovery_id) = RecoveryId::from_i32((v - 27) as i32) else {
+            return false;
+        };
+        let Ok(sig) = RecoverableSignature::from_compact(&signature[1..65], recovery_id) else {
+            return false;
+        };
         let secp = Secp256k1::verification_only();
         let hash = eip191_hash(message);
         let msg = Message::from_digest(hash);
-        let Ok(recovered) = secp.recover_ecdsa(&msg, &sig) else { return false };
+        let Ok(recovered) = secp.recover_ecdsa(&msg, &sig) else {
+            return false;
+        };
         // Public key may be supplied as 33-byte compressed or 65-byte uncompressed.
         let pk_bytes = recovered.serialize();
         let pk_uncompressed = recovered.serialize_uncompressed();
@@ -123,7 +132,8 @@ impl EVMSigner {
         let secp = Secp256k1::verification_only();
         let hash = eip191_hash(message);
         let msg = Message::from_digest(hash);
-        let pubkey = secp.recover_ecdsa(&msg, &sig)
+        let pubkey = secp
+            .recover_ecdsa(&msg, &sig)
             .map_err(|e| format!("Recovery failed: {}", e))?;
         let uncompressed = pubkey.serialize_uncompressed();
         // Ethereum address = last 20 bytes of Keccak-256(pubkey[1..65])
@@ -141,7 +151,9 @@ impl Default for EVMSigner {
 }
 
 impl Signer for EVMSigner {
-    fn chain_type(&self) -> &str { "evm" }
+    fn chain_type(&self) -> &str {
+        "evm"
+    }
 
     fn sign_transaction(&self, tx: &[u8], private_key: &[u8]) -> Result<Vec<u8>, String> {
         Self::new().sign_transaction(tx, private_key)
@@ -173,7 +185,9 @@ impl Default for SolanaSigner {
 }
 
 impl Signer for SolanaSigner {
-    fn chain_type(&self) -> &str { "solana" }
+    fn chain_type(&self) -> &str {
+        "solana"
+    }
 
     fn sign_transaction(&self, _tx: &[u8], _private_key: &[u8]) -> Result<Vec<u8>, String> {
         Err("Solana on-chain signing is not available in masterwallet_fetchers; use the canonical tiger_solana_core crate".to_string())
@@ -207,7 +221,9 @@ impl Default for BitcoinSigner {
 }
 
 impl Signer for BitcoinSigner {
-    fn chain_type(&self) -> &str { "bitcoin" }
+    fn chain_type(&self) -> &str {
+        "bitcoin"
+    }
 
     fn sign_transaction(&self, _tx: &[u8], _private_key: &[u8]) -> Result<Vec<u8>, String> {
         Err("Bitcoin transaction signing is not available in masterwallet_fetchers".to_string())
@@ -253,14 +269,26 @@ impl SignerRegistry {
         }
     }
 
-    pub fn sign_transaction(&self, chain_type: &str, tx: &[u8], private_key: &[u8]) -> Result<Vec<u8>, String> {
-        let signer = self.get(chain_type)
+    pub fn sign_transaction(
+        &self,
+        chain_type: &str,
+        tx: &[u8],
+        private_key: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let signer = self
+            .get(chain_type)
             .ok_or_else(|| format!("No signer found for chain type: {}", chain_type))?;
         signer.sign_transaction(tx, private_key)
     }
 
-    pub fn sign_message(&self, chain_type: &str, message: &[u8], private_key: &[u8]) -> Result<Vec<u8>, String> {
-        let signer = self.get(chain_type)
+    pub fn sign_message(
+        &self,
+        chain_type: &str,
+        message: &[u8],
+        private_key: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        let signer = self
+            .get(chain_type)
             .ok_or_else(|| format!("No signer found for chain type: {}", chain_type))?;
         signer.sign_message(message, private_key)
     }

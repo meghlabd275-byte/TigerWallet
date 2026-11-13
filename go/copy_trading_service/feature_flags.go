@@ -6,9 +6,9 @@
 // downstream services (this one) READ it. Only the shared Redis namespace
 // crosses between admin and wallet apps:
 //
-//      Key:   tigerwallet:feature:<name>
-//      Value: "enabled" | "disabled" | "paused"   (string)
-//      TTL:   none (persistent; admin-controlled)
+//	Key:   tigerwallet:feature:<name>
+//	Value: "enabled" | "disabled" | "paused"   (string)
+//	TTL:   none (persistent; admin-controlled)
 //
 // Enforcement is default-on (matches wallet_api): any missing/unknown/erroring
 // state is treated as disabled, so an admin toggling a feature off (or Redis

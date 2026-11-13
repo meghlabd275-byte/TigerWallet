@@ -2,8 +2,8 @@ package config
 
 import (
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -11,12 +11,12 @@ import (
 // Every field is env-overridable with a fail-closed default. Secrets are NEVER
 // hardcoded; JWT_SECRET and the SuperAdmin bootstrap credential are required.
 type Config struct {
-	Port            string
-	DatabaseURL     string
-	RedisAddr       string
-	RedisPassword   string
-	JWTSecret       string
-	JWTExpiry       time.Duration
+	Port          string
+	DatabaseURL   string
+	RedisAddr     string
+	RedisPassword string
+	JWTSecret     string
+	JWTExpiry     time.Duration
 
 	// Ed25519 signing key pair for license tokens (hex seed, env-injected).
 	// If unset, a fresh key pair is generated at boot (tokens remain valid for

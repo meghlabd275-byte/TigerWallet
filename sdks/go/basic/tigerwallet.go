@@ -11,17 +11,17 @@ import (
 // ============== Client ==============
 
 type Client struct {
-	BaseURL     string
-	APIKey      string
+	BaseURL    string
+	APIKey     string
 	HTTPClient *http.Client
-	TenantID    string
+	TenantID   string
 }
 
 // NewClient creates a new TigerWallet API client
 func NewClient(apiKey, baseURL, tenantID string) *Client {
 	return &Client{
-		BaseURL: baseURL,
-		APIKey:  apiKey,
+		BaseURL:  baseURL,
+		APIKey:   apiKey,
 		TenantID: tenantID,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -69,11 +69,11 @@ type LoginResponse struct {
 }
 
 type User struct {
-	ID        string   `json:"id"`
-	Email     string   `json:"email"`
-	Name      string   `json:"name"`
-	Role      string   `json:"role"`
-	TenantID  string   `json:"tenant_id"`
+	ID          string   `json:"id"`
+	Email       string   `json:"email"`
+	Name        string   `json:"name"`
+	Role        string   `json:"role"`
+	TenantID    string   `json:"tenant_id"`
 	Permissions []string `json:"permissions"`
 }
 
@@ -160,13 +160,13 @@ func NewWalletService(client *Client) *WalletService {
 }
 
 type Wallet struct {
-	ID            string `json:"id"`
-	Address       string `json:"address"`
-	Chain         string `json:"chain"`
-	Type          string `json:"type"`
-	Balance       string `json:"balance"`
+	ID            string         `json:"id"`
+	Address       string         `json:"address"`
+	Chain         string         `json:"chain"`
+	Type          string         `json:"type"`
+	Balance       string         `json:"balance"`
 	TokenBalances []TokenBalance `json:"token_balances"`
-	CreatedAt     time.Time `json:"created_at"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 type TokenBalance struct {
@@ -233,13 +233,13 @@ type TransactionRequest struct {
 
 type Transaction struct {
 	ID        string    `json:"id"`
-	Hash     string    `json:"hash"`
-	From     string    `json:"from"`
-	To       string    `json:"to"`
-	Amount   string    `json:"amount"`
-	Status   string    `json:"status"`
-	Chain    string    `json:"chain"`
-	GasUsed  uint64    `json:"gas_used"`
+	Hash      string    `json:"hash"`
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	Amount    string    `json:"amount"`
+	Status    string    `json:"status"`
+	Chain     string    `json:"chain"`
+	GasUsed   uint64    `json:"gas_used"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -280,22 +280,22 @@ func NewBillingService(client *Client) *BillingService {
 }
 
 type Plan struct {
-	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Tier            string   `json:"tier"`
-	PriceMonthly    int64    `json:"price_monthly"`
-	PriceYearly     int64    `json:"price_yearly"`
-	APIQuotaMonthly int64    `json:"api_quota_monthly"`
-	MaxUsers        int      `json:"max_users"`
-	MaxWallets     int      `json:"max_wallets"`
-	MaxBots         int      `json:"max_bots"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Tier            string `json:"tier"`
+	PriceMonthly    int64  `json:"price_monthly"`
+	PriceYearly     int64  `json:"price_yearly"`
+	APIQuotaMonthly int64  `json:"api_quota_monthly"`
+	MaxUsers        int    `json:"max_users"`
+	MaxWallets      int    `json:"max_wallets"`
+	MaxBots         int    `json:"max_bots"`
 }
 
 type Subscription struct {
-	ID                 string    `json:"id"`
-	PlanID            string    `json:"plan_id"`
-	Status            string    `json:"status"`
-	CurrentPeriodEnd  time.Time `json:"current_period_end"`
+	ID               string    `json:"id"`
+	PlanID           string    `json:"plan_id"`
+	Status           string    `json:"status"`
+	CurrentPeriodEnd time.Time `json:"current_period_end"`
 	Plan             *Plan     `json:"plan"`
 }
 
@@ -348,14 +348,14 @@ func (s *BillingService) UpgradeSubscription(req UpgradeRequest) (*Subscription,
 }
 
 type Usage struct {
-	TotalAPIcalls   int64   `json:"total_api_calls"`
-	APILimit        int64   `json:"api_limit"`
-	StorageUsedGB   float64 `json:"storage_used_gb"`
-	StorageLimitGB  float64 `json:"storage_limit_gb"`
-	ActiveUsers     int     `json:"active_users"`
-	UsersLimit      int     `json:"users_limit"`
-	ActiveWallets   int     `json:"active_wallets"`
-	WalletsLimit    int     `json:"wallets_limit"`
+	TotalAPIcalls  int64   `json:"total_api_calls"`
+	APILimit       int64   `json:"api_limit"`
+	StorageUsedGB  float64 `json:"storage_used_gb"`
+	StorageLimitGB float64 `json:"storage_limit_gb"`
+	ActiveUsers    int     `json:"active_users"`
+	UsersLimit     int     `json:"users_limit"`
+	ActiveWallets  int     `json:"active_wallets"`
+	WalletsLimit   int     `json:"wallets_limit"`
 }
 
 func (s *BillingService) GetUsage() (*Usage, error) {
@@ -372,12 +372,12 @@ func (s *BillingService) GetUsage() (*Usage, error) {
 }
 
 type Invoice struct {
-	ID            string    `json:"id"`
-	InvoiceNumber string    `json:"invoice_number"`
-	Amount       int64     `json:"amount"`
-	Status       string    `json:"status"`
-	DueDate      time.Time `json:"due_date"`
-	PaidAt       *time.Time `json:"paid_at"`
+	ID            string     `json:"id"`
+	InvoiceNumber string     `json:"invoice_number"`
+	Amount        int64      `json:"amount"`
+	Status        string     `json:"status"`
+	DueDate       time.Time  `json:"due_date"`
+	PaidAt        *time.Time `json:"paid_at"`
 }
 
 func (s *BillingService) GetInvoices() ([]Invoice, error) {
@@ -406,12 +406,12 @@ func NewFetcherService(client *Client) *FetcherService {
 }
 
 type PriceData struct {
-	Symbol        string  `json:"symbol"`
-	Price         float64 `json:"price"`
-	Change24h     float64 `json:"change_24h"`
-	Volume24h     float64 `json:"volume_24h"`
-	MarketCap     float64 `json:"market_cap"`
-	Timestamp    int64   `json:"timestamp"`
+	Symbol    string  `json:"symbol"`
+	Price     float64 `json:"price"`
+	Change24h float64 `json:"change_24h"`
+	Volume24h float64 `json:"volume_24h"`
+	MarketCap float64 `json:"market_cap"`
+	Timestamp int64   `json:"timestamp"`
 }
 
 func (s *FetcherService) GetPrice(symbols []string) ([]PriceData, error) {
@@ -430,11 +430,11 @@ func (s *FetcherService) GetPrice(symbols []string) ([]PriceData, error) {
 }
 
 type BlockchainData struct {
-	Chain         string `json:"chain"`
-	BlockNumber   uint64 `json:"block_number"`
-	BlockHash     string `json:"block_hash"`
-	Timestamp     int64  `json:"timestamp"`
-	GasPrice      string `json:"gas_price"`
+	Chain       string `json:"chain"`
+	BlockNumber uint64 `json:"block_number"`
+	BlockHash   string `json:"block_hash"`
+	Timestamp   int64  `json:"timestamp"`
+	GasPrice    string `json:"gas_price"`
 }
 
 func (s *FetcherService) GetBlockchainData(chain string) (*BlockchainData, error) {
@@ -451,10 +451,10 @@ func (s *FetcherService) GetBlockchainData(chain string) (*BlockchainData, error
 }
 
 type WalletBalance struct {
-	Address   string             `json:"address"`
-	Native    string             `json:"native"`
-	Tokens    []TokenBalance     `json:"tokens"`
-	NFTs     []NFTBalance       `json:"nfts"`
+	Address string         `json:"address"`
+	Native  string         `json:"native"`
+	Tokens  []TokenBalance `json:"tokens"`
+	NFTs    []NFTBalance   `json:"nfts"`
 }
 
 type NFTBalance struct {
@@ -477,21 +477,21 @@ func (s *FetcherService) GetWalletBalance(chain, address string) (*WalletBalance
 }
 
 type TransactionData struct {
-	Hash         string        `json:"hash"`
-	From         string        `json:"from"`
-	To           string        `json:"to"`
-	Value        string        `json:"value"`
-	Status       string        `json:"status"`
-	BlockNumber uint64        `json:"block_number"`
-	Timestamp   int64         `json:"timestamp"`
+	Hash        string          `json:"hash"`
+	From        string          `json:"from"`
+	To          string          `json:"to"`
+	Value       string          `json:"value"`
+	Status      string          `json:"status"`
+	BlockNumber uint64          `json:"block_number"`
+	Timestamp   int64           `json:"timestamp"`
 	Transfers   []TokenTransfer `json:"transfers"`
 }
 
 type TokenTransfer struct {
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Token   string `json:"token"`
-	Amount  string `json:"amount"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Token  string `json:"token"`
+	Amount string `json:"amount"`
 }
 
 func (s *FetcherService) GetTransactions(chain, address string, limit int) ([]TransactionData, error) {
@@ -521,12 +521,12 @@ func NewNotificationService(client *Client) *NotificationService {
 
 type Notification struct {
 	ID        string                 `json:"id"`
-	Type     string                 `json:"type"`
-	Title    string                 `json:"title"`
-	Message  string                 `json:"message"`
-	IsRead  bool                   `json:"is_read"`
-	Data    map[string]interface{} `json:"data"`
-	CreatedAt time.Time            `json:"created_at"`
+	Type      string                 `json:"type"`
+	Title     string                 `json:"title"`
+	Message   string                 `json:"message"`
+	IsRead    bool                   `json:"is_read"`
+	Data      map[string]interface{} `json:"data"`
+	CreatedAt time.Time              `json:"created_at"`
 }
 
 func (s *NotificationService) GetNotifications() ([]Notification, error) {
@@ -565,10 +565,10 @@ func (s *NotificationService) MarkAllAsRead() error {
 }
 
 type SendNotificationRequest struct {
-	Type     string                 `json:"type"`
-	Title    string                 `json:"title"`
-	Message  string                 `json:"message"`
-	Channel  string                 `json:"channel"` // email, sms, push
+	Type    string                 `json:"type"`
+	Title   string                 `json:"title"`
+	Message string                 `json:"message"`
+	Channel string                 `json:"channel"` // email, sms, push
 	Data    map[string]interface{} `json:"data"`
 }
 
@@ -583,12 +583,12 @@ func (s *NotificationService) SendNotification(req SendNotificationRequest) erro
 }
 
 type NotificationPreference struct {
-	EmailEnabled     bool `json:"email_enabled"`
-	SMSEnabled      bool `json:"sms_enabled"`
-	PushEnabled     bool `json:"push_enabled"`
+	EmailEnabled      bool `json:"email_enabled"`
+	SMSEnabled        bool `json:"sms_enabled"`
+	PushEnabled       bool `json:"push_enabled"`
 	TransactionAlerts bool `json:"transaction_alerts"`
-	MarketingAlerts  bool `json:"marketing_alerts"`
-	SecurityAlerts  bool `json:"security_alerts"`
+	MarketingAlerts   bool `json:"marketing_alerts"`
+	SecurityAlerts    bool `json:"security_alerts"`
 }
 
 func (s *NotificationService) GetPreferences() (*NotificationPreference, error) {
@@ -625,11 +625,11 @@ func NewKYCService(client *Client) *KYCService {
 }
 
 type KYCStatus struct {
-	Status       string    `json:"status"`
-	Level        string    `json:"level"`
-	VerifiedAt   *time.Time `json:"verified_at"`
-	ExpiryDate   *time.Time `json:"expiry_date"`
-	Documents    []string   `json:"documents"`
+	Status     string     `json:"status"`
+	Level      string     `json:"level"`
+	VerifiedAt *time.Time `json:"verified_at"`
+	ExpiryDate *time.Time `json:"expiry_date"`
+	Documents  []string   `json:"documents"`
 }
 
 func (s *KYCService) GetStatus() (*KYCStatus, error) {
@@ -653,8 +653,8 @@ type KYCSubmission struct {
 	CountryOfResidence string `json:"country_of_residence"`
 	Address            string `json:"address"`
 	City               string `json:"city"`
-	PostalCode        string `json:"postal_code"`
-	PhoneNumber       string `json:"phone_number"`
+	PostalCode         string `json:"postal_code"`
+	PhoneNumber        string `json:"phone_number"`
 }
 
 func (s *KYCService) Submit(submission KYCSubmission) (string, error) {
@@ -673,17 +673,17 @@ func (s *KYCService) Submit(submission KYCSubmission) (string, error) {
 }
 
 type DocumentUpload struct {
-	Type      string `json:"type"` // id_card, passport, driver_license
-	Side      string `json:"side"` // front, back
-	FileData  string `json:"file_data"` // base64
+	Type     string `json:"type"`      // id_card, passport, driver_license
+	Side     string `json:"side"`      // front, back
+	FileData string `json:"file_data"` // base64
 }
 
 func (s *KYCService) UploadDocument(applicationID string, doc DocumentUpload) error {
 	resp, err := s.client.doRequest("POST", "/api/v1/kyc/documents/upload", map[string]interface{}{
 		"application_id": applicationID,
-		"type":          doc.Type,
-		"side":         doc.Side,
-		"file_data":     doc.FileData,
+		"type":           doc.Type,
+		"side":           doc.Side,
+		"file_data":      doc.FileData,
 	})
 	if err != nil {
 		return err

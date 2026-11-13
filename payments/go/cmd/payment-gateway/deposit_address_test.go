@@ -23,9 +23,9 @@ func TestHDDeriveMatchesBIP32Vector1(t *testing.T) {
 	}
 
 	cases := []struct {
-		path     string
-		privHex  string
-		pubHex   string
+		path    string
+		privHex string
+		pubHex  string
 	}{
 		{
 			path:    "m",

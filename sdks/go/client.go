@@ -262,7 +262,7 @@ func NewLicenseService(client *Client) *LicenseService {
 // ValidateLicense validates a license key
 func (s *LicenseService) ValidateLicense(ctx context.Context, licenseKey, hardwareID string) (*LicenseValidationResponse, error) {
 	body := map[string]string{
-		"license_key":  licenseKey,
+		"license_key": licenseKey,
 		"hardware_id": hardwareID,
 	}
 	respBody, err := s.client.Request(ctx, "POST", "/api/v1/licenses/validate", body)
@@ -324,7 +324,7 @@ func (s *WebhookService) VerifyWebhook(payload, signature, secret string) bool {
 
 // Response Types
 type PriceResponse struct {
-	Success bool              `json:"success"`
+	Success bool             `json:"success"`
 	Prices  map[string]Price `json:"prices"`
 }
 
@@ -337,19 +337,19 @@ type Price struct {
 }
 
 type WalletBalanceResponse struct {
-	Success  bool           `json:"success"`
-	Address  string         `json:"address"`
-	Chain    string         `json:"chain"`
-	Balance  float64        `json:"balance"`
-	Tokens   []TokenBalance `json:"tokens"`
+	Success bool           `json:"success"`
+	Address string         `json:"address"`
+	Chain   string         `json:"chain"`
+	Balance float64        `json:"balance"`
+	Tokens  []TokenBalance `json:"tokens"`
 }
 
 type TokenBalance struct {
-	Symbol    string  `json:"symbol"`
-	Address   string  `json:"address"`
-	Balance   float64 `json:"balance"`
-	Price     float64 `json:"price"`
-	ValueUSD  float64 `json:"value_usd"`
+	Symbol   string  `json:"symbol"`
+	Address  string  `json:"address"`
+	Balance  float64 `json:"balance"`
+	Price    float64 `json:"price"`
+	ValueUSD float64 `json:"value_usd"`
 }
 
 type TransactionsResponse struct {
@@ -359,31 +359,31 @@ type TransactionsResponse struct {
 }
 
 type Transaction struct {
-	Hash        string    `json:"hash"`
-	From        string    `json:"from"`
-	To          string    `json:"to"`
-	Value       float64   `json:"value"`
-	Token       string    `json:"token"`
-	Timestamp   int64     `json:"timestamp"`
-	Status      string    `json:"status"`
-	BlockNumber int64     `json:"block_number"`
+	Hash        string  `json:"hash"`
+	From        string  `json:"from"`
+	To          string  `json:"to"`
+	Value       float64 `json:"value"`
+	Token       string  `json:"token"`
+	Timestamp   int64   `json:"timestamp"`
+	Status      string  `json:"status"`
+	BlockNumber int64   `json:"block_number"`
 }
 
 type TokenInfoResponse struct {
-	Success    bool    `json:"success"`
-	Address    string  `json:"address"`
-	Chain      string  `json:"chain"`
-	Name       string  `json:"name"`
-	Symbol     string  `json:"symbol"`
-	Decimals   int     `json:"decimals"`
+	Success     bool    `json:"success"`
+	Address     string  `json:"address"`
+	Chain       string  `json:"chain"`
+	Name        string  `json:"name"`
+	Symbol      string  `json:"symbol"`
+	Decimals    int     `json:"decimals"`
 	TotalSupply float64 `json:"total_supply"`
-	Price      float64 `json:"price"`
-	MarketCap  float64 `json:"market_cap"`
+	Price       float64 `json:"price"`
+	MarketCap   float64 `json:"market_cap"`
 }
 
 type MarketDataResponse struct {
-	Success bool           `json:"success"`
-	Data    []MarketData   `json:"data"`
+	Success bool         `json:"success"`
+	Data    []MarketData `json:"data"`
 }
 
 type MarketData struct {
@@ -396,15 +396,15 @@ type MarketData struct {
 }
 
 type PermissionsResponse struct {
-	Success     bool                   `json:"success"`
-	Permissions map[string]Permission   `json:"permissions"`
-	SyncedAt    int64                  `json:"synced_at"`
+	Success     bool                  `json:"success"`
+	Permissions map[string]Permission `json:"permissions"`
+	SyncedAt    int64                 `json:"synced_at"`
 }
 
 type Permission struct {
-	Enabled bool     `json:"enabled"`
-	Limit   int      `json:"limit,omitempty"`
-	Usage   int      `json:"usage,omitempty"`
+	Enabled bool `json:"enabled"`
+	Limit   int  `json:"limit,omitempty"`
+	Usage   int  `json:"usage,omitempty"`
 }
 
 type PermissionCheckResponse struct {
@@ -413,11 +413,11 @@ type PermissionCheckResponse struct {
 }
 
 type LicenseValidationResponse struct {
-	Valid       bool   `json:"valid"`
-	LicenseKey  string `json:"license_key"`
-	Product     string `json:"product"`
-	ExpiresAt   int64  `json:"expires_at"`
-	TenantID    string `json:"tenant_id"`
+	Valid      bool   `json:"valid"`
+	LicenseKey string `json:"license_key"`
+	Product    string `json:"product"`
+	ExpiresAt  int64  `json:"expires_at"`
+	TenantID   string `json:"tenant_id"`
 }
 
 type LicenseInfoResponse struct {
@@ -426,8 +426,8 @@ type LicenseInfoResponse struct {
 	Status       string   `json:"status"`
 	Features     []string `json:"features"`
 	ExpiresAt    int64    `json:"expires_at"`
-	ApiCallLimit int     `json:"api_call_limit"`
-	ApiCallsUsed int     `json:"api_calls_used"`
+	ApiCallLimit int      `json:"api_call_limit"`
+	ApiCallsUsed int      `json:"api_calls_used"`
 }
 
 type WebhookResponse struct {
@@ -445,9 +445,9 @@ type ErrorResponse struct {
 
 // RateLimiter implements token bucket rate limiting
 type RateLimiter struct {
-	tokens    chan struct{}
-	rate      int
-	 refill   time.Duration
+	tokens chan struct{}
+	rate   int
+	refill time.Duration
 }
 
 func NewRateLimiter(requestsPerSecond int) *RateLimiter {
@@ -456,12 +456,12 @@ func NewRateLimiter(requestsPerSecond int) *RateLimiter {
 		rate:   requestsPerSecond,
 		refill: time.Second,
 	}
-	
+
 	// Fill initial tokens
 	for i := 0; i < requestsPerSecond; i++ {
 		rl.tokens <- struct{}{}
 	}
-	
+
 	// Refill tokens
 	go func() {
 		for {
@@ -472,7 +472,7 @@ func NewRateLimiter(requestsPerSecond int) *RateLimiter {
 			}
 		}
 	}()
-	
+
 	return rl
 }
 

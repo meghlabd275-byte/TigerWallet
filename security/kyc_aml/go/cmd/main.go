@@ -16,8 +16,8 @@ import (
 )
 
 var (
-store    *Store
-screener *amlScreener
+	store    *Store
+	screener *amlScreener
 )
 
 func main() {

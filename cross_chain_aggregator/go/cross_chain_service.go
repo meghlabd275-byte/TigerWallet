@@ -244,8 +244,8 @@ func (s *CrossChainService) GetQuote(c *gin.Context) {
 
 	if s.db != nil {
 		var parsed struct {
-			Tool      string `json:"tool"`
-			Estimate  struct {
+			Tool     string `json:"tool"`
+			Estimate struct {
 				ToAmount string `json:"toAmount"`
 			} `json:"estimate"`
 		}
@@ -314,11 +314,11 @@ func (s *CrossChainService) ExecuteQuote(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":               "ready_to_sign",
-		"quote_id":             quote.ID,
-		"tool":                 quote.Tool,
-		"transaction_request":  quote.TransactionRequest,
-		"estimate":             quote.Estimate,
+		"status":              "ready_to_sign",
+		"quote_id":            quote.ID,
+		"tool":                quote.Tool,
+		"transaction_request": quote.TransactionRequest,
+		"estimate":            quote.Estimate,
 	})
 }
 
@@ -384,4 +384,3 @@ func main() {
 	defer cancel()
 	srv.Shutdown(ctx)
 }
-

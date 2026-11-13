@@ -51,102 +51,102 @@ const (
 type ProductType string
 
 const (
-	ProductWallet    ProductType = "WALLET"
-	ProductExchange  ProductType = "EXCHANGE"
-	ProductDEX       ProductType = "DEX"
-	ProductCEXDEX    ProductType = "CEX_DEX"
+	ProductWallet   ProductType = "WALLET"
+	ProductExchange ProductType = "EXCHANGE"
+	ProductDEX      ProductType = "DEX"
+	ProductCEXDEX   ProductType = "CEX_DEX"
 )
 
 // Branding
 type Branding struct {
-	Logo          string `json:"logo"`
-	Favicon       string `json:"favicon"`
-	PrimaryColor  string `json:"primary_color"`
-	SecondaryColor string `json:"secondary_color"`
-	AccentColor   string `json:"accent_color"`
+	Logo            string `json:"logo"`
+	Favicon         string `json:"favicon"`
+	PrimaryColor    string `json:"primary_color"`
+	SecondaryColor  string `json:"secondary_color"`
+	AccentColor     string `json:"accent_color"`
 	BackgroundColor string `json:"background_color"`
-	TextColor     string `json:"text_color"`
-	Name          string `json:"name"`
-	Slogan        string `json:"slogan"`
-	SupportEmail  string `json:"support_email"`
-	SupportURL    string `json:"support_url"`
+	TextColor       string `json:"text_color"`
+	Name            string `json:"name"`
+	Slogan          string `json:"slogan"`
+	SupportEmail    string `json:"support_email"`
+	SupportURL      string `json:"support_url"`
 }
 
 // Fee Structure
 type FeeStructure struct {
-	TradingFee      float64 `json:"trading_fee"`
-	WithdrawalFee  float64 `json:"withdrawal_fee"`
-	DepositFee     float64 `json:"deposit_fee"`
-	MakerFee       float64 `json:"maker_fee"`
-	TakerFee       float64 `json:"taker_fee"`
-	ConversionFee  float64 `json:"conversion_fee"`
+	TradingFee    float64 `json:"trading_fee"`
+	WithdrawalFee float64 `json:"withdrawal_fee"`
+	DepositFee    float64 `json:"deposit_fee"`
+	MakerFee      float64 `json:"maker_fee"`
+	TakerFee      float64 `json:"taker_fee"`
+	ConversionFee float64 `json:"conversion_fee"`
 }
 
 // Feature Flags
 type FeatureFlags struct {
-	SpotTrading       bool `json:"spot_trading"`
-	FuturesTrading    bool `json:"futures_trading"`
-	OptionsTrading    bool `json:"options_trading"`
-	Staking           bool `json:"staking"`
-	Lending           bool `json:"lending"`
-	NFT               bool `json:"nft"`
-	Launchpad         bool `json:"launchpad"`
-	CopyTrading       bool `json:"copy_trading"`
-	P2PTrading        bool `json:"p2p_trading"`
+	SpotTrading      bool `json:"spot_trading"`
+	FuturesTrading   bool `json:"futures_trading"`
+	OptionsTrading   bool `json:"options_trading"`
+	Staking          bool `json:"staking"`
+	Lending          bool `json:"lending"`
+	NFT              bool `json:"nft"`
+	Launchpad        bool `json:"launchpad"`
+	CopyTrading      bool `json:"copy_trading"`
+	P2PTrading       bool `json:"p2p_trading"`
 	FiatOnramp       bool `json:"fiat_onramp"`
-	CryptoCard        bool `json:"crypto_card"`
-	API               bool `json:"api"`
-	MobileApp         bool `json:"mobile_app"`
-	WebApp            bool `json:"web_app"`
-	BrowserExtension  bool `json:"browser_extension"`
+	CryptoCard       bool `json:"crypto_card"`
+	API              bool `json:"api"`
+	MobileApp        bool `json:"mobile_app"`
+	WebApp           bool `json:"web_app"`
+	BrowserExtension bool `json:"browser_extension"`
 }
 
 // Supported Assets
 type SupportedAssets struct {
 	Cryptocurrencies []string `json:"cryptocurrencies"`
-	Fiats           []string `json:"fiats"`
-	Networks        []string `json:"networks"`
+	Fiats            []string `json:"fiats"`
+	Networks         []string `json:"networks"`
 }
 
 // White Label Client
 type WhiteLabelClient struct {
-	ClientID       string          `json:"client_id"`
-	Name           string          `json:"name"`
-	Domain         string          `json:"domain"`
-	CustomDomains  []string        `json:"custom_domains"`
-	Status         WLStatus        `json:"status"`
-	ProductType    ProductType     `json:"product_type"`
-	Branding       Branding        `json:"branding"`
-	FeeStructure   FeeStructure    `json:"fee_structure"`
-	Features       FeatureFlags    `json:"features"`
-	Assets         SupportedAssets `json:"assets"`
-	AdminEmail     string          `json:"admin_email"`
-	AdminID        string          `json:"admin_id"`
-	ResellerID     string          `json:"reseller_id"`
-	WhitelabelID   string          `json:"whitelabel_id"`
-	Tier           string           `json:"tier"` // basic, professional, enterprise
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	ActivatedAt    *time.Time      `json:"activated_at,omitempty"`
-	ExpiresAt      *time.Time      `json:"expires_at,omitempty"`
+	ClientID      string          `json:"client_id"`
+	Name          string          `json:"name"`
+	Domain        string          `json:"domain"`
+	CustomDomains []string        `json:"custom_domains"`
+	Status        WLStatus        `json:"status"`
+	ProductType   ProductType     `json:"product_type"`
+	Branding      Branding        `json:"branding"`
+	FeeStructure  FeeStructure    `json:"fee_structure"`
+	Features      FeatureFlags    `json:"features"`
+	Assets        SupportedAssets `json:"assets"`
+	AdminEmail    string          `json:"admin_email"`
+	AdminID       string          `json:"admin_id"`
+	ResellerID    string          `json:"reseller_id"`
+	WhitelabelID  string          `json:"whitelabel_id"`
+	Tier          string          `json:"tier"` // basic, professional, enterprise
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	ActivatedAt   *time.Time      `json:"activated_at,omitempty"`
+	ExpiresAt     *time.Time      `json:"expires_at,omitempty"`
 }
 
 // White Label Admin
 type WhiteLabelAdmin struct {
-	AdminID        string    `json:"admin_id"`
-	ClientID       string    `json:"client_id"`
-	Email          string    `json:"email"`
-	Username       string    `json:"username"`
-	PasswordHash   string    `json:"-"` // never serialized to clients
-	Role           string    `json:"role"` // owner, admin, manager, support
-	Permissions    []string  `json:"permissions"`
-	Status         string    `json:"status"`
-	FirstName      string    `json:"first_name"`
-	LastName       string    `json:"last_name"`
-	Phone          string    `json:"phone"`
-	LastLogin      *time.Time `json:"last_login,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	AdminID      string     `json:"admin_id"`
+	ClientID     string     `json:"client_id"`
+	Email        string     `json:"email"`
+	Username     string     `json:"username"`
+	PasswordHash string     `json:"-"`    // never serialized to clients
+	Role         string     `json:"role"` // owner, admin, manager, support
+	Permissions  []string   `json:"permissions"`
+	Status       string     `json:"status"`
+	FirstName    string     `json:"first_name"`
+	LastName     string     `json:"last_name"`
+	Phone        string     `json:"phone"`
+	LastLogin    *time.Time `json:"last_login,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // Subscription
@@ -164,10 +164,10 @@ type Subscription struct {
 
 // White Label Service
 type WhiteLabelService struct {
-	config      Config
-	redis       *redis.Client
-	clients     map[string]*WhiteLabelClient
-	admins      map[string]*WhiteLabelAdmin
+	config        Config
+	redis         *redis.Client
+	clients       map[string]*WhiteLabelClient
+	admins        map[string]*WhiteLabelAdmin
 	subscriptions map[string]*Subscription
 	jwtSecret     []byte
 	mu            sync.RWMutex
@@ -181,10 +181,10 @@ func NewWhiteLabelService(cfg Config) *WhiteLabelService {
 	})
 
 	return &WhiteLabelService{
-		config:       cfg,
-		redis:        redisClient,
-		clients:     make(map[string]*WhiteLabelClient),
-		admins:      make(map[string]*WhiteLabelAdmin),
+		config:        cfg,
+		redis:         redisClient,
+		clients:       make(map[string]*WhiteLabelClient),
+		admins:        make(map[string]*WhiteLabelAdmin),
 		subscriptions: make(map[string]*Subscription),
 		jwtSecret:     []byte(cfg.JWTSecret),
 	}
@@ -220,20 +220,20 @@ func (s *WhiteLabelService) CreateClient(client *WhiteLabelClient) error {
 	// Set default branding if not provided
 	if client.Branding.Name == "" {
 		client.Branding = Branding{
-			Name:          client.Name,
-			PrimaryColor:  "#f59e0b",
+			Name:           client.Name,
+			PrimaryColor:   "#f59e0b",
 			SecondaryColor: "#1e293b",
-			AccentColor:   "#10b981",
+			AccentColor:    "#10b981",
 		}
 	}
 
 	// Set default features
 	if !client.Features.WebApp {
 		client.Features = FeatureFlags{
-			SpotTrading:    true,
-			WebApp:        true,
-			MobileApp:     true,
-			FiatOnramp:    true,
+			SpotTrading: true,
+			WebApp:      true,
+			MobileApp:   true,
+			FiatOnramp:  true,
 		}
 	}
 
@@ -241,8 +241,8 @@ func (s *WhiteLabelService) CreateClient(client *WhiteLabelClient) error {
 	if len(client.Assets.Cryptocurrencies) == 0 {
 		client.Assets = SupportedAssets{
 			Cryptocurrencies: []string{"BTC", "ETH", "USDT", "USDC", "BNB"},
-			Fiats:           []string{"USD", "EUR", "GBP"},
-			Networks:        []string{"Ethereum", "BSC", "Polygon"},
+			Fiats:            []string{"USD", "EUR", "GBP"},
+			Networks:         []string{"Ethereum", "BSC", "Polygon"},
 		}
 	}
 
@@ -254,7 +254,7 @@ func (s *WhiteLabelService) CreateClient(client *WhiteLabelClient) error {
 		ClientID:       client.ClientID,
 		Plan:           "professional",
 		Price:          999.0,
-		BillingCycle:  "monthly",
+		BillingCycle:   "monthly",
 		Status:         "active",
 		StartDate:      time.Now(),
 		EndDate:        time.Now().AddDate(0, 1, 0),
@@ -800,7 +800,7 @@ func main() {
 	cfg := Config{
 		ServerPort: getEnv("WHITELABEL_PORT", "8089"),
 		RedisAddr:  getEnv("REDIS_ADDR", "localhost:6379"),
-		JWTSecret: getEnv("JWT_SECRET", ""),
+		JWTSecret:  getEnv("JWT_SECRET", ""),
 	}
 	if cfg.JWTSecret == "" {
 		log.Fatal("JWT_SECRET is required (refusing to start with an unsigned-token default)")

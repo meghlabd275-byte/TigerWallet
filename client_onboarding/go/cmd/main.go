@@ -37,19 +37,19 @@ const (
 )
 
 type OnboardingRequest struct {
-	ID              uuid.UUID        `json:"id"`
-	CompanyName     string          `json:"company_name"`
-	ContactName     string          `json:"contact_name"`
-	ContactEmail    string          `json:"contact_email"`
-	ContactPhone    string          `json:"contact_phone"`
-	Products        string          `json:"products"` // JSON array
-	Website         string          `json:"website"`
-	Status          OnboardingStatus `json:"status"`
-	AssignedTo      *uuid.UUID      `json:"assigned_to"` // admin who reviews
-	Notes           string          `json:"notes"`
-	Documents       string          `json:"documents"` // JSON object
-	SubmittedAt     time.Time       `json:"submitted_at"`
-	ReviewedAt     *time.Time      `json:"reviewed_at"`
+	ID           uuid.UUID        `json:"id"`
+	CompanyName  string           `json:"company_name"`
+	ContactName  string           `json:"contact_name"`
+	ContactEmail string           `json:"contact_email"`
+	ContactPhone string           `json:"contact_phone"`
+	Products     string           `json:"products"` // JSON array
+	Website      string           `json:"website"`
+	Status       OnboardingStatus `json:"status"`
+	AssignedTo   *uuid.UUID       `json:"assigned_to"` // admin who reviews
+	Notes        string           `json:"notes"`
+	Documents    string           `json:"documents"` // JSON object
+	SubmittedAt  time.Time        `json:"submitted_at"`
+	ReviewedAt   *time.Time       `json:"reviewed_at"`
 }
 
 var db *pgxpool.Pool
@@ -134,7 +134,7 @@ func main() {
 
 func submitOnboarding(c *gin.Context) {
 	var req struct {
-		CompanyName string `json:"company_name" binding:"required"`
+		CompanyName  string `json:"company_name" binding:"required"`
 		ContactName  string `json:"contact_name" binding:"required"`
 		ContactEmail string `json:"contact_email" binding:"required"`
 		ContactPhone string `json:"contact_phone"`
@@ -240,9 +240,9 @@ func updateStatus(c *gin.Context) {
 	}
 
 	var req struct {
-		Status    OnboardingStatus `json:"status" binding:"required"`
-		Notes     string           `json:"notes"`
-		AssignedTo *uuid.UUID      `json:"assigned_to"`
+		Status     OnboardingStatus `json:"status" binding:"required"`
+		Notes      string           `json:"notes"`
+		AssignedTo *uuid.UUID       `json:"assigned_to"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -310,9 +310,9 @@ func getOnboardingConfig(c *gin.Context) {
 	configJSON, err := redisClient.Get(context.Background(), "onboarding_config").Result()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
-			"products": []string{"master_wallet", "user_wallet", "bots", "project_party"},
+			"products":          []string{"master_wallet", "user_wallet", "bots", "project_party"},
 			"approval_required": true,
-			"auto_approve": false,
+			"auto_approve":      false,
 		})
 		return
 	}

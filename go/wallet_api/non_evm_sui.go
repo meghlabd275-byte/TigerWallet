@@ -38,9 +38,9 @@ func suiSignTxBytes(priv ed.PrivateKey, txBytes []byte) ([]byte, error) {
 
 // suiOwnedCoins calls sui_getOwnedCoins for the SUI coin type.
 type suiCoin struct {
-	CoinType                  string `json:"coinType"`
-	CoinObjectId              string `json:"coinObjectId"`
-	Balance                   string `json:"balance"`
+	CoinType     string `json:"coinType"`
+	CoinObjectId string `json:"coinObjectId"`
+	Balance      string `json:"balance"`
 }
 
 func suiOwnedCoins(ctx context.Context, endpoint, address string) ([]suiCoin, error) {
@@ -98,7 +98,7 @@ func SuiBuildSend(ctx context.Context, seed []byte, path, endpoint, to string, a
 		"public_transfer",
 		[]string{},
 		[]interface{}{coins[0].CoinObjectId, to},
-		"5000000",                  // gas budget 0.005 SUI
+		"5000000", // gas budget 0.005 SUI
 	}
 	res, err := solanaRPC(ctx, endpoint, "sui_moveCall", call)
 	if err != nil {

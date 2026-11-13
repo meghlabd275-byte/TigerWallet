@@ -36,41 +36,41 @@ func initDB() error {
 // API key types
 type APIKey struct {
 	ID          int
-	UserID     int
-	KeyName    string
-	APIKey    string
-	APISecret string
+	UserID      int
+	KeyName     string
+	APIKey      string
+	APISecret   string
 	Permissions []string
-	RateLimit int
+	RateLimit   int
 	IPWhitelist []string
-	IsActive  bool
-	LastUsed sql.NullTime
-	ExpiresAt sql.NullTime
-	CreatedAt time.Time
+	IsActive    bool
+	LastUsed    sql.NullTime
+	ExpiresAt   sql.NullTime
+	CreatedAt   time.Time
 }
 
 // White label API key
 type WhiteLabelAPIKey struct {
-	ID          int
+	ID           int
 	WhiteLabelID int
-	APIKey    string
-	APISecret string
-	Permissions []string
-	IsActive  bool
-	CreatedAt time.Time
+	APIKey       string
+	APISecret    string
+	Permissions  []string
+	IsActive     bool
+	CreatedAt    time.Time
 }
 
 // Generate API key
 func generateAPIKey() (string, string, error) {
 	keyBytes := make([]byte, 32)
 	secretBytes := make([]byte, 64)
-	
+
 	rand.Read(keyBytes)
 	rand.Read(secretBytes)
-	
+
 	key := "ts_" + hex.EncodeToString(keyBytes)
 	secret := hex.EncodeToString(secretBytes)
-	
+
 	return key, secret, nil
 }
 
@@ -85,15 +85,15 @@ func encryptAPISecret(secret string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	rand.Read(nonce)
-	
+
 	return hex.EncodeToString(gcm.Seal(nonce, nonce, []byte(secret), nil)), nil
 }
 
@@ -108,28 +108,28 @@ func decryptAPISecret(encrypted string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
-	
+
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
-	
+
 	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(plaintext), nil
 }
 
@@ -142,44 +142,44 @@ func createAPIKeyHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	
+
 	var input struct {
 		KeyName     string   `json:"key_name"`
 		Permissions []string `json:"permissions" binding:"required"`
-		RateLimit  int      `json:"rate_limit"`
+		RateLimit   int      `json:"rate_limit"`
 		IPWhitelist []string `json:"ip_whitelist"`
-		ExpiresIn  int      `json:"expires_in"` // hours, 0 = never
+		ExpiresIn   int      `json:"expires_in"` // hours, 0 = never
 	}
-	
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Generate key and secret
 	apiKey, apiSecret, err := generateAPIKey()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Key generation failed"})
 		return
 	}
-	
+
 	// Encrypt secret
 	encryptedSecret, err := encryptAPISecret(apiSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Encryption failed"})
 		return
 	}
-	
+
 	rateLimit := input.RateLimit
 	if rateLimit == 0 {
 		rateLimit = 1000
 	}
-	
+
 	var expiresAt interface{}
 	if input.ExpiresIn > 0 {
 		expiresAt = time.Now().Add(time.Duration(input.ExpiresIn) * time.Hour)
 	}
-	
+
 	// Save API key
 	var keyID int
 	err = db.QueryRow(`
@@ -188,16 +188,16 @@ func createAPIKeyHandler(c *gin.Context) {
 		RETURNING id`,
 		userID, input.KeyName, apiKey, encryptedSecret, input.Permissions, rateLimit, input.IPWhitelist, expiresAt,
 	).Scan(&keyID)
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "API key creation failed"})
 		return
 	}
-	
+
 	logAudit(userID, "api_key_create", "api_keys", keyID, gin.H{"key_name": input.KeyName})
-	
+
 	c.JSON(http.StatusCreated, gin.H{
-		"message":  "API key created",
+		"message": "API key created",
 		"key_id":  keyID,
 		"api_key": apiKey,
 		"secret":  apiSecret, // Only shown once!
@@ -211,7 +211,7 @@ func listAPIKeysHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	
+
 	rows, err := db.Query(`
 		SELECT id, key_name, api_key, permissions, rate_limit, ip_whitelist, is_active, last_used, expires_at, created_at
 		FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
@@ -222,36 +222,36 @@ func listAPIKeysHandler(c *gin.Context) {
 		return
 	}
 	defer rows.Close()
-	
+
 	var keys []map[string]interface{}
 	for rows.Next() {
 		var k struct {
 			ID          int
-			KeyName    string
-			APIKey    string
+			KeyName     string
+			APIKey      string
 			Permissions []string
-			RateLimit int
+			RateLimit   int
 			IPWhitelist []string
-			IsActive  bool
-			LastUsed sql.NullTime
-			ExpiresAt sql.NullTime
-			CreatedAt time.Time
+			IsActive    bool
+			LastUsed    sql.NullTime
+			ExpiresAt   sql.NullTime
+			CreatedAt   time.Time
 		}
 		rows.Scan(&k.ID, &k.KeyName, &k.APIKey, &k.Permissions, &k.RateLimit, &k.IPWhitelist, &k.IsActive, &k.LastUsed, &k.ExpiresAt, &k.CreatedAt)
-		
+
 		keys = append(keys, map[string]interface{}{
 			"id":          k.ID,
 			"key_name":    k.KeyName,
-			"api_key":    k.APIKey,
+			"api_key":     k.APIKey,
 			"permissions": k.Permissions,
 			"rate_limit":  k.RateLimit,
-			"is_active":  k.IsActive,
-			"last_used":  k.LastUsed.Time,
-			"expires_at": k.ExpiresAt.Time,
-			"created_at": k.CreatedAt,
+			"is_active":   k.IsActive,
+			"last_used":   k.LastUsed.Time,
+			"expires_at":  k.ExpiresAt.Time,
+			"created_at":  k.CreatedAt,
 		})
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"api_keys": keys})
 }
 
@@ -262,9 +262,9 @@ func revokeAPIKeyHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	
+
 	keyID := c.Param("id")
-	
+
 	// Verify ownership
 	var ownerID int
 	err := db.QueryRow("SELECT user_id FROM api_keys WHERE id = $1", keyID).Scan(&ownerID)
@@ -272,16 +272,16 @@ func revokeAPIKeyHandler(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized"})
 		return
 	}
-	
+
 	// Revoke
 	_, err = db.Exec("UPDATE api_keys SET is_active = false WHERE id = $1", keyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Revocation failed"})
 		return
 	}
-	
+
 	logAudit(userID, "api_key_revoke", "api_keys", keyID, nil)
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "API key revoked"})
 }
 
@@ -289,58 +289,58 @@ func revokeAPIKeyHandler(c *gin.Context) {
 func validateAPIKeyHandler(c *gin.Context) {
 	apiKey := c.GetHeader("X-API-Key")
 	apiSecret := c.GetHeader("X-API-Secret")
-	
+
 	if apiKey == "" || apiSecret == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing credentials"})
 		return
 	}
-	
+
 	// Get API key
 	var key struct {
 		ID          int
-		UserID     int
-		APISecret string
+		UserID      int
+		APISecret   string
 		Permissions []string
-		RateLimit int
+		RateLimit   int
 		IPWhitelist []string
-		IsActive  bool
-		ExpiresAt sql.NullTime
+		IsActive    bool
+		ExpiresAt   sql.NullTime
 	}
 	err := db.QueryRow(`
 		SELECT id, user_id, api_secret, permissions, rate_limit, ip_whitelist, is_active, expires_at
 		FROM api_keys WHERE api_key = $1`,
 		apiKey,
 	).Scan(&key.ID, &key.UserID, &key.APISecret, &key.Permissions, &key.RateLimit, &key.IPWhitelist, &key.IsActive, &key.ExpiresAt)
-	
+
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid API key"})
 		return
 	}
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
-	
+
 	// Check if active
 	if !key.IsActive {
 		c.JSON(http.StatusForbidden, gin.H{"error": "API key is inactive"})
 		return
 	}
-	
+
 	// Check expiry
 	if key.ExpiresAt.Valid && key.ExpiresAt.Time.Before(time.Now()) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "API key expired"})
 		return
 	}
-	
+
 	// Verify secret
 	decryptedSecret, err := decryptAPISecret(key.APISecret)
 	if err != nil || decryptedSecret != apiSecret {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid secret"})
 		return
 	}
-	
+
 	// Check IP whitelist
 	if len(key.IPWhitelist) > 0 {
 		clientIP := c.ClientIP()
@@ -356,18 +356,18 @@ func validateAPIKeyHandler(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	// Update last used
 	db.Exec("UPDATE api_keys SET last_used = NOW() WHERE id = $1", key.ID)
-	
+
 	// Log audit
 	logAudit(key.UserID, "api_key_used", "api_keys", key.ID, nil)
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"valid":      true,
-		"user_id":    key.UserID,
+		"valid":       true,
+		"user_id":     key.UserID,
 		"permissions": key.Permissions,
-		"rate_limit": key.RateLimit,
+		"rate_limit":  key.RateLimit,
 	})
 }
 
@@ -375,16 +375,16 @@ func validateAPIKeyHandler(c *gin.Context) {
 func connectExternalWalletHandler(c *gin.Context) {
 	// Public endpoint for external wallets
 	var input struct {
-		APIKey string `json:"api_key" binding:"required"`
+		APIKey    string `json:"api_key" binding:"required"`
 		Signature string `json:"signature" binding:"required"`
-		Timestamp int64 `json:"timestamp"`
+		Timestamp int64  `json:"timestamp"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Validate timestamp (must be within 5 minutes)
 	if input.Timestamp > 0 {
 		now := time.Now().Unix()
@@ -393,11 +393,11 @@ func connectExternalWalletHandler(c *gin.Context) {
 			return
 		}
 	}
-	
+
 	// Verify API key
 	// Would verify signature in production
 	c.JSON(http.StatusOK, gin.H{
-		"message": "External wallet connected",
+		"message":  "External wallet connected",
 		"features": []string{"swap", "trade", "transfer"},
 	})
 }
@@ -409,21 +409,21 @@ func connectCEXHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	
+
 	var input struct {
-		CEXName string `json:"cex_name" binding:"required"`
-		APIKey string `json:"api_key" binding:"required"`
-		APISecret string `json:"api_secret" binding:"required"`
+		CEXName    string `json:"cex_name" binding:"required"`
+		APIKey     string `json:"api_key" binding:"required"`
+		APISecret  string `json:"api_secret" binding:"required"`
 		Passphrase string `json:"passphrase"`
 		Subaccount string `json:"subaccount"`
-		Testnet bool `json:"testnet"`
+		Testnet    bool   `json:"testnet"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Encrypt credentials
 	encryptedKey, _ := encryptAPISecret(input.APIKey)
 	encryptedSecret, _ := encryptAPISecret(input.APISecret)
@@ -432,7 +432,7 @@ func connectCEXHandler(c *gin.Context) {
 		ep, _ := encryptAPISecret(input.Passphrase)
 		encryptedPassphrase = &ep
 	}
-	
+
 	// Save CEX connector
 	var connectorID int
 	err := db.QueryRow(`
@@ -441,16 +441,16 @@ func connectCEXHandler(c *gin.Context) {
 		RETURNING id`,
 		input.CEXName, encryptedKey, encryptedSecret, encryptedPassphrase, input.Subaccount, input.Testnet, []string{"trade", "withdraw"}, userID,
 	).Scan(&connectorID)
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "CEX connection failed"})
 		return
 	}
-	
+
 	logAudit(userID, "cex_connect", "cex_connectors", connectorID, gin.H{"cex": input.CEXName})
-	
+
 	c.JSON(http.StatusCreated, gin.H{
-		"message":    "CEX connected",
+		"message":      "CEX connected",
 		"connector_id": connectorID,
 	})
 }
@@ -462,19 +462,19 @@ func connectDEXHandler(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	
+
 	var input struct {
-		DEXName string `json:"dex_name" binding:"required"`
-		Protocol string `json:"protocol" binding:"required"`
-		RouterAddress string `json:"router_address"`
+		DEXName        string `json:"dex_name" binding:"required"`
+		Protocol       string `json:"protocol" binding:"required"`
+		RouterAddress  string `json:"router_address"`
 		FactoryAddress string `json:"factory_address"`
 	}
-	
+
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	// Save DEX connector
 	var connectorID int
 	err := db.QueryRow(`
@@ -483,16 +483,16 @@ func connectDEXHandler(c *gin.Context) {
 		RETURNING id`,
 		input.DEXName, input.Protocol, input.RouterAddress, input.FactoryAddress, []string{"Ethereum", "BSC", "Polygon"}, userID,
 	).Scan(&connectorID)
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DEX connection failed"})
 		return
 	}
-	
+
 	logAudit(userID, "dex_connect", "dex_connectors", connectorID, gin.H{"dex": input.DEXName})
-	
+
 	c.JSON(http.StatusCreated, gin.H{
-		"message":    "DEX connected",
+		"message":      "DEX connected",
 		"connector_id": connectorID,
 	})
 }
@@ -503,7 +503,7 @@ func getUserIDFromContext(c *gin.Context) int {
 	if sessionToken == "" {
 		return 0
 	}
-	
+
 	var userID int
 	var expiresAt time.Time
 	err := db.QueryRow(`
@@ -511,11 +511,11 @@ func getUserIDFromContext(c *gin.Context) int {
 		WHERE session_token = $1 AND is_active = true AND expires_at > NOW()`,
 		sessionToken,
 	).Scan(&userID, &expiresAt)
-	
+
 	if err != nil {
 		return 0
 	}
-	
+
 	return userID
 }
 
@@ -543,15 +543,15 @@ func authMiddleware() gin.HandlerFunc {
 
 func main() {
 	r := gin.Default()
-	
+
 	if err := initDB(); err != nil {
 		fmt.Println("Database connection failed:", err)
 	}
-	
+
 	// Public endpoints
 	r.POST("/api/v1/auth/validate", validateAPIKeyHandler)
 	r.POST("/api/v1/external/connect", connectExternalWalletHandler)
-	
+
 	// Protected endpoints
 	api := r.Group("/api/v1")
 	api.Use(authMiddleware())
@@ -562,7 +562,7 @@ func main() {
 		api.POST("/cex/connect", connectCEXHandler)
 		api.POST("/dex/connect", connectDEXHandler)
 	}
-	
+
 	fmt.Println("API key service running on :8083")
 	r.Run(":8083")
 }

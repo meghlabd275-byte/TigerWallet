@@ -35,20 +35,20 @@ type PortfolioConfig struct {
 // TokenBalance represents a token balance
 type TokenBalance struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserAddress string   `gorm:"index" json:"user_address"`
-	ChainID    int64     `json:"chain_id"`
-	Token     string    `json:"token"`
-	Balance   string    `json:"balance"`
-	USDValue  string    `json:"usd_value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	UserAddress string    `gorm:"index" json:"user_address"`
+	ChainID     int64     `json:"chain_id"`
+	Token       string    `json:"token"`
+	Balance     string    `json:"balance"`
+	USDValue    string    `json:"usd_value"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NFTBalance represents an NFT balance
 type NFTBalance struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	UserAddress    string    `gorm:"index" json:"user_address"`
-	ChainID       int64     `json:"chain_id"`
-	ContractAddr  string    `json:"contract_address"`
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	UserAddress  string    `gorm:"index" json:"user_address"`
+	ChainID      int64     `json:"chain_id"`
+	ContractAddr string    `json:"contract_address"`
 	TokenID      string    `json:"token_id"`
 	Name         string    `json:"name"`
 	ImageURL     string    `json:"image_url"`
@@ -60,25 +60,25 @@ type NFTBalance struct {
 type Transaction struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	UserAddress string    `gorm:"index" json:"user_address"`
-	TxHash     string    `gorm:"uniqueIndex" json:"tx_hash"`
-	ChainID    int64     `json:"chain_id"`
-	Type       string    `json:"type"` // send, receive, swap, stake, unstake
-	Token      string    `json:"token"`
-	Amount     string    `json:"amount"`
-	USDValue   string    `json:"usd_value"`
-	From       string    `json:"from"`
-	To         string    `json:"to"`
-	Status     string    `json:"status"`
-	Timestamp  time.Time `json:"timestamp"`
+	TxHash      string    `gorm:"uniqueIndex" json:"tx_hash"`
+	ChainID     int64     `json:"chain_id"`
+	Type        string    `json:"type"` // send, receive, swap, stake, unstake
+	Token       string    `json:"token"`
+	Amount      string    `json:"amount"`
+	USDValue    string    `json:"usd_value"`
+	From        string    `json:"from"`
+	To          string    `json:"to"`
+	Status      string    `json:"status"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // Portfolio represents a portfolio summary
 type Portfolio struct {
-	UserAddress     string          `json:"user_address"`
+	UserAddress   string          `json:"user_address"`
 	TotalUSDValue string          `json:"total_usd_value"`
-	Tokens        []TokenBalance   `json:"tokens"`
-	NFTs          []NFTBalance   `json:"nfts"`
-	Transactions  []Transaction  `json:"transactions"`
+	Tokens        []TokenBalance  `json:"tokens"`
+	NFTs          []NFTBalance    `json:"nfts"`
+	Transactions  []Transaction   `json:"transactions"`
 	History       []PortfolioSnap `json:"history"`
 }
 
@@ -86,13 +86,13 @@ type Portfolio struct {
 type PortfolioSnap struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	UserAddress string    `gorm:"index" json:"user_address"`
-	TotalValue string    `json:"total_value"`
-	Timestamp  time.Time `json:"timestamp"`
+	TotalValue  string    `json:"total_value"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 // PortfolioService
 type PortfolioService struct {
-	db      *gorm.DB
+	db     *gorm.DB
 	redis  *redis.Client
 	config PortfolioConfig
 }
@@ -123,7 +123,7 @@ func NewPortfolioService(cfg PortfolioConfig) (*PortfolioService, error) {
 	}
 
 	return &PortfolioService{
-		db:      db,
+		db:     db,
 		redis:  rdb,
 		config: cfg,
 	}, nil
@@ -152,7 +152,7 @@ func (s *PortfolioService) GetPortfolio(userAddress string) (*Portfolio, error) 
 	}
 
 	return &Portfolio{
-		UserAddress:     userAddress,
+		UserAddress:   userAddress,
 		TotalUSDValue: totalUSD,
 		Tokens:        tokens,
 		NFTs:          nfts,
@@ -205,11 +205,11 @@ func (s *PortfolioService) UpdateBalance(userAddress string, chainID int64, toke
 	if result.RowsAffected == 0 {
 		bal := TokenBalance{
 			UserAddress: userAddress,
-			ChainID:    chainID,
-			Token:     token,
-			Balance:  balance,
-			USDValue: usdValue,
-			UpdatedAt: time.Now(),
+			ChainID:     chainID,
+			Token:       token,
+			Balance:     balance,
+			USDValue:    usdValue,
+			UpdatedAt:   time.Now(),
 		}
 		s.db.Create(&bal)
 	}
@@ -228,7 +228,7 @@ func (s *PortfolioService) RecordSnapshot(userAddress, totalValue string) error 
 	snap := PortfolioSnap{
 		UserAddress: userAddress,
 		TotalValue:  totalValue,
-		Timestamp:  time.Now(),
+		Timestamp:   time.Now(),
 	}
 	s.db.Create(&snap)
 	return nil
@@ -260,16 +260,16 @@ func (s *PortfolioService) GetAnalytics(userAddress string) (map[string]interfac
 	monthChange := totalValue * 0.10
 
 	return map[string]interface{}{
-		"total_value":     portfolio.TotalUSDValue,
-		"asset_count":    assetCount,
-		"token_count":   len(portfolio.Tokens),
-		"nft_count":     len(portfolio.NFTs),
-		"allocation":    allocation,
-		"day_change":    formatAmount(dayChange),
-		"week_change":   formatAmount(weekChange),
-		"month_change":  formatAmount(monthChange),
-		"day_change_pct": "2.0",
-		"week_change_pct": "5.0",
+		"total_value":      portfolio.TotalUSDValue,
+		"asset_count":      assetCount,
+		"token_count":      len(portfolio.Tokens),
+		"nft_count":        len(portfolio.NFTs),
+		"allocation":       allocation,
+		"day_change":       formatAmount(dayChange),
+		"week_change":      formatAmount(weekChange),
+		"month_change":     formatAmount(monthChange),
+		"day_change_pct":   "2.0",
+		"week_change_pct":  "5.0",
 		"month_change_pct": "10.0",
 	}, nil
 }

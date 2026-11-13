@@ -10,8 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -809,15 +809,15 @@ func handleWebSocket(c *gin.Context) {
 
 func loadConfig() *Config {
 	return &Config{
-		Port:             getEnv("PORT", "8080"),
-		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
-		WalletServiceURL: getEnv("WALLET_SERVICE_URL", "http://localhost:8081"),
-		MarketDataURL:    getEnv("MARKET_DATA_URL", ""),
-		PortfolioURL:     getEnv("PORTFOLIO_SERVICE_URL", ""),
-		SwapServiceURL:   getEnv("SWAP_SERVICE_URL", ""),
+		Port:              getEnv("PORT", "8080"),
+		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379"),
+		WalletServiceURL:  getEnv("WALLET_SERVICE_URL", "http://localhost:8081"),
+		MarketDataURL:     getEnv("MARKET_DATA_URL", ""),
+		PortfolioURL:      getEnv("PORTFOLIO_SERVICE_URL", ""),
+		SwapServiceURL:    getEnv("SWAP_SERVICE_URL", ""),
 		StakingServiceURL: getEnv("STAKING_SERVICE_URL", ""),
-		NFTServiceURL:    getEnv("NFT_SERVICE_URL", ""),
-		BridgeServiceURL: getEnv("BRIDGE_SERVICE_URL", ""),
+		NFTServiceURL:     getEnv("NFT_SERVICE_URL", ""),
+		BridgeServiceURL:  getEnv("BRIDGE_SERVICE_URL", ""),
 	}
 }
 

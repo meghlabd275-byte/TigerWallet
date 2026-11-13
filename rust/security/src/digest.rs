@@ -62,6 +62,9 @@ mod tests {
     #[test]
     fn ripemd160_matches_the_known_vector() {
         // RIPEMD-160("abc")
-        assert_eq!(hex::encode(ripemd160(b"abc")), "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc");
+        assert_eq!(
+            hex::encode(ripemd160(b"abc")),
+            "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc"
+        );
     }
 }

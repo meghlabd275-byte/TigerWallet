@@ -16,19 +16,19 @@ import (
 // wallet operations (RPC, balance, signing, broadcast); non-EVM chains are
 // registered for discovery and address derivation.
 type ChainConfig struct {
-	ID            int64    `json:"id"`
-	Name          string   `json:"name"`
-	Symbol        string   `json:"symbol"`
-	RPCEndpoint   string   `json:"rpc_endpoint"`
-	DerivationPath string  `json:"derivation_path"`
-	ExplorerAPI   string   `json:"explorer_api"`
-	ExplorerURL   string   `json:"explorer_url"`
-	ChainType     string   `json:"chain_type"`
-	Decimals      int      `json:"decimals"`
-	CoinType      uint32   `json:"coin_type"`
-	IsTestnet     bool     `json:"is_testnet"`
-	RPCAlternates []string `json:"rpc_alternates,omitempty"`
-	NativeID      int64    `json:"native_id,omitempty"`
+	ID             int64    `json:"id"`
+	Name           string   `json:"name"`
+	Symbol         string   `json:"symbol"`
+	RPCEndpoint    string   `json:"rpc_endpoint"`
+	DerivationPath string   `json:"derivation_path"`
+	ExplorerAPI    string   `json:"explorer_api"`
+	ExplorerURL    string   `json:"explorer_url"`
+	ChainType      string   `json:"chain_type"`
+	Decimals       int      `json:"decimals"`
+	CoinType       uint32   `json:"coin_type"`
+	IsTestnet      bool     `json:"is_testnet"`
+	RPCAlternates  []string `json:"rpc_alternates,omitempty"`
+	NativeID       int64    `json:"native_id,omitempty"`
 }
 
 // IsEVM reports whether the chain is an EVM chain.

@@ -18,36 +18,36 @@ package main
 // operators can point at their own esplora instances.
 
 import (
-        "os"
-        "strings"
+	"os"
+	"strings"
 )
 
 // utxoChainParams parameterizes one UTXO-family chain.
 type utxoChainParams struct {
-        name           string // canonical chain_type
-        esploraBase    string // esplora API base (no trailing slash)
-        p2pkhVersion   byte   // address version byte
-        defaultDerive  string // default BIP-44 derivation path (%d = account)
-        feeSat         int64  // flat fee in the chain's base units
+	name          string // canonical chain_type
+	esploraBase   string // esplora API base (no trailing slash)
+	p2pkhVersion  byte   // address version byte
+	defaultDerive string // default BIP-44 derivation path (%d = account)
+	feeSat        int64  // flat fee in the chain's base units
 }
 
 // utxoChains is the supported UTXO family beyond which the router fails
 // closed. Versions are the canonical mainnet P2PKH prefixes.
 var utxoChains = map[string]utxoChainParams{
-        "bitcoin": {
-                name:           "bitcoin",
-                esploraBase:    "https://blockstream.info/api",
-                p2pkhVersion:   0x00,
-                defaultDerive:  "m/44'/0'/0'/0/%d",
-                feeSat:         1500,
-        },
-        "litecoin": {
-                name:           "litecoin",
-                esploraBase:    "https://litecoinspace.org/api",
-                p2pkhVersion:   0x30, // 'L...' addresses
-                defaultDerive:  "m/44'/2'/0'/0/%d",
-                feeSat:         1500, // litoshis
-        },
+	"bitcoin": {
+		name:          "bitcoin",
+		esploraBase:   "https://blockstream.info/api",
+		p2pkhVersion:  0x00,
+		defaultDerive: "m/44'/0'/0'/0/%d",
+		feeSat:        1500,
+	},
+	"litecoin": {
+		name:          "litecoin",
+		esploraBase:   "https://litecoinspace.org/api",
+		p2pkhVersion:  0x30, // 'L...' addresses
+		defaultDerive: "m/44'/2'/0'/0/%d",
+		feeSat:        1500, // litoshis
+	},
 }
 
 // utxoParamsFor resolves UTXO parameters by chain_type name or by numeric
@@ -55,39 +55,39 @@ var utxoChains = map[string]utxoChainParams{
 // env-overridable per chain (BTC_ESPLORA_URL, LTC_ESPLORA_URL) for operators
 // running their own indexers. ok=false means fail-closed (unsupported).
 func utxoParamsFor(chainType string, chainID int64) (utxoChainParams, bool) {
-        ct := strings.ToLower(strings.TrimSpace(chainType))
-        if ct == "" && chainID != 0 {
-                for _, c := range defaultNonEVMChains {
-                        if c.ChainID == chainID {
-                                ct = c.ChainType
-                                break
-                        }
-                }
-        }
-        switch ct {
-        case "btc":
-                ct = "bitcoin"
-        case "ltc":
-                ct = "litecoin"
-        }
-        p, ok := utxoChains[ct]
-        if !ok {
-                return utxoChainParams{}, false
-        }
-        if env := strings.TrimSpace(os.Getenv(utxoEsploraEnvName(ct))); env != "" {
-                p.esploraBase = strings.TrimRight(env, "/")
-        }
-        return p, true
+	ct := strings.ToLower(strings.TrimSpace(chainType))
+	if ct == "" && chainID != 0 {
+		for _, c := range defaultNonEVMChains {
+			if c.ChainID == chainID {
+				ct = c.ChainType
+				break
+			}
+		}
+	}
+	switch ct {
+	case "btc":
+		ct = "bitcoin"
+	case "ltc":
+		ct = "litecoin"
+	}
+	p, ok := utxoChains[ct]
+	if !ok {
+		return utxoChainParams{}, false
+	}
+	if env := strings.TrimSpace(os.Getenv(utxoEsploraEnvName(ct))); env != "" {
+		p.esploraBase = strings.TrimRight(env, "/")
+	}
+	return p, true
 }
 
 // utxoEsploraEnvName maps a chain_type to its esplora endpoint env override.
 func utxoEsploraEnvName(chainType string) string {
-        switch chainType {
-        case "bitcoin":
-                return "BTC_ESPLORA_URL"
-        case "litecoin":
-                return "LTC_ESPLORA_URL"
-        default:
-                return ""
-        }
+	switch chainType {
+	case "bitcoin":
+		return "BTC_ESPLORA_URL"
+	case "litecoin":
+		return "LTC_ESPLORA_URL"
+	default:
+		return ""
+	}
 }

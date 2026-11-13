@@ -1,10 +1,10 @@
 //! Redis cache implementation for high-performance caching
 //! Supports a local read-through L1 cache, pub/sub, and distributed locking.
 
-use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 use redis::{Client, Commands, Connection, RedisError};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Redis cache configuration
 #[derive(Debug, Clone)]
@@ -46,7 +46,10 @@ impl RedisCacheConfig {
 
     pub fn connection_string(&self) -> String {
         if let Some(ref password) = self.password {
-            format!("redis://:{}@{}:{}/{}", password, self.host, self.port, self.db)
+            format!(
+                "redis://:{}@{}:{}/{}",
+                password, self.host, self.port, self.db
+            )
         } else {
             format!("redis://{}:{}/{}", self.host, self.port, self.db)
         }
@@ -76,7 +79,10 @@ impl RedisCache {
         // Try local cache first
         if let Ok(cache) = self.local_cache.read() {
             if let Some((value, expiry)) = cache.get(key) {
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
                 if *expiry > now {
                     return Ok(Some(value.clone()));
                 }
@@ -90,7 +96,11 @@ impl RedisCache {
         // Update local cache
         if let Some(ref value) = result {
             if let Ok(mut cache) = self.local_cache.write() {
-                let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + self.default_ttl;
+                let expiry = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    + self.default_ttl;
                 cache.insert(key.to_string(), (value.clone(), expiry));
             }
         }
@@ -104,7 +114,11 @@ impl RedisCache {
         let _: () = con.set(key, value)?;
 
         if let Ok(mut cache) = self.local_cache.write() {
-            let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + self.default_ttl;
+            let expiry = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + self.default_ttl;
             cache.insert(key.to_string(), (value.to_string(), expiry));
         }
         Ok(())
@@ -116,7 +130,11 @@ impl RedisCache {
         let _: () = con.set_ex(key, value, ttl)?;
 
         if let Ok(mut cache) = self.local_cache.write() {
-            let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + ttl;
+            let expiry = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + ttl;
             cache.insert(key.to_string(), (value.to_string(), expiry));
         }
         Ok(())
@@ -137,7 +155,10 @@ impl RedisCache {
     pub fn exists(&self, key: &str) -> Result<bool, RedisError> {
         if let Ok(cache) = self.local_cache.read() {
             if let Some((_, expiry)) = cache.get(key) {
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
                 if *expiry > now {
                     return Ok(true);
                 }
@@ -155,7 +176,11 @@ impl RedisCache {
         let result: i64 = con.incr(key, 1)?;
 
         if let Ok(mut cache) = self.local_cache.write() {
-            let expiry = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + self.default_ttl;
+            let expiry = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + self.default_ttl;
             cache.insert(key.to_string(), (result.to_string(), expiry));
         }
         Ok(result)
@@ -323,10 +348,7 @@ impl DistributedLock {
         );
 
         let mut con = self.cache.client.get_connection()?;
-        let result: i64 = script
-            .key(&self.lock_key)
-            .arg(owner)
-            .invoke(&mut con)?;
+        let result: i64 = script.key(&self.lock_key).arg(owner).invoke(&mut con)?;
 
         Ok(result == 1)
     }

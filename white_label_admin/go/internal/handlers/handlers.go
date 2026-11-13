@@ -16,17 +16,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tigerwallet/white-label-admin/internal/config"
-	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/middleware"
+	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/roles"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Svc bundles the dependencies every handler needs.
 type Svc struct {
-	cfg  *config.Config
-	db   *pgxpool.Pool
-	rdb  *twredis.RedisClient
+	cfg *config.Config
+	db  *pgxpool.Pool
+	rdb *twredis.RedisClient
 }
 
 func New(cfg *config.Config, db *pgxpool.Pool, rdb *twredis.RedisClient) *Svc {

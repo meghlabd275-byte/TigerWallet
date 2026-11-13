@@ -1,21 +1,21 @@
 //! TigerWallet Bitcoin Ordinals & BRC-20 Implementation
-//! 
+//!
 //! This module provides complete support for Bitcoin ordinals, inscriptions,
 //! and BRC-20 tokens (fungible token standard on Bitcoin).
-//! 
+//!
 //! Features:
 //! - Ordinal inscription (INSCRIBE)
 //! - BRC-20 token deployment, minting, and transfer
 //! - PSBT (Partially Signed Bitcoin Transaction) signing
 //! - Ordinal wallet derivation
 //! - Satellite inscription support
-//! 
+//!
 //! Security:
 //! - All signing done locally with secure key derivation
 //! - No private key exposure
 //! - Transaction simulation before signing
 //! - Fee estimation with RBF (Replace-By-Fee) support
-//! 
+//!
 //! References:
 //! - BIP-39: Mnemonic seed phrases
 //! - BIP-44: Derivation paths for Bitcoin
@@ -23,8 +23,6 @@
 //! - BRC-20: Bitcoin Fungible Token Standard
 //! - Ordinals Protocol: https://ordinals.com
 
-use std::collections::HashMap;
-use std::str::FromStr;
 use bitcoin::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::hashes::Hash;
 use bitcoin::key::PublicKey;
@@ -35,6 +33,8 @@ use bitcoin::sighash::EcdsaSighashType;
 use bitcoin::taproot::TapNodeHash;
 use bitcoin::{Address, Network};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::str::FromStr;
 
 /// Maximum inscription content size (408 KB)
 pub const MAX_INSCRIPTION_SIZE: usize = 408 * 1024;
@@ -65,7 +65,7 @@ pub enum ContentType {
 
 impl FromStr for ContentType {
     type Err = OrdinalsError;
-    
+
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "image/png" => Ok(ContentType::ImagePng),
@@ -104,18 +104,18 @@ impl std::fmt::Display for ContentType {
 pub struct Inscription {
     /// Content type (MIME type)
     pub content_type: String,
-    
+
     /// Content body (base64 encoded for off-chain)
     pub body: Vec<u8>,
-    
+
     /// Metadata (JSON)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<InscriptionMetadata>,
-    
+
     /// Parent inscription ID (for collections)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
-    
+
     /// Encoding (base64 or none)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
@@ -142,13 +142,13 @@ pub struct Trait {
 pub struct InscriptionResult {
     /// Transaction ID
     pub txid: String,
-    
+
     /// Inscription ID
     pub inscription_id: String,
-    
+
     /// Inscription number
     pub inscription_number: u64,
-    
+
     /// Location (UTXO)
     pub location: String,
 }
@@ -158,13 +158,13 @@ pub struct InscriptionResult {
 pub struct BRC20Token {
     /// Token ticker (symbol)
     pub ticker: String,
-    
+
     /// Maximum supply
     pub max: String,
-    
+
     /// Mint limit per mint
     pub lim: Option<String>,
-    
+
     /// Decimal places
     pub dec: u8,
 }
@@ -388,7 +388,7 @@ impl OrdinalsWallet {
 
         Ok(())
     }
-    
+
     /// Create an inscription transaction
     pub fn create_inscription(
         &self,
@@ -399,19 +399,19 @@ impl OrdinalsWallet {
         // Encode inscription content
         let content = serde_json::to_string(&inscription)
             .map_err(|e| OrdinalsError::Encoding(e.to_string()))?;
-        
+
         if content.len() > MAX_INSCRIPTION_SIZE {
             return Err(OrdinalsError::ContentTooLarge(content.len()));
         }
-        
+
         let address = match reveal_address {
             Some(address) => address,
             None => self.address()?.to_string(),
         };
-        
+
         // Build inscription script
         let script = self.build_inscription_script(&content)?;
-        
+
         Ok(InscriptionBuild {
             content,
             script,
@@ -420,7 +420,7 @@ impl OrdinalsWallet {
             witness: vec![],
         })
     }
-    
+
     /// Build an ord inscription envelope.
     ///
     /// The envelope is `OP_FALSE OP_IF "ord" <fields> OP_ENDIF`, an unspendable
@@ -450,7 +450,7 @@ impl OrdinalsWallet {
 
         Ok(builder.into_script())
     }
-    
+
     /// Create a BRC-20 deploy transaction
     pub fn create_brc20_deploy(
         &self,
@@ -462,7 +462,7 @@ impl OrdinalsWallet {
         if ticker.len() > 4 {
             return Err(OrdinalsError::InvalidTicker(ticker.len()));
         }
-        
+
         // JSON deploy data
         let data = format!(
             r#"{{"p":"brc-20","op":"deploy","tick":"{}","max":"{}","lim":"{}","dec":{}}}"#,
@@ -471,9 +471,9 @@ impl OrdinalsWallet {
             request.mint_limit.as_deref().unwrap_or(""),
             request.decimals
         );
-        
+
         let script = self.build_inscription_script(&data)?;
-        
+
         Ok(BRC20Build {
             ticker,
             data,
@@ -482,7 +482,7 @@ impl OrdinalsWallet {
             fee_rate,
         })
     }
-    
+
     /// Create a BRC-20 mint transaction
     pub fn create_brc20_mint(
         &self,
@@ -495,9 +495,9 @@ impl OrdinalsWallet {
             request.ticker.to_lowercase(),
             request.amount
         );
-        
+
         let script = self.build_inscription_script(&data)?;
-        
+
         Ok(BRC20Build {
             ticker: request.ticker.to_lowercase(),
             data,
@@ -506,7 +506,7 @@ impl OrdinalsWallet {
             fee_rate,
         })
     }
-    
+
     /// Create a BRC-20 transfer transaction
     pub fn create_brc20_transfer(
         &self,
@@ -519,9 +519,9 @@ impl OrdinalsWallet {
             request.ticker.to_lowercase(),
             request.amount
         );
-        
+
         let script = self.build_inscription_script(&data)?;
-        
+
         Ok(BRC20Build {
             ticker: request.ticker.to_lowercase(),
             data,
@@ -555,37 +555,37 @@ pub struct BRC20Build {
 pub enum OrdinalsError {
     #[error("Invalid key: {0}")]
     InvalidKey(String),
-    
+
     #[error("Key derivation failed: {0}")]
     KeyDerivation(String),
-    
+
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
-    
+
     #[error("Invalid transaction: {0}")]
     InvalidTransaction(String),
-    
+
     #[error("Signing failed: {0}")]
     SigningFailed(String),
-    
+
     #[error("Broadcast failed: {0}")]
     BroadcastFailed(String),
-    
+
     #[error("Content too large: {0} bytes")]
     ContentTooLarge(usize),
-    
+
     #[error("Invalid ticker length: {0}, max 4")]
     InvalidTicker(usize),
-    
+
     #[error("Invalid hex: {0}")]
     InvalidHex(String),
-    
+
     #[error("Invalid JSON: {0}")]
     Encoding(String),
-    
+
     #[error("Network error: {0}")]
     Network(String),
-    
+
     #[error("Bitcoin error: {0}")]
     Bitcoin(String),
 }
@@ -603,15 +603,15 @@ impl BRC20Store {
             balances: HashMap::new(),
         }
     }
-    
+
     pub fn deploy(&mut self, token: BRC20Token) {
         self.tokens.insert(token.ticker.clone(), token);
     }
-    
+
     pub fn get_balance(&self, ticker: &str, address: &str) -> Option<&BRC20Balance> {
         self.balances.get(ticker)?.get(address)
     }
-    
+
     pub fn update_balance(&mut self, ticker: &str, address: &str, balance: BRC20Balance) {
         self.balances
             .entry(ticker.to_string())
@@ -639,31 +639,33 @@ impl OrdinalsIndexer {
             client: reqwest::Client::new(),
         }
     }
-    
+
     /// Get inscription by ID
     pub async fn get_inscription(&self, id: &str) -> Result<Inscription, OrdinalsError> {
         // Call indexer API
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/inscription/{}", self.rpc_url, id))
             .send()
             .await
             .map_err(|e| OrdinalsError::Network(e.to_string()))?;
-        
+
         let inscription = response
             .json()
             .await
             .map_err(|e| OrdinalsError::Encoding(e.to_string()))?;
-        
+
         Ok(inscription)
     }
-    
+
     /// Get BRC-20 balance
     pub async fn get_brc20_balance(
         &self,
         ticker: &str,
         address: &str,
     ) -> Result<BRC20Balance, OrdinalsError> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!(
                 "{}/brc-20/balance/{}?address={}",
                 self.rpc_url, ticker, address
@@ -671,31 +673,32 @@ impl OrdinalsIndexer {
             .send()
             .await
             .map_err(|e| OrdinalsError::Network(e.to_string()))?;
-        
+
         let balance = response
             .json()
             .await
             .map_err(|e| OrdinalsError::Encoding(e.to_string()))?;
-        
+
         Ok(balance)
     }
-    
+
     /// Get inscriptions for address
     pub async fn get_inscriptions(
         &self,
         address: &str,
     ) -> Result<Vec<InscriptionResult>, OrdinalsError> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/inscriptions/{}", self.rpc_url, address))
             .send()
             .await
             .map_err(|e| OrdinalsError::Network(e.to_string()))?;
-        
+
         let inscriptions = response
             .json()
             .await
             .map_err(|e| OrdinalsError::Encoding(e.to_string()))?;
-        
+
         Ok(inscriptions)
     }
 }
@@ -703,21 +706,21 @@ impl OrdinalsIndexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_wallet_creation() {
         let seed = [0u8; 32];
         let wallet = OrdinalsWallet::new(&seed, Network::Bitcoin).unwrap();
-        
+
         let address = wallet.address().expect("wallet has an address");
         assert!(!address.to_string().is_empty());
     }
-    
+
     #[test]
     fn test_inscription_creation() {
         let seed = [0u8; 32];
         let wallet = OrdinalsWallet::new(&seed, Network::Bitcoin).unwrap();
-        
+
         let inscription = Inscription {
             content_type: "text/plain;charset=utf-8".to_string(),
             body: b"Hello, Ordinals!".to_vec(),
@@ -730,42 +733,40 @@ mod tests {
             parent: None,
             encoding: Some("none".to_string()),
         };
-        
-        let build = wallet.create_inscription(
-            inscription,
-            None,
-            10,
-        ).unwrap();
-        
+
+        let build = wallet.create_inscription(inscription, None, 10).unwrap();
+
         assert!(!build.content.is_empty());
     }
-    
+
     #[test]
     fn test_brc20_deploy() {
         let seed = [0u8; 32];
         let wallet = OrdinalsWallet::new(&seed, Network::Bitcoin).unwrap();
-        
+
         let request = DeployRequest {
             ticker: "TEST".to_string(),
             max_supply: "1000000".to_string(),
             mint_limit: Some("1000".to_string()),
             decimals: 18,
         };
-        
-        let build = wallet.create_brc20_deploy(
-            request,
-            wallet.address().expect("wallet has an address").to_string(),
-            10,
-        ).unwrap();
-        
+
+        let build = wallet
+            .create_brc20_deploy(
+                request,
+                wallet.address().expect("wallet has an address").to_string(),
+                10,
+            )
+            .unwrap();
+
         assert_eq!(build.ticker, "test");
     }
-    
+
     #[test]
     fn test_brc20_transfer() {
         let seed = [0u8; 32];
         let wallet = OrdinalsWallet::new(&seed, Network::Bitcoin).unwrap();
-        
+
         let address = wallet.address().expect("wallet has an address").to_string();
         let request = TransferRequest {
             ticker: "TEST".to_string(),
@@ -774,7 +775,7 @@ mod tests {
         };
 
         let build = wallet.create_brc20_transfer(request, address, 10).unwrap();
-        
+
         assert!(build.data.contains("transfer"));
     }
 }

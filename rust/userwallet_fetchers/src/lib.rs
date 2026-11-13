@@ -16,8 +16,8 @@
 //! Fail-closed is the secure default: callers get a real error they can act
 //! on, not zeroed/empty data that silently looks like "no activity".
 
-pub mod types;
 pub mod fetchers;
+pub mod types;
 
 pub use fetchers::*;
 pub use types::*;
@@ -47,36 +47,70 @@ impl UserWalletFetcherManager {
         let client = Arc::new(UserWalletClient::new(base_url, token));
         let mut fetchers: HashMap<String, Arc<dyn Fetcher>> = HashMap::new();
 
-        fetchers.insert("balance".into(), Arc::new(BalanceFetcher::new(client.clone())) as Arc<dyn Fetcher>);
-        fetchers.insert("transactions".into(), Arc::new(TransactionFetcher::new(client.clone())));
+        fetchers.insert(
+            "balance".into(),
+            Arc::new(BalanceFetcher::new(client.clone())) as Arc<dyn Fetcher>,
+        );
+        fetchers.insert(
+            "transactions".into(),
+            Arc::new(TransactionFetcher::new(client.clone())),
+        );
         fetchers.insert("tokens".into(), Arc::new(TokenFetcher::new(client.clone())));
         fetchers.insert("nfts".into(), Arc::new(NftFetcher::new(client.clone())));
         fetchers.insert("gas".into(), Arc::new(GasFetcher::new(client.clone())));
         fetchers.insert("price".into(), Arc::new(PriceFetcher::new(client.clone())));
         fetchers.insert("swap".into(), Arc::new(SwapFetcher::new(client.clone())));
-        fetchers.insert("staking".into(), Arc::new(StakingFetcher::new(client.clone())));
-        fetchers.insert("dapps".into(), Arc::new(DAppRegistryFetcher::new(client.clone())));
+        fetchers.insert(
+            "staking".into(),
+            Arc::new(StakingFetcher::new(client.clone())),
+        );
+        fetchers.insert(
+            "dapps".into(),
+            Arc::new(DAppRegistryFetcher::new(client.clone())),
+        );
 
         // DeFi service fetchers — each forwards to a REAL running Go
         // microservice (same service URLs as the Next.js _proxy). See
         // `UserWalletClient::service_get`.
-        fetchers.insert("lending".into(), Arc::new(LendingFetcher::new(client.clone())) as Arc<dyn Fetcher>);
-        fetchers.insert("copy_trading".into(), Arc::new(CopyTradingFetcher::new(client.clone())));
+        fetchers.insert(
+            "lending".into(),
+            Arc::new(LendingFetcher::new(client.clone())) as Arc<dyn Fetcher>,
+        );
+        fetchers.insert(
+            "copy_trading".into(),
+            Arc::new(CopyTradingFetcher::new(client.clone())),
+        );
         fetchers.insert("dao".into(), Arc::new(DaoFetcher::new(client.clone())));
-        fetchers.insert("futures".into(), Arc::new(FuturesFetcher::new(client.clone())));
-        fetchers.insert("margin".into(), Arc::new(MarginFetcher::new(client.clone())));
-        fetchers.insert("prediction".into(), Arc::new(PredictionFetcher::new(client.clone())));
-        fetchers.insert("nft_trading".into(), Arc::new(NftTradingFetcher::new(client.clone())));
-        fetchers.insert("fiat_ramp".into(), Arc::new(FiatRampFetcher::new(client.clone())));
+        fetchers.insert(
+            "futures".into(),
+            Arc::new(FuturesFetcher::new(client.clone())),
+        );
+        fetchers.insert(
+            "margin".into(),
+            Arc::new(MarginFetcher::new(client.clone())),
+        );
+        fetchers.insert(
+            "prediction".into(),
+            Arc::new(PredictionFetcher::new(client.clone())),
+        );
+        fetchers.insert(
+            "nft_trading".into(),
+            Arc::new(NftTradingFetcher::new(client.clone())),
+        );
+        fetchers.insert(
+            "fiat_ramp".into(),
+            Arc::new(FiatRampFetcher::new(client.clone())),
+        );
 
         // Fetchers for which no standalone HTTP service exists yet. Registered
         // as fail-closed so the manager surface stays complete (21 names)
         // without fabricating data. Wire the corresponding Go service before
         // use.
-        for name in [
-            "bridge", "options", "p2p", "gift_card", "price_alerts",
-        ] {
-            fetchers.insert(name.into(), Arc::new(UnavailableFetcher::new(name)) as Arc<dyn Fetcher>);
+        for name in ["bridge", "options", "p2p", "gift_card", "price_alerts"] {
+            fetchers.insert(
+                name.into(),
+                Arc::new(UnavailableFetcher::new(name)) as Arc<dyn Fetcher>,
+            );
         }
 
         Self { client, fetchers }

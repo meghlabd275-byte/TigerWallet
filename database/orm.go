@@ -109,8 +109,8 @@ func (db *DB) Begin(ctx context.Context) (*sql.Tx, error) {
 func (db *DB) Stats() map[string]interface{} {
 	stats := db.pool.Stat()
 	return map[string]interface{}{
-		"max_conns":  stats.MaxConns,
-		"idle_conns": stats.IdleConns,
+		"max_conns":   stats.MaxConns,
+		"idle_conns":  stats.IdleConns,
 		"total_conns": stats.TotalConns,
 	}
 }
@@ -159,9 +159,9 @@ func (db *DB) CreateUser(ctx context.Context, user *User) error {
 func (db *DB) GetUserByWallet(ctx context.Context, wallet string) (*User, error) {
 	user := &User{}
 	sql := `SELECT id, wallet_address, email, username, risk_score, kyc_status, is_verified, is_admin, total_volume_usd, total_pnl, created_at, updated_at FROM users WHERE LOWER(wallet_address) = LOWER($1)`
-	
+
 	row := db.pool.QueryRow(ctx, sql, wallet)
-	
+
 	var totalVol, totalPnL string
 	err := row.Scan(&user.ID, &user.WalletAddress, &user.Email, &user.Username, &user.RiskScore, &user.KYCStatus, &user.IsVerified, &user.IsAdmin, &totalVol, &totalPnL, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
@@ -175,7 +175,7 @@ func (db *DB) GetUserByWallet(ctx context.Context, wallet string) (*User, error)
 func (db *DB) GetUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	user := &User{}
 	sql := `SELECT id, wallet_address, email, username, risk_score, kyc_status, is_verified, is_admin, total_volume_usd, total_pnl, created_at, updated_at FROM users WHERE id = $1`
-	
+
 	row := db.pool.QueryRow(ctx, sql, id)
 	var totalVol, totalPnL string
 	err := row.Scan(&user.ID, &user.WalletAddress, &user.Email, &user.Username, &user.RiskScore, &user.KYCStatus, &user.IsVerified, &user.IsAdmin, &totalVol, &totalPnL, &user.CreatedAt, &user.UpdatedAt)
@@ -254,7 +254,7 @@ func (db *DB) CreateToken(ctx context.Context, token *Token) error {
 func (db *DB) GetTokenByAddress(ctx context.Context, chainID int, address string) (*Token, error) {
 	token := &Token{}
 	sql := `SELECT id, symbol, name, contract_address, chain_id, decimals, logo_url, is_stablecoin, price_usd, market_cap, volume_24h, created_at FROM tokens WHERE chain_id = $1 AND LOWER(contract_address) = LOWER($2)`
-	
+
 	row := db.pool.QueryRow(ctx, sql, chainID, address)
 	var priceStr, marketCapStr, volStr string
 	err := row.Scan(&token.ID, &token.Symbol, &token.Name, &token.ContractAddress, &token.ChainID, &token.Decimals, &token.LogoURL, &token.IsStablecoin, &priceStr, &marketCapStr, &volStr, &token.CreatedAt)
@@ -340,7 +340,7 @@ func (db *DB) CreatePool(ctx context.Context, pool *Pool) error {
 func (db *DB) GetPoolByAddress(ctx context.Context, poolAddress string) (*Pool, error) {
 	pool := &Pool{}
 	sql := `SELECT id, dex_id, pair_id, pool_address, token_a_address, token_b_address, reserve_a, reserve_b, liquidity_usd, fee_tier_bps, tvl_usd, volume_24h_usd, apr, is_active, created_at, updated_at FROM pools WHERE LOWER(pool_address) = LOWER($1)`
-	
+
 	row := db.pool.QueryRow(ctx, sql, poolAddress)
 	var reserveAStr, reserveBStr, liqStr, tvlStr, volStr, aprStr string
 	err := row.Scan(&pool.ID, &pool.DexID, &pool.PairID, &pool.PoolAddress, &pool.TokenAAddr, &pool.TokenBAddr, &reserveAStr, &reserveBStr, &liqStr, &pool.FeeTierBps, &tvlStr, &volStr, &aprStr, &pool.IsActive, &pool.CreatedAt, &pool.UpdatedAt)
@@ -364,7 +364,7 @@ func (db *DB) UpdatePoolReserves(ctx context.Context, poolAddress string, reserv
 
 func (db *DB) GetTopPools(ctx context.Context, chainID int, limit int) ([]*Pool, error) {
 	sql := `SELECT id, dex_id, pair_id, pool_address, token_a_address, token_b_address, reserve_a, reserve_b, liquidity_usd, fee_tier_bps, tvl_usd, volume_24h_usd, apr, is_active, created_at, updated_at FROM pools WHERE is_active = true ORDER BY liquidity_usd DESC LIMIT $1`
-	
+
 	rows, err := db.pool.Query(ctx, sql, limit)
 	if err != nil {
 		return nil, err
@@ -392,22 +392,22 @@ func (db *DB) GetTopPools(ctx context.Context, chainID int, limit int) ([]*Pool,
 // ============================================================================
 
 type Order struct {
-	ID           uuid.UUID       `json:"id"`
-	OrderHash    string          `json:"order_hash"`
-	UserID       uuid.UUID       `json:"user_id"`
-	PairID       uuid.UUID       `json:"pair_id"`
-	Side         string          `json:"side"`
-	OrderType    string          `json:"order_type"`
-	Price        decimal.Decimal `json:"price"`
-	Qty          decimal.Decimal `json:"qty"`
-	FilledQty    decimal.Decimal `json:"filled_qty"`
-	SlippageBps  int             `json:"slippage_bps"`
-	FeeUSD       decimal.Decimal `json:"fee_usd"`
-	Status       string          `json:"status"`
-	ChainID      int             `json:"chain_id"`
-	TxHash       string          `json:"tx_hash"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID          uuid.UUID       `json:"id"`
+	OrderHash   string          `json:"order_hash"`
+	UserID      uuid.UUID       `json:"user_id"`
+	PairID      uuid.UUID       `json:"pair_id"`
+	Side        string          `json:"side"`
+	OrderType   string          `json:"order_type"`
+	Price       decimal.Decimal `json:"price"`
+	Qty         decimal.Decimal `json:"qty"`
+	FilledQty   decimal.Decimal `json:"filled_qty"`
+	SlippageBps int             `json:"slippage_bps"`
+	FeeUSD      decimal.Decimal `json:"fee_usd"`
+	Status      string          `json:"status"`
+	ChainID     int             `json:"chain_id"`
+	TxHash      string          `json:"tx_hash"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 func (db *DB) CreateOrder(ctx context.Context, order *Order) error {
@@ -433,7 +433,7 @@ func (db *DB) CreateOrder(ctx context.Context, order *Order) error {
 func (db *DB) GetOrderByHash(ctx context.Context, orderHash string) (*Order, error) {
 	order := &Order{}
 	sql := `SELECT id, order_hash, user_id, pair_id, side, order_type, price, qty, filled_qty, slippage_bps, fee_usd, status, chain_id, tx_hash, created_at, updated_at FROM orders WHERE order_hash = $1`
-	
+
 	row := db.pool.QueryRow(ctx, sql, orderHash)
 	var priceStr, qtyStr, filledStr, feeStr string
 	err := row.Scan(&order.ID, &order.OrderHash, &order.UserID, &order.PairID, &order.Side, &order.OrderType, &priceStr, &qtyStr, &filledStr, &order.SlippageBps, &feeStr, &order.Status, &order.ChainID, &order.TxHash, &order.CreatedAt, &order.UpdatedAt)
@@ -483,19 +483,19 @@ func (db *DB) GetUserOrders(ctx context.Context, userID uuid.UUID, limit, offset
 // ============================================================================
 
 type Trade struct {
-	ID         uuid.UUID       `json:"id"`
-	OrderID    uuid.UUID       `json:"order_id"`
-	PairID     uuid.UUID       `json:"pair_id"`
-	UserID     uuid.UUID       `json:"user_id"`
-	Side       string          `json:"side"`
-	Price      decimal.Decimal `json:"price"`
-	Qty        decimal.Decimal `json:"qty"`
-	FeeUSD     decimal.Decimal `json:"fee_usd"`
-	TxHash     string          `json:"tx_hash"`
-	BlockNumber int64          `json:"block_number"`
-	Timestamp  time.Time       `json:"timestamp"`
-	Dex        string          `json:"dex"`
-	CreatedAt  time.Time       `json:"created_at"`
+	ID          uuid.UUID       `json:"id"`
+	OrderID     uuid.UUID       `json:"order_id"`
+	PairID      uuid.UUID       `json:"pair_id"`
+	UserID      uuid.UUID       `json:"user_id"`
+	Side        string          `json:"side"`
+	Price       decimal.Decimal `json:"price"`
+	Qty         decimal.Decimal `json:"qty"`
+	FeeUSD      decimal.Decimal `json:"fee_usd"`
+	TxHash      string          `json:"tx_hash"`
+	BlockNumber int64           `json:"block_number"`
+	Timestamp   time.Time       `json:"timestamp"`
+	Dex         string          `json:"dex"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 func (db *DB) CreateTrade(ctx context.Context, trade *Trade) error {
@@ -542,21 +542,21 @@ func (db *DB) GetTradesByPair(ctx context.Context, pairID uuid.UUID, limit, offs
 // ============================================================================
 
 type BotInstance struct {
-	ID               uuid.UUID       `json:"id"`
-	UserID           uuid.UUID       `json:"user_id"`
-	BotType          string          `json:"bot_type"`
-	Name             string          `json:"name"`
-	Status           string          `json:"status"`
-	ConnectedDexes   string          `json:"connected_dexes"`
-	ConnectedCexes   string          `json:"connected_cexes"`
-	MonthlyFeeUSD    decimal.Decimal `json:"monthly_fee_usd"`
-	PerExchangeFee   decimal.Decimal `json:"per_exchange_fee_usd"`
-	TotalPnL         decimal.Decimal `json:"total_pnl"`
-	TotalVolume      decimal.Decimal `json:"total_volume"`
-	TotalOrders      int             `json:"total_orders"`
-	AvgLatencyUs     int             `json:"avg_latency_us"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	ID             uuid.UUID       `json:"id"`
+	UserID         uuid.UUID       `json:"user_id"`
+	BotType        string          `json:"bot_type"`
+	Name           string          `json:"name"`
+	Status         string          `json:"status"`
+	ConnectedDexes string          `json:"connected_dexes"`
+	ConnectedCexes string          `json:"connected_cexes"`
+	MonthlyFeeUSD  decimal.Decimal `json:"monthly_fee_usd"`
+	PerExchangeFee decimal.Decimal `json:"per_exchange_fee_usd"`
+	TotalPnL       decimal.Decimal `json:"total_pnl"`
+	TotalVolume    decimal.Decimal `json:"total_volume"`
+	TotalOrders    int             `json:"total_orders"`
+	AvgLatencyUs   int             `json:"avg_latency_us"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 func (db *DB) CreateBot(ctx context.Context, bot *BotInstance) error {

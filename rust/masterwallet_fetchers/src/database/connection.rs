@@ -3,9 +3,9 @@
 //! built-in pool; this opens a connection per op on a shared runtime, and is
 //! a drop-in for a future bb8-postgres pool).
 
-use tokio::runtime::Runtime;
-use tokio_postgres::{NoTls, Client};
 use std::collections::HashMap;
+use tokio::runtime::Runtime;
+use tokio_postgres::{Client, NoTls};
 
 /// PostgreSQL connection manager for MasterWallet.
 pub struct MasterWalletDatabase {
@@ -41,21 +41,31 @@ impl MasterWalletDatabase {
     }
 
     /// Execute a query and return rows
-    pub fn execute(&self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)])
-        -> Result<Vec<tokio_postgres::Row>, String> {
+    pub fn execute(
+        &self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>, String> {
         self.runtime.block_on(async {
             let mut client = self.connect().await?;
-            client.query(query, params).await
+            client
+                .query(query, params)
+                .await
                 .map_err(|e| format!("Query failed: {}", e))
         })
     }
 
     /// Execute a query without returning rows
-    pub fn execute_non_query(&self, query: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)])
-        -> Result<u64, String> {
+    pub fn execute_non_query(
+        &self,
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<u64, String> {
         self.runtime.block_on(async {
             let mut client = self.connect().await?;
-            client.execute(query, params).await
+            client
+                .execute(query, params)
+                .await
                 .map_err(|e| format!("Execute failed: {}", e))
         })
     }
@@ -68,10 +78,14 @@ impl MasterWalletDatabase {
     {
         self.runtime.block_on(async {
             let mut client = self.connect().await?;
-            let transaction = client.transaction().await
+            let transaction = client
+                .transaction()
+                .await
                 .map_err(|e| format!("Failed to start transaction: {}", e))?;
             f(&transaction)?;
-            transaction.commit().await
+            transaction
+                .commit()
+                .await
                 .map_err(|e| format!("Transaction commit failed: {}", e))
         })
     }
@@ -210,7 +224,8 @@ impl QueryBuilder {
             self.fail(format!("invalid sort direction: {:?}", direction));
             return self;
         };
-        self.query.push_str(&format!(" ORDER BY {} {}", column, direction));
+        self.query
+            .push_str(&format!(" ORDER BY {} {}", column, direction));
         self
     }
 
@@ -253,9 +268,9 @@ impl Default for QueryBuilder {
 }
 
 #[allow(unused_imports)]
-use std::time::Duration;
-#[allow(unused_imports)]
 use std::sync::Arc;
+#[allow(unused_imports)]
+use std::time::Duration;
 #[allow(dead_code)]
 fn _unused(_: HashMap<String, String>, _: Duration) {}
 

@@ -17,27 +17,27 @@ import (
 // private key and verified by the WL product with the public key (distributed
 // out-of-band). Tampering with any field invalidates the signature.
 type LicenseToken struct {
-	LicenseID    string    `json:"license_id"`
-	WLClientID   string    `json:"wl_client_id"`
-	Product      string    `json:"product"`
-	Plan         string    `json:"plan"`
-	Status       string    `json:"status"` // active | suspended | revoked | expired | halted
-	ValidFrom    int64     `json:"valid_from"`
-	ValidUntil   int64     `json:"valid_until"`
-	MaxUsers     int       `json:"max_users"`
-	MaxWallets   int       `json:"max_wallets"`
-	MaxBots      int       `json:"max_bots"`
-	Features     []string  `json:"features"`
-	IssuedAt     int64     `json:"issued_at"`
-	NotBefore    int64     `json:"not_before"`
-	ExpiresAt    int64     `json:"expires_at"` // token (not license) expiry — short-lived
-	Nonce        string    `json:"nonce"`
+	LicenseID  string   `json:"license_id"`
+	WLClientID string   `json:"wl_client_id"`
+	Product    string   `json:"product"`
+	Plan       string   `json:"plan"`
+	Status     string   `json:"status"` // active | suspended | revoked | expired | halted
+	ValidFrom  int64    `json:"valid_from"`
+	ValidUntil int64    `json:"valid_until"`
+	MaxUsers   int      `json:"max_users"`
+	MaxWallets int      `json:"max_wallets"`
+	MaxBots    int      `json:"max_bots"`
+	Features   []string `json:"features"`
+	IssuedAt   int64    `json:"issued_at"`
+	NotBefore  int64    `json:"not_before"`
+	ExpiresAt  int64    `json:"expires_at"` // token (not license) expiry — short-lived
+	Nonce      string   `json:"nonce"`
 }
 
 // SignedLicenseToken is a LicenseToken plus its Ed25519 signature.
 type SignedLicenseToken struct {
 	Token     LicenseToken `json:"token"`
-	Signature string       `json:"signature"` // hex-encoded Ed25519
+	Signature string       `json:"signature"`  // hex-encoded Ed25519
 	PublicKey string       `json:"public_key"` // hex-encoded verifier key
 }
 

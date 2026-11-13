@@ -1,8 +1,8 @@
 //! TigerWallet Production DEX Aggregator
-//! 
+//!
 //! A high-performance DEX aggregator that finds the best swap routes across
 //! multiple decentralized exchanges with MEV protection and gas optimization.
-//! 
+//!
 //! Features:
 //! - Multi-route finding with Dijkstra/A* algorithms
 //! - Real-time price aggregation from DEXs
@@ -12,7 +12,7 @@
 //! - Cross-chain swaps
 //! - Limit orders
 //! - TWAP/DCA orders
-//! 
+//!
 //! Supported DEXs:
 //! - Uniswap V2/V3
 //! - Sushiswap
@@ -22,13 +22,13 @@
 //! - PancakeSwap
 //! - Raydium
 //! - Orca
-//! 
+//!
 //! Performance:
 //! - Sub-millisecond route finding
 //! - In-memory price caching
 //! - Parallel price fetching
 //! - Optimistic gas estimation
-//! 
+//!
 //! Security:
 //! - All swaps verified before execution
 //! - Slippage protection enforced
@@ -48,34 +48,34 @@ use thiserror::Error;
 pub enum DEXError {
     #[error("Insufficient liquidity")]
     InsufficientLiquidity,
-    
+
     #[error("Price impact too high: {0}")]
     PriceImpactTooHigh(f64),
-    
+
     #[error("Slippage exceeded: max {max}, got {actual}")]
     SlippageExceeded { max: f64, actual: f64 },
-    
+
     #[error("Gas estimation failed: {0}")]
     GasEstimationFailed(String),
-    
+
     #[error("Route not found")]
     RouteNotFound,
-    
+
     #[error(" DEX not available: {0}")]
     DEXNotAvailable(String),
-    
+
     #[error("Invalid token: {0}")]
     InvalidToken(String),
-    
+
     #[error("Transaction failed: {0}")]
     TransactionFailed(String),
 
     #[error("Action required: {0}")]
     ActionRequired(String),
-    
+
     #[error("Quote expired")]
     QuoteExpired,
-    
+
     #[error("Network error: {0}")]
     Network(String),
 }
@@ -85,19 +85,19 @@ pub enum DEXError {
 pub struct Token {
     /// Token address (lowercase)
     pub address: String,
-    
+
     /// Chain ID
     pub chain_id: u64,
-    
+
     /// Decimals
     pub decimals: u8,
-    
+
     /// Symbol
     pub symbol: String,
-    
+
     /// Name
     pub name: String,
-    
+
     /// Coingecko ID (for pricing)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coingecko_id: Option<String>,
@@ -114,10 +114,10 @@ impl Token {
             coingecko_id: None,
         }
     }
-    
+
     pub fn is_native(&self) -> bool {
-        self.address == "0x0000000000000000000000000000000000000000".to_lowercase() ||
-        self.address == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        self.address == "0x0000000000000000000000000000000000000000".to_lowercase()
+            || self.address == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     }
 }
 
@@ -132,14 +132,22 @@ pub struct TokenAmount {
 impl TokenAmount {
     pub fn new(token: Token, amount: String) -> Self {
         let raw_amount = Self::parse_amount(&amount, token.decimals);
-        Self { token, amount, raw_amount }
+        Self {
+            token,
+            amount,
+            raw_amount,
+        }
     }
-    
+
     pub fn from_raw(token: Token, raw_amount: u128) -> Self {
         let amount = Self::format_amount(raw_amount, token.decimals);
-        Self { token, amount, raw_amount }
+        Self {
+            token,
+            amount,
+            raw_amount,
+        }
     }
-    
+
     /// Parse a decimal amount into base units.
     ///
     /// The fractional part is padded or truncated to `decimals` places, and a
@@ -167,16 +175,14 @@ impl TokenAmount {
 
         let fractional: u128 = fractional.parse().unwrap_or(0);
 
-        integer
-            .saturating_mul(scale)
-            .saturating_add(fractional)
+        integer.saturating_mul(scale).saturating_add(fractional)
     }
 
     fn format_amount(raw_amount: u128, decimals: u8) -> String {
         let divisor = 10u128.pow(decimals as u32);
         let integer = raw_amount / divisor;
         let fractional = raw_amount % divisor;
-        
+
         if fractional == 0 {
             format!("{}", integer)
         } else {
@@ -193,37 +199,37 @@ impl TokenAmount {
 pub struct SwapRoute {
     /// Token in
     pub token_in: Token,
-    
+
     /// Token out
     pub token_out: Token,
-    
+
     /// Amount in
     pub amount_in: TokenAmount,
-    
+
     /// Amount out (estimated)
     pub amount_out: TokenAmount,
-    
+
     /// Price impact (percentage)
     pub price_impact: f64,
-    
+
     /// Gas estimate (in native token)
     pub gas_estimate: u64,
-    
+
     /// Gas price (Gwei)
     pub gas_price: f64,
-    
+
     /// Total price impact + gas in token units
     pub total_loss: TokenAmount,
-    
+
     /// Route hops
     pub hops: Vec<SwapHop>,
-    
+
     /// DEXs used
     pub dex_used: Vec<String>,
-    
+
     /// Execution data
     pub data: Vec<u8>,
-    
+
     /// Expiration
     pub expires_at: u64,
 }
@@ -264,31 +270,31 @@ impl PartialOrd for RouteCandidate {
 pub struct SwapHop {
     /// Pool address
     pub pool: String,
-    
+
     /// DEX name
     pub dex: String,
-    
+
     /// Token in
     pub token_in: Token,
-    
+
     /// Token out
     pub token_out: Token,
-    
+
     /// Amount in
     pub amount_in: String,
 
     /// Amount in, in base units
     pub amount_in_raw: u128,
-    
+
     /// Amount out
     pub amount_out: String,
 
     /// Amount out, in base units
     pub amount_out_raw: u128,
-    
+
     /// Pool fee (percentage)
     pub fee: f64,
-    
+
     /// Pool type
     pub pool_type: PoolType,
 }
@@ -432,28 +438,28 @@ pub struct GasData {
 pub struct DEXAggregator {
     /// Chain ID
     chain_id: u64,
-    
+
     /// RPC URL
     rpc_url: String,
-    
+
     /// Token registry
     tokens: RwLock<HashMap<String, Token>>,
-    
+
     /// Pool data cache
     pools: RwLock<HashMap<String, Vec<Pool>>>,
-    
+
     /// Price cache
     prices: RwLock<HashMap<String, PriceData>>,
-    
+
     /// Gas data
     gas: RwLock<GasData>,
-    
+
     /// DEX configurations
     dex_configs: HashMap<String, DEXConfig>,
-    
+
     /// MEV protection enabled
     mev_protection: bool,
-    
+
     /// Cache TTL (seconds)
     cache_ttl: u64,
 }
@@ -535,7 +541,7 @@ impl DEXAggregator {
     /// Create new aggregator
     pub fn new(chain_id: u64, rpc_url: String) -> Self {
         let dex_configs = Self::default_dex_configs(chain_id);
-        
+
         Self {
             chain_id,
             rpc_url,
@@ -555,80 +561,100 @@ impl DEXAggregator {
             cache_ttl: 10,
         }
     }
-    
+
     /// Default DEX configurations
     fn default_dex_configs(chain_id: u64) -> HashMap<String, DEXConfig> {
         let mut configs = HashMap::new();
-        
+
         match chain_id {
-            1 => { // Ethereum
-                configs.insert("uniswap_v3".to_string(), DEXConfig {
-                    name: "Uniswap V3".to_string(),
-                    router: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45".to_string(),
-                    quoter: Some("0x61fFE014bA17989E743c5F6cB21bF9697530B21e".to_string()),
-                    factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984".to_string(),
-                    supported_pools: vec![PoolType::UniswapV3, PoolType::Concentrated],
-                    swap_gas: 150000,
-                    enabled: true,
-                });
-                
-                configs.insert("uniswap_v2".to_string(), DEXConfig {
-                    name: "Uniswap V2".to_string(),
-                    router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D".to_string(),
-                    quoter: None,
-                    factory: "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f".to_string(),
-                    supported_pools: vec![PoolType::UniswapV2],
-                    swap_gas: 200000,
-                    enabled: true,
-                });
-                
-                configs.insert("sushiswap".to_string(), DEXConfig {
-                    name: "SushiSwap".to_string(),
-                    router: "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F".to_string(),
-                    quoter: None,
-                    factory: "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac".to_string(),
-                    supported_pools: vec![PoolType::UniswapV2, PoolType::Stable],
-                    swap_gas: 200000,
-                    enabled: true,
-                });
-                
-                configs.insert("curve".to_string(), DEXConfig {
-                    name: "Curve".to_string(),
-                    router: "0x99a58482BD75cbab83b27EC03CA68fF489b5788f".to_string(),
-                    quoter: None,
-                    factory: "0xB9fC157394Af804a3578134A6585C0dc9cc990d4".to_string(),
-                    supported_pools: vec![PoolType::Stable],
-                    swap_gas: 250000,
-                    enabled: true,
-                });
-                
-                configs.insert("balancer".to_string(), DEXConfig {
-                    name: "Balancer".to_string(),
-                    router: "0xBA12222222228d8Ba445958a75a0704d566BF2C8".to_string(),
-                    quoter: None,
-                    factory: "0xBA12222222228d8Ba445958a75a0704d566BF2C8".to_string(),
-                    supported_pools: vec![PoolType::CLAMM],
-                    swap_gas: 180000,
-                    enabled: true,
-                });
-            },
-            56 => { // BSC
-                configs.insert("pancakeswap".to_string(), DEXConfig {
-                    name: "PancakeSwap".to_string(),
-                    router: "0x10ED43C718714eb63d5aA57B78B54704E256024E".to_string(),
-                    quoter: Some("0x13f4EA83D0bd40E75C8222255bc855a974568Dd4".to_string()),
-                    factory: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73".to_string(),
-                    supported_pools: vec![PoolType::UniswapV2],
-                    swap_gas: 200000,
-                    enabled: true,
-                });
-            },
-            _ => {},
+            1 => {
+                // Ethereum
+                configs.insert(
+                    "uniswap_v3".to_string(),
+                    DEXConfig {
+                        name: "Uniswap V3".to_string(),
+                        router: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45".to_string(),
+                        quoter: Some("0x61fFE014bA17989E743c5F6cB21bF9697530B21e".to_string()),
+                        factory: "0x1F98431c8aD98523631AE4a59f267346ea31F984".to_string(),
+                        supported_pools: vec![PoolType::UniswapV3, PoolType::Concentrated],
+                        swap_gas: 150000,
+                        enabled: true,
+                    },
+                );
+
+                configs.insert(
+                    "uniswap_v2".to_string(),
+                    DEXConfig {
+                        name: "Uniswap V2".to_string(),
+                        router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D".to_string(),
+                        quoter: None,
+                        factory: "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f".to_string(),
+                        supported_pools: vec![PoolType::UniswapV2],
+                        swap_gas: 200000,
+                        enabled: true,
+                    },
+                );
+
+                configs.insert(
+                    "sushiswap".to_string(),
+                    DEXConfig {
+                        name: "SushiSwap".to_string(),
+                        router: "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F".to_string(),
+                        quoter: None,
+                        factory: "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac".to_string(),
+                        supported_pools: vec![PoolType::UniswapV2, PoolType::Stable],
+                        swap_gas: 200000,
+                        enabled: true,
+                    },
+                );
+
+                configs.insert(
+                    "curve".to_string(),
+                    DEXConfig {
+                        name: "Curve".to_string(),
+                        router: "0x99a58482BD75cbab83b27EC03CA68fF489b5788f".to_string(),
+                        quoter: None,
+                        factory: "0xB9fC157394Af804a3578134A6585C0dc9cc990d4".to_string(),
+                        supported_pools: vec![PoolType::Stable],
+                        swap_gas: 250000,
+                        enabled: true,
+                    },
+                );
+
+                configs.insert(
+                    "balancer".to_string(),
+                    DEXConfig {
+                        name: "Balancer".to_string(),
+                        router: "0xBA12222222228d8Ba445958a75a0704d566BF2C8".to_string(),
+                        quoter: None,
+                        factory: "0xBA12222222228d8Ba445958a75a0704d566BF2C8".to_string(),
+                        supported_pools: vec![PoolType::CLAMM],
+                        swap_gas: 180000,
+                        enabled: true,
+                    },
+                );
+            }
+            56 => {
+                // BSC
+                configs.insert(
+                    "pancakeswap".to_string(),
+                    DEXConfig {
+                        name: "PancakeSwap".to_string(),
+                        router: "0x10ED43C718714eb63d5aA57B78B54704E256024E".to_string(),
+                        quoter: Some("0x13f4EA83D0bd40E75C8222255bc855a974568Dd4".to_string()),
+                        factory: "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73".to_string(),
+                        supported_pools: vec![PoolType::UniswapV2],
+                        swap_gas: 200000,
+                        enabled: true,
+                    },
+                );
+            }
+            _ => {}
         }
-        
+
         configs
     }
-    
+
     /// Chain this aggregator prices.
     pub fn chain_id(&self) -> u64 {
         self.chain_id
@@ -655,44 +681,44 @@ impl DEXAggregator {
         let mut tokens = self.tokens.write().unwrap();
         tokens.insert(token.address.clone(), token);
     }
-    
+
     /// Get token
     pub fn get_token(&self, address: &str) -> Option<Token> {
         let tokens = self.tokens.read().unwrap();
         tokens.get(&address.to_lowercase()).cloned()
     }
-    
+
     /// Add pool
     pub fn add_pool(&self, pool: Pool) {
         let key = format!("{}_{}", pool.token_a.address, pool.token_b.address);
         let mut pools = self.pools.write().unwrap();
-        
-        pools.entry(key)
-            .or_default()
-            .push(pool);
+
+        pools.entry(key).or_default().push(pool);
     }
-    
+
     /// Update prices
     pub fn update_prices(&self, prices: HashMap<String, PriceData>) {
         let mut cache = self.prices.write().unwrap();
         *cache = prices;
     }
-    
+
     /// Update gas data
     pub fn update_gas(&self, gas: GasData) {
         let mut cache = self.gas.write().unwrap();
         *cache = gas;
     }
-    
+
     /// Get quote
     pub async fn get_quote(&self, request: QuoteRequest) -> Result<QuoteResponse, DEXError> {
-        let token_in = self.get_token(&request.token_in)
+        let token_in = self
+            .get_token(&request.token_in)
             .ok_or_else(|| DEXError::InvalidToken(request.token_in.clone()))?;
-        let token_out = self.get_token(&request.token_out)
+        let token_out = self
+            .get_token(&request.token_out)
             .ok_or_else(|| DEXError::InvalidToken(request.token_out.clone()))?;
-        
+
         let amount_in = TokenAmount::new(token_in.clone(), request.amount_in.clone());
-        
+
         // Find best routes
         let routes = self.find_routes(
             &token_in,
@@ -701,19 +727,13 @@ impl DEXAggregator {
             request.max_hops.unwrap_or(4),
             request.max_price_impact.unwrap_or(10.0),
         )?;
-        
-        let route = routes.first()
-            .ok_or(DEXError::RouteNotFound)?
-            .clone();
-        
-        let alternative_routes: Vec<SwapRoute> = routes[1..]
-            .iter()
-            .take(3)
-            .cloned()
-            .collect();
-        
+
+        let route = routes.first().ok_or(DEXError::RouteNotFound)?.clone();
+
+        let alternative_routes: Vec<SwapRoute> = routes[1..].iter().take(3).cloned().collect();
+
         let valid_until = current_timestamp() + self.cache_ttl;
-        
+
         Ok(QuoteResponse {
             route,
             alternative_routes,
@@ -721,7 +741,7 @@ impl DEXAggregator {
             valid_until,
         })
     }
-    
+
     /// Find the best swap routes.
     ///
     /// Breadth-first search over the pool graph, carrying the output amount
@@ -880,7 +900,7 @@ impl DEXAggregator {
         } else {
             (pool.reserve_b, pool.reserve_a)
         };
-        
+
         let token_in = if pool.token_a.address.to_lowercase() == token_in_address {
             pool.token_a.clone()
         } else {
@@ -950,7 +970,7 @@ impl DEXAggregator {
 
         Ok((amount_out, hop))
     }
-    
+
     /// Price impact of a swap, in percent.
     ///
     /// The spot price is derived from the pools on the direct pair: it is the
@@ -986,12 +1006,11 @@ impl DEXAggregator {
                 continue;
             }
 
-            let (reserve_in, reserve_out) =
-                if pool.token_a.address.to_lowercase() == start {
-                    (pool.reserve_a, pool.reserve_b)
-                } else {
-                    (pool.reserve_b, pool.reserve_a)
-                };
+            let (reserve_in, reserve_out) = if pool.token_a.address.to_lowercase() == start {
+                (pool.reserve_a, pool.reserve_b)
+            } else {
+                (pool.reserve_b, pool.reserve_a)
+            };
 
             if reserve_in == 0 {
                 continue;
@@ -1189,7 +1208,8 @@ impl DEXAggregator {
     /// Left-pad a 20-byte hex address into a 32-byte ABI word.
     fn encode_address(address: &str) -> Result<[u8; 32], DEXError> {
         let trimmed = address.trim_start_matches("0x");
-        let bytes = hex::decode(trimmed).map_err(|_| DEXError::InvalidToken(address.to_string()))?;
+        let bytes =
+            hex::decode(trimmed).map_err(|_| DEXError::InvalidToken(address.to_string()))?;
 
         if bytes.len() != 20 {
             return Err(DEXError::InvalidToken(address.to_string()));
@@ -1204,15 +1224,15 @@ impl DEXAggregator {
     /// Get gas optimization recommendation
     pub fn optimize_gas(&self) -> GasRecommendation {
         let gas_data = self.gas.read().unwrap();
-        
+
         let recommended_fee = if gas_data.network_load > 0.8 {
             gas_data.max_fee * 1.2
         } else {
             gas_data.max_fee
         };
-        
+
         let priority_fee = gas_data.max_priority_fee.max(1.0);
-        
+
         GasRecommendation {
             max_fee: recommended_fee,
             max_priority_fee: priority_fee,
@@ -1359,9 +1379,7 @@ impl DCAEngine {
     /// Cancel an order. Returns an error if it is already finished.
     pub fn cancel_order(&self, order_id: &str) -> Result<(), DEXError> {
         let mut orders = self.orders.write().unwrap();
-        let order = orders
-            .get_mut(order_id)
-            .ok_or(DEXError::RouteNotFound)?;
+        let order = orders.get_mut(order_id).ok_or(DEXError::RouteNotFound)?;
 
         match order.status {
             LimitOrderStatus::Pending => {
@@ -1401,9 +1419,7 @@ impl DCAEngine {
         let order = orders.get(order_id).ok_or(DEXError::RouteNotFound)?;
 
         if order.status != LimitOrderStatus::Pending {
-            return Err(DEXError::TransactionFailed(
-                "order is not pending".into(),
-            ));
+            return Err(DEXError::TransactionFailed("order is not pending".into()));
         }
         if now < order.start_time {
             return Err(DEXError::TransactionFailed(
@@ -1456,14 +1472,10 @@ impl DCAEngine {
     /// the counter reflects executed slices rather than prepared ones.
     pub fn record_execution(&self, order_id: &str) -> Result<TWAPOrder, DEXError> {
         let mut orders = self.orders.write().unwrap();
-        let order = orders
-            .get_mut(order_id)
-            .ok_or(DEXError::RouteNotFound)?;
+        let order = orders.get_mut(order_id).ok_or(DEXError::RouteNotFound)?;
 
         if order.status != LimitOrderStatus::Pending {
-            return Err(DEXError::TransactionFailed(
-                "order is not pending".into(),
-            ));
+            return Err(DEXError::TransactionFailed("order is not pending".into()));
         }
         if order.executed_count >= order.intervals {
             return Err(DEXError::TransactionFailed(
@@ -1561,7 +1573,10 @@ mod tests {
         // More fractional digits than the token has are truncated, not rounded
         // up: 1.2345678 USDC is 1.234567 USDC.
         let usdc = token(USDC, 6, "USDC");
-        assert_eq!(TokenAmount::new(usdc, "1.2345678".to_string()).raw_amount, 1_234_567);
+        assert_eq!(
+            TokenAmount::new(usdc, "1.2345678".to_string()).raw_amount,
+            1_234_567
+        );
 
         // Fewer fractional digits are padded.
         let weth = token(WETH, 18, "WETH");
@@ -1574,7 +1589,10 @@ mod tests {
     #[test]
     fn a_malformed_amount_does_not_become_a_large_number() {
         let usdc = token(USDC, 6, "USDC");
-        assert_eq!(TokenAmount::new(usdc.clone(), "not-a-number".to_string()).raw_amount, 0);
+        assert_eq!(
+            TokenAmount::new(usdc.clone(), "not-a-number".to_string()).raw_amount,
+            0
+        );
         assert_eq!(TokenAmount::new(usdc.clone(), "".to_string()).raw_amount, 0);
         assert_eq!(TokenAmount::new(usdc, ".5".to_string()).raw_amount, 500_000);
     }
@@ -1586,7 +1604,13 @@ mod tests {
         let aggregator = aggregator();
 
         // 1,000,000 USDC against 1,000,000 USDC / 500 WETH with a 0.3% fee.
-        let pool = pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3);
+        let pool = pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        );
         let (amount_out, hop) = aggregator
             .calculate_swap(&pool, 1_000_000_000_000, &usdc.address)
             .unwrap();
@@ -1594,8 +1618,8 @@ mod tests {
         // dx_after_fee = 997_000_000_000
         // dy = 500e18 * 997e9 / (1e12 + 997e9)
         let amount_in_with_fee = 1_000_000_000_000u128 * 997_000 / 1_000_000;
-        let expected =
-            500_000_000_000_000_000_000u128 * amount_in_with_fee / (1_000_000_000_000 + amount_in_with_fee);
+        let expected = 500_000_000_000_000_000_000u128 * amount_in_with_fee
+            / (1_000_000_000_000 + amount_in_with_fee);
 
         assert_eq!(amount_out, expected);
 
@@ -1612,7 +1636,10 @@ mod tests {
         assert!(amount_out < no_fee);
         // The hop records the human-readable amount, scaled by the output
         // token's decimals.
-        assert_eq!(hop.amount_out, TokenAmount::from_raw(weth.clone(), expected).amount);
+        assert_eq!(
+            hop.amount_out,
+            TokenAmount::from_raw(weth.clone(), expected).amount
+        );
         assert_eq!(hop.amount_in, "1000000");
     }
 
@@ -1653,7 +1680,13 @@ mod tests {
         // A shallow pool and a deep pool for the same pair.
         let mut shallow = pool(&usdc, &weth, 1_000_000, 500_000, 0.3);
         shallow.address = "0x0000000000000000000000000000000000000001".to_string();
-        let mut deep = pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3);
+        let mut deep = pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        );
         deep.address = "0x0000000000000000000000000000000000000002".to_string();
 
         aggregator.add_pool(shallow);
@@ -1665,8 +1698,7 @@ mod tests {
 
         assert_eq!(routes.len(), 2, "both pools are viable routes");
         assert_eq!(
-            routes[0].hops[0].pool,
-            "0x0000000000000000000000000000000000000002",
+            routes[0].hops[0].pool, "0x0000000000000000000000000000000000000002",
             "the deeper pool gives the better price and ranks first"
         );
         assert!(routes[0].amount_out.raw_amount > routes[1].amount_out.raw_amount);
@@ -1684,8 +1716,20 @@ mod tests {
         }
 
         // USDC -> WETH -> DAI. There is no direct USDC/DAI pool.
-        aggregator.add_pool(pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3));
-        aggregator.add_pool(pool(&weth, &dai, 500_000_000_000_000_000_000, 1_000_000_000_000_000_000_000, 0.3));
+        aggregator.add_pool(pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        ));
+        aggregator.add_pool(pool(
+            &weth,
+            &dai,
+            500_000_000_000_000_000_000,
+            1_000_000_000_000_000_000_000,
+            0.3,
+        ));
 
         let routes = aggregator
             .find_routes(&usdc, &dai, 1_000_000_000_000, 2, 100.0)
@@ -1705,8 +1749,20 @@ mod tests {
         let dai = token(DAI, 18, "DAI");
 
         let aggregator = aggregator();
-        aggregator.add_pool(pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3));
-        aggregator.add_pool(pool(&weth, &dai, 500_000_000_000_000_000_000, 1_000_000_000_000_000_000_000, 0.3));
+        aggregator.add_pool(pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        ));
+        aggregator.add_pool(pool(
+            &weth,
+            &dai,
+            500_000_000_000_000_000_000,
+            1_000_000_000_000_000_000_000,
+            0.3,
+        ));
 
         // Two hops are needed, so a one-hop budget finds nothing.
         let routes = aggregator
@@ -1775,7 +1831,13 @@ mod tests {
         let aggregator = aggregator();
         aggregator.register_token(usdc.clone());
         aggregator.register_token(weth.clone());
-        aggregator.add_pool(pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3));
+        aggregator.add_pool(pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        ));
 
         let quote = block_on(aggregator.get_quote(QuoteRequest {
             token_in: usdc.address.clone(),
@@ -1846,7 +1908,13 @@ mod tests {
         let aggregator = aggregator();
         aggregator.register_token(usdc.clone());
         aggregator.register_token(weth.clone());
-        aggregator.add_pool(pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3));
+        aggregator.add_pool(pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        ));
 
         let route = block_on(aggregator.get_quote(QuoteRequest {
             token_in: usdc.address.clone(),
@@ -1906,7 +1974,13 @@ mod tests {
         let aggregator = aggregator();
         aggregator.register_token(usdc.clone());
         aggregator.register_token(weth.clone());
-        aggregator.add_pool(pool(&usdc, &weth, 1_000_000_000_000, 500_000_000_000_000_000_000, 0.3));
+        aggregator.add_pool(pool(
+            &usdc,
+            &weth,
+            1_000_000_000_000,
+            500_000_000_000_000_000_000,
+            0.3,
+        ));
 
         let route = block_on(aggregator.get_quote(QuoteRequest {
             token_in: usdc.address.clone(),
@@ -2020,7 +2094,10 @@ mod tests {
 
         engine.record_execution("twap-1").unwrap();
         let last = engine.next_slice("twap-1", 1_120).unwrap();
-        assert_eq!(last.amount_in, 334, "the remainder lands in the final slice");
+        assert_eq!(
+            last.amount_in, 334,
+            "the remainder lands in the final slice"
+        );
 
         // The three slices sum to the order total.
         assert_eq!(333 + 333 + 334, 1_000);

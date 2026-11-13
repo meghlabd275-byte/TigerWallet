@@ -24,8 +24,8 @@ import (
 type Store struct {
 	db *pgxpool.Pool
 
-	ratesMu      sync.RWMutex
-	ratesCache   map[string]float64
+	ratesMu       sync.RWMutex
+	ratesCache    map[string]float64
 	ratesCachedAt time.Time
 }
 

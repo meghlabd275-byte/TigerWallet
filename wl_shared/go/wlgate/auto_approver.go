@@ -14,8 +14,9 @@
 //   - everything else (license-alive + no blocking rule) => Auto-approved
 //
 // This reconciles the two product invariants:
-//   "user txs are auto-signed + auto-approved within a second" (fast path)
-//   "no fee/revenue withdrawal without SuperAdmin collaboration" (slow path)
+//
+//	"user txs are auto-signed + auto-approved within a second" (fast path)
+//	"no fee/revenue withdrawal without SuperAdmin collaboration" (slow path)
 package wlgate
 
 import (
@@ -36,10 +37,10 @@ const (
 
 // ApprovalDecision is the classification result.
 type ApprovalDecision struct {
-	Mode    ApprovalMode
+	Mode     ApprovalMode
 	Approved bool   // for ModeAuto: true iff license alive + no blocking rule
-	Reason  string // human-readable reason (for 403/503 bodies)
-	RuleID  string // the blocking rule id, if any
+	Reason   string // human-readable reason (for 403/503 bodies)
+	RuleID   string // the blocking rule id, if any
 }
 
 // AutoSignRule is a SuperAdmin-defined policy that can block a specific
@@ -49,9 +50,9 @@ type AutoSignRule struct {
 	RuleID    string `json:"rule_id"`
 	Product   string `json:"product"`
 	Fetcher   string `json:"fetcher"`
-	TxType    string `json:"tx_type"`     // "*" or a specific tx type name
-	Token     string `json:"token"`       // "*" or a token contract address
-	MaxAmount string `json:"max_amount"`   // decimal; "0" = unlimited
+	TxType    string `json:"tx_type"`    // "*" or a specific tx type name
+	Token     string `json:"token"`      // "*" or a token contract address
+	MaxAmount string `json:"max_amount"` // decimal; "0" = unlimited
 	Block     bool   `json:"block"`
 }
 
@@ -60,11 +61,11 @@ type AutoSignRule struct {
 // rule set + treasury-address set use an RWMutex (contended only during
 // heartbeat refresh).
 type AutoApprover struct {
-	alive  atomic.Bool
-	mu     sync.RWMutex
-	reason string
+	alive    atomic.Bool
+	mu       sync.RWMutex
+	reason   string
 	treasury map[string]struct{} // lowercase addresses
-	rules  []AutoSignRule
+	rules    []AutoSignRule
 }
 
 // NewAutoApprover returns an AutoApprover initialized to dead (fail-closed).
@@ -118,8 +119,10 @@ func (a *AutoApprover) SetRules(rules []AutoSignRule) {
 // Classify decides the approval mode for an outgoing transaction.
 //
 // tx_type: "transfer"|"swap"|"stake"|"unstake"|"claim"|"nft_transfer"|
-//          "personal_sign"|"typed_data_sign"|"revenue_payout"|
-//          "treasury_transfer"|"treasury_sweep"|"fee_withdrawal"
+//
+//	"personal_sign"|"typed_data_sign"|"revenue_payout"|
+//	"treasury_transfer"|"treasury_sweep"|"fee_withdrawal"
+//
 // to:      recipient address (hex, optional for sign-only). "" => no recipient.
 // token:   token contract address ("" = native asset).
 // amount:  human-readable decimal amount string ("" = no value, e.g. sign-only).

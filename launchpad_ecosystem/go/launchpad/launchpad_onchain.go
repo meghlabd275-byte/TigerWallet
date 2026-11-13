@@ -35,13 +35,13 @@ import (
 // OnChainClient executes real signed transactions against the launchpad/pool
 // contract from the operator-controlled distribution wallet.
 type OnChainClient struct {
-	client    *ethclient.Client
-	pk        *ecdsa.PrivateKey
-	fromAddr  common.Address
-	contract  common.Address
-	chainID   *big.Int
-	claimFn   string
-	rewardFn  string
+	client   *ethclient.Client
+	pk       *ecdsa.PrivateKey
+	fromAddr common.Address
+	contract common.Address
+	chainID  *big.Int
+	claimFn  string
+	rewardFn string
 }
 
 func onchainEnv(key, def string) string {

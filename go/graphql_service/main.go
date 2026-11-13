@@ -476,7 +476,8 @@ func (s *GraphQLService) executeQuery(query string, variables map[string]interfa
 					result["tokens"] = t
 				}
 			}
-		}	}
+		}
+	}
 
 	// Handle mutation root
 	if strings.Contains(query, "mutation") {

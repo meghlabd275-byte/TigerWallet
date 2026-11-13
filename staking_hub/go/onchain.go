@@ -32,8 +32,8 @@ import (
 
 // Selectors for the standard StakingRewards interface.
 var (
-	selStake   = crypto.Keccak256([]byte("stake(uint256)"))[:4]
-	selWithdraw = crypto.Keccak256([]byte("withdraw(uint256)"))[:4]
+	selStake     = crypto.Keccak256([]byte("stake(uint256)"))[:4]
+	selWithdraw  = crypto.Keccak256([]byte("withdraw(uint256)"))[:4]
 	selGetReward = crypto.Keccak256([]byte("getReward()"))[:4]
 )
 

@@ -31,14 +31,14 @@ import (
 // ============================================================================
 
 type Config struct {
-	ServerPort  string `json:"server_port"`
-	DBHost      string `json:"db_host"`
-	DBPort      string `json:"db_port"`
-	DBUser      string `json:"db_user"`
-	DBPassword  string `json:"db_password"`
-	DBName      string `json:"db_name"`
-	RedisHost   string `json:"redis_host"`
-	RedisPort   string `json:"redis_port"`
+	ServerPort string `json:"server_port"`
+	DBHost     string `json:"db_host"`
+	DBPort     string `json:"db_port"`
+	DBUser     string `json:"db_user"`
+	DBPassword string `json:"db_password"`
+	DBName     string `json:"db_name"`
+	RedisHost  string `json:"redis_host"`
+	RedisPort  string `json:"redis_port"`
 }
 
 // mustEnv returns the named environment variable or terminates the process.
@@ -80,83 +80,83 @@ func LoadConfig() Config {
 
 // LaunchpadProject represents a launchpad project
 type LaunchpadProject struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	ProjectID      string    `gorm:"uniqueIndex" json:"project_id"`
-	Name           string    `json:"name"`
-	Description    string    `json:"description"`
-	TokenSymbol    string    `json:"token_symbol"`
-	TokenAddress   string    `json:"token_address"`
-	TokenDecimals  uint8     `json:"token_decimals"`
-	TotalSupply    string    `json:"total_supply"`
-	SoftCap        string    `json:"soft_cap"`
-	HardCap        string    `json:"hard_cap"`
-	MinBuy         float64   `json:"min_buy"`
-	MaxBuy         float64   `json:"max_buy"`
-	TokenPrice     float64   `json:"token_price"`
-	PaymentToken   string    `json:"payment_token"`
-	StartTime      time.Time `json:"start_time"`
-	EndTime        time.Time `json:"end_time"`
-	ClaimTime      time.Time `json:"claim_time"`
-	Status         string    `json:"status"`
-	TotalRaised    float64   `json:"total_raised"`
-	Participants   int       `json:"participants"`
-	Logo           string    `json:"logo"`
-	Website        string    `json:"website"`
-	Whitepaper     string    `json:"whitepaper"`
-	ChainID        int64     `json:"chain_id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	ProjectID     string    `gorm:"uniqueIndex" json:"project_id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	TokenSymbol   string    `json:"token_symbol"`
+	TokenAddress  string    `json:"token_address"`
+	TokenDecimals uint8     `json:"token_decimals"`
+	TotalSupply   string    `json:"total_supply"`
+	SoftCap       string    `json:"soft_cap"`
+	HardCap       string    `json:"hard_cap"`
+	MinBuy        float64   `json:"min_buy"`
+	MaxBuy        float64   `json:"max_buy"`
+	TokenPrice    float64   `json:"token_price"`
+	PaymentToken  string    `json:"payment_token"`
+	StartTime     time.Time `json:"start_time"`
+	EndTime       time.Time `json:"end_time"`
+	ClaimTime     time.Time `json:"claim_time"`
+	Status        string    `json:"status"`
+	TotalRaised   float64   `json:"total_raised"`
+	Participants  int       `json:"participants"`
+	Logo          string    `json:"logo"`
+	Website       string    `json:"website"`
+	Whitepaper    string    `json:"whitepaper"`
+	ChainID       int64     `json:"chain_id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // LaunchpoolProject represents a liquidity mining/farming launchpool
 type LaunchpoolProject struct {
-	ID              uint      `gorm:"primaryKey" json:"id"`
-	ProjectID       string    `gorm:"uniqueIndex" json:"project_id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	StakeToken      string    `json:"stake_token"`
-	RewardToken     string    `json:"reward_token"`
-	RewardPerBlock  float64   `json:"reward_per_block"`
-	TotalStake      float64   `json:"total_stake"`
-	TotalReward     float64   `json:"total_reward"`
-	StartTime       time.Time `json:"start_time"`
-	EndTime         time.Time `json:"end_time"`
-	Status          string    `json:"status"`
-	MinStake        float64   `json:"min_stake"`
-	MaxStake        float64   `json:"max_stake"`
-	ChainID         int64     `json:"chain_id"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	ProjectID      string    `gorm:"uniqueIndex" json:"project_id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description"`
+	StakeToken     string    `json:"stake_token"`
+	RewardToken    string    `json:"reward_token"`
+	RewardPerBlock float64   `json:"reward_per_block"`
+	TotalStake     float64   `json:"total_stake"`
+	TotalReward    float64   `json:"total_reward"`
+	StartTime      time.Time `json:"start_time"`
+	EndTime        time.Time `json:"end_time"`
+	Status         string    `json:"status"`
+	MinStake       float64   `json:"min_stake"`
+	MaxStake       float64   `json:"max_stake"`
+	ChainID        int64     `json:"chain_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // Allocation represents user allocation in a launchpad
 type Allocation struct {
-	ID            uint       `gorm:"primaryKey" json:"id"`
-	ProjectID     string     `gorm:"index" json:"project_id"`
-	UserAddress   string     `gorm:"index" json:"user_address"`
-	Amount        float64    `json:"amount"`
-	Tokens        float64    `json:"tokens"`
-	Tier          string     `json:"tier"`
-	Status        string     `json:"status"`
-	ClaimedAt     *time.Time `json:"claimed_at"`
-	TxHash        string     `json:"tx_hash"`
-	ChainID       int64      `json:"chain_id"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	ProjectID   string     `gorm:"index" json:"project_id"`
+	UserAddress string     `gorm:"index" json:"user_address"`
+	Amount      float64    `json:"amount"`
+	Tokens      float64    `json:"tokens"`
+	Tier        string     `json:"tier"`
+	Status      string     `json:"status"`
+	ClaimedAt   *time.Time `json:"claimed_at"`
+	TxHash      string     `json:"tx_hash"`
+	ChainID     int64      `json:"chain_id"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // Stake represents user stake in launchpool
 type Stake struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	ProjectID      string    `gorm:"index" json:"project_id"`
-	UserAddress    string    `gorm:"index" json:"user_address"`
-	StakeAmount    float64   `json:"stake_amount"`
-	PendingReward  float64   `json:"pending_reward"`
-	ClaimedReward  float64   `json:"claimed_reward"`
-	TxHash         string    `json:"tx_hash"`
-	Status         string    `json:"status"`
-	ChainID        int64     `json:"chain_id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	ProjectID     string    `gorm:"index" json:"project_id"`
+	UserAddress   string    `gorm:"index" json:"user_address"`
+	StakeAmount   float64   `json:"stake_amount"`
+	PendingReward float64   `json:"pending_reward"`
+	ClaimedReward float64   `json:"claimed_reward"`
+	TxHash        string    `json:"tx_hash"`
+	Status        string    `json:"status"`
+	ChainID       int64     `json:"chain_id"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // ============================================================================
@@ -215,25 +215,25 @@ func NewLaunchpadService(config Config) (*LaunchpadService, error) {
 // ============================================================================
 
 type CreateProjectRequest struct {
-	Name           string  `json:"name" binding:"required"`
-	Description    string  `json:"description"`
-	TokenSymbol    string  `json:"token_symbol" binding:"required"`
-	TokenAddress   string  `json:"token_address" binding:"required"`
-	TokenDecimals  uint8   `json:"token_decimals"`
-	TotalSupply    string  `json:"total_supply"`
-	SoftCap        string  `json:"soft_cap"`
-	HardCap        string  `json:"hard_cap"`
-	MinBuy         float64 `json:"min_buy"`
-	MaxBuy         float64 `json:"max_buy"`
-	TokenPrice     float64 `json:"token_price" binding:"required"`
-	PaymentToken   string  `json:"payment_token" binding:"required"`
-	StartTime      int64   `json:"start_time" binding:"required"`
-	EndTime        int64   `json:"end_time" binding:"required"`
-	ClaimTime      int64   `json:"claim_time"`
-	Logo           string  `json:"logo"`
-	Website        string  `json:"website"`
-	Whitepaper     string  `json:"whitepaper"`
-	ChainID        int64   `json:"chain_id"`
+	Name          string  `json:"name" binding:"required"`
+	Description   string  `json:"description"`
+	TokenSymbol   string  `json:"token_symbol" binding:"required"`
+	TokenAddress  string  `json:"token_address" binding:"required"`
+	TokenDecimals uint8   `json:"token_decimals"`
+	TotalSupply   string  `json:"total_supply"`
+	SoftCap       string  `json:"soft_cap"`
+	HardCap       string  `json:"hard_cap"`
+	MinBuy        float64 `json:"min_buy"`
+	MaxBuy        float64 `json:"max_buy"`
+	TokenPrice    float64 `json:"token_price" binding:"required"`
+	PaymentToken  string  `json:"payment_token" binding:"required"`
+	StartTime     int64   `json:"start_time" binding:"required"`
+	EndTime       int64   `json:"end_time" binding:"required"`
+	ClaimTime     int64   `json:"claim_time"`
+	Logo          string  `json:"logo"`
+	Website       string  `json:"website"`
+	Whitepaper    string  `json:"whitepaper"`
+	ChainID       int64   `json:"chain_id"`
 }
 
 func (s *LaunchpadService) CreateProject(ctx *gin.Context) {
@@ -246,27 +246,27 @@ func (s *LaunchpadService) CreateProject(ctx *gin.Context) {
 	projectID := generateProjectID()
 
 	project := LaunchpadProject{
-		ProjectID:      projectID,
-		Name:            req.Name,
-		Description:     req.Description,
-		TokenSymbol:     req.TokenSymbol,
-		TokenAddress:    req.TokenAddress,
-		TokenDecimals:   req.TokenDecimals,
-		TotalSupply:     req.TotalSupply,
-		SoftCap:         req.SoftCap,
-		HardCap:         req.HardCap,
-		MinBuy:          req.MinBuy,
-		MaxBuy:          req.MaxBuy,
-		TokenPrice:      req.TokenPrice,
-		PaymentToken:    req.PaymentToken,
-		StartTime:       time.Unix(req.StartTime, 0),
-		EndTime:         time.Unix(req.EndTime, 0),
-		ClaimTime:       time.Unix(req.ClaimTime, 0),
-		Status:          "UPCOMING",
-		Logo:            req.Logo,
-		Website:         req.Website,
-		Whitepaper:      req.Whitepaper,
-		ChainID:         req.ChainID,
+		ProjectID:     projectID,
+		Name:          req.Name,
+		Description:   req.Description,
+		TokenSymbol:   req.TokenSymbol,
+		TokenAddress:  req.TokenAddress,
+		TokenDecimals: req.TokenDecimals,
+		TotalSupply:   req.TotalSupply,
+		SoftCap:       req.SoftCap,
+		HardCap:       req.HardCap,
+		MinBuy:        req.MinBuy,
+		MaxBuy:        req.MaxBuy,
+		TokenPrice:    req.TokenPrice,
+		PaymentToken:  req.PaymentToken,
+		StartTime:     time.Unix(req.StartTime, 0),
+		EndTime:       time.Unix(req.EndTime, 0),
+		ClaimTime:     time.Unix(req.ClaimTime, 0),
+		Status:        "UPCOMING",
+		Logo:          req.Logo,
+		Website:       req.Website,
+		Whitepaper:    req.Whitepaper,
+		ChainID:       req.ChainID,
 	}
 
 	if err := s.db.Create(&project).Error; err != nil {
@@ -366,7 +366,7 @@ func (s *LaunchpadService) Participate(ctx *gin.Context) {
 		"success":          true,
 		"allocation_id":    allocationID,
 		"tokens_allocated": req.Amount / project.TokenPrice,
-		"total_raised":    project.TotalRaised,
+		"total_raised":     project.TotalRaised,
 	})
 }
 

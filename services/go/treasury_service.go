@@ -24,7 +24,7 @@ import (
 // ============================================================================
 
 const (
-	FeeCollectionInterval = 60 // seconds
+	FeeCollectionInterval       = 60   // seconds
 	RevenueDistributionInterval = 3600 // seconds (hourly)
 )
 
@@ -34,64 +34,64 @@ const (
 
 // Treasury represents the protocol treasury
 type Treasury struct {
-	ID                string            `json:"id"`
-	TotalRevenue       float64         `json:"total_revenue"`
-	TotalDistributed float64        `json:"total_distributed"`
-	TotalBuyback     float64         `json:"total_buyback"`
-	CurrentBalance   float64         `json:"current_balance"`
-	AdminAddress     string          `json:"admin_address"`
-	RevenueToken     string          `json:"revenue_token"`
-	BuybackToken     string          `json:"buyback_token"`
-	BuybackEnabled   bool           `json:"buyback_enabled"`
-	DistributionEnabled bool       `json:"distribution_enabled"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	ID                  string    `json:"id"`
+	TotalRevenue        float64   `json:"total_revenue"`
+	TotalDistributed    float64   `json:"total_distributed"`
+	TotalBuyback        float64   `json:"total_buyback"`
+	CurrentBalance      float64   `json:"current_balance"`
+	AdminAddress        string    `json:"admin_address"`
+	RevenueToken        string    `json:"revenue_token"`
+	BuybackToken        string    `json:"buyback_token"`
+	BuybackEnabled      bool      `json:"buyback_enabled"`
+	DistributionEnabled bool      `json:"distribution_enabled"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // FeeDistribution represents fee distribution
 type FeeDistribution struct {
-	ID          string    `json:"id"`
-	Type       string    `json:"type"` // swap, trading, bot, listing
-	Amount     float64   `json:"amount"`
-	Token      string   `json:"token"`
-	ChainId    int      `json:"chain_id"`
-	Recipient  string   `json:"recipient"`
-	TxHash    string   `json:"tx_hash,omitempty"`
-	Status    string   `json:"status"` // pending, completed, failed
-	CreatedAt  time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	Type        string     `json:"type"` // swap, trading, bot, listing
+	Amount      float64    `json:"amount"`
+	Token       string     `json:"token"`
+	ChainId     int        `json:"chain_id"`
+	Recipient   string     `json:"recipient"`
+	TxHash      string     `json:"tx_hash,omitempty"`
+	Status      string     `json:"status"` // pending, completed, failed
+	CreatedAt   time.Time  `json:"created_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 // BuybackRecord represents buyback operation
 type BuybackRecord struct {
-	ID            string    `json:"id"`
-	AmountUsed    float64  `json:"amount_used"`
-	AmountBought float64  `json:"amount_bought"`
-	TokenIn      string   `json:"token_in"`
-	TokenOut     string   `json:"token_out"`
-	Price       float64  `json:"price"`
-	TxHash      string   `json:"tx_hash"`
-	Status      string   `json:"status"`
+	ID           string    `json:"id"`
+	AmountUsed   float64   `json:"amount_used"`
+	AmountBought float64   `json:"amount_bought"`
+	TokenIn      string    `json:"token_in"`
+	TokenOut     string    `json:"token_out"`
+	Price        float64   `json:"price"`
+	TxHash       string    `json:"tx_hash"`
+	Status       string    `json:"status"`
 	ExecutedAt   time.Time `json:"executed_at"`
 }
 
 // RevenueShare represents revenue sharing
 type RevenueShare struct {
-	ID          string    `json:"id"`
-	Recipient   string   `json:"recipient"`
-	ShareBasisPoints int    `json:"share_basis_points"` // 100 = 1%
-	TotalReceived float64 `json:"total_received"`
-	IsActive    bool     `json:"is_active"`
+	ID               string  `json:"id"`
+	Recipient        string  `json:"recipient"`
+	ShareBasisPoints int     `json:"share_basis_points"` // 100 = 1%
+	TotalReceived    float64 `json:"total_received"`
+	IsActive         bool    `json:"is_active"`
 }
 
 // TreasuryAnalytics represents treasury analytics
 type TreasuryAnalytics struct {
-	Period           string  `json:"period"` // daily, weekly, monthly
-	TotalRevenue    float64 `json:"total_revenue"`
-	TotalDistributed float64 `json:"total_distributed"`
-	TotalBuyback   float64 `json:"total_buyback"`
-	FeeBreakdown   map[string]float64 `json:"fee_breakdown"`
-	TopRecipients []RecipientStats `json:"top_recipients"`
+	Period           string             `json:"period"` // daily, weekly, monthly
+	TotalRevenue     float64            `json:"total_revenue"`
+	TotalDistributed float64            `json:"total_distributed"`
+	TotalBuyback     float64            `json:"total_buyback"`
+	FeeBreakdown     map[string]float64 `json:"fee_breakdown"`
+	TopRecipients    []RecipientStats   `json:"top_recipients"`
 }
 
 // RecipientStats represents recipient statistics
@@ -110,13 +110,13 @@ type TreasuryStore struct {
 
 	treasury      *Treasury
 	distributions []*FeeDistribution
-	buybacks     []*BuybackRecord
-	shares       map[string]*RevenueShare // recipient -> share
+	buybacks      []*BuybackRecord
+	shares        map[string]*RevenueShare // recipient -> share
 
 	// Fee tracking
-	feeByType    map[string]float64
-	feeByChain   map[int]float64
-	feeByToken  map[string]float64
+	feeByType  map[string]float64
+	feeByChain map[int]float64
+	feeByToken map[string]float64
 
 	// Admin fee addresses
 	feeAddresses map[string]string // feeType -> address
@@ -126,12 +126,12 @@ type TreasuryStore struct {
 func NewTreasuryStore() *TreasuryStore {
 	return &TreasuryStore{
 		distributions: make([]*FeeDistribution, 0),
-		buybacks:     make([]*BuybackRecord, 0),
-		shares:      make(map[string]*RevenueShare),
-		feeByType:   make(map[string]float64),
-		feeByChain:  make(map[int]float64),
-		feeByToken: make(map[string]float64),
-		feeAddresses: make(map[string]string),
+		buybacks:      make([]*BuybackRecord, 0),
+		shares:        make(map[string]*RevenueShare),
+		feeByType:     make(map[string]float64),
+		feeByChain:    make(map[int]float64),
+		feeByToken:    make(map[string]float64),
+		feeAddresses:  make(map[string]string),
 	}
 }
 
@@ -145,14 +145,14 @@ func (s *TreasuryStore) InitializeTreasury(adminAddress, revenueToken, buybackTo
 	defer s.mu.Unlock()
 
 	s.treasury = &Treasury{
-		ID:              generateUUID(),
-		AdminAddress:     adminAddress,
-		RevenueToken:    revenueToken,
-		BuybackToken:    buybackToken,
-		BuybackEnabled:  true,
+		ID:                  generateUUID(),
+		AdminAddress:        adminAddress,
+		RevenueToken:        revenueToken,
+		BuybackToken:        buybackToken,
+		BuybackEnabled:      true,
 		DistributionEnabled: true,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
 
 	return nil
@@ -200,11 +200,11 @@ func (s *TreasuryStore) CollectFees(feeType string) ([]*FeeDistribution, error) 
 	}
 
 	dist := &FeeDistribution{
-		ID:         generateUUID(),
-		Type:       feeType,
-		Amount:     amount,
-		Token:      "USD", // Default to stable
-		ChainId:    1,    // Ethereum
+		ID:        generateUUID(),
+		Type:      feeType,
+		Amount:    amount,
+		Token:     "USD", // Default to stable
+		ChainId:   1,     // Ethereum
 		Recipient: address,
 		Status:    "pending",
 		CreatedAt: time.Now(),
@@ -224,7 +224,7 @@ func (s *TreasuryStore) SetRevenueShare(recipient string, basisPoints int) error
 	s.shares[recipient] = &RevenueShare{
 		ID:               generateUUID(),
 		Recipient:        recipient,
-		ShareBasisPoints:  basisPoints,
+		ShareBasisPoints: basisPoints,
 		IsActive:         true,
 	}
 
@@ -255,11 +255,11 @@ func (s *TreasuryStore) DistributeRevenue() ([]*FeeDistribution, error) {
 		amount := balance * float64(share.ShareBasisPoints) / 10000
 
 		dist := &FeeDistribution{
-			ID:         generateUUID(),
-			Type:       "revenue_share",
-			Amount:     amount,
-			Token:      s.treasury.RevenueToken,
-			ChainId:    1,
+			ID:        generateUUID(),
+			Type:      "revenue_share",
+			Amount:    amount,
+			Token:     s.treasury.RevenueToken,
+			ChainId:   1,
 			Recipient: share.Recipient,
 			Status:    "pending",
 			CreatedAt: time.Now(),
@@ -291,14 +291,14 @@ func (s *TreasuryStore) ExecuteBuyback(amount float64) (*BuybackRecord, error) {
 
 	// Simplified - in production, integrate with DEXs
 	record := &BuybackRecord{
-		ID:            generateUUID(),
-		AmountUsed:    amount,
+		ID:           generateUUID(),
+		AmountUsed:   amount,
 		AmountBought: amount, // Simplified
 		TokenIn:      s.treasury.BuybackToken,
 		TokenOut:     s.treasury.RevenueToken,
-		Price:       1.0, // Simplified
-		Status:      "completed",
-		ExecutedAt:  time.Now(),
+		Price:        1.0, // Simplified
+		Status:       "completed",
+		ExecutedAt:   time.Now(),
 	}
 
 	s.buybacks = append(s.buybacks, record)
@@ -316,10 +316,10 @@ func (s *TreasuryStore) GetAnalytics(period string) *TreasuryAnalytics {
 
 	analytics := &TreasuryAnalytics{
 		Period:           period,
-		TotalRevenue:    s.treasury.TotalRevenue,
+		TotalRevenue:     s.treasury.TotalRevenue,
 		TotalDistributed: s.treasury.TotalDistributed,
-		TotalBuyback:    s.treasury.TotalBuyback,
-		FeeBreakdown:    make(map[string]float64),
+		TotalBuyback:     s.treasury.TotalBuyback,
+		FeeBreakdown:     make(map[string]float64),
 	}
 
 	// Copy fee breakdown

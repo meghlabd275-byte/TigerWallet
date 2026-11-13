@@ -52,50 +52,50 @@ func getEnv(key, defaultValue string) string {
 type FiatOnRampProvider string
 
 const (
-	ProviderMoonPay  FiatOnRampProvider = "moonpay"
-	ProviderRamp     FiatOnRampProvider = "ramp"
-	ProviderSimplex  FiatOnRampProvider = "simplex"
-	ProviderTransak  FiatOnRampProvider = "transak"
+	ProviderMoonPay FiatOnRampProvider = "moonpay"
+	ProviderRamp    FiatOnRampProvider = "ramp"
+	ProviderSimplex FiatOnRampProvider = "simplex"
+	ProviderTransak FiatOnRampProvider = "transak"
 )
 
 type OnRampOrder struct {
-	ID                string              `json:"id"`
-	UserID           string              `json:"user_id"`
-	Provider         FiatOnRampProvider `json:"provider"`
-	ExternalID       string              `json:"external_id"`
-	FiatAmount       decimal.Decimal     `json:"fiat_amount"`
-	FiatCurrency     string              `json:"fiat_currency"`
-	CryptoAmount     decimal.Decimal     `json:"crypto_amount"`
-	CryptoCurrency   string              `json:"crypto_currency"`
-	CryptoAddress    string              `json:"crypto_address"`
-	Chain            string              `json:"chain"`
-	Status           string              `json:"status"` // pending, processing, completed, failed, refunded
-	PaymentMethod    string              `json:"payment_method"` // card, bank_transfer
-	RedirectURL      string              `json:"redirect_url"`
-	CallbackURL      string              `json:"callback_url"`
-	TransactionHash  string              `json:"transaction_hash,omitempty"`
-	ExchangeRate     decimal.Decimal     `json:"exchange_rate"`
-	NetworkFee       decimal.Decimal     `json:"network_fee"`
-	ProviderFee      decimal.Decimal     `json:"provider_fee"`
-	CreatedAt        time.Time           `json:"created_at"`
-	UpdatedAt        time.Time           `json:"updated_at"`
-	ExpiresAt        time.Time           `json:"expires_at"`
+	ID              string             `json:"id"`
+	UserID          string             `json:"user_id"`
+	Provider        FiatOnRampProvider `json:"provider"`
+	ExternalID      string             `json:"external_id"`
+	FiatAmount      decimal.Decimal    `json:"fiat_amount"`
+	FiatCurrency    string             `json:"fiat_currency"`
+	CryptoAmount    decimal.Decimal    `json:"crypto_amount"`
+	CryptoCurrency  string             `json:"crypto_currency"`
+	CryptoAddress   string             `json:"crypto_address"`
+	Chain           string             `json:"chain"`
+	Status          string             `json:"status"`         // pending, processing, completed, failed, refunded
+	PaymentMethod   string             `json:"payment_method"` // card, bank_transfer
+	RedirectURL     string             `json:"redirect_url"`
+	CallbackURL     string             `json:"callback_url"`
+	TransactionHash string             `json:"transaction_hash,omitempty"`
+	ExchangeRate    decimal.Decimal    `json:"exchange_rate"`
+	NetworkFee      decimal.Decimal    `json:"network_fee"`
+	ProviderFee     decimal.Decimal    `json:"provider_fee"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+	ExpiresAt       time.Time          `json:"expires_at"`
 }
 
 type OnRampQuote struct {
-	Provider         FiatOnRampProvider `json:"provider"`
-	FiatCurrency     string              `json:"fiat_currency"`
-	CryptoCurrency   string              `json:"crypto_currency"`
-	Chain           string              `json:"chain"`
-	FiatAmount      decimal.Decimal     `json:"fiat_amount"`
-	CryptoAmount    decimal.Decimal     `json:"crypto_amount"`
-	ExchangeRate    decimal.Decimal     `json:"exchange_rate"`
-	NetworkFee      decimal.Decimal     `json:"network_fee"`
-	ProviderFee     decimal.Decimal     `json:"provider_fee"`
-	TotalFee        decimal.Decimal     `json:"total_fee"`
-	ValidUntil     time.Time           `json:"valid_until"`
-	MinAmount      decimal.Decimal     `json:"min_amount"`
-	MaxAmount      decimal.Decimal     `json:"max_amount"`
+	Provider       FiatOnRampProvider `json:"provider"`
+	FiatCurrency   string             `json:"fiat_currency"`
+	CryptoCurrency string             `json:"crypto_currency"`
+	Chain          string             `json:"chain"`
+	FiatAmount     decimal.Decimal    `json:"fiat_amount"`
+	CryptoAmount   decimal.Decimal    `json:"crypto_amount"`
+	ExchangeRate   decimal.Decimal    `json:"exchange_rate"`
+	NetworkFee     decimal.Decimal    `json:"network_fee"`
+	ProviderFee    decimal.Decimal    `json:"provider_fee"`
+	TotalFee       decimal.Decimal    `json:"total_fee"`
+	ValidUntil     time.Time          `json:"valid_until"`
+	MinAmount      decimal.Decimal    `json:"min_amount"`
+	MaxAmount      decimal.Decimal    `json:"max_amount"`
 }
 
 type CryptoCurrency struct {
@@ -109,26 +109,26 @@ type CryptoCurrency struct {
 }
 
 type FiatCurrency struct {
-	Code         string `json:"code"`
-	Name         string `json:"name"`
-	Symbol       string `json:"symbol"`
-	MinAmount    string `json:"min_amount"`
-	MaxAmount    string `json:"max_amount"`
-	Country      string `json:"country"`
+	Code      string `json:"code"`
+	Name      string `json:"name"`
+	Symbol    string `json:"symbol"`
+	MinAmount string `json:"min_amount"`
+	MaxAmount string `json:"max_amount"`
+	Country   string `json:"country"`
 }
 
 type SupportedFiat struct {
-	Currencies []FiatCurrency  `json:"currencies"`
-	Crypto     []CryptoCurrency `json:"crypto"`
-	PaymentMethods []PaymentMethod `json:"payment_methods"`
+	Currencies     []FiatCurrency   `json:"currencies"`
+	Crypto         []CryptoCurrency `json:"crypto"`
+	PaymentMethods []PaymentMethod  `json:"payment_methods"`
 }
 
 type PaymentMethod struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Type        string `json:"type"` // card, bank_transfer, apple_pay, google_pay
-	Description string `json:"description"`
-	Fee         string `json:"fee"`
+	ID          string        `json:"id"`
+	Name        string        `json:"name"`
+	Type        string        `json:"type"` // card, bank_transfer, apple_pay, google_pay
+	Description string        `json:"description"`
+	Fee         string        `json:"fee"`
 	Limits      PaymentLimits `json:"limits"`
 }
 
@@ -138,12 +138,12 @@ type PaymentLimits struct {
 }
 
 type WebhookEvent struct {
-	EventType   string          `json:"event_type"`
-	OrderID     string          `json:"order_id"`
-	ExternalID  string          `json:"external_id"`
-	Status      string          `json:"status"`
-	Timestamp   time.Time       `json:"timestamp"`
-	Data        json.RawMessage `json:"data"`
+	EventType  string          `json:"event_type"`
+	OrderID    string          `json:"order_id"`
+	ExternalID string          `json:"external_id"`
+	Status     string          `json:"status"`
+	Timestamp  time.Time       `json:"timestamp"`
+	Data       json.RawMessage `json:"data"`
 }
 
 // ============================================================================
@@ -151,10 +151,10 @@ type WebhookEvent struct {
 // ============================================================================
 
 type FiatOnRampService struct {
-	config         *Config
-	redis          *redis.Client
-	orders         map[string]*OnRampOrder
-	orderMu        sync.RWMutex
+	config          *Config
+	redis           *redis.Client
+	orders          map[string]*OnRampOrder
+	orderMu         sync.RWMutex
 	providerClients map[FiatOnRampProvider]ProviderClient
 }
 
@@ -215,16 +215,16 @@ func (c *MoonPayClient) CreateOrder(ctx context.Context, order *OnRampOrder) (*O
 	signatureHash := hex.EncodeToString(mac.Sum(nil))
 
 	reqBody := map[string]interface{}{
-		"externalId":        uuid,
-		"walletAddress":     order.CryptoAddress,
-		"walletAddressTag":  "",
-		"currencyCode":      strings.ToLower(order.CryptoCurrency),
-		"fiatCurrencyCode":  strings.ToUpper(order.FiatCurrency),
-		"fiatAmount":        order.FiatAmount.String(),
-		"paymentMethod":     order.PaymentMethod,
-		"returnUrl":         order.RedirectURL,
-		"callbackUrl":       c.callbackURL,
-		"ipWhitelist":       []string{"*"},
+		"externalId":       uuid,
+		"walletAddress":    order.CryptoAddress,
+		"walletAddressTag": "",
+		"currencyCode":     strings.ToLower(order.CryptoCurrency),
+		"fiatCurrencyCode": strings.ToUpper(order.FiatCurrency),
+		"fiatAmount":       order.FiatAmount.String(),
+		"paymentMethod":    order.PaymentMethod,
+		"returnUrl":        order.RedirectURL,
+		"callbackUrl":      c.callbackURL,
+		"ipWhitelist":      []string{"*"},
 	}
 
 	reqBytes, _ := json.Marshal(reqBody)
@@ -447,8 +447,8 @@ func (c *RampClient) GetSupportedFiat(ctx context.Context) (*SupportedFiat, erro
 
 func NewFiatOnRampService(config *Config) *FiatOnRampService {
 	service := &FiatOnRampService{
-		config:         config,
-		orders:         make(map[string]*OnRampOrder),
+		config:          config,
+		orders:          make(map[string]*OnRampOrder),
 		providerClients: make(map[FiatOnRampProvider]ProviderClient),
 	}
 
@@ -720,15 +720,15 @@ func (s *FiatOnRampService) handleGetQuote(c *gin.Context) {
 
 func (s *FiatOnRampService) handleCreateOrder(c *gin.Context) {
 	var req struct {
-		Provider       string          `json:"provider"`
-		FiatAmount    string          `json:"fiat_amount"`
-		FiatCurrency  string          `json:"fiat_currency"`
-		CryptoCurrency string         `json:"crypto_currency"`
-		CryptoAddress string          `json:"crypto_address"`
-		Chain         string          `json:"chain"`
-		PaymentMethod string          `json:"payment_method"`
-		RedirectURL   string          `json:"redirect_url"`
-		CallbackURL   string          `json:"callback_url"`
+		Provider       string `json:"provider"`
+		FiatAmount     string `json:"fiat_amount"`
+		FiatCurrency   string `json:"fiat_currency"`
+		CryptoCurrency string `json:"crypto_currency"`
+		CryptoAddress  string `json:"crypto_address"`
+		Chain          string `json:"chain"`
+		PaymentMethod  string `json:"payment_method"`
+		RedirectURL    string `json:"redirect_url"`
+		CallbackURL    string `json:"callback_url"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -741,14 +741,14 @@ func (s *FiatOnRampService) handleCreateOrder(c *gin.Context) {
 	order := &OnRampOrder{
 		UserID:         userID,
 		Provider:       FiatOnRampProvider(req.Provider),
-		FiatAmount:    decimal.RequireFromString(req.FiatAmount),
-		FiatCurrency:  req.FiatCurrency,
+		FiatAmount:     decimal.RequireFromString(req.FiatAmount),
+		FiatCurrency:   req.FiatCurrency,
 		CryptoCurrency: req.CryptoCurrency,
-		CryptoAddress: req.CryptoAddress,
-		Chain:         req.Chain,
+		CryptoAddress:  req.CryptoAddress,
+		Chain:          req.Chain,
 		PaymentMethod:  req.PaymentMethod,
 		RedirectURL:    req.RedirectURL,
-		CallbackURL:   req.CallbackURL,
+		CallbackURL:    req.CallbackURL,
 	}
 
 	created, err := s.CreateOrder(c.Request.Context(), order)

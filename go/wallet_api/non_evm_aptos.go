@@ -15,8 +15,8 @@ import (
 	"io"
 	"net/http"
 
-	"golang.org/x/crypto/sha3"
 	ed "golang.org/x/crypto/ed25519"
+	"golang.org/x/crypto/sha3"
 )
 
 // ------ BCS encoding helpers ------
@@ -67,13 +67,13 @@ func aptosBuildTransferBCS(senderAddressHex, toAddressHex string, sequence, maxG
 	payload := &bcsBuf{}
 	payload.u8(2) // variant: EntryFunction
 	module := hexDecodeFixed("1")
-	payload.address(module)          // module address
-	payload.str("coin")              // module name
-	payload.str("transfer")          // function name
-	payload.uleb(0)                  // no type args
-	payload.uleb(2)                  // 2 args
-	payload.seq(to)                  // arg 0: receiver address as bytes
-	amt := &bcsBuf{}                 // arg 1: amount as BCS-u64 bytes
+	payload.address(module) // module address
+	payload.str("coin")     // module name
+	payload.str("transfer") // function name
+	payload.uleb(0)         // no type args
+	payload.uleb(2)         // 2 args
+	payload.seq(to)         // arg 0: receiver address as bytes
+	amt := &bcsBuf{}        // arg 1: amount as BCS-u64 bytes
 	amt.u64(amount)
 	payload.seq(amt.b)
 
@@ -124,10 +124,10 @@ func AptosBuildSend(ctx context.Context, seed []byte, path, endpoint, to string,
 	sig := ed.Sign(priv, toSign)
 
 	payload := map[string]interface{}{
-		"sender":            from,
-		"sequence_number":   numToString(sequence),
-		"max_gas_amount":    numToString(maxGas),
-		"gas_unit_price":    numToString(gasPrice),
+		"sender":                    from,
+		"sequence_number":           numToString(sequence),
+		"max_gas_amount":            numToString(maxGas),
+		"gas_unit_price":            numToString(gasPrice),
 		"expiration_timestamp_secs": numToString(expiration),
 		"payload": map[string]interface{}{
 			"type":           "entry_function_payload",

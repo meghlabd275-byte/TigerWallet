@@ -9,8 +9,8 @@ use tokio::sync::RwLock;
 use tracing::{error, info};
 
 use tiger_fetcher::{
-    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherMetrics, FetcherState,
-    FetcherStatus, FetcherType,
+    FetchParams, FetchResult, Fetcher, FetcherConfig, FetcherMetrics, FetcherState, FetcherStatus,
+    FetcherType,
 };
 
 /// Market data fetcher for prices, order books, and trading data
@@ -92,10 +92,10 @@ impl MarketFetcher {
     /// Fetch current price for symbols
     pub async fn fetch_prices(&self, symbols: &[String]) -> Result<Vec<PriceData>> {
         let mut prices = Vec::new();
-        
+
         for symbol in symbols {
             let cache_key = format!("price:{}", symbol);
-            
+
             // Try cache first
             if let Ok(cached) = self.cache.get::<PriceData>(&cache_key).await {
                 prices.push(cached);
@@ -105,7 +105,7 @@ impl MarketFetcher {
             // In production, fetch from real APIs (CoinGecko, Binance, etc.)
             let price_data = PriceData {
                 symbol: symbol.clone(),
-                price: 0.0,  // Would be fetched from API
+                price: 0.0, // Would be fetched from API
                 change_24h: 0.0,
                 change_percent_24h: 0.0,
                 volume_24h: 0.0,
@@ -126,7 +126,7 @@ impl MarketFetcher {
     /// Fetch order book data
     pub async fn fetch_order_book(&self, symbol: &str) -> Result<OrderBookData> {
         let cache_key = format!("orderbook:{}", symbol);
-        
+
         // Try cache first (5 second TTL)
         if let Ok(cached) = self.cache.get::<OrderBookData>(&cache_key).await {
             return Ok(cached);
@@ -143,19 +143,19 @@ impl MarketFetcher {
 
         // Cache for 5 seconds
         let _ = self.cache.set(&cache_key, &order_book, 5).await;
-        
+
         Ok(order_book)
     }
 
     /// Fetch historical OHLCV data
     pub async fn fetch_ohlcv(
-        &self, 
-        symbol: &str, 
-        interval: &str, 
-        limit: usize
+        &self,
+        symbol: &str,
+        interval: &str,
+        limit: usize,
     ) -> Result<HistoricalData> {
         let cache_key = format!("ohlcv:{}:{}:{}", symbol, interval, limit);
-        
+
         // Try cache first (1 minute TTL)
         if let Ok(cached) = self.cache.get::<HistoricalData>(&cache_key).await {
             return Ok(cached);
@@ -170,7 +170,7 @@ impl MarketFetcher {
 
         // Cache for 60 seconds
         let _ = self.cache.set(&cache_key, &data, 60).await;
-        
+
         Ok(data)
     }
 }
@@ -187,9 +187,12 @@ impl Fetcher for MarketFetcher {
 
     async fn fetch(&self, params: FetchParams) -> Result<FetchResult> {
         let start = Instant::now();
-        
-        let symbols = params.symbols.clone().unwrap_or_else(|| vec!["BTC".to_string()]);
-        
+
+        let symbols = params
+            .symbols
+            .clone()
+            .unwrap_or_else(|| vec!["BTC".to_string()]);
+
         let data = match self.fetch_prices(&symbols).await {
             Ok(prices) => {
                 let result = serde_json::json!({
@@ -205,23 +208,19 @@ impl Fetcher for MarketFetcher {
         };
 
         let elapsed = start.elapsed().as_millis() as u64;
-        
+
         match data {
-            Ok(result_data) => {
-                Ok(FetchResult::success(
-                    result_data,
-                    "market".to_string(),
-                    elapsed,
-                    false,
-                ))
-            }
-            Err(e) => {
-                Ok(FetchResult::error(
-                    "market".to_string(),
-                    e.to_string(),
-                    elapsed,
-                ))
-            }
+            Ok(result_data) => Ok(FetchResult::success(
+                result_data,
+                "market".to_string(),
+                elapsed,
+                false,
+            )),
+            Err(e) => Ok(FetchResult::error(
+                "market".to_string(),
+                e.to_string(),
+                elapsed,
+            )),
         }
     }
 

@@ -21,10 +21,10 @@ import (
 
 // gate is the in-process license gate (mirrors wl_control_plane/cpp WlGate).
 type gate struct {
-	alive atomic.Bool
-	mu    sync.RWMutex
+	alive  atomic.Bool
+	mu     sync.RWMutex
 	reason string
-	flags map[string]bool // product\x1ffetcher -> enabled
+	flags  map[string]bool // product\x1ffetcher -> enabled
 }
 
 var licenseGate = &gate{flags: map[string]bool{}}
@@ -224,18 +224,20 @@ func Gate(product string, fetcherForPath func(string) string) gin.HandlerFunc {
 // flag key becomes "user_wallet\x1fswap" or "user_wallet\x1fstaking", so
 // SuperAdmin can disable only swap while leaving staking/send running.
 // Routes map to these functional categories:
-//   /wallets, /wallets/:id/* -> wallets   (core wallet mgmt + balance)
-//   /send, /sign              -> send      (fund movement — EIP-191 + tx)
-//   /transactions             -> transactions (history)
-//   /balance,/tokens,/nfts,/gas,/price,/chains -> market  (read-only market data)
-//   /swap/*                   -> swap      (DEX swap)
-//   /staking/*                -> staking   (stake/unstake/claim)
-//   /non_evm/*                -> non_evm   (Solana/Bitcoin/Cosmos signing)
-//   /address-book/*           -> address_book
-//   /devices/*                -> devices
-//   /keystore/*               -> keystore
-//   /admin/*                  -> admin     (governance oversight)
-//   /users/:id/scopes         -> admin     (scope assignment)
+//
+//	/wallets, /wallets/:id/* -> wallets   (core wallet mgmt + balance)
+//	/send, /sign              -> send      (fund movement — EIP-191 + tx)
+//	/transactions             -> transactions (history)
+//	/balance,/tokens,/nfts,/gas,/price,/chains -> market  (read-only market data)
+//	/swap/*                   -> swap      (DEX swap)
+//	/staking/*                -> staking   (stake/unstake/claim)
+//	/non_evm/*                -> non_evm   (Solana/Bitcoin/Cosmos signing)
+//	/address-book/*           -> address_book
+//	/devices/*                -> devices
+//	/keystore/*               -> keystore
+//	/admin/*                  -> admin     (governance oversight)
+//	/users/:id/scopes         -> admin     (scope assignment)
+//
 // Unknown first segment falls back to "*" (whole-product flag).
 func CategoryFetcher(path string) string {
 	path = strings.Trim(path, "/")

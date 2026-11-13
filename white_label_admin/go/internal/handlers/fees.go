@@ -10,8 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 	"github.com/tigerwallet/white-label-admin/internal/middleware"
+	twredis "github.com/tigerwallet/white-label-admin/internal/redis"
 )
 
 // isTwoPartyApproved verifies the SuperAdmin co-sign on a withdrawal via the
@@ -306,7 +306,7 @@ func (s *Svc) CreateFeatureFlag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-			id := uuid.New()
+	id := uuid.New()
 	_, err := s.db.Exec(c.Request.Context(),
 		`INSERT INTO feature_flags (id, name, description, is_enabled, rollout_percentage, updated_by) VALUES ($1,$2,$3,$4,0,$5)`,
 		id, req.Name, req.Description, req.IsEnabled, middleware.AdminID(c))

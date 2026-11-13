@@ -275,10 +275,6 @@ func (p *UniswapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut string
 	}, nil
 }
 
-
-
-
-
 type PancakeSwapProvider struct {
 	http   *HTTPClient
 	client *ethclient.Client
@@ -347,10 +343,6 @@ func (p *PancakeSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut st
 		PriceImpact: 0.3,
 	}, nil
 }
-
-
-
-
 
 type SushiSwapProvider struct {
 	client *ethclient.Client
@@ -428,10 +420,6 @@ func (p *SushiSwapProvider) GetQuote(ctx context.Context, tokenIn, tokenOut stri
 		GasUsed: 150000,
 	}, nil
 }
-
-
-
-
 
 // ============================================================================
 // Aggregator Service
@@ -537,8 +525,6 @@ func (s *DEXAggregator) GetQuote(ctx context.Context, req QuoteRequest) ([]*Swap
 	return quotes, nil
 }
 
-
-
 func (s *DEXAggregator) ExecuteSwap(req QuoteRequest) (*SwapResult, error) {
 	ctx := context.Background()
 
@@ -622,8 +608,6 @@ func (s *DEXAggregator) buildTxData(route *SwapRoute, recipient string) (string,
 	}
 	return router.Hex(), "0x" + hex.EncodeToString(data), nil
 }
-
-
 
 // ============================================================================
 // API Handlers

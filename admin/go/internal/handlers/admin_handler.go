@@ -13,8 +13,8 @@ import (
 	"github.com/tigerwallet/admin/pkg/redis"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 	"github.com/pquerna/otp/totp"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 

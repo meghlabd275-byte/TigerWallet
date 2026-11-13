@@ -144,26 +144,26 @@ func getEnvInt(key string, defaultValue int) int {
 
 type FeeConfig struct {
 	TransactionFeePercent float64 `json:"transaction_fee_percent"`
-	ApiCallFee           float64 `json:"api_call_fee"`
-	MonthlyBaseFee      float64 `json:"monthly_base_fee"`
-	WithdrawalFee       float64 `json:"withdrawal_fee"`
+	ApiCallFee            float64 `json:"api_call_fee"`
+	MonthlyBaseFee        float64 `json:"monthly_base_fee"`
+	WithdrawalFee         float64 `json:"withdrawal_fee"`
 }
 
 type TransactionFee struct {
 	ID            uuid.UUID `json:"id" db:"id"`
-	TenantID     uuid.UUID `json:"tenant_id" db:"tenant_id"`
-	Product      string    `json:"product" db:"product"`
+	TenantID      uuid.UUID `json:"tenant_id" db:"tenant_id"`
+	Product       string    `json:"product" db:"product"`
 	TransactionID string    `json:"transaction_id" db:"transaction_id"`
-	Amount       float64   `json:"amount" db:"amount"`
-	FeeAmount    float64   `json:"fee_amount" db:"fee_amount"`
-	FeePercent   float64   `json:"fee_percent" db:"fee_percent"`
-	NetAmount    float64   `json:"net_amount" db:"net_amount"`
-	Status       string    `json:"status" db:"status"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	Amount        float64   `json:"amount" db:"amount"`
+	FeeAmount     float64   `json:"fee_amount" db:"fee_amount"`
+	FeePercent    float64   `json:"fee_percent" db:"fee_percent"`
+	NetAmount     float64   `json:"net_amount" db:"net_amount"`
+	Status        string    `json:"status" db:"status"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
 type APIUsage struct {
-	ID          uuid.UUID `json:"id" db:"id"`
+	ID         uuid.UUID `json:"id" db:"id"`
 	TenantID   uuid.UUID `json:"tenant_id" db:"tenant_id"`
 	Product    string    `json:"product" db:"product"`
 	Endpoint   string    `json:"endpoint" db:"endpoint"`
@@ -175,20 +175,20 @@ type APIUsage struct {
 }
 
 type Invoice struct {
-	ID              uuid.UUID `json:"id" db:"id"`
-	TenantID       uuid.UUID `json:"tenant_id" db:"tenant_id"`
-	InvoiceNumber  string    `json:"invoice_number" db:"invoice_number"`
-	Type           string    `json:"type" db:"type"` // subscription, usage, transaction
-	PeriodStart   time.Time `json:"period_start" db:"period_start"`
-	PeriodEnd     time.Time `json:"period_end" db:"period_end"`
-	Subtotal      float64   `json:"subtotal" db:"subtotal"`
-	Tax           float64   `json:"tax" db:"tax"`
-	Total         float64   `json:"total" db:"total"`
-	Status        string    `json:"status" db:"status"` // pending, paid, overdue, cancelled
-	DueDate       time.Time `json:"due_date" db:"due_date"`
+	ID            uuid.UUID  `json:"id" db:"id"`
+	TenantID      uuid.UUID  `json:"tenant_id" db:"tenant_id"`
+	InvoiceNumber string     `json:"invoice_number" db:"invoice_number"`
+	Type          string     `json:"type" db:"type"` // subscription, usage, transaction
+	PeriodStart   time.Time  `json:"period_start" db:"period_start"`
+	PeriodEnd     time.Time  `json:"period_end" db:"period_end"`
+	Subtotal      float64    `json:"subtotal" db:"subtotal"`
+	Tax           float64    `json:"tax" db:"tax"`
+	Total         float64    `json:"total" db:"total"`
+	Status        string     `json:"status" db:"status"` // pending, paid, overdue, cancelled
+	DueDate       time.Time  `json:"due_date" db:"due_date"`
 	PaidAt        *time.Time `json:"paid_at" db:"paid_at"`
-	PaymentMethod string    `json:"payment_method" db:"payment_method"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	PaymentMethod string     `json:"payment_method" db:"payment_method"`
+	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 }
 
 func corsMiddleware() gin.HandlerFunc {
@@ -206,10 +206,10 @@ func corsMiddleware() gin.HandlerFunc {
 
 func calculateFeeHandler(c *gin.Context) {
 	var req struct {
-		TenantID   string  `json:"tenant_id" binding:"required"`
-		Product   string  `json:"product" binding:"required"`
-		Amount    float64 `json:"amount" binding:"required"`
-		FeeType   string  `json:"fee_type" binding:"required"` // transaction, withdrawal, api_call
+		TenantID string  `json:"tenant_id" binding:"required"`
+		Product  string  `json:"product" binding:"required"`
+		Amount   float64 `json:"amount" binding:"required"`
+		FeeType  string  `json:"fee_type" binding:"required"` // transaction, withdrawal, api_call
 	}
 	c.ShouldBindJSON(&req)
 
@@ -234,11 +234,11 @@ func calculateFeeHandler(c *gin.Context) {
 
 func collectFeeHandler(c *gin.Context) {
 	var req struct {
-		TenantID     string  `json:"tenant_id" binding:"required"`
-		Product     string  `json:"product" binding:"required"`
-		TransactionID string `json:"transaction_id" binding:"required"`
-		Amount       float64 `json:"amount" binding:"required"`
-		FeeType      string  `json:"fee_type" binding:"required"`
+		TenantID      string  `json:"tenant_id" binding:"required"`
+		Product       string  `json:"product" binding:"required"`
+		TransactionID string  `json:"transaction_id" binding:"required"`
+		Amount        float64 `json:"amount" binding:"required"`
+		FeeType       string  `json:"fee_type" binding:"required"`
 	}
 	c.ShouldBindJSON(&req)
 
@@ -250,10 +250,10 @@ func collectFeeHandler(c *gin.Context) {
 	}
 
 	fee := map[string]interface{}{
-		"id":              uuid.New().String(),
-		"tenant_id":       req.TenantID,
-		"product":         req.Product,
-		"transaction_id":  req.TransactionID,
+		"id":             uuid.New().String(),
+		"tenant_id":      req.TenantID,
+		"product":        req.Product,
+		"transaction_id": req.TransactionID,
 		"amount":         req.Amount,
 		"fee_amount":     feeAmount,
 		"net_amount":     req.Amount - feeAmount,
@@ -272,9 +272,9 @@ func getFeeHistoryHandler(c *gin.Context) {
 			"id":             uuid.New().String(),
 			"transaction_id": "tx_123",
 			"amount":         1000.0,
-			"fee_amount":    10.0,
-			"net_amount":    990.0,
-			"created_at":    time.Now().Unix(),
+			"fee_amount":     10.0,
+			"net_amount":     990.0,
+			"created_at":     time.Now().Unix(),
 		},
 	}
 
@@ -284,10 +284,10 @@ func getFeeHistoryHandler(c *gin.Context) {
 func trackUsageHandler(c *gin.Context) {
 	var req struct {
 		TenantID  string `json:"tenant_id" binding:"required"`
-		Product  string `json:"product" binding:"required"`
-		Endpoint string `json:"endpoint" binding:"required"`
-		Method  string `json:"method" binding:"required"`
-		LatencyMs int   `json:"latency_ms"`
+		Product   string `json:"product" binding:"required"`
+		Endpoint  string `json:"endpoint" binding:"required"`
+		Method    string `json:"method" binding:"required"`
+		LatencyMs int    `json:"latency_ms"`
 	}
 	c.ShouldBindJSON(&req)
 
@@ -332,9 +332,9 @@ func getUsageSummaryHandler(c *gin.Context) {
 		"total_calls":     100000,
 		"total_cost":      100.0,
 		"calls_remaining": 900000,
-		"limit":          1000000,
-		"period":         "monthly",
-		"reset_date":     time.Now().Add(30 * 24 * time.Hour).Unix(),
+		"limit":           1000000,
+		"period":          "monthly",
+		"reset_date":      time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 
 	c.JSON(http.StatusOK, summary)
@@ -342,11 +342,11 @@ func getUsageSummaryHandler(c *gin.Context) {
 
 func createInvoiceHandler(c *gin.Context) {
 	var req struct {
-		TenantID   string    `json:"tenant_id" binding:"required"`
-		Type       string    `json:"type" binding:"required"`
-		PeriodStart time.Time `json:"period_start"`
-		PeriodEnd   time.Time `json:"period_end"`
-		Items      []map[string]interface{} `json:"items"`
+		TenantID    string                   `json:"tenant_id" binding:"required"`
+		Type        string                   `json:"type" binding:"required"`
+		PeriodStart time.Time                `json:"period_start"`
+		PeriodEnd   time.Time                `json:"period_end"`
+		Items       []map[string]interface{} `json:"items"`
 	}
 	c.ShouldBindJSON(&req)
 
@@ -379,12 +379,12 @@ func listInvoicesHandler(c *gin.Context) {
 
 	invoices := []map[string]interface{}{
 		{
-			"id":            uuid.New().String(),
+			"id":             uuid.New().String(),
 			"invoice_number": "INV-20240801001",
-			"type":         "subscription",
-			"total":        999.0,
-			"status":       "paid",
-			"due_date":     time.Now().Unix(),
+			"type":           "subscription",
+			"total":          999.0,
+			"status":         "paid",
+			"due_date":       time.Now().Unix(),
 		},
 	}
 
@@ -395,8 +395,8 @@ func getInvoiceHandler(c *gin.Context) {
 	invoiceID := c.Param("id")
 
 	invoice := map[string]interface{}{
-		"id":              invoiceID,
-		"invoice_number":  "INV-20240801001",
+		"id":             invoiceID,
+		"invoice_number": "INV-20240801001",
 		"tenant_id":      uuid.New().String(),
 		"type":           "subscription",
 		"subtotal":       909.09,
@@ -417,9 +417,9 @@ func payInvoiceHandler(c *gin.Context) {
 	c.ShouldBindJSON(&req)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":      "paid",
-		"paid_at":    time.Now().Unix(),
-		"message":    "Invoice paid successfully",
+		"status":  "paid",
+		"paid_at": time.Now().Unix(),
+		"message": "Invoice paid successfully",
 	})
 }
 
@@ -427,12 +427,12 @@ func getSubscriptionHandler(c *gin.Context) {
 	tenantID := c.Param("tenant_id")
 
 	subscription := map[string]interface{}{
-		"tenant_id":            tenantID,
-		"plan":                "enterprise",
-		"status":              "active",
-		"monthly_price":       999.0,
-		"api_call_limit":      1000000,
-		"current_period_end":  time.Now().Add(30 * 24 * time.Hour).Unix(),
+		"tenant_id":          tenantID,
+		"plan":               "enterprise",
+		"status":             "active",
+		"monthly_price":      999.0,
+		"api_call_limit":     1000000,
+		"current_period_end": time.Now().Add(30 * 24 * time.Hour).Unix(),
 		"features": []string{
 			"unlimited_wallets",
 			"unlimited_bots",
@@ -451,9 +451,9 @@ func upgradeSubscriptionHandler(c *gin.Context) {
 	c.ShouldBindJSON(&req)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "upgraded",
-		"new_plan":   req.NewPlan,
-		"message":    "Subscription upgraded",
+		"status":   "upgraded",
+		"new_plan": req.NewPlan,
+		"message":  "Subscription upgraded",
 	})
 }
 
@@ -464,9 +464,9 @@ func downgradeSubscriptionHandler(c *gin.Context) {
 	c.ShouldBindJSON(&req)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":    "downgraded",
-		"new_plan":  req.NewPlan,
-		"message":   "Subscription downgraded",
+		"status":   "downgraded",
+		"new_plan": req.NewPlan,
+		"message":  "Subscription downgraded",
 	})
 }
 
@@ -489,10 +489,10 @@ func getRevenueAnalyticsHandler(c *gin.Context) {
 			{"tenant_id": "t3", "revenue": 30000.0},
 		},
 		"by_product": map[string]float64{
-			"master_wallet":   60000.0,
-			"user_wallet":     40000.0,
-			"bots":           30000.0,
-			"project_party":  20000.0,
+			"master_wallet": 60000.0,
+			"user_wallet":   40000.0,
+			"bots":          30000.0,
+			"project_party": 20000.0,
 		},
 	}
 
@@ -501,13 +501,13 @@ func getRevenueAnalyticsHandler(c *gin.Context) {
 
 func getUsageAnalyticsHandler(c *gin.Context) {
 	analytics := map[string]interface{}{
-		"total_api_calls":     10000000,
-		"total_cost":         10000.0,
-		"avg_latency_ms":     45,
+		"total_api_calls": 10000000,
+		"total_cost":      10000.0,
+		"avg_latency_ms":  45,
 		"by_endpoint": map[string]int{
-			"/api/v1/fetcher/prices":        5000000,
-			"/api/v1/fetcher/wallet":       3000000,
-			"/api/v1/fetcher/blockchain":    2000000,
+			"/api/v1/fetcher/prices":     5000000,
+			"/api/v1/fetcher/wallet":     3000000,
+			"/api/v1/fetcher/blockchain": 2000000,
 		},
 	}
 
@@ -518,12 +518,12 @@ func getTenantAnalyticsHandler(c *gin.Context) {
 	analytics := map[string]interface{}{
 		"total_tenants":       100,
 		"active_tenants":      85,
-		"new_tenants_30d":    15,
+		"new_tenants_30d":     15,
 		"churned_tenants_30d": 5,
 		"by_plan": map[string]int{
-			"free":      30,
-			"basic":     40,
-			"pro":       20,
+			"free":       30,
+			"basic":      40,
+			"pro":        20,
 			"enterprise": 10,
 		},
 	}
@@ -533,11 +533,11 @@ func getTenantAnalyticsHandler(c *gin.Context) {
 
 func getDashboardHandler(c *gin.Context) {
 	dashboard := map[string]interface{}{
-		"total_revenue_today":    5000.0,
-		"total_revenue_monthly":  150000.0,
-		"active_tenants":         85,
-		"total_api_calls":        10000000,
-		"avg_response_time_ms":    45,
+		"total_revenue_today":   5000.0,
+		"total_revenue_monthly": 150000.0,
+		"active_tenants":        85,
+		"total_api_calls":       10000000,
+		"avg_response_time_ms":  45,
 		"top_tenants": []map[string]interface{}{
 			{"name": "Company A", "revenue": 50000.0},
 			{"name": "Company B", "revenue": 40000.0},
@@ -553,24 +553,24 @@ func generateRevenueReportHandler(c *gin.Context) {
 	endDate := c.Query("end_date")
 
 	report := map[string]interface{}{
-		"period":        map[string]string{"start": startDate, "end": endDate},
+		"period":       map[string]string{"start": startDate, "end": endDate},
 		"generated_at": time.Now().Unix(),
 		"revenue": map[string]interface{}{
-			"subscription":  100000.0,
+			"subscription": 100000.0,
 			"api_usage":    30000.0,
 			"transactions": 20000.0,
-			"total":       150000.0,
+			"total":        150000.0,
 		},
 		"invoices": map[string]interface{}{
-			"total":        100,
+			"total":       100,
 			"paid":        90,
-			"pending":      8,
+			"pending":     8,
 			"overdue":     2,
-			"total_value":  150000.0,
+			"total_value": 150000.0,
 		},
 		"tenants": map[string]interface{}{
-			"total":      100,
-			"new_30d":   15,
+			"total":       100,
+			"new_30d":     15,
 			"churned_30d": 5,
 		},
 	}

@@ -53,14 +53,14 @@ const (
 type WSClient struct {
 	ID            string
 	Subscriptions map[string]bool // "pair:channel"
-	Protocol     *websocket.Conn
-	mu           sync.Mutex
+	Protocol      *websocket.Conn
+	mu            sync.Mutex
 }
 
 type OrderBookLevel struct {
-	Price    float64 `json:"price"`
-	Size     float64 `json:"size"`
-	Total    float64 `json:"total"`
+	Price float64 `json:"price"`
+	Size  float64 `json:"size"`
+	Total float64 `json:"total"`
 }
 
 type OrderBook struct {
@@ -69,7 +69,7 @@ type OrderBook struct {
 	Asks      []OrderBookLevel `json:"asks"`
 	Spread    float64          `json:"spread"`
 	SpreadBPS float64          `json:"spread_bps"`
-	Timestamp int64           `json:"timestamp"`
+	Timestamp int64            `json:"timestamp"`
 }
 
 type Ticker struct {
@@ -96,14 +96,14 @@ type Trade struct {
 }
 
 type PriceTick struct {
-	Pair       string  `json:"pair"`
-	Price      float64 `json:"price"`
-	Volume24h  float64 `json:"volume_24h"`
-	Change24h  float64 `json:"change_24h"`
-	High24h    float64 `json:"high_24h"`
-	Low24h     float64 `json:"low_24h"`
-	Timestamp  int64   `json:"timestamp"`
-	Source     string  `json:"source"`
+	Pair      string  `json:"pair"`
+	Price     float64 `json:"price"`
+	Volume24h float64 `json:"volume_24h"`
+	Change24h float64 `json:"change_24h"`
+	High24h   float64 `json:"high_24h"`
+	Low24h    float64 `json:"low_24h"`
+	Timestamp int64   `json:"timestamp"`
+	Source    string  `json:"source"`
 }
 
 // ============================================================================
@@ -113,7 +113,7 @@ type PriceTick struct {
 type WSF struct {
 	// Connected clients
 	clients map[string]*WSClient
-	mu     sync.RWMutex
+	mu      sync.RWMutex
 
 	// Subscription index: "pair:channel" -> set of client IDs
 	subscriptions map[string]map[string]bool
@@ -126,8 +126,8 @@ type WSF struct {
 
 	// Statistics
 	stats struct {
-		TotalConnections int64
-		TotalMessages   int64
+		TotalConnections   int64
+		TotalMessages      int64
 		TotalSubscriptions int64
 	}
 }
@@ -142,12 +142,12 @@ var upgrader = websocket.Upgrader{
 
 func NewWSF() *WSF {
 	f := &WSF{
-		clients:      make(map[string]*WSClient),
+		clients:       make(map[string]*WSClient),
 		subscriptions: make(map[string]map[string]bool),
 		orderBooks:    make(map[string]*OrderBook),
-		tickers:      make(map[string]*Ticker),
-		trades:       make(map[string][]*Trade),
-		prices:       make(map[string]*PriceTick),
+		tickers:       make(map[string]*Ticker),
+		trades:        make(map[string][]*Trade),
+		prices:        make(map[string]*PriceTick),
 	}
 
 	// Initialize with default pairs
@@ -160,9 +160,9 @@ func (f *WSF) initializePairs() {
 	pairs := []string{"ETH_USDC", "ETH_USDT", "ETH_WBTC", "WBTC_USDC", "WBTC_USDT"}
 
 	basePrices := map[string]float64{
-		"ETH_USDC": 2450.0,
-		"ETH_USDT": 2450.0,
-		"ETH_WBTC": 0.04,
+		"ETH_USDC":  2450.0,
+		"ETH_USDT":  2450.0,
+		"ETH_WBTC":  0.04,
 		"WBTC_USDC": 62500.0,
 		"WBTC_USDT": 62500.0,
 	}
@@ -242,11 +242,11 @@ func (f *WSF) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientID := fmt.Sprintf("client_%d", time.Now().UnixNano())
-	
+
 	client := &WSClient{
 		ID:            clientID,
 		Subscriptions: make(map[string]bool),
-		Protocol:     conn,
+		Protocol:      conn,
 	}
 
 	f.mu.Lock()
@@ -272,8 +272,8 @@ func (f *WSF) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (f *WSF) handleClient(client *WSClient) {
 	// Send welcome message
 	welcome := map[string]interface{}{
-		"type":       "welcome",
-		"client_id":  client.ID,
+		"type":        "welcome",
+		"client_id":   client.ID,
 		"server_time": time.Now().Unix(),
 	}
 	client.SendJSON(welcome)
@@ -420,8 +420,8 @@ func (f *WSF) handleSubscribe(client *WSClient, msg map[string]interface{}) {
 					})
 				}
 				client.SendJSON(map[string]interface{}{
-					"type":  "recent_trades",
-					"pair":  pair,
+					"type":   "recent_trades",
+					"pair":   pair,
 					"trades": tradesJSON,
 				})
 			}
@@ -430,7 +430,7 @@ func (f *WSF) handleSubscribe(client *WSClient, msg map[string]interface{}) {
 	}
 
 	client.SendJSON(map[string]interface{}{
-		"type":      "subscribed",
+		"type":     "subscribed",
 		"channels": subscribed,
 		"pair":     pair,
 	})
@@ -464,7 +464,7 @@ func (f *WSF) handleUnsubscribe(client *WSClient, msg map[string]interface{}) {
 	}
 
 	client.SendJSON(map[string]interface{}{
-		"type":      "unsubscribed",
+		"type":     "unsubscribed",
 		"channels": unsubscribed,
 		"pair":     pair,
 	})
@@ -543,8 +543,8 @@ func (f *WSF) handleGetRecentTrades(client *WSClient, msg map[string]interface{}
 	}
 
 	client.SendJSON(map[string]interface{}{
-		"type":  "recent_trades",
-		"pair":  pair,
+		"type":   "recent_trades",
+		"pair":   pair,
 		"trades": tradesJSON,
 	})
 }
@@ -602,12 +602,12 @@ func (f *WSF) BroadcastOrderBookUpdate(pair string) {
 	}
 
 	msg := map[string]interface{}{
-		"type":            "orderbook_update",
-		"pair":            pair,
-		"bids":            ob.Bids[:10],
-		"asks":            ob.Asks[:10],
-		"last_update_id":  time.Now().UnixNano(),
-		"timestamp":       ob.Timestamp,
+		"type":           "orderbook_update",
+		"pair":           pair,
+		"bids":           ob.Bids[:10],
+		"asks":           ob.Asks[:10],
+		"last_update_id": time.Now().UnixNano(),
+		"timestamp":      ob.Timestamp,
 	}
 	f.broadcast(fmt.Sprintf("%s:orderbook", pair), msg)
 }
@@ -732,7 +732,7 @@ func (f *WSF) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "healthy",
-		"clients":  len(f.clients),
+		"clients":   len(f.clients),
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -743,8 +743,8 @@ func (f *WSF) HandleStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"connections":   len(f.clients),
-		"subscriptions": f.stats.TotalSubscriptions,
+		"connections":    len(f.clients),
+		"subscriptions":  f.stats.TotalSubscriptions,
 		"total_messages": f.stats.TotalMessages,
 	})
 }

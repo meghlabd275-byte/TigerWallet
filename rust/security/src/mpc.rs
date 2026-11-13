@@ -1,19 +1,19 @@
 //! TigerWallet MPC (Multi-Party Computation) Wallet Implementation
-//! 
+//!
 //! This module provides enterprise-grade MPC wallet functionality with:
 //! - 2-of-3 or 3-of-5 threshold signature schemes
 //! - Social recovery via trusted contacts
 //! - Key sharding with no single point of failure
 //! - Distributed key generation (DKG)
 //! - TSS (Threshold Signature Scheme)
-//! 
+//!
 //! Security Features:
 //! - All key shares stored separately
 //! - No single entity holds complete private key
 //! - Social recovery requires multiple contacts
 //! - Biometric + PIN + recovery key
 //! - Hardware security module (HSM) integration
-//! 
+//!
 //! Architecture:
 //! - Client-side key generation
 //! - Encrypted share storage
@@ -164,10 +164,10 @@ mod gf256 {
 pub struct ThresholdConfig {
     /// Total number of shares (n)
     pub total_shares: u8,
-    
+
     /// Minimum shares required to sign (t)
     pub threshold: u8,
-    
+
     /// Key strength in bits
     pub key_bits: u16,
 }
@@ -181,7 +181,7 @@ impl ThresholdConfig {
             key_bits: 256,
         }
     }
-    
+
     /// Create 3-of-5 configuration (high security)
     pub fn three_of_five() -> Self {
         Self {
@@ -190,13 +190,13 @@ impl ThresholdConfig {
             key_bits: 256,
         }
     }
-    
+
     /// Validate configuration
     pub fn is_valid(&self) -> bool {
-        self.threshold > 0 && 
-        self.total_shares >= self.threshold && 
-        self.total_shares <= 10 &&
-        self.key_bits >= 128
+        self.threshold > 0
+            && self.total_shares >= self.threshold
+            && self.total_shares <= 10
+            && self.key_bits >= 128
     }
 }
 
@@ -205,16 +205,16 @@ impl ThresholdConfig {
 pub struct KeyShare {
     /// Share index (1-based)
     pub index: u8,
-    
+
     /// Encrypted share data
     pub encrypted_share: Vec<u8>,
-    
+
     /// Public key
     pub public_key: Vec<u8>,
-    
+
     /// Verification data
     pub verification: Vec<u8>,
-    
+
     /// Share metadata
     pub metadata: ShareMetadata,
 }
@@ -224,13 +224,13 @@ pub struct KeyShare {
 pub struct ShareMetadata {
     /// Created timestamp
     pub created_at: u64,
-    
+
     /// Expiration (0 = never)
     pub expires_at: u64,
-    
+
     /// Key ID
     pub key_id: String,
-    
+
     /// Share type
     pub share_type: ShareType,
 }
@@ -255,25 +255,25 @@ pub enum ShareType {
 pub struct MPCWalletConfig {
     /// Threshold configuration
     pub threshold: ThresholdConfig,
-    
+
     /// Enable biometric
     pub enable_biometric: bool,
-    
+
     /// Enable PIN
     pub enable_pin: bool,
-    
+
     /// Enable cloud backup
     pub enable_cloud_backup: bool,
-    
+
     /// Enable hardware wallet
     pub enable_hardware_wallet: bool,
-    
+
     /// Auto-lock timeout (seconds)
     pub auto_lock_timeout: u64,
-    
+
     /// Require biometric for transaction
     pub require_biometric_for_tx: bool,
-    
+
     /// Maximum transaction without biometric
     pub max_tx_without_biometric: f64,
 }
@@ -307,19 +307,19 @@ pub struct MPCWallet {
 pub struct SigningPolicy {
     /// Maximum single transaction
     pub max_single_tx: f64,
-    
+
     /// Maximum daily total
     pub max_daily_total: f64,
-    
+
     /// Blocked addresses
     pub blocked_addresses: Vec<String>,
-    
+
     /// Blocked tokens
     pub blocked_tokens: Vec<String>,
-    
+
     /// Require confirmation for high value
     pub require_confirmation_above: f64,
-    
+
     /// Allowed smart contracts
     pub allowed_contracts: Vec<String>,
 }
@@ -383,11 +383,13 @@ impl MPCWallet {
     /// Create a new MPC wallet
     pub fn new(config: MPCWalletConfig) -> Result<Self, MPCError> {
         if !config.threshold.is_valid() {
-            return Err(MPCError::InvalidConfig("Invalid threshold config".to_string()));
+            return Err(MPCError::InvalidConfig(
+                "Invalid threshold config".to_string(),
+            ));
         }
-        
+
         let key_id = Self::generate_key_id();
-        
+
         Ok(Self {
             config,
             key_id,
@@ -397,17 +399,17 @@ impl MPCWallet {
             signing_policy: SigningPolicy::default(),
         })
     }
-    
+
     /// Generate unique key ID
     fn generate_key_id() -> String {
         use secure_random::generate_random_hex;
         format!("mpc_{}", generate_random_hex(16))
     }
-    
+
     /// Initialize wallet with key generation
     pub fn initialize(&mut self, seed: &[u8]) -> Result<Vec<KeyShare>, MPCError> {
         let config = self.config.threshold;
-        
+
         let public_key = Self::derive_public_key(seed)?;
         self.public_key = public_key;
 
@@ -415,25 +417,25 @@ impl MPCWallet {
         let mut shares = Self::generate_shares(seed, config.total_shares, config.threshold)?;
         self.seal_shares(&mut shares)?;
         self.shares = shares.clone();
-        
+
         Ok(shares)
     }
-    
+
     /// Split `secret` into `n` shares, any `threshold` of which reconstruct it.
     ///
     /// Each byte position is split independently over GF(256) with its own
     /// random polynomial, so shares are the same length as the secret and no
     /// single share reveals any byte of it.
-    fn generate_shares(
-        secret: &[u8],
-        n: u8,
-        threshold: u8,
-    ) -> Result<Vec<KeyShare>, MPCError> {
+    fn generate_shares(secret: &[u8], n: u8, threshold: u8) -> Result<Vec<KeyShare>, MPCError> {
         if secret.is_empty() {
-            return Err(MPCError::InvalidConfig("secret must not be empty".to_string()));
+            return Err(MPCError::InvalidConfig(
+                "secret must not be empty".to_string(),
+            ));
         }
         if threshold == 0 {
-            return Err(MPCError::InvalidConfig("threshold must be at least 1".to_string()));
+            return Err(MPCError::InvalidConfig(
+                "threshold must be at least 1".to_string(),
+            ));
         }
         if n < threshold {
             return Err(MPCError::InvalidConfig(format!(
@@ -558,7 +560,9 @@ impl MPCWallet {
         threshold: u8,
     ) -> Result<Vec<u8>, MPCError> {
         if threshold == 0 {
-            return Err(MPCError::InvalidConfig("threshold must be at least 1".to_string()));
+            return Err(MPCError::InvalidConfig(
+                "threshold must be at least 1".to_string(),
+            ));
         }
         if shares.len() < threshold as usize {
             return Err(MPCError::InsufficientShares(shares.len() as u8, threshold));
@@ -578,10 +582,9 @@ impl MPCWallet {
                 .iter()
                 .map(|(point, bytes)| (*point, bytes[byte_index]))
                 .collect();
-            secret.push(
-                gf256::interpolate_at_zero(&points)
-                    .ok_or_else(|| MPCError::InvalidConfig("share points are not distinct".to_string()))?,
-            );
+            secret.push(gf256::interpolate_at_zero(&points).ok_or_else(|| {
+                MPCError::InvalidConfig("share points are not distinct".to_string())
+            })?);
         }
 
         Ok(secret)
@@ -690,11 +693,11 @@ impl MPCWallet {
         if self.recovery_contacts.len() >= self.config.threshold.total_shares as usize - 1 {
             return Err(MPCError::TooManyContacts);
         }
-        
+
         self.recovery_contacts.push(contact);
         Ok(())
     }
-    
+
     /// Initiate social recovery
     pub fn initiate_social_recovery(
         &self,
@@ -706,17 +709,17 @@ impl MPCWallet {
                 self.config.threshold.threshold - 1,
             ));
         }
-        
+
         let request = SocialRecoveryRequest {
             key_id: self.key_id.clone(),
             contact_ids: contact_ids.to_vec(),
             initiated_at: current_timestamp(),
             expires_at: current_timestamp() + 86400, // 24 hours
         };
-        
+
         Ok(request)
     }
-    
+
     /// Complete social recovery
     pub fn complete_social_recovery(
         &self,
@@ -728,7 +731,7 @@ impl MPCWallet {
                 self.config.threshold.threshold,
             ));
         }
-        
+
         let mut points = Vec::with_capacity(shares.len());
         for share in shares {
             if share.metadata.key_id != self.key_id {
@@ -750,8 +753,7 @@ impl MPCWallet {
             points.push((index, bytes));
         }
 
-        let mut secret =
-            Self::reconstruct_from_points(&points, self.config.threshold.threshold)?;
+        let mut secret = Self::reconstruct_from_points(&points, self.config.threshold.threshold)?;
         let public_key = Self::derive_public_key(&secret)?;
         secret.iter_mut().for_each(|byte| *byte = 0);
 
@@ -761,13 +763,13 @@ impl MPCWallet {
             recovered_at: current_timestamp(),
         })
     }
-    
+
     /// Update signing policy
     pub fn update_policy(&mut self, policy: SigningPolicy) -> Result<(), MPCError> {
         self.signing_policy = policy;
         Ok(())
     }
-    
+
     /// Get wallet info
     pub fn info(&self) -> WalletInfo {
         WalletInfo {
@@ -838,28 +840,28 @@ pub enum MPCError {
 
     #[error("Randomness unavailable: {0}")]
     Randomness(String),
-    
+
     #[error("Crypto error: {0}")]
     CryptoError(String),
-    
+
     #[error("Insufficient shares: have {0}, need {1}")]
     InsufficientShares(u8, u8),
-    
+
     #[error("Policy violation: {0}")]
     PolicyViolation(String),
-    
+
     #[error("Invalid share: {0}")]
     InvalidShare(String),
-    
+
     #[error("Too many contacts")]
     TooManyContacts,
-    
+
     #[error("Insufficient contacts: have {0}, need {1}")]
     InsufficientContacts(u8, u8),
-    
+
     #[error("Recovery failed: {0}")]
     RecoveryFailed(String),
-    
+
     #[error("Network error: {0}")]
     Network(String),
 }
@@ -883,28 +885,28 @@ impl MPCWalletManager {
             wallets: HashMap::new(),
         }
     }
-    
+
     pub fn create_wallet(
         &mut self,
         config: MPCWalletConfig,
     ) -> Result<(String, Vec<KeyShare>), MPCError> {
         let mut wallet = MPCWallet::new(config)?;
         let key_id = wallet.key_id.clone();
-        
+
         let seed = secure_random::generate_random_bytes(32)
             .map_err(|e| MPCError::Randomness(e.to_string()))?;
-        
+
         let shares = wallet.initialize(&seed)?;
-        
+
         self.wallets.insert(key_id.clone(), wallet);
-        
+
         Ok((key_id, shares))
     }
-    
+
     pub fn get_wallet(&self, key_id: &str) -> Option<&MPCWallet> {
         self.wallets.get(key_id)
     }
-    
+
     pub fn get_wallet_mut(&mut self, key_id: &str) -> Option<&mut MPCWallet> {
         self.wallets.get_mut(key_id)
     }
@@ -919,9 +921,9 @@ impl Default for MPCWalletManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
-fn test_wallet_creation() {
+    fn test_wallet_creation() {
         let config = MPCWalletConfig::default();
         let mut wallet = MPCWallet::new(config).unwrap();
 
@@ -941,15 +943,15 @@ fn test_wallet_creation() {
         // instead of producing an unusable key.
         assert!(wallet.initialize(&[0u8; 32]).is_err());
     }
-    
+
     #[test]
     fn test_share_generation() {
         let secret = b"test_secret_key";
         let shares = MPCWallet::generate_shares(secret, 3, 2).unwrap();
-        
+
         assert_eq!(shares.len(), 3);
     }
-    
+
     #[test]
     fn test_secret_reconstruction() {
         let secret = b"test_secret_key";
@@ -973,26 +975,26 @@ fn test_wallet_creation() {
         // A single share must not reveal the secret.
         assert_ne!(points[0].1, secret);
     }
-    
+
     #[test]
     fn test_wallet_manager() {
         let mut manager = MPCWalletManager::new();
         let config = MPCWalletConfig::default();
-        
+
         let (key_id, shares) = manager.create_wallet(config).unwrap();
-        
+
         assert!(!key_id.is_empty());
         assert_eq!(shares.len(), 3);
     }
-    
+
     #[test]
     fn test_threshold_config() {
         let config = ThresholdConfig::two_of_three();
         assert!(config.is_valid());
-        
+
         let config = ThresholdConfig::three_of_five();
         assert!(config.is_valid());
-        
+
         let config = ThresholdConfig {
             total_shares: 2,
             threshold: 3,

@@ -1,7 +1,7 @@
 /**
  * TigerWallet CLI Tools
  * Command-line interface for developers
- * 
+ *
  * Features:
  * - Wallet creation and management
  * - Transaction building and signing
@@ -368,7 +368,7 @@ func createWallet(c *cli.Context) error {
 
 func importWallet(c *cli.Context) error {
 	mnemonic := c.String("mnemonic")
-	
+
 	// Validate mnemonic (in production, use proper BIP39)
 	words := strings.Fields(mnemonic)
 	if len(words) != 12 && len(words) != 24 {
@@ -380,7 +380,7 @@ func importWallet(c *cli.Context) error {
 	hasher := sha256.New()
 	hasher.Write([]byte(mnemonic))
 	keyBytes := hasher.Sum(nil)
-	
+
 	privateKey, err := crypto.ToECDSA(keyBytes)
 	if err != nil {
 		return fmt.Errorf("failed to derive key: %w", err)

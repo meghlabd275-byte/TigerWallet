@@ -212,8 +212,8 @@ func weiToFloat(wei *big.Int, decimals int) string {
 
 // CoinGeckoPrice holds a price response.
 type CoinGeckoPrice struct {
-	USD     float64 `json:"usd"`
-	USD24h  float64 `json:"usd_24h_change"`
+	USD       float64 `json:"usd"`
+	USD24h    float64 `json:"usd_24h_change"`
 	MarketCap float64 `json:"usd_market_cap"`
 }
 
@@ -259,15 +259,15 @@ func FetchTokenPrice(ctx context.Context, coinID string) (*CoinGeckoPrice, error
 
 // TransactionHistory is one historical transaction.
 type TransactionHistory struct {
-	Hash        string `json:"hash"`
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Value       string `json:"value"`
-	Time         int64  `json:"timeStamp"`
-	IsError     int    `json:"isError"`
-	GasUsed     string `json:"gasUsed"`
-	Status      string `json:"status"`
-	ChainID     int64  `json:"chain_id"`
+	Hash    string `json:"hash"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Value   string `json:"value"`
+	Time    int64  `json:"timeStamp"`
+	IsError int    `json:"isError"`
+	GasUsed string `json:"gasUsed"`
+	Status  string `json:"status"`
+	ChainID int64  `json:"chain_id"`
 }
 
 // FetchTransactionHistory queries an Etherscan-compatible explorer for the
@@ -312,14 +312,14 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 		return nil, fmt.Errorf("explorer API error: %s", raw.Message)
 	}
 	var rows []struct {
-		Hash        string `json:"hash"`
-		From        string `json:"from"`
-		To          string `json:"to"`
-		Value       string `json:"value"`
-		TimeStamp   string `json:"timeStamp"`
-		IsError     string `json:"isError"`
-		GasUsed     string `json:"gasUsed"`
-		Status      string `json:"status"`
+		Hash          string `json:"hash"`
+		From          string `json:"from"`
+		To            string `json:"to"`
+		Value         string `json:"value"`
+		TimeStamp     string `json:"timeStamp"`
+		IsError       string `json:"isError"`
+		GasUsed       string `json:"gasUsed"`
+		Status        string `json:"status"`
 		Confirmations string `json:"confirmations"`
 	}
 	if len(raw.Result) > 0 && string(raw.Result) != "null" {

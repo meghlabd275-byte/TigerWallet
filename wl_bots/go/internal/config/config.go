@@ -8,8 +8,8 @@ package config
 
 import (
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,21 +36,21 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:              getEnv("PORT", "8471"),
-		DatabaseURL:       getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/wl_bots?sslmode=disable"),
-		JWTSecret:         getEnv("JWT_SECRET", ""),
-		ControlPlaneURL:   getEnv("TWO_PARTY_GATE_URL", ""),
-		ControlPlaneToken: getEnv("TWO_PARTY_GATE_TOKEN", ""),
-		WLClientID:        getEnv("WL_CLIENT_ID", ""),
-		LicenseKey:        getEnv("WL_LICENSE_KEY", ""),
-		Product:           getEnv("WL_PRODUCT", "bots"),
-		InstanceID:        getEnv("WL_INSTANCE_ID", "default"),
-		BCryptCost:        getInt("BCRYPT_COST", 12),
-		JWTExpiry:         getDuration("JWT_EXPIRY", 24*time.Hour),
-		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
-		BotCoreURL:        getEnv("BOT_CORE_URL", "http://localhost:8472"),
-		ProjectPartyURL:   getEnv("PROJECT_PARTY_URL", "http://localhost:8106"),
-		PPServiceToken:    getEnv("PP_SERVICE_TOKEN", ""),
+		Port:               getEnv("PORT", "8471"),
+		DatabaseURL:        getEnv("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/wl_bots?sslmode=disable"),
+		JWTSecret:          getEnv("JWT_SECRET", ""),
+		ControlPlaneURL:    getEnv("TWO_PARTY_GATE_URL", ""),
+		ControlPlaneToken:  getEnv("TWO_PARTY_GATE_TOKEN", ""),
+		WLClientID:         getEnv("WL_CLIENT_ID", ""),
+		LicenseKey:         getEnv("WL_LICENSE_KEY", ""),
+		Product:            getEnv("WL_PRODUCT", "bots"),
+		InstanceID:         getEnv("WL_INSTANCE_ID", "default"),
+		BCryptCost:         getInt("BCRYPT_COST", 12),
+		JWTExpiry:          getDuration("JWT_EXPIRY", 24*time.Hour),
+		HeartbeatInterval:  getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
+		BotCoreURL:         getEnv("BOT_CORE_URL", "http://localhost:8472"),
+		ProjectPartyURL:    getEnv("PROJECT_PARTY_URL", "http://localhost:8106"),
+		PPServiceToken:     getEnv("PP_SERVICE_TOKEN", ""),
 		CORSAllowedOrigins: splitCSV(getEnv("WL_BOTS_CORS_ORIGINS", "")),
 	}
 }

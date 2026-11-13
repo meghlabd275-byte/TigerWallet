@@ -41,9 +41,22 @@ jobs:
               continue
             fi
             echo "::group::$mod"
-            if ! (cd "$mod" && go build ./...); then
-              echo "::error title=go build failed::$mod"
-              failed=1
+            # -o /dev/null avoids the "build output X already exists and is a
+            # directory" failure for modules whose binary name collides with a
+            # source directory (e.g. security/kyc_aml/go/cmd).
+            #
+            # tiger_smart_chain links go-ethereum v1.13.15, which references
+            # runtime.stopTheWorld; Go 1.23+ rejects that reference unless
+            # -checklinkname=0 is passed (tiger_smart_chain/Makefile documents
+            # the same flag). That flag does not exist before Go 1.23, and the
+            # toolchain version is per-module (a module declaring `go 1.23`
+            # makes Go fetch a 1.23 toolchain), so the flag is used as a
+            # fallback rather than unconditionally.
+            if ! (cd "$mod" && go build -o /dev/null ./...); then
+              if ! (cd "$mod" && go build -ldflags='-checklinkname=0' -o /dev/null ./...); then
+                echo "::error title=go build failed::$mod"
+                failed=1
+              fi
             fi
             if ! (cd "$mod" && go vet ./...); then
               echo "::error title=go vet failed::$mod"

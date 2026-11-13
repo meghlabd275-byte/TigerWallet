@@ -38,7 +38,10 @@ impl RedisConfig {
 
     pub fn connection_string(&self) -> String {
         match &self.password {
-            Some(password) => format!("redis://:{}@{}:{}/{}", password, self.host, self.port, self.database),
+            Some(password) => format!(
+                "redis://:{}@{}:{}/{}",
+                password, self.host, self.port, self.database
+            ),
             None => format!("redis://{}:{}/{}", self.host, self.port, self.database),
         }
     }
@@ -66,11 +69,18 @@ impl CacheManager {
         F: FnOnce(&mut redis::Connection) -> Result<T, RedisError>,
     {
         let mut guard = self.connection.lock().map_err(|_| {
-            redis::RedisError::from(std::io::Error::new(std::io::ErrorKind::Other, "cache lock poisoned"))
+            redis::RedisError::from(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "cache lock poisoned",
+            ))
         })?;
         if guard.is_none() {
-            let client = Client::open(self.config.connection_string())
-                .map_err(|e| redis::RedisError::from(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            let client = Client::open(self.config.connection_string()).map_err(|e| {
+                redis::RedisError::from(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?;
             let con = client.get_connection()?;
             *guard = Some(con);
         }
@@ -82,7 +92,8 @@ impl CacheManager {
         self.with_conn(|c| {
             let val: Option<String> = c.get(key)?;
             Ok(val)
-        }).map_err(|e| format!("Redis get failed: {}", e))
+        })
+        .map_err(|e| format!("Redis get failed: {}", e))
     }
 
     pub fn set(&self, key: &str, value: &str, expiration: Option<Duration>) -> Result<(), String> {
@@ -96,35 +107,40 @@ impl CacheManager {
                 }
             }
             Ok(())
-        }).map_err(|e| format!("Redis set failed: {}", e))
+        })
+        .map_err(|e| format!("Redis set failed: {}", e))
     }
 
     pub fn del(&self, key: &str) -> Result<u64, String> {
         self.with_conn(|c| {
             let n: u64 = c.del(key)?;
             Ok(n)
-        }).map_err(|e| format!("Redis del failed: {}", e))
+        })
+        .map_err(|e| format!("Redis del failed: {}", e))
     }
 
     pub fn exists(&self, key: &str) -> Result<bool, String> {
         self.with_conn(|c| {
             let v: bool = c.exists(key)?;
             Ok(v)
-        }).map_err(|e| format!("Redis exists failed: {}", e))
+        })
+        .map_err(|e| format!("Redis exists failed: {}", e))
     }
 
     pub fn ping(&self) -> Result<bool, String> {
         self.with_conn(|c| {
             let _: String = redis::cmd("PING").query(c)?;
             Ok(true)
-        }).map_err(|e| format!("Redis ping failed: {}", e))
+        })
+        .map_err(|e| format!("Redis ping failed: {}", e))
     }
 
     pub fn flushall(&self) -> Result<(), String> {
         self.with_conn(|c| {
             let _: () = redis::cmd("FLUSHALL").query(c)?;
             Ok(())
-        }).map_err(|e| format!("Redis flushall failed: {}", e))
+        })
+        .map_err(|e| format!("Redis flushall failed: {}", e))
     }
 
     pub fn health_check(&self) -> Result<bool, String> {
@@ -147,6 +163,9 @@ mod tests {
     #[test]
     fn test_with_password_config() {
         let config = RedisConfig::with_password("localhost", 6379, "secret");
-        assert_eq!(config.connection_string(), "redis://:secret@localhost:6379/0");
+        assert_eq!(
+            config.connection_string(),
+            "redis://:secret@localhost:6379/0"
+        );
     }
 }

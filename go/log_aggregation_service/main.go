@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"crypto/rand"
-	"encoding/hex"
 	"math"
 	"os"
 	"os/signal"

@@ -40,17 +40,17 @@ package main
 //     co-signed (license_gate.go) regardless of cluster size.
 
 import (
-        "context"
-        "encoding/json"
-        "fmt"
-        "log"
-        "net/http"
-        "os"
-        "strconv"
-        "strings"
-        "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 
-        "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 )
 
 // mwEventsChannel is the shared Redis pub/sub channel for cross-replica
@@ -61,23 +61,23 @@ const mwEventsChannel = "mw:events"
 // MASTER_INSTANCE_ID (e.g. the k8s pod name via the downward API); otherwise
 // hostname+pid is unique enough for claim markers and fanout dedup.
 var instanceID = func() string {
-        if v := strings.TrimSpace(os.Getenv("MASTER_INSTANCE_ID")); v != "" {
-                return v
-        }
-        host, err := os.Hostname()
-        if err != nil || host == "" {
-                host = "unknown"
-        }
-        return fmt.Sprintf("%s-%d", host, os.Getpid())
+	if v := strings.TrimSpace(os.Getenv("MASTER_INSTANCE_ID")); v != "" {
+		return v
+	}
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown"
+	}
+	return fmt.Sprintf("%s-%d", host, os.Getpid())
 }()
 
 // clusterIntEnv reads a positive integer env var with a default.
 func clusterIntEnv(key string, def int) int {
-        v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
-        if err != nil || v <= 0 {
-                return def
-        }
-        return v
+	v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
+	if err != nil || v <= 0 {
+		return def
+	}
+	return v
 }
 
 // ----------------------------------------------------------------------------
@@ -87,82 +87,82 @@ func clusterIntEnv(key string, def int) int {
 // wsFanoutMessage is the envelope published to mw:events. Origin lets every
 // replica skip messages it published itself (it already delivered locally).
 type wsFanoutMessage struct {
-        Origin   string                 `json:"origin"`
-        MasterID string                 `json:"master_wallet_id"`
-        Payload  map[string]interface{} `json:"payload"`
+	Origin   string                 `json:"origin"`
+	MasterID string                 `json:"master_wallet_id"`
+	Payload  map[string]interface{} `json:"payload"`
 }
 
 // publishWSEvent fan-outs a websocket event to all replicas via Redis. Errors
 // are logged and swallowed: local delivery already happened, so a Redis
 // outage degrades fanout to single-replica scope instead of failing requests.
 func (svc *Service) publishWSEvent(masterID string, payload gin.H) {
-        if svc.store == nil || svc.store.redis == nil {
-                return
-        }
-        env := wsFanoutMessage{Origin: instanceID, MasterID: masterID, Payload: payload}
-        data, err := json.Marshal(env)
-        if err != nil {
-                return
-        }
-        ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-        defer cancel()
-        if err := svc.store.redis.Publish(ctx, mwEventsChannel, data).Err(); err != nil {
-                log.Printf("ws-fanout: publish failed (replica-local delivery only): %v", err)
-        }
+	if svc.store == nil || svc.store.redis == nil {
+		return
+	}
+	env := wsFanoutMessage{Origin: instanceID, MasterID: masterID, Payload: payload}
+	data, err := json.Marshal(env)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := svc.store.redis.Publish(ctx, mwEventsChannel, data).Err(); err != nil {
+		log.Printf("ws-fanout: publish failed (replica-local delivery only): %v", err)
+	}
 }
 
 // startWSFanout subscribes to mw:events and re-broadcasts events from OTHER
 // replicas to this replica's locally connected websocket clients. Runs until
 // ctx is cancelled; reconnects with backoff on Redis errors.
 func (svc *Service) startWSFanout(ctx context.Context) {
-        if svc.store == nil || svc.store.redis == nil {
-                log.Println("ws-fanout: Redis unavailable — cross-replica event fanout disabled (local delivery only)")
-                return
-        }
-        log.Printf("ws-fanout: subscribed to %s as %s", mwEventsChannel, instanceID)
-        for {
-                select {
-                case <-ctx.Done():
-                        return
-                default:
-                }
-                func() {
-                        defer func() {
-                                if r := recover(); r != nil {
-                                        log.Printf("ws-fanout: panic recovered: %v", r)
-                                }
-                        }()
-                        sub := svc.store.redis.Subscribe(ctx, mwEventsChannel)
-                        defer sub.Close()
-                        ch := sub.Channel()
-                        for {
-                                select {
-                                case <-ctx.Done():
-                                        return
-                                case msg, ok := <-ch:
-                                        if !ok {
-                                                return
-                                        }
-                                        var env wsFanoutMessage
-                                        if err := json.Unmarshal([]byte(msg.Payload), &env); err != nil {
-                                                continue
-                                        }
-                                        if env.Origin == instanceID {
-                                                continue // already delivered locally
-                                        }
-                                        if svc.hub != nil && env.MasterID != "" {
-                                                svc.hub.broadcast(env.MasterID, env.Payload)
-                                        }
-                                }
-                        }
-                }()
-                // Reconnect backoff after a subscription drop.
-                select {
-                case <-ctx.Done():
-                        return
-                case <-time.After(2 * time.Second):
-                }
-        }
+	if svc.store == nil || svc.store.redis == nil {
+		log.Println("ws-fanout: Redis unavailable — cross-replica event fanout disabled (local delivery only)")
+		return
+	}
+	log.Printf("ws-fanout: subscribed to %s as %s", mwEventsChannel, instanceID)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("ws-fanout: panic recovered: %v", r)
+				}
+			}()
+			sub := svc.store.redis.Subscribe(ctx, mwEventsChannel)
+			defer sub.Close()
+			ch := sub.Channel()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case msg, ok := <-ch:
+					if !ok {
+						return
+					}
+					var env wsFanoutMessage
+					if err := json.Unmarshal([]byte(msg.Payload), &env); err != nil {
+						continue
+					}
+					if env.Origin == instanceID {
+						continue // already delivered locally
+					}
+					if svc.hub != nil && env.MasterID != "" {
+						svc.hub.broadcast(env.MasterID, env.Payload)
+					}
+				}
+			}
+		}()
+		// Reconnect backoff after a subscription drop.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -173,27 +173,27 @@ func (svc *Service) startWSFanout(ctx context.Context) {
 // (required) and Redis reachable (reported; Redis loss degrades fanout +
 // kill-switch checks but must not pull the replica out of rotation).
 func (svc *Service) readyz(c *gin.Context) {
-        ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
-        defer cancel()
-        dbOK := false
-        if svc.store != nil && svc.store.db != nil {
-                dbOK = svc.store.db.Ping(ctx) == nil
-        }
-        redisOK := false
-        if svc.store != nil && svc.store.redis != nil {
-                redisOK = svc.store.redis.Ping(ctx).Err() == nil
-        }
-        status := http.StatusOK
-        state := "ready"
-        if !dbOK {
-                status = http.StatusServiceUnavailable
-                state = "not_ready"
-        }
-        c.JSON(status, gin.H{
-                "status":   state,
-                "db":       dbOK,
-                "redis":    redisOK,
-                "instance": instanceID,
-                "time":     time.Now().UTC(),
-        })
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	dbOK := false
+	if svc.store != nil && svc.store.db != nil {
+		dbOK = svc.store.db.Ping(ctx) == nil
+	}
+	redisOK := false
+	if svc.store != nil && svc.store.redis != nil {
+		redisOK = svc.store.redis.Ping(ctx).Err() == nil
+	}
+	status := http.StatusOK
+	state := "ready"
+	if !dbOK {
+		status = http.StatusServiceUnavailable
+		state = "not_ready"
+	}
+	c.JSON(status, gin.H{
+		"status":   state,
+		"db":       dbOK,
+		"redis":    redisOK,
+		"instance": instanceID,
+		"time":     time.Now().UTC(),
+	})
 }

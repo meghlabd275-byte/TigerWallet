@@ -100,9 +100,9 @@ func (a *AirdropStore) ListForWallet(ctx context.Context, wallet string) ([]*Air
 	var out []*Airdrop
 	for rows.Next() {
 		var (
-			campaign                                     Airdrop
-			startAt, endAt                               time.Time
-			snapshotAt                                   *time.Time
+			campaign       Airdrop
+			startAt, endAt time.Time
+			snapshotAt     *time.Time
 		)
 		if err := rows.Scan(
 			&campaign.ID, &campaign.Name, &campaign.Symbol, &campaign.ClaimURL,

@@ -105,10 +105,10 @@ func loadCfg() config {
 		return d
 	}
 	return config{
-		Port:        g("PORT", "8472"),
-		DBURL:       g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
-		RedisAddr:   g("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:   g("JWT_SECRET", ""),
+		Port:         g("PORT", "8472"),
+		DBURL:        g("DATABASE_URL", "postgres://tigerwallet:tigerwallet@localhost:5432/tigerwallet?sslmode=disable"),
+		RedisAddr:    g("REDIS_ADDR", "localhost:6379"),
+		JWTSecret:    g("JWT_SECRET", ""),
 		WalletAPIURL: g("WALLET_API_URL", "http://localhost:8443"),
 	}
 }
@@ -186,7 +186,7 @@ CREATE INDEX IF NOT EXISTS idx_convert_history_user ON convert_history(user_id, 
 
 // quoteResp mirrors the wallet_api /api/v1/amm/quote response.
 type quoteResp struct {
-	Success       bool     `json:"success"`
+	Success      bool     `json:"success"`
 	ChainID      int64    `json:"chain_id"`
 	Router       string   `json:"router"`
 	TokenIn      string   `json:"token_in"`
@@ -195,8 +195,8 @@ type quoteResp struct {
 	AmountOut    string   `json:"amount_out"`
 	AmountOutWei string   `json:"amount_out_wei"`
 	AmountInWei  string   `json:"amount_in_wei"`
-	DecimalsIn  int      `json:"decimals_in"`
-	DecimalsOut int      `json:"decimals_out"`
+	DecimalsIn   int      `json:"decimals_in"`
+	DecimalsOut  int      `json:"decimals_out"`
 	Path         []string `json:"path"`
 }
 
@@ -220,20 +220,20 @@ func (s *service) quote(c *gin.Context) {
 		var qr quoteResp
 		if json.Unmarshal(cached, &qr) == nil {
 			c.JSON(http.StatusOK, gin.H{
-				"success":     true,
-				"quote_type":  "on-chain-cached",
-				"cached":      true,
-				"chain_id":    qr.ChainID,
-				"router":      qr.Router,
-				"token_in":    qr.TokenIn,
-				"token_out":   qr.TokenOut,
-				"amount_in":   qr.AmountIn,
-				"amount_out":  qr.AmountOut,
+				"success":        true,
+				"quote_type":     "on-chain-cached",
+				"cached":         true,
+				"chain_id":       qr.ChainID,
+				"router":         qr.Router,
+				"token_in":       qr.TokenIn,
+				"token_out":      qr.TokenOut,
+				"amount_in":      qr.AmountIn,
+				"amount_out":     qr.AmountOut,
 				"amount_out_wei": qr.AmountOutWei,
 				"amount_in_wei":  qr.AmountInWei,
-				"decimals_in": qr.DecimalsIn,
-				"decimals_out": qr.DecimalsOut,
-				"path":        qr.Path,
+				"decimals_in":    qr.DecimalsIn,
+				"decimals_out":   qr.DecimalsOut,
+				"path":           qr.Path,
 			})
 			return
 		}
@@ -277,15 +277,15 @@ func (s *service) quote(c *gin.Context) {
 
 // swapResp mirrors the wallet_api /api/v1/amm/swap response (action_required).
 type swapResp struct {
-	Success       bool   `json:"success"`
-	ChainID      int64  `json:"chain_id"`
-	Router       string `json:"router"`
-	To           string `json:"to"`
-	Data         string `json:"data"`
-	Value        string `json:"value"`
+	Success        bool   `json:"success"`
+	ChainID        int64  `json:"chain_id"`
+	Router         string `json:"router"`
+	To             string `json:"to"`
+	Data           string `json:"data"`
+	Value          string `json:"value"`
 	ActionRequired string `json:"action_required"`
-	Message      string `json:"message"`
-	Error        string `json:"error"`
+	Message        string `json:"message"`
+	Error          string `json:"error"`
 }
 
 // POST /execute — records a conversion (real swap calldata constructed by
@@ -322,11 +322,11 @@ func (s *service) execute(c *gin.Context) {
 
 	// 2. Request the real swap calldata from wallet_api.
 	body, _ := json.Marshal(map[string]interface{}{
-		"from":         req.From,
-		"chain_id":     req.ChainID,
-		"token_in":     req.TokenIn,
-		"token_out":    req.TokenOut,
-		"amount_in":    req.AmountIn,
+		"from":           req.From,
+		"chain_id":       req.ChainID,
+		"token_in":       req.TokenIn,
+		"token_out":      req.TokenOut,
+		"amount_in":      req.AmountIn,
 		"amount_out_min": req.AmountOutMin,
 	})
 	sURL := s.walletAPI + "/api/v1/amm/swap"
@@ -352,20 +352,20 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'quote')`,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":          true,
-		"convert_id":       id,
-		"chain_id":         sr.ChainID,
-		"router":           sr.Router,
-		"to":               sr.To,
-		"data":             sr.Data,
-		"value":            sr.Value,
-		"action_required":  sr.ActionRequired,
-		"message":          sr.Message,
-		"amount_in":        qr.AmountIn,
-		"amount_out":       qr.AmountOut,
-		"amount_in_wei":    qr.AmountInWei,
-		"amount_out_wei":   qr.AmountOutWei,
-		"next_step":        "broadcast the calldata via POST /api/v1/send, then PATCH /api/v1/convert/history/" + id + " with the tx_hash",
+		"success":         true,
+		"convert_id":      id,
+		"chain_id":        sr.ChainID,
+		"router":          sr.Router,
+		"to":              sr.To,
+		"data":            sr.Data,
+		"value":           sr.Value,
+		"action_required": sr.ActionRequired,
+		"message":         sr.Message,
+		"amount_in":       qr.AmountIn,
+		"amount_out":      qr.AmountOut,
+		"amount_in_wei":   qr.AmountInWei,
+		"amount_out_wei":  qr.AmountOutWei,
+		"next_step":       "broadcast the calldata via POST /api/v1/send, then PATCH /api/v1/convert/history/" + id + " with the tx_hash",
 	})
 }
 
@@ -374,7 +374,9 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'quote')`,
 func (s *service) confirmTx(c *gin.Context) {
 	userID := c.GetString("user_id")
 	id := c.Param("id")
-	var req struct{ TxHash string `json:"tx_hash"` }
+	var req struct {
+		TxHash string `json:"tx_hash"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.TxHash == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "tx_hash required"})
 		return

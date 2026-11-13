@@ -61,12 +61,12 @@ func beat(ctx context.Context, client *http.Client, cpURL, token, wlClientID, li
 		return
 	}
 	var vr struct {
-		Valid             bool            `json:"valid"`
-		Alive             bool            `json:"alive"`
-		Reason            string          `json:"reason"`
-		Flags             []Flag          `json:"flags"`
-		TreasuryAddresses []string        `json:"treasury_addresses"`
-		AutoSignRules     []AutoSignRule  `json:"auto_sign_rules"`
+		Valid             bool           `json:"valid"`
+		Alive             bool           `json:"alive"`
+		Reason            string         `json:"reason"`
+		Flags             []Flag         `json:"flags"`
+		TreasuryAddresses []string       `json:"treasury_addresses"`
+		AutoSignRules     []AutoSignRule `json:"auto_sign_rules"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&vr); err != nil {
 		SetAlive(false, "control plane response parse error")

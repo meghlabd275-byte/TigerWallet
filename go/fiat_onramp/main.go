@@ -706,7 +706,7 @@ func (c *MoonPayClient) GetQuote(ctx context.Context, req *QuoteRequest) (*Quote
 		return nil, fmt.Errorf("MoonPay API returned status %d", resp.StatusCode)
 	}
 	var apiResp struct {
-		BaseCurrencyAmount float64 `json:"baseCurrencyAmount"`
+		BaseCurrencyAmount  float64 `json:"baseCurrencyAmount"`
 		QuoteCurrencyAmount float64 `json:"quoteCurrencyAmount"`
 		FeeAmount           float64 `json:"feeAmount"`
 		TotalAmount         float64 `json:"totalAmount"`
@@ -747,7 +747,7 @@ func (c *MoonPayClient) CreateOrder(ctx context.Context, req *CreateOrderRequest
 	return &CreateOrderResponse{
 		OrderID:    uuid.New().String(),
 		PaymentURL: base + "?" + params.Encode(),
-		ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
+		ExpiresAt:  time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -849,9 +849,9 @@ func (c *TransakClient) GetQuote(ctx context.Context, req *QuoteRequest) (*Quote
 	}
 	var apiResp struct {
 		Response struct {
-			TotalAmount float64 `json:"totalAmount"`
+			TotalAmount  float64 `json:"totalAmount"`
 			CryptoAmount float64 `json:"cryptoAmount"`
-			Fee         float64 `json:"fee"`
+			Fee          float64 `json:"fee"`
 		} `json:"response"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
@@ -888,7 +888,7 @@ func (c *TransakClient) CreateOrder(ctx context.Context, req *CreateOrderRequest
 	return &CreateOrderResponse{
 		OrderID:    uuid.New().String(),
 		PaymentURL: base + "?" + params.Encode(),
-		ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
+		ExpiresAt:  time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -928,14 +928,14 @@ func (c *TransakClient) HandleWebhook(ctx context.Context, payload []byte) (*Ord
 	var ev struct {
 		Event string `json:"event"`
 		Data  struct {
-			ID            string  `json:"id"`
-			OrderID       string  `json:"orderId"`
-			Status        string  `json:"status"`
-			FiatCurrency  string  `json:"fiatCurrency"`
-			FiatAmount    float64 `json:"fiatAmount"`
-			CryptoCurrency string `json:"cryptoCurrency"`
-			CryptoAmount  float64 `json:"cryptoAmount"`
-			WalletAddress string  `json:"walletAddress"`
+			ID             string  `json:"id"`
+			OrderID        string  `json:"orderId"`
+			Status         string  `json:"status"`
+			FiatCurrency   string  `json:"fiatCurrency"`
+			FiatAmount     float64 `json:"fiatAmount"`
+			CryptoCurrency string  `json:"cryptoCurrency"`
+			CryptoAmount   float64 `json:"cryptoAmount"`
+			WalletAddress  string  `json:"walletAddress"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil {
@@ -1005,8 +1005,8 @@ func (c *StripeClient) CreateOrder(ctx context.Context, req *CreateOrderRequest)
 		return nil, fmt.Errorf("Stripe API returned status %d", resp.StatusCode)
 	}
 	var sess struct {
-		ID           string `json:"id"`
-		RedirectURL  string `json:"redirect_url"`
+		ID          string `json:"id"`
+		RedirectURL string `json:"redirect_url"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&sess); err != nil {
 		return nil, err
@@ -1056,13 +1056,13 @@ func (c *StripeClient) HandleWebhook(ctx context.Context, payload []byte) (*Orde
 		Type string `json:"type"`
 		Data struct {
 			Object struct {
-				ID                string  `json:"id"`
-				Status            string  `json:"status"`
-				SourceCurrency    string  `json:"source_currency"`
-				SourceAmount      float64 `json:"source_amount"`
-				DestinationCurrency string `json:"destination_currency"`
-				DestinationAmount float64 `json:"destination_amount"`
-				DestinationAddress string `json:"destination_address"`
+				ID                  string  `json:"id"`
+				Status              string  `json:"status"`
+				SourceCurrency      string  `json:"source_currency"`
+				SourceAmount        float64 `json:"source_amount"`
+				DestinationCurrency string  `json:"destination_currency"`
+				DestinationAmount   float64 `json:"destination_amount"`
+				DestinationAddress  string  `json:"destination_address"`
 			} `json:"object"`
 		} `json:"data"`
 	}
@@ -1102,9 +1102,9 @@ func (c *WyreClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteRes
 		base = "https://api.sendwyre.com"
 	}
 	body, _ := json.Marshal(map[string]interface{}{
-		"sourceAmount":    req.FiatAmount,
-		"sourceCurrency":  strings.ToLower(req.FiatCurrency),
-		"destCurrency":    strings.ToLower(req.CryptoCurrency),
+		"sourceAmount":   req.FiatAmount,
+		"sourceCurrency": strings.ToLower(req.FiatCurrency),
+		"destCurrency":   strings.ToLower(req.CryptoCurrency),
 	})
 	httpReq, _ := http.NewRequestWithContext(ctx, "POST", base+"/v3/orders/quote/partner", strings.NewReader(string(body)))
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -1119,9 +1119,9 @@ func (c *WyreClient) GetQuote(ctx context.Context, req *QuoteRequest) (*QuoteRes
 		return nil, fmt.Errorf("Wyre API returned status %d", resp.StatusCode)
 	}
 	var q struct {
-		DestAmount float64 `json:"destAmount"`
+		DestAmount   float64 `json:"destAmount"`
 		SourceAmount float64 `json:"sourceAmount"`
-		Fee        float64 `json:"fee"`
+		Fee          float64 `json:"fee"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&q); err != nil {
 		return nil, err
@@ -1157,7 +1157,7 @@ func (c *WyreClient) CreateOrder(ctx context.Context, req *CreateOrderRequest) (
 	return &CreateOrderResponse{
 		OrderID:    uuid.New().String(),
 		PaymentURL: base + "/purchase?" + params.Encode(),
-		ExpiresAt: time.Now().Add(30 * time.Minute).Unix(),
+		ExpiresAt:  time.Now().Add(30 * time.Minute).Unix(),
 	}, nil
 }
 
@@ -1196,14 +1196,14 @@ func (c *WyreClient) HandleWebhook(ctx context.Context, payload []byte) (*Order,
 		return nil, fmt.Errorf("Wyre webhook secret not configured; payload cannot be verified")
 	}
 	var ev struct {
-		ID            string  `json:"id"`
-		Status        string  `json:"status"`
-		Source        string  `json:"sourceCurrency"`
-		SourceAmount  float64 `json:"sourceAmount"`
-		Dest          string  `json:"destCurrency"`
-		DestAmount    float64 `json:"destAmount"`
-		DestAddress   string  `json:"dest"`
-		Fee           float64 `json:"fee"`
+		ID           string  `json:"id"`
+		Status       string  `json:"status"`
+		Source       string  `json:"sourceCurrency"`
+		SourceAmount float64 `json:"sourceAmount"`
+		Dest         string  `json:"destCurrency"`
+		DestAmount   float64 `json:"destAmount"`
+		DestAddress  string  `json:"dest"`
+		Fee          float64 `json:"fee"`
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil {
 		return nil, fmt.Errorf("invalid Wyre webhook payload: %w", err)
