@@ -10,7 +10,11 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=1 go build -o /super-admin-api .
+# CGO_ENABLED=0: this module has no cgo dependencies, and the alpine builder
+# image ships no C toolchain, so CGO_ENABLED=1 failed with
+# `cgo: C compiler "gcc" not found`. This matches every other backend image
+# in this repository.
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /super-admin-api .
 
 FROM alpine:3.18
 
