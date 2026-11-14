@@ -963,6 +963,16 @@ func (a *AutoSigner) signAndBroadcast(ctx context.Context, tx *pendingAutoTx) (s
 	switch family {
 	case "solana", "bitcoin", "btc", "litecoin", "ltc", "cosmos":
 		return a.signNonEVM(tx, seed, chainID, derivationPath, family)
+	default:
+		// Any other family is a non-EVM chain with no signer here. It must not
+		// fall through to the EVM path below: that would derive a secp256k1
+		// key for a network which is not EVM-encoded and broadcast a payload
+		// the network cannot accept. Refuse instead of sending it.
+		if isNonEVMChain(chainID) {
+			return "", "approved", fmt.Errorf(
+				"unsupported non-EVM blockchain %q (family %q needs a chain-specific signer)",
+				tx.Blockchain, family)
+		}
 	}
 
 	// EVM path (default): real nonce + EIP-1559 fees + local secp256k1 sign +
@@ -1082,4 +1092,18 @@ func nonEVMFamilyFor(chainID int64, blockchain string) string {
 		return "litecoin"
 	}
 	return b
+}
+
+// isNonEVMChain reports whether the chain id belongs to the seeded non-EVM
+// registry, i.e. a chain this signer has no EVM path for.
+func isNonEVMChain(chainID int64) bool {
+	if chainID == 0 {
+		return false
+	}
+	for _, c := range defaultNonEVMChains {
+		if c.ChainID == chainID {
+			return true
+		}
+	}
+	return false
 }

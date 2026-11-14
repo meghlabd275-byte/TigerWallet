@@ -98,6 +98,49 @@ func TestNonEVMFamilyFor(t *testing.T) {
 	}
 }
 
+// TestUnsupportedNonEVMChainIsNotTreatedAsEVM guards the signer dispatch: a
+// non-EVM chain with no signer must be recognised as non-EVM so it fails
+// closed, instead of falling through to the EVM signing path.
+func TestUnsupportedNonEVMChainIsNotTreatedAsEVM(t *testing.T) {
+	var tronID int64
+	for _, c := range defaultNonEVMChains {
+		if c.ChainType == "tron" {
+			tronID = c.ChainID
+			break
+		}
+	}
+	if tronID == 0 {
+		t.Fatal("tron not seeded")
+	}
+	if !isNonEVMChain(tronID) {
+		t.Fatal("a seeded non-EVM chain must be reported as non-EVM")
+	}
+	if fam := nonEVMFamilyFor(tronID, ""); fam != "tron" {
+		t.Fatalf("tron family = %q", fam)
+	}
+	// Every seeded non-EVM chain is either servable by a real signer or
+	// reported as non-EVM so the caller can refuse it. None may be silently
+	// routed to the EVM path.
+	servable := map[string]bool{
+		"cosmos": true, "bitcoin": true, "litecoin": true, "solana": true,
+	}
+	for _, c := range defaultNonEVMChains {
+		if servable[c.ChainType] {
+			continue
+		}
+		if !isNonEVMChain(c.ChainID) {
+			t.Fatalf("chain %s (%s) would fall through to EVM signing", c.Name, c.ChainType)
+		}
+	}
+	// EVM chain ids are not in the non-EVM registry.
+	if isNonEVMChain(1) {
+		t.Fatal("ethereum mainnet must not be reported as non-EVM")
+	}
+	if isNonEVMChain(0) {
+		t.Fatal("chain id 0 must not be reported as non-EVM")
+	}
+}
+
 func TestInstanceIDNonEmpty(t *testing.T) {
 	if instanceID == "" {
 		t.Fatal("instanceID must never be empty (claim markers depend on it)")
