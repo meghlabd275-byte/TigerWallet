@@ -170,6 +170,25 @@ jobs:
           TEST_DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet?sslmode=disable
         run: go test ./...
 
+      # The admin API runs AutoMigrate during startup, so a broken migration
+      # means it cannot boot at all. This ran only as a unit test with no
+      # database, where the migration tests skip, which is how a
+      # startup-blocking migration regression reached main. The suite resets
+      # the schema, so it gets its own database rather than sharing one.
+      - name: Create the admin migration test database
+        env:
+          PGPASSWORD: tiger
+        run: createdb -h localhost -U tiger tigerwallet_admin_ci
+
+      - name: Test the admin API startup migration against real PostgreSQL
+        working-directory: admin/go
+        env:
+          TEST_DATABASE_URL: postgres://tiger:tiger@localhost:5432/tigerwallet_admin_ci?sslmode=disable
+          JWT_SECRET: ci-jwt-secret-not-for-production-use
+          ADMIN_JWT_SECRET: ci-admin-jwt-secret-not-for-production-use
+          DEFAULT_ADMIN_PASSWORD: ci-admin-password-not-for-production-use
+        run: go test ./pkg/database/ -v
+
   # ============== Build Rust Components ==============
   build-rust:
     name: Build Rust (${{ matrix.crate }})
