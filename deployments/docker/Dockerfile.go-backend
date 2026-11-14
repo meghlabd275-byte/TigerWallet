@@ -1,0 +1,41 @@
+# TigerWallet Go backend image (repository-root build context).
+#
+# The canonical backends import github.com/tigerwallet/chainsdk through a
+# relative `replace` directive (../chainsdk). A module-local build context
+# cannot see that sibling directory, so the build fails with
+# "replacement directory does not exist". This Dockerfile therefore builds
+# from the repository root and takes the module path as a build argument.
+#
+#   docker build -f deployments/docker/Dockerfile.go-backend \
+#     --build-arg TARGET_MODULE=go/wallet_api -t tigerwallet-wallet-api .
+#
+#   docker build -f deployments/docker/Dockerfile.go-backend \
+#     --build-arg TARGET_MODULE=master_wallet/backend -t tigerwallet-master-wallet .
+#
+# Every target shares the same dependency graph, so the `go mod download`
+# layer is identical across them and stays cached.
+
+FROM golang:1.23-alpine AS builder
+ARG TARGET_MODULE=go/wallet_api
+WORKDIR /src
+
+# Dependency layer: all manifests that participate in the shared graph.
+COPY go/chainsdk/go.mod go/chainsdk/go.sum ./go/chainsdk/
+COPY go/wallet_api/go.mod go/wallet_api/go.sum ./go/wallet_api/
+COPY master_wallet/backend/go.mod master_wallet/backend/go.sum ./master_wallet/backend/
+RUN cd "$TARGET_MODULE" && go mod download
+
+# Source layer.
+COPY go/chainsdk ./go/chainsdk
+COPY go/wallet_api ./go/wallet_api
+COPY master_wallet/backend ./master_wallet/backend
+
+RUN cd "$TARGET_MODULE" && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/backend .
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata && \
+    adduser -D -h /app appuser
+COPY --from=builder /out/backend /usr/local/bin/backend
+USER appuser
+ENTRYPOINT ["/usr/local/bin/backend"]

@@ -415,15 +415,8 @@ func weiToHuman(wei *big.Int, decimals int) (string, *big.Float) {
 	_ = f
 	human, _ := new(big.Float).SetString("0")
 	human = new(big.Float).Quo(new(big.Float).SetInt(wei), scale)
-	s := human.Text('f', minInt(decimals, 8))
+	s := human.Text('f', min(decimals, 8))
 	return strings.TrimRight(strings.TrimRight(s, "0"), "."), human
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func timeNowUnix() int64 {

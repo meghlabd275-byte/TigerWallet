@@ -2,33 +2,15 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/tigerwallet/chainsdk"
 	"sort"
 )
 
-// ChainConfig describes a supported blockchain and its derivation path. It is
-// the single canonical record used by every client and frontend (web, desktop,
-// android, ios, extension) via GET /api/v1/chains. EVM chains (ChainType ==
-// "evm") are usable for full wallet operations (RPC, balance, signing,
-// broadcast); non-EVM chains are registered for discovery and address
-// derivation — on-chain operations for them require their dedicated SDK.
-type ChainConfig struct {
-	ID             int64    `json:"id"`
-	Name           string   `json:"name"`
-	Symbol         string   `json:"symbol"`
-	RPCEndpoint    string   `json:"rpc_endpoint"`
-	DerivationPath string   `json:"derivation_path"`
-	ExplorerAPI    string   `json:"explorer_api"`
-	ExplorerURL    string   `json:"explorer_url"`
-	ChainType      string   `json:"chain_type"` // "evm" | "bitcoin" | "solana" | ...
-	Decimals       int      `json:"decimals"`
-	CoinType       uint32   `json:"coin_type"` // BIP-44 SLIP-44 registered coin type
-	IsTestnet      bool     `json:"is_testnet"`
-	RPCAlternates  []string `json:"rpc_alternates,omitempty"`
-	NativeID       int64    `json:"native_id,omitempty"` // native network chain id (non-EVM)
-}
-
-// IsEVM reports whether the chain is an EVM chain (convenience accessor).
-func (c ChainConfig) IsEVM() bool { return c.ChainType == "evm" }
+// ChainConfig is an alias for the shared chain record. It is defined once in
+// chainsdk so the registry data and the SDK cannot drift apart; every client
+// sees it via GET /api/v1/chains.
+type ChainConfig = chainsdk.ChainConfig
 
 // SupportedChains is the merged, mainnet-only EVM + non-EVM registry exposed to
 // all clients and frontends. Built by initSupportedChains at package load.

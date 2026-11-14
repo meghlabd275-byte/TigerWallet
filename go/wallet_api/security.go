@@ -99,17 +99,6 @@ func levenshtein(a, b string) int {
 	return d[lb]
 }
 
-func min(a, b, c int) int {
-	m := a
-	if b < m {
-		m = b
-	}
-	if c < m {
-		m = c
-	}
-	return m
-}
-
 // handleCheckURL classifies a dApp URL against the MetaMask phishing blocklist.
 func handleCheckURL(c *gin.Context) {
 	raw := c.Query("url")

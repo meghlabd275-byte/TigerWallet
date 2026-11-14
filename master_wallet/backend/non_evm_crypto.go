@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/tigerwallet/chainsdk"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ripemd160"
 )
@@ -434,141 +435,35 @@ func btcTxHash(rawTxHex string) (string, error) {
 // base58check encoding (Bitcoin P2PKH)
 // ----------------------------------------------------------------------------
 
-const base58Alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+// Base58 and bech32 encoding are shared with every other TigerWallet backend
+// through chainsdk. The implementations here were byte-identical (verified by
+// TestEquivalenceProbe), so they delegate rather than maintain a second copy
+// that can drift.
 
-// base58Encode encodes bytes to base58 (no checksum).
-func base58Encode(data []byte) string {
-	// Convert to big integer.
-	x := new(big.Int).SetBytes(data)
-	base := big.NewInt(58)
-	zero := big.NewInt(0)
-	mod := new(big.Int)
-	var result []byte
-	for x.Cmp(zero) > 0 {
-		x.DivMod(x, base, mod)
-		result = append(result, base58Alphabet[mod.Int64()])
-	}
-	// Reverse.
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
-	}
-	// Leading zero bytes -> '1'.
-	for _, b := range data {
-		if b != 0 {
-			break
-		}
-		result = append([]byte{'1'}, result...)
-	}
-	return string(result)
-}
-
-// base58CheckEncode encodes version + payload with a 4-byte double-SHA256 checksum.
+// base58CheckEncode encodes version||payload with a 4-byte double-SHA256
+// checksum. chainsdk takes the version already prepended to the payload.
 func base58CheckEncode(version byte, payload []byte) string {
-	data := make([]byte, 0, 1+len(payload)+4)
-	data = append(data, version)
-	data = append(data, payload...)
-	// Double SHA-256 checksum (first 4 bytes).
-	first := sha256.Sum256(data)
-	second := sha256.Sum256(first[:])
-	data = append(data, second[:4]...)
-	return base58Encode(data)
+	buf := make([]byte, 0, 1+len(payload))
+	buf = append(buf, version)
+	buf = append(buf, payload...)
+	return chainsdk.Base58CheckEncode(buf)
 }
 
-// ----------------------------------------------------------------------------
-// bech32 encoding (BIP-173, for Cosmos)
-// ----------------------------------------------------------------------------
-
-const bech32Charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-
-// bech32Encode encodes a 20-byte hash to a bech32 address.
 func bech32Encode(hrp string, data []byte) (string, error) {
 	if len(data) != 20 {
 		return "", fmt.Errorf("expected 20-byte hash, got %d", len(data))
 	}
-	conv, err := convertBits(data, 8, 5, true)
-	if err != nil {
-		return "", err
-	}
-	convInts := make([]int, len(conv))
-	for i, b := range conv {
-		convInts[i] = int(b)
-	}
-	values := append(bech32HRPExpand(hrp), convInts...)
-	values = append(values, 0, 0, 0, 0, 0, 0)
-	mod := bech32Polymod(values) ^ 1
-	var checksum string
-	for i := 0; i < 6; i++ {
-		checksum += string(bech32Charset[(mod>>uint(5*(5-i)))&31])
-	}
-	var sb strings.Builder
-	sb.WriteString(hrp)
-	sb.WriteString("1")
-	for _, b := range conv {
-		sb.WriteString(string(bech32Charset[b]))
-	}
-	sb.WriteString(checksum)
-	return sb.String(), nil
+	return chainsdk.Bech32Encode(hrp, data)
+}
+
+func base58Encode(data []byte) string {
+	return chainsdk.Base58Encode(data)
 }
 
 func convertBits(data []byte, fromBits, toBits uint, pad bool) ([]byte, error) {
-	var acc uint32
-	var bits uint
-	var ret []byte
-	maxv := uint32((1 << toBits) - 1)
-	for _, value := range data {
-		v := uint32(value)
-		if v>>fromBits != 0 {
-			return nil, fmt.Errorf("invalid data for %d-bit conversion", fromBits)
-		}
-		acc = (acc << fromBits) | v
-		bits += fromBits
-		for bits >= toBits {
-			bits -= toBits
-			ret = append(ret, byte((acc>>bits)&maxv))
-		}
-	}
-	if pad {
-		if bits > 0 {
-			ret = append(ret, byte((acc<<(toBits-bits))&maxv))
-		}
-	} else if bits >= fromBits || ((acc<<(toBits-bits))&maxv) != 0 {
-		return nil, fmt.Errorf("invalid padding")
-	}
-	return ret, nil
+	return chainsdk.ConvertBits(data, fromBits, toBits, pad)
 }
 
-func bech32Polymod(values []int) int {
-	gen := []int{0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3}
-	chk := 1
-	for _, v := range values {
-		b := chk >> 25
-		chk = (chk&0x1ffffff)<<5 ^ v
-		for i := 0; i < 5; i++ {
-			if (b>>uint(i))&1 == 1 {
-				chk ^= gen[i]
-			}
-		}
-	}
-	return chk
-}
-
-func bech32HRPExpand(hrp string) []int {
-	var ret []int
-	for _, c := range hrp {
-		ret = append(ret, int(c)>>5)
-	}
-	ret = append(ret, 0)
-	for _, c := range hrp {
-		ret = append(ret, int(c)&31)
-	}
-	return ret
-}
-
-// ----------------------------------------------------------------------------
-// Shared helpers
-// ----------------------------------------------------------------------------
-
-// sha256Hash is the SHA-256 hash (used by user_wallet_management.go).
 func sha256Hash(data []byte) []byte {
 	h := sha256.Sum256(data)
 	return h[:]

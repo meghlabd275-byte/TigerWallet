@@ -13,12 +13,11 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tigerwallet/chainsdk"
 )
 
 // ---------- request shapes ----------
@@ -46,17 +45,17 @@ type nonEvmSendReq struct {
 	Gas      uint64 `json:"gas"`
 	Simulate bool   `json:"simulate"`
 
-	BitcoinInputs  []BTCInput     `json:"bitcoin_inputs"`
-	BitcoinOutputs []BTCOutput    `json:"bitcoin_outputs"`
-	UTXOInputs     []UTXOInput    `json:"utxo_inputs"`
-	UTXOOutputs    []UTXOOutput   `json:"utxo_outputs"`
-	CosmosSignDoc  *CosmosSignDoc `json:"cosmos_sign_doc"`
+	BitcoinInputs  []chainsdk.BTCInput     `json:"bitcoin_inputs"`
+	BitcoinOutputs []chainsdk.BTCOutput    `json:"bitcoin_outputs"`
+	UTXOInputs     []chainsdk.UTXOInput    `json:"utxo_inputs"`
+	UTXOOutputs    []chainsdk.UTXOOutput   `json:"utxo_outputs"`
+	CosmosSignDoc  *chainsdk.CosmosSignDoc `json:"cosmos_sign_doc"`
 
 	// Cardano selects its own UTXO set: a Shelley body is built from explicit
 	// inputs, so the caller passes the exact outputs to spend and the fee.
-	CardanoInputs  []CardanoUTXO   `json:"cardano_inputs"`
-	CardanoOutputs []CardanoOutput `json:"cardano_outputs"`
-	FeeLovelace    uint64          `json:"fee_lovelace"`
+	CardanoInputs  []chainsdk.CardanoUTXO   `json:"cardano_inputs"`
+	CardanoOutputs []chainsdk.CardanoOutput `json:"cardano_outputs"`
+	FeeLovelace    uint64                   `json:"fee_lovelace"`
 
 	// Substrate (Polkadot/Kusama) runtime values. Spec version, transaction
 	// version, genesis hash and the era anchor all come from the node's runtime
@@ -108,106 +107,17 @@ func handleNonEvmAddress(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-	family, ct, err := nonEvmResolve(req.ChainType, req.ChainID)
+	family, ct, err := chainsdk.ResolveFamily(req.ChainType, req.ChainID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	addr, err := nonEvmAddressFor(family, ct, req.ChainID, seed, wallet.DerivationPath, req.Prefix)
+	addr, err := chainsdk.AddressFor(family, ct, req.ChainID, seed, wallet.DerivationPath, req.Prefix)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"address": addr, "chain_type": ct, "family": string(family)})
-}
-
-// nonEvmAddressFor routes address derivation by family.
-func nonEvmAddressFor(family nonEvmFamily, ct string, chainID int64, seed []byte, path string, prefix byte) (string, error) {
-	switch family {
-	case familyUTXO:
-		if ct == "zcash" {
-			return ZECAddressFromSeed(seed, path)
-		}
-		return UTXOAddressFromSeed(seed, path, ct)
-	case familyCosmos:
-		addr, _, err := CosmosAddressFromSeedNew(seed, path, chainID)
-		return addr, err
-	case familySolana:
-		pub, err := edPubKey(seed, path)
-		if err != nil {
-			return "", err
-		}
-		return SolanaAddressFromKey(pub)
-	case familyAptos:
-		return AptosAddress(seed, path)
-	case familySui:
-		return SuiAddress(seed, path)
-	case familyNear:
-		return NearAddress(seed, path)
-	case familyStellar:
-		return StrKeyAddress(seed, path)
-	case familyAlgorand:
-		return AlgoAddress(seed, path)
-	case familyNano:
-		return NanoAddressFor(seed, path, ct)
-	case familyGraphene:
-		return grapheneAddress(seed, path, ct)
-	case familyNEM:
-		return nemAddress(seed, path, ct)
-	case familySiacoin:
-		return siacoinAddress(seed, path)
-	case familyMultiversX:
-		return MultiversXAddress(seed, path)
-	case familyStarknet:
-		// A Starknet account address is a contract address whose class hash
-		// selects the account implementation, so it is configured rather than
-		// guessed; see StarknetAddressForChain.
-		return StarknetAddressForChain(ct, seed, path)
-	case familyMonero:
-		return MoneroAddressFromSeed(seed, path)
-	case familyStacks:
-		return StacksAddress(seed, path)
-	case familyMina:
-		return MinaAddress(seed, path)
-	case familyErgo:
-		return ErgoP2PKAddress(seed, path)
-	case familyNEO:
-		return NEOAddress(seed, path)
-	case familyArweave:
-		// Arweave addresses come from an RSA-4096 public key, which needs a
-		// generated key pair rather than an HD derivation; fail closed here
-		// and expose ArweaveAddressFromModulus for callers that hold one.
-		return "", errors.New("arweave: an address is Base64URL(SHA-256(512-byte RSA-4096 modulus)); derive it from the wallet key with ArweaveAddressFromModulus — no HD scheme exists to fabricate")
-	case familyTezos:
-		return TezosAddress(seed, path)
-	case familyCardano:
-		return CardanoAddress(seed, path)
-	case familyWaves:
-		return WavesAddress(seed, path)
-	case familyTron:
-		return TronAddress(seed, path)
-	case familyVeChain:
-		return VETAddress(seed, path)
-	case familyRipple:
-		return XRPAddress(seed, path)
-	case familyICP:
-		return ICPAddress(seed, path)
-	case familyZilliqa:
-		return ZilAddress(seed, path)
-	case familyKaspa:
-		return KaspaAddress(seed, path)
-	case familyNervos:
-		return NervosAddress(seed, path)
-	case familyFilecoin:
-		return FilAddress(seed, path)
-	case familySubstrate:
-		return SubstrateAddress(seed, prefix)
-	case familyAleo, familyHedera, familyFlow:
-		return "", nonEvmNotFeasible(family)
-	case familyTON:
-		return "", errors.New("ton: wallet v4r2 state-init cell derivation is fail-closed (ed25519 message signing stays available)")
-	}
-	return "", fmt.Errorf("unknown non-EVM chain %q", ct)
 }
 
 // ---------- message signing ----------
@@ -224,7 +134,7 @@ func handleNonEvmSign(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-	family, ct, err := nonEvmResolve(req.ChainType, req.ChainID)
+	family, ct, err := chainsdk.ResolveFamily(req.ChainType, req.ChainID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -232,46 +142,46 @@ func handleNonEvmSign(c *gin.Context) {
 	_ = ct // chain_type is informational for the sign path
 	var sig, pub []byte
 	switch family {
-	case familyUTXO:
-		sig, pub, err = btcSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyCosmos:
-		doc := &CosmosSignDoc{AccountNumber: "0", Fee: CosmosFee{Gas: "0"}, Memo: req.Message, Sequence: "0"}
-		sig, pub, err = CosmosSign(seed, wallet.DerivationPath, doc)
-	case familySolana, familyAptos, familySui, familyNear, familyAlgorand,
-		familyNano, familyMultiversX, familyTezos, familyStellar, familyTON:
-		sig, pub, err = edSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyCardano:
-		sig, pub, err = CardanoSign(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyWaves:
-		sig, pub, err = WavesSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyTron, familyVeChain, familyRipple, familyICP, familyZilliqa:
-		sig, pub, err = secpMessageSign(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyKaspa:
-		sig, pub, err = KaspaSign(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyNervos:
-		sig, pub, err = NervosSign(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyFilecoin:
-		sig, pub, err = FilSign(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyStarknet:
-		sig, pub, err = StarknetSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyMonero:
-		sig, pub, err = MoneroSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyErgo:
-		sig, pub, err = ErgoSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyStacks:
-		sig, pub, err = StacksSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyNEO:
-		sig, pub, err = NEOSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyMina:
-		sig, pub, err = edSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyUnsupported:
-		err = nonEvmExtraNotFeasible(family, ct)
-	case familySubstrate:
-		sig, pub, err = substrateSign(seed, wallet.DerivationPath, []byte(req.Message), req.Prefix)
-	case familyGraphene, familyNEM, familySiacoin:
-		sig, pub, err = edSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
-	case familyAleo, familyHedera, familyFlow:
-		err = nonEvmNotFeasible(family)
+	case chainsdk.FamilyUTXO:
+		sig, pub, err = chainsdk.BTCMessageSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyCosmos:
+		doc := &chainsdk.CosmosSignDoc{AccountNumber: "0", Fee: chainsdk.CosmosFee{Gas: "0"}, Memo: req.Message, Sequence: "0"}
+		sig, pub, err = chainsdk.CosmosSign(seed, wallet.DerivationPath, doc)
+	case chainsdk.FamilySolana, chainsdk.FamilyAptos, chainsdk.FamilySui, chainsdk.FamilyNear, chainsdk.FamilyAlgorand,
+		chainsdk.FamilyNano, chainsdk.FamilyMultiversX, chainsdk.FamilyTezos, chainsdk.FamilyStellar, chainsdk.FamilyTON:
+		sig, pub, err = chainsdk.EdSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyCardano:
+		sig, pub, err = chainsdk.CardanoSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyWaves:
+		sig, pub, err = chainsdk.WavesSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyTron, chainsdk.FamilyVeChain, chainsdk.FamilyRipple, chainsdk.FamilyICP, chainsdk.FamilyZilliqa:
+		sig, pub, err = chainsdk.SecpMessageSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyKaspa:
+		sig, pub, err = chainsdk.KaspaSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyNervos:
+		sig, pub, err = chainsdk.NervosSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyFilecoin:
+		sig, pub, err = chainsdk.FilSign(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyStarknet:
+		sig, pub, err = chainsdk.StarknetSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyMonero:
+		sig, pub, err = chainsdk.MoneroSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyErgo:
+		sig, pub, err = chainsdk.ErgoSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyStacks:
+		sig, pub, err = chainsdk.StacksSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyNEO:
+		sig, pub, err = chainsdk.NEOSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyMina:
+		sig, pub, err = chainsdk.EdSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyUnsupported:
+		err = chainsdk.ExtraNotFeasible(family, ct)
+	case chainsdk.FamilySubstrate:
+		sig, pub, err = chainsdk.SubstrateSign(seed, wallet.DerivationPath, []byte(req.Message), req.Prefix)
+	case chainsdk.FamilyGraphene, chainsdk.FamilyNEM, chainsdk.FamilySiacoin:
+		sig, pub, err = chainsdk.EdSignMessage(seed, wallet.DerivationPath, []byte(req.Message))
+	case chainsdk.FamilyAleo, chainsdk.FamilyHedera, chainsdk.FamilyFlow:
+		err = chainsdk.NotFeasible(family)
 	default:
 		err = fmt.Errorf("family %q message-sign not routable", family)
 	}
@@ -280,8 +190,8 @@ func handleNonEvmSign(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"signature":  hex0x(sig),
-		"public_key": hex0x(pub),
+		"signature":  chainsdk.Hex0x(sig),
+		"public_key": chainsdk.Hex0x(pub),
 		"chain_type": req.ChainType,
 		"family":     string(family),
 	})
@@ -301,7 +211,7 @@ func handleNonEvmSend(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-	family, ct, err := nonEvmResolve(req.ChainType, req.ChainID)
+	family, ct, err := chainsdk.ResolveFamily(req.ChainType, req.ChainID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -319,17 +229,17 @@ func handleNonEvmSend(c *gin.Context) {
 }
 
 // nonEvmDispatchSend executes the send-builder dispatch for every family.
-func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req nonEvmSendReq, seed []byte, path string) (raw, txHash, famStr string, err error) {
+func nonEvmDispatchSend(ctx context.Context, family chainsdk.Family, ct string, req nonEvmSendReq, seed []byte, path string) (raw, txHash, famStr string, err error) {
 	famStr = string(family)
 	switch family {
-	case familyStarknet, familyMonero, familyArweave, familyMina, familyUnsupported:
+	case chainsdk.FamilyStarknet, chainsdk.FamilyMonero, chainsdk.FamilyArweave, chainsdk.FamilyMina, chainsdk.FamilyUnsupported:
 		// These chains need a signed-payload format that depends on node state
 		// (Starknet nonce + class hash, Monero ring members, Mina zkApp
 		// account, Arweave RSA signing) or have no offline address scheme at
 		// all. Broadcast is fail-closed: the backend never returns a
 		// plausible-looking transaction it did not really build.
-		return "", "", famStr, nonEvmExtraNotFeasible(family, ct)
-	case familyStacks, familyNEO, familyErgo:
+		return "", "", famStr, chainsdk.ExtraNotFeasible(family, ct)
+	case chainsdk.FamilyStacks, chainsdk.FamilyNEO, chainsdk.FamilyErgo:
 		// Message signing is real for these chains (see the sign dispatch);
 		// building a spend transaction additionally needs the chain's own
 		// serialization rules (Stacks clarity post-conditions, the NEO VM
@@ -337,31 +247,31 @@ func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req
 		// implement. Fail closed rather than emitting an envelope no node
 		// would accept.
 		return "", "", famStr, errors.New(string(family) + ": transaction building needs the chain's own serializer, which is not implemented here — message signing remains available; fail-closed rather than emitting a transaction no node accepts")
-	case familyUTXO:
+	case chainsdk.FamilyUTXO:
 		if len(req.UTXOInputs) == 0 && len(req.BitcoinInputs) > 0 {
 			for _, x := range req.BitcoinInputs {
-				req.UTXOInputs = append(req.UTXOInputs, UTXOInput{TxID: x.TxID, Vout: x.Vout, ScriptPubKey: x.ScriptPubKey})
+				req.UTXOInputs = append(req.UTXOInputs, chainsdk.UTXOInput{TxID: x.TxID, Vout: x.Vout, ScriptPubKey: x.ScriptPubKey})
 			}
 			for _, x := range req.BitcoinOutputs {
-				req.UTXOOutputs = append(req.UTXOOutputs, UTXOOutput{Address: x.Address, AmountSat: x.AmountSat})
+				req.UTXOOutputs = append(req.UTXOOutputs, chainsdk.UTXOOutput{Address: x.Address, AmountSat: x.AmountSat})
 			}
 		}
 		if ct == "zcash" {
-			raw, err := ZECSign(seed, path, req.UTXOInputs, req.UTXOOutputs)
+			raw, err := chainsdk.ZECSign(seed, path, req.UTXOInputs, req.UTXOOutputs)
 			return raw, "", famStr, err
 		}
-		raw, err := UTXOSign(seed, path, ct, req.UTXOInputs, req.UTXOOutputs)
+		raw, err := chainsdk.UTXOSign(seed, path, ct, req.UTXOInputs, req.UTXOOutputs)
 		return raw, "", famStr, err
 
-	case familyCosmos:
+	case chainsdk.FamilyCosmos:
 		if req.ChainID == 0 {
 			return "", "", "", fmt.Errorf("cosmos send needs {chain_id} for prefix resolution")
 		}
 		denom := req.Denom
 		if denom == "" {
-			denom = defaultDenomOf(req.ChainID, ct)
+			denom = chainsdk.DefaultDenomOf(req.ChainID, ct)
 		}
-		resw, err := CosmosExecuteSend(ctx, seed, path, CosmosSendRequest{
+		resw, err := chainsdk.CosmosExecuteSend(ctx, seed, path, chainsdk.CosmosSendRequest{
 			ChainID:   req.ChainID,
 			ToAddress: req.To,
 			Denom:     denom,
@@ -376,94 +286,94 @@ func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req
 		}
 		return resw.TxBytes, resw.TxHash, famStr, nil
 
-	case familySolana:
-		raw, txHash, err := SolanaBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, parseUintOr(req.Amount), !req.Simulate)
+	case chainsdk.FamilySolana:
+		raw, txHash, err := chainsdk.SolanaBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, chainsdk.ParseUintOr(req.Amount), !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyAptos:
-		amount := parseUintOr(req.Amount)
-		raw, txHash, err := AptosBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, amount, req.Sequence, req.MaxGas, 100, 0, 0, !req.Simulate)
+	case chainsdk.FamilyAptos:
+		amount := chainsdk.ParseUintOr(req.Amount)
+		raw, txHash, err := chainsdk.AptosBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, amount, req.Sequence, req.MaxGas, 100, 0, 0, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familySui:
-		amount := parseUintOr(req.Amount)
-		raw, txHash, err := SuiBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, amount, !req.Simulate)
+	case chainsdk.FamilySui:
+		amount := chainsdk.ParseUintOr(req.Amount)
+		raw, txHash, err := chainsdk.SuiBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, amount, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyNear:
+	case chainsdk.FamilyNear:
 		amt := new(big.Int)
 		amt.SetString(req.Amount, 10)
-		raw, txHash, err := NearBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, amt, NearParams{Nonce: req.Nonce, BlockHashB58: req.BHash}, !req.Simulate)
+		raw, txHash, err := chainsdk.NearBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, amt, chainsdk.NearParams{Nonce: req.Nonce, BlockHashB58: req.BHash}, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyStellar:
-		amount := parseInt64Or(req.Amount)
-		raw, txHash, err := StellarBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), ct, req.To, amount, req.Sequence, 100, !req.Simulate)
+	case chainsdk.FamilyStellar:
+		amount := chainsdk.ParseInt64Or(req.Amount)
+		raw, txHash, err := chainsdk.StellarBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), ct, req.To, amount, req.Sequence, 100, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyAlgorand:
-		raw, txHash, err := AlgoBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), "", req.To, AlgoBuildRequest{
+	case chainsdk.FamilyAlgorand:
+		raw, txHash, err := chainsdk.AlgoBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), "", req.To, chainsdk.AlgoBuildRequest{
 			GenesisHashB64: req.GenHash,
 			Fee:            req.Gas,
 			FirstValid:     req.FirstV,
 			LastValid:      req.LastV,
-			Amount:         parseUintOr(req.Amount),
+			Amount:         chainsdk.ParseUintOr(req.Amount),
 		}, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyNano:
+	case chainsdk.FamilyNano:
 		rem, err := hex.DecodeString(req.RemBalHex)
 		if err != nil {
 			return "", "", famStr, fmt.Errorf("nano remaining_balance_hex malformed: %w", err)
 		}
-		raw, txHash, err := NanoBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, rem, req.WorkHex, !req.Simulate)
+		raw, txHash, err := chainsdk.NanoBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, rem, req.WorkHex, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyMultiversX:
-		raw, txHash, err := MultiversXBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, req.Amount, !req.Simulate)
+	case chainsdk.FamilyMultiversX:
+		raw, txHash, err := chainsdk.MultiversXBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, req.Amount, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyTezos:
-		raw, txHash, err := TezosBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, parseUintOr(req.Amount), req.Gas, req.Counter, req.Gas, req.Storage, !req.Simulate)
+	case chainsdk.FamilyTezos:
+		raw, txHash, err := chainsdk.TezosBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, chainsdk.ParseUintOr(req.Amount), req.Gas, req.Counter, req.Gas, req.Storage, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyTron:
-		raw, txHash, err := TronBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, parseUintOr(req.Amount), !req.Simulate)
+	case chainsdk.FamilyTron:
+		raw, txHash, err := chainsdk.TronBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, chainsdk.ParseUintOr(req.Amount), !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyVeChain:
-		raw, txHash, err := VETBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, parseUintOr(req.Amount), req.Gas, !req.Simulate)
+	case chainsdk.FamilyVeChain:
+		raw, txHash, err := chainsdk.VETBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, chainsdk.ParseUintOr(req.Amount), req.Gas, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyRipple:
-		raw, txHash, err := RippleBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct), req.To, parseUintOr(req.Amount), req.DestTag, !req.Simulate)
+	case chainsdk.FamilyRipple:
+		raw, txHash, err := chainsdk.RippleBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, chainsdk.ParseUintOr(req.Amount), req.DestTag, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyCardano:
-		raw, txHash, err := CardanoBuildSend(ctx, seed, path, lookupEndpoint(req.ChainID, ct),
+	case chainsdk.FamilyCardano:
+		raw, txHash, err := chainsdk.CardanoBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct),
 			req.CardanoInputs, req.CardanoOutputs, req.FeeLovelace, !req.Simulate)
 		return raw, txHash, famStr, err
 
-	case familyWaves:
+	case chainsdk.FamilyWaves:
 		return "", "", "", errors.New("waves tx build requires protobuf tx shape — fail-closed; address derivation + message signing stay complete")
 
-	case familyTON:
+	case chainsdk.FamilyTON:
 		return "", "", "", errors.New("ton tx build requires BoC serialization — fail-closed")
 
-	case familyICP, familyZilliqa, familyKaspa, familyNervos, familyFilecoin:
+	case chainsdk.FamilyICP, chainsdk.FamilyZilliqa, chainsdk.FamilyKaspa, chainsdk.FamilyNervos, chainsdk.FamilyFilecoin:
 		return "", "", "", fmt.Errorf("%s tx build is fail-closed in this build (address + message-sign only)", family)
 
-	case familyAleo, familyHedera, familyFlow:
-		return "", "", "", nonEvmNotFeasible(family)
+	case chainsdk.FamilyAleo, chainsdk.FamilyHedera, chainsdk.FamilyFlow:
+		return "", "", "", chainsdk.NotFeasible(family)
 
-	case familySubstrate:
+	case chainsdk.FamilySubstrate:
 		amount := new(big.Int)
 		if _, ok := amount.SetString(req.Amount, 10); !ok || amount.Sign() <= 0 {
 			return "", "", "", fmt.Errorf("substrate: amount %q must be a positive integer in plancks", req.Amount)
 		}
-		raw, txHash, err := SubstrateBuildTransfer(ctx, seed, path, lookupEndpoint(req.ChainID, ct),
+		raw, txHash, err := chainsdk.SubstrateBuildTransfer(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct),
 			[2]byte{req.PalletIndex, req.CallIndex}, req.To, amount,
-			SubstrateChainParams{
+			chainsdk.SubstrateChainParams{
 				SpecVersion: req.SpecVersion,
 				TxVersion:   req.TxVersion,
 				GenesisHash: req.GenHash,
@@ -478,77 +388,6 @@ func nonEvmDispatchSend(ctx context.Context, family nonEvmFamily, ct string, req
 }
 
 // ---------- small numeric helpers ----------
-
-func parseUintOr(s string) uint64 {
-	if s == "" {
-		return 0
-	}
-	v, _ := new(big.Int).SetString(s, 10)
-	if v == nil {
-		return 0
-	}
-	return v.Uint64()
-}
-
-func parseInt64Or(s string) int64 {
-	v := parseUintOr(s)
-	return int64(v)
-}
-
-// defaultDenomOf resolves the default base denom for a cosmos chain by id.
-func defaultDenomOf(chainID int64, ct string) string {
-	switch chainID {
-	case 9000000118: // Cosmos Hub
-		return "uatom"
-	case 9000026317: // Osmosis
-		return "uosmo"
-	case 9000073068: // Injective
-		return "inj"
-	case 9000012099: // Stride
-		return "ustrd"
-	case 9000000529: // Secret
-		return "uscrt"
-	case 9000007183: // Akash
-		return "uakt"
-	case 9000090063: // Neutron
-		return "untrn"
-	case 9000073741: // Sei
-		return "usei"
-	case 9000014648: // Celestia
-		return "utia"
-	case 9000049823: // dYdX
-		return "adydx"
-	case 9000005267: // Juno
-		return "ujuno"
-	case 9000041857: // Kujira
-		return "ukuji"
-	case 9000000330: // Terra Classic
-		return "uluna"
-	case 9000018759: // Persistence
-		return "uxprt"
-	case 9000000160: // Evmos
-		return "aevmos"
-	case 9000000900: // Kava
-		return "ukava"
-	case 9000001839: // Cronos
-		return "basecro"
-	case 9000007017: // Axelar
-		return "uaxl"
-	case 9000008102: // Band
-		return "uband"
-	case 9000000438: // IRIS
-		return "uiris"
-	case 9000008899: // Gravity Bridge
-		return "ugraviton"
-	case 9000001183: // Stargaze
-		return "ustars"
-	case 9000002236: // Sommelier
-		return "usomm"
-	}
-	// Fallback: lower-cased chain-type (correct for most SDK chains, where
-	// the base denom starts with 'u' — call sites can always pass {denom}).
-	return "u" + ct
-}
 
 // ---------- shared handler helpers (carried over from the 3-chain build) ----------
 
@@ -587,76 +426,6 @@ type publicErr struct{ msg string }
 
 func (e *publicErr) Error() string { return e.msg }
 
-// hex0x returns the "0x"-prefixed lowercase hex of b.
-func hex0x(b []byte) string { return "0x" + hex.EncodeToString(b) }
-
-// btcSignMessage signs a message with the secp256k1 key (r||s, no recovery).
-func btcSignMessage(seed []byte, derivationPath string, message []byte) (sig, pub []byte, err error) {
-	priv, err := hdDerive(seed, derivationPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	full, err := crypto.Sign(message, priv)
-	if err != nil {
-		return nil, nil, err
-	}
-	return full[:64], crypto.CompressPubkey(&priv.PublicKey), nil
-}
-
-// secpMessageSign signs a message with the secp256k1 key (65-byte r||s||v).
-func secpMessageSign(seed []byte, derivationPath string, message []byte) (sig, pub []byte, err error) {
-	priv, err := hdDerive(seed, derivationPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	h := crypto.Keccak256Hash([]byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)))
-	full, err := crypto.Sign(h.Bytes(), priv)
-	if err != nil {
-		return nil, nil, err
-	}
-	return full, crypto.CompressPubkey(&priv.PublicKey), nil
-}
-
-// lookupEndpoint resolves the seeded non-EVM endpoint for a chain id; falls
-// back to the well-known public endpoint for the chain type otherwise.
-func lookupEndpoint(chainID int64, ct string) string {
-	for _, c := range nonEVMMainnet {
-		if c.ID == chainID {
-			return c.RPCEndpoint
-		}
-	}
-	if ct == "pi" {
-		return "" // pi endpoint operator-configured (env PI_RPC)
-	}
-	switch ct {
-	case "solana":
-		return "https://api.mainnet-beta.solana.com"
-	case "aptos":
-		return "https://fullnode.mainnet.aptoslabs.com"
-	case "sui":
-		return "https://fullnode.mainnet.sui.io:443"
-	case "near":
-		return "https://rpc.mainnet.near.org"
-	case "algorand":
-		return "https://mainnet-api.algonode.cloud"
-	case "nano":
-		return "https://proxy.nanos.cc"
-	case "tron":
-		return "https://api.trongrid.io"
-	case "vechain":
-		return "https://sync-mainnet.vechain.org"
-	case "ripple":
-		return "https://s1.ripple.com:51234"
-	case "stellar", "pi":
-		return "https://api.mainnet.stellar.org"
-	case "tezos":
-		return "https://mainnet.tezos.ecadinfra.com"
-	case "elrond":
-		return "https://api.multiversx.com"
-	}
-	return ""
-}
-
 // ---------- non-EVM wallet creation ----------
 
 // createNonEvmWallet derives and persists a wallet for a non-EVM chain. It is
@@ -665,7 +434,7 @@ func lookupEndpoint(chainID int64, ct string) string {
 // always restores the same address, and the path is persisted verbatim so
 // /non_evm/* signing and address re-derivation use it later.
 func createNonEvmWallet(c *gin.Context, req createWalletReq, chain *ChainConfig) {
-	family, ct, err := nonEvmResolve(chain.ChainType, chain.ID)
+	family, ct, err := chainsdk.ResolveFamily(chain.ChainType, chain.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -696,11 +465,11 @@ func createNonEvmWallet(c *gin.Context, req createWalletReq, chain *ChainConfig)
 		return
 	}
 	if req.AccountIndex > 0 {
-		path = withAccountIndex(path, req.AccountIndex)
+		path = chainsdk.WithAccountIndex(path, req.AccountIndex)
 	}
 
 	seed := MnemonicToSeed(mnemonic, "")
-	address, err := nonEvmAddressFor(family, ct, chain.ID, seed, path, 0)
+	address, err := chainsdk.AddressFor(family, ct, chain.ID, seed, path, 0)
 	if err != nil {
 		// Arweave, TON, Aleo, Hedera and Flow have no HD address scheme; they
 		// report a descriptive error rather than a fabricated address.
@@ -752,16 +521,3 @@ func createNonEvmWallet(c *gin.Context, req createWalletReq, chain *ChainConfig)
 // withAccountIndex replaces the trailing index of a BIP-44 path so a caller can
 // request account N. Non-EVM paths are written with a mix of hardened (') and
 // plain segments, so only the final element is touched.
-func withAccountIndex(path string, index int) string {
-	parts := strings.Split(path, "/")
-	if len(parts) < 2 {
-		return path
-	}
-	last := parts[len(parts)-1]
-	if strings.HasSuffix(last, "'") {
-		parts[len(parts)-1] = strconv.Itoa(index) + "'"
-	} else {
-		parts[len(parts)-1] = strconv.Itoa(index)
-	}
-	return strings.Join(parts, "/")
-}

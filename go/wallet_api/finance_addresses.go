@@ -30,6 +30,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/skip2/go-qrcode"
+	"github.com/tigerwallet/chainsdk"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/hkdf"
 )
@@ -75,7 +76,7 @@ func deriveDepositAddress(userID uuid.UUID, spec depositChainSpec) (string, erro
 		if !ok || len(pub) != 32 {
 			return "", errors.New("solana key derivation failed")
 		}
-		return base58Encode(pub), nil
+		return chainsdk.Base58Encode(pub), nil
 	case "evm", "bech32", "base58", "tron":
 		priv, err := hdDerive(seed, fmt.Sprintf(spec.Path, 0))
 		if err != nil {
@@ -88,18 +89,18 @@ func deriveDepositAddress(userID uuid.UUID, spec depositChainSpec) (string, erro
 			pub := crypto.FromECDSAPub(&priv.PublicKey) // 65 bytes, 0x04 prefix
 			h := crypto.Keccak256(pub[1:])
 			payload := append([]byte{0x41}, h[len(h)-20:]...)
-			return base58checkEncode(payload), nil
-		default: // bech32 / base58 — hash160 of the compressed pubkey
+			return chainsdk.Base58CheckEncode(payload), nil
+		default: // bech32 / base58 — chainsdk.Hash160 of the compressed pubkey
 			_, btPub := btcec.PrivKeyFromBytes(crypto.FromECDSA(priv))
-			pkh := hash160(btPub.SerializeCompressed())
+			pkh := chainsdk.Hash160(btPub.SerializeCompressed())
 			if spec.Kind == "bech32" {
-				conv, err := convertBits(pkh, 8, 5, true)
+				conv, err := chainsdk.ConvertBits(pkh, 8, 5, true)
 				if err != nil {
 					return "", err
 				}
-				return bech32Encode(spec.HRP, append([]byte{0x00}, conv...))
+				return chainsdk.Bech32Encode(spec.HRP, append([]byte{0x00}, conv...))
 			}
-			return base58checkEncode(append(append([]byte{}, spec.Version...), pkh...)), nil
+			return chainsdk.Base58CheckEncode(append(append([]byte{}, spec.Version...), pkh...)), nil
 		}
 	}
 	return "", fmt.Errorf("unsupported address kind %q", spec.Kind)

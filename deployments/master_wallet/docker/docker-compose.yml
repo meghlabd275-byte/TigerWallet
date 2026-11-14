@@ -7,8 +7,10 @@ services:
   # MasterWallet Backend (canonical master_wallet/backend, listens on :8450)
   master-wallet-backend:
     build:
-      context: ../../../master_wallet/backend
-      dockerfile: Dockerfile
+      context: ../../..
+      dockerfile: deployments/docker/Dockerfile.go-backend
+      args:
+        TARGET_MODULE: master_wallet/backend
     container_name: ${TENANT_SLUG}-master-wallet-backend
     environment:
       - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}

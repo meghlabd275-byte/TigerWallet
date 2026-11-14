@@ -1,0 +1,17 @@
+# The Go backend images build from the repository root so they can see the
+# sibling chainsdk module. Keep the context small: only the three Go modules
+# that participate in that dependency graph are needed.
+*
+!go/chainsdk
+!go/wallet_api
+!master_wallet/backend
+!deployments/docker/Dockerfile.go-backend
+
+# Build output and toolchain caches.
+**/target
+**/dist
+**/build
+**/node_modules
+**/.git
+**/*.log
+**/coverage

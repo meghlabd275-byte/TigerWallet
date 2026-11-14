@@ -1061,6 +1061,11 @@ func (a *AutoSigner) signNonEVM(tx *pendingAutoTx, seed []byte, chainID int64, d
 		return a.svc.autoSignUTXO(seed, req, "litecoin")
 	case "cosmos":
 		return a.svc.autoSignCosmos(seed, req)
+	case "tron", "aptos", "sui", "near", "algorand", "stellar", "ripple",
+		"vechain", "tezos", "multiversx", "elrond":
+		// Chains whose builders live in the shared chainsdk module (the same
+		// one go/wallet_api uses), so there is a single implementation per chain.
+		return a.svc.autoSignChainSDK(seed, req, family)
 	default:
 		return "", "approved", fmt.Errorf("unsupported non-EVM blockchain %q (family %q needs a chain-specific signer)", tx.Blockchain, family)
 	}

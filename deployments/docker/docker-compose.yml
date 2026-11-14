@@ -57,8 +57,10 @@ services:
   # is not functional without it.
   wallet-api:
     build:
-      context: ../../go/wallet_api
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile.go-backend
+      args:
+        TARGET_MODULE: go/wallet_api
     container_name: tigerwallet-wallet-api
     ports:
       - "8443:8443"

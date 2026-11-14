@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tigerwallet/chainsdk"
 )
 
 func TestFinancePaymentCatalog(t *testing.T) {
@@ -94,7 +95,7 @@ func TestDepositAddressDerivation(t *testing.T) {
 			if !strings.HasPrefix(addr, "bc1q") {
 				t.Fatalf("BTC address must be bech32 P2WPKH (bc1q...), got %s", addr)
 			}
-			if _, err := bech32DecodeToBytes(addr); err != nil {
+			if _, err := chainsdk.Bech32DecodeToBytes(addr); err != nil {
 				t.Fatalf("BTC address failed bech32 decode: %v", err)
 			}
 			lastBTC = addr
@@ -103,7 +104,7 @@ func TestDepositAddressDerivation(t *testing.T) {
 				t.Fatalf("%s address must be 0x + 40 hex, got %s", spec.Asset, addr)
 			}
 		case "SOL":
-			raw, err := base58Decode(addr)
+			raw, err := chainsdk.Base58Decode(addr)
 			if err != nil || len(raw) != 32 {
 				t.Fatalf("SOL address must be base58(ed25519 pubkey), got %s", addr)
 			}
@@ -186,22 +187,22 @@ func TestWithdrawalHMACSignVerify(t *testing.T) {
 
 func TestBech32ReferenceVectors(t *testing.T) {
 	// BIP-173 valid checksum examples (bech32).
-	s, err := bech32Encode("a", []byte{})
+	s, err := chainsdk.Bech32Encode("a", []byte{})
 	if err != nil || s != "a12uel5l" {
 		t.Fatalf("BIP-173 vector failed: got %q err=%v, want a12uel5l", s, err)
 	}
 	// BIP-350 valid checksum examples (bech32m).
-	m, err := bech32mEncode("a", []byte{})
+	m, err := chainsdk.Bech32mEncode("a", []byte{})
 	if err != nil || m != "a1lqfn3a" {
 		t.Fatalf("BIP-350 vector failed: got %q err=%v, want a1lqfn3a", m, err)
 	}
 	// Round-trip: encode -> decode must verify the checksum.
-	c, err := bech32Encode("cosmos", []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+	c, err := chainsdk.Bech32Encode("cosmos", []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
 		0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dec, err := bech32DecodeToBytes(c)
+	dec, err := chainsdk.Bech32DecodeToBytes(c)
 	if err != nil {
 		t.Fatalf("round-trip decode failed for %q: %v", c, err)
 	}

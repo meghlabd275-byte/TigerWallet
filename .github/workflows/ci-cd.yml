@@ -88,7 +88,7 @@ jobs:
           set -uo pipefail
           failed=0
           # Suites that need PostgreSQL and Redis run in the integration job.
-          for mod in go/wallet_api master_wallet/backend admin/go super_admin/go \
+          for mod in go/chainsdk go/wallet_api master_wallet/backend admin/go super_admin/go \
                      white_label_admin/go project_party mm_bot_platform/bot_api \
                      wl_user_wallet/go wl_master_wallet/go wl_bots/go wl_card/go \
                      wl_liquidity/go wl_project_party/go license_service/go \

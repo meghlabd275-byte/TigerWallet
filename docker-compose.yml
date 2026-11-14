@@ -84,8 +84,10 @@ services:
   # persistence, Redis cache.
   wallet-api:
     build:
-      context: ./go/wallet_api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: deployments/docker/Dockerfile.go-backend
+      args:
+        TARGET_MODULE: go/wallet_api
     container_name: tigerwallet-wallet-api
     ports:
       - "8443:8443"
@@ -991,8 +993,10 @@ services:
   # non-EVM chains. nginx in master_wallet/web proxies /api/ to this service.
   master-wallet-backend:
     build:
-      context: ./master_wallet/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: deployments/docker/Dockerfile.go-backend
+      args:
+        TARGET_MODULE: master_wallet/backend
     container_name: tigerwallet-master-wallet-backend
     ports:
       - "8450:8450"

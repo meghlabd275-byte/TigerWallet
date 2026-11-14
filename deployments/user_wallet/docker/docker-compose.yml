@@ -6,8 +6,10 @@ services:
   # UserWallet Backend (canonical wallet_api on :8443)
   user-wallet-backend:
     build:
-      context: ../../../go/wallet_api
-      dockerfile: Dockerfile
+      context: ../../..
+      dockerfile: deployments/docker/Dockerfile.go-backend
+      args:
+        TARGET_MODULE: go/wallet_api
     container_name: ${TENANT_SLUG}-user-wallet-backend
     environment:
       - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}

@@ -21,7 +21,7 @@ jobs:
         run: |
           set -uo pipefail
           failed=0
-          for mod in go/wallet_api master_wallet/backend admin/go super_admin/go \
+          for mod in go/chainsdk go/wallet_api master_wallet/backend admin/go super_admin/go \
                      white_label_admin/go project_party mm_bot_platform/bot_api; do
             echo "::group::$mod"
             if ! (cd "$mod" && go build ./... && go vet ./...); then
