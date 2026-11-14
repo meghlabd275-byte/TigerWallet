@@ -267,3 +267,7 @@ liquid_staking/go/liquid-staking
 
 # Compiled service binaries
 integrations/go/slack/slack
+
+# Redis persistence artifacts (never commit a live dataset)
+dump.rdb
+*.rdb

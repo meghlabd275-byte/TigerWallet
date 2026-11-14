@@ -80,6 +80,9 @@ func main() {
 	}
 
 	router := gin.Default()
+	// Mount /metrics and the request instrumentation before any route so every
+	// handler is covered. The scrape probes database.Pool and redisClient.
+	registerMetrics(router)
 
 	router.Use(func() gin.HandlerFunc {
 		// CORS: an explicit origin allowlist. A wildcard cannot be combined with

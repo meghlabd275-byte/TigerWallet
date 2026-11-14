@@ -24,6 +24,10 @@ func NewHub(addr, password string) *Hub {
 
 func (h *Hub) Close() error { return h.rdb.Close() }
 
+// Ping reports whether Redis is reachable. It backs the readiness/health probe
+// so an operator can tell "process up" from "command fan-out reachable".
+func (h *Hub) Ping(ctx context.Context) error { return h.rdb.Ping(ctx).Err() }
+
 // PublishCommand pushes a command to the WL product's channel.
 func (h *Hub) PublishCommand(ctx context.Context, wlClientID uuid.UUID, product string, cmd map[string]any) error {
 	ch := fmt.Sprintf("wl:commands:%s:%s", wlClientID, product)

@@ -1,0 +1,47 @@
+# Prometheus configuration for the INFRASTRUCTURE stack
+# (infrastructure/docker/docker-compose.yml).
+#
+# This stack runs on its own bridge network (tiger-network) and only contains
+# the four shared platform services plus the monitoring add-ons. The canonical
+# backends (wallet-api, admin-api, ...) live in the root compose file and are
+# scraped by prometheus.yml instead; listing them here would leave every one of
+# them permanently "down" because the names do not resolve on this network.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: tigerwallet-infrastructure
+
+# Alert rules are evaluated by Prometheus and routed through Alertmanager.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: billing-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['billing-service:9001']
+
+  - job_name: multi-tenancy-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['multi-tenancy-service:9002']
+
+  - job_name: fetcher-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['fetcher-service:9003']
+
+  - job_name: notification-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['notification-service:9004']

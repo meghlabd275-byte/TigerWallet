@@ -266,6 +266,7 @@ func (s *server) handleHalt(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	haltActions.WithLabelValues("halt", req.ScopeType).Inc()
 	c.JSON(http.StatusOK, gin.H{"halted": true, "scope_type": req.ScopeType, "product": req.Product, "fetcher": req.Fetcher})
 }
 
@@ -284,6 +285,7 @@ func (s *server) handleResume(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	haltActions.WithLabelValues("resume", req.ScopeType).Inc()
 	c.JSON(http.StatusOK, gin.H{"halted": false, "scope_type": req.ScopeType, "product": req.Product, "fetcher": req.Fetcher})
 }
 
@@ -414,6 +416,10 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// Mount /metrics and the request instrumentation before any route so every
+	// handler is covered. metricsServer lets a scrape probe the live dependencies.
+	metricsServer = s
+	registerMetrics(r)
 	r.GET("/health", func(c *gin.Context) {
 		hctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
 		defer cancel()

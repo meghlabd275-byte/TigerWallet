@@ -1,0 +1,81 @@
+# Prometheus configuration for the ROOT deployment (docker-compose.yml).
+#
+# The root stack and infrastructure/docker/docker-compose.yml are SEPARATE
+# Docker networks, so a single scrape file cannot serve both: each stack
+# resolves a different set of service names. This file covers the root stack;
+# the infrastructure stack uses prometheus-infra.yml.
+#
+# Target host:port is the CONTAINER port, not the published host port. A target
+# that does not resolve here shows as "down" and fires ServiceDown, so the port
+# must match what the service actually listens on inside its container.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: tigerwallet
+
+# Alert rules are evaluated by Prometheus and routed through Alertmanager.
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Root-stack notification service listens on 8011 (PORT=8011).
+  - job_name: notification-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['notification-service:8011']
+
+  # The Rust fetcher gateway in the root stack is named fetcher-gateway (:8093).
+  - job_name: fetcher-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['fetcher-gateway:8093']
+
+  # Canonical backends. These run on the shared default network, so Prometheus
+  # reaches them by service name. Every target below exposes a real /metrics
+  # route; a target that goes "down" here is a genuine availability failure.
+  - job_name: wallet-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['wallet-api:8443']
+
+  - job_name: master-wallet-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['master-wallet-backend:8450']
+
+  - job_name: admin-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['admin-api:9093']
+
+  - job_name: super-admin-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['super-admin-api:8082']
+
+  - job_name: license-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['license-service:8460']
+
+  - job_name: kill-switch
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['kill-switch:8469']
+
+  # permission-service listens on 8091 inside the container (8476 on the host).
+  - job_name: permission-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['permission-service:8091']
+

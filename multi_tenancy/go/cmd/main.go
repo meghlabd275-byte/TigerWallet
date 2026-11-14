@@ -41,6 +41,8 @@ func buildRouter(h *handlers.Handlers) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery(), gin.Logger(), corsMiddleware())
 
+	registerMetrics(router)
+
 	router.GET("/health", h.Health)
 	router.GET("/readyz", h.Ready)
 
@@ -104,6 +106,9 @@ func main() {
 	}
 	redisClient := redis.NewClient(rdb)
 	defer redisClient.Close()
+
+	metricsPool = pool
+	metricsRedis = redisClient
 
 	services.Initialize(pool, redisClient)
 

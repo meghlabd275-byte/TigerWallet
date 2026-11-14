@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: tigerwallet
+    orgId: 1
+    folder: TigerWallet
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

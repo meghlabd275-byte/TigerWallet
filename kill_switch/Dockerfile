@@ -1,7 +1,7 @@
 # Kill-switch control plane Dockerfile.
 # Emergency halt/resume for the whole platform, per WL client, per product,
 # or per fetcher. PostgreSQL state + Redis propagation, SuperAdmin JWT only.
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 

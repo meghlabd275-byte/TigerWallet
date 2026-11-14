@@ -57,6 +57,11 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+	// Mount /metrics and the request instrumentation before any route so every
+	// handler is covered. The scrape probes the live database and Redis.
+	metricsStore = st
+	metricsHub = hub
+	registerMetrics(r)
 	r.Use(func() gin.HandlerFunc {
 		// CORS: an explicit origin allowlist. A wildcard cannot be combined with
 		// AllowCredentials (browsers reject it), so this previously blocked

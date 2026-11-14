@@ -61,6 +61,10 @@ func main() {
 	router.Use(corsMiddleware())
 
 	// Health check
+	metricsDB = db
+	metricsRedis = rdb
+	registerMetrics(router)
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-notifications"})
 	})
@@ -94,9 +98,8 @@ func main() {
 		api.POST("/channels/push", sendPushHandler(queue, db))
 		api.POST("/channels/webhook", sendWebhookHandler(queue, db))
 
-		// Broadcast + list
+		// Broadcast
 		api.POST("/broadcast", broadcastHandler(queue, db))
-		api.GET("/notifications/:user_id", listNotificationsHandler(db))
 	}
 
 	// Start server
@@ -351,6 +354,7 @@ func (q *NotificationQueue) Worker(id int, cfg *Config) {
 		if err != nil {
 			continue
 		}
+		updateQueueDepth(ctx, q)
 
 		var sendErr error
 		switch notification.Channel {
@@ -367,11 +371,41 @@ func (q *NotificationQueue) Worker(id int, cfg *Config) {
 		}
 
 		if sendErr != nil {
+			notificationsDelivered.WithLabelValues(notification.Channel, deliveryOutcome(sendErr)).Inc()
 			log.Printf("Worker %d failed notification %s: %v", id, notification.ID, sendErr)
 		} else {
+			notificationsDelivered.WithLabelValues(notification.Channel, "delivered").Inc()
 			log.Printf("Worker %d processed notification %s", id, notification.ID)
 		}
 	}
+}
+
+// updateQueueDepth reports the number of notifications still waiting. It is
+// best-effort: a Redis outage leaves the last known value rather than failing
+// the worker loop.
+func updateQueueDepth(ctx context.Context, q *NotificationQueue) {
+	if q == nil || q.redis == nil {
+		return
+	}
+	depth, err := q.redis.LLen(ctx, "notifications:queue").Result()
+	if err != nil {
+		return
+	}
+	queueDepth.Set(float64(depth))
+}
+
+// deliveryOutcome separates a misconfigured provider from a provider that is
+// configured but erroring, because the two need different responses: the first
+// is a deployment fix, the second is an incident.
+func deliveryOutcome(err error) string {
+	if err == nil {
+		return "delivered"
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "not configured") || strings.Contains(msg, "missing data") {
+		return "unavailable"
+	}
+	return "failed"
 }
 
 func notificationRecipient(n *QueuedNotification, keys ...string) string {
@@ -1009,30 +1043,14 @@ func broadcastHandler(queue *NotificationQueue, db DB) gin.HandlerFunc {
 	}
 }
 
-func listNotificationsHandler(db DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		userID := c.Param("user_id")
-		if !ownedByCaller(c, userID) {
-			return
-		}
-		limit := 50
-		items, err := db.ListNotifications(c.Request.Context(), userID, limit)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		if items == nil {
-			items = []map[string]any{}
-		}
-		c.JSON(http.StatusOK, gin.H{"notifications": items})
-	}
-}
-
 // ============== Database ==============
 
 // DB is the real PostgreSQL-backed notification store.
 type DB interface {
 	Close()
+	// Ping reports whether the database is reachable, for the readiness probe
+	// and the metrics endpoint.
+	Ping(ctx context.Context) error
 	// SaveNotification persists a notification record (real INSERT).
 	SaveNotification(ctx context.Context, userID, ntype, title, body, channel string) error
 	// ListNotifications returns recent notifications for a user (real SELECT).
@@ -1107,6 +1125,14 @@ func initDatabase(cfg *Config) (DB, error) {
 
 type pgDB struct {
 	pool *pgxpool.Pool
+}
+
+// Ping reports whether the connection pool can reach PostgreSQL.
+func (d *pgDB) Ping(ctx context.Context) error {
+	if d.pool == nil {
+		return fmt.Errorf("database pool is not initialized")
+	}
+	return d.pool.Ping(ctx)
 }
 
 func (d *pgDB) Close() {

@@ -1,0 +1,131 @@
+groups:
+  - name: tigerwallet-availability
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Prometheus has failed to scrape {{ $labels.instance }} (job {{ $labels.job }}) for 2 minutes."
+
+      # The root and infrastructure stacks share this rules file but expose
+      # different service sets, so this must not name a job that only exists in
+      # one of them (absent() on a stack-local job would fire forever). The
+      # regex group matches when NONE of the core targets exist at all, which is
+      # the real "monitoring lost its core targets" condition.
+      - alert: ServiceAbsent
+        expr: absent(up{job=~"billing-service|multi-tenancy-service|wallet-api"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No core service is reporting at all"
+          description: "None of the core scrape targets exist. A service may have been removed from the compose file or the Prometheus config."
+
+  - name: tigerwallet-dependencies
+    interval: 30s
+    rules:
+      - alert: DatabaseUnreachable
+        expr: billing_db_up == 0 or multi_tenancy_db_up == 0 or notifications_db_up == 0 or wallet_api_db_up == 0 or master_wallet_db_up == 0 or kill_switch_db_up == 0 or license_service_db_up == 0 or permission_bridge_db_up == 0 or super_admin_db_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} cannot reach PostgreSQL"
+          description: "The service reports its database probe failing. Quota, billing, license and control-plane writes will fail."
+
+      - alert: RedisUnreachable
+        expr: billing_redis_up == 0 or multi_tenancy_redis_up == 0 or notifications_redis_up == 0 or wallet_api_redis_up == 0 or master_wallet_redis_up == 0 or kill_switch_redis_up == 0 or license_service_redis_up == 0 or super_admin_redis_up == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} cannot reach Redis"
+          description: "The service reports its Redis probe failing. Queues, shared caches and halt/command fan-out are degraded."
+
+  - name: tigerwallet-http
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum by (job) (rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is returning 5xx for more than 5% of requests"
+          description: "Server error rate has exceeded 5% for 5 minutes."
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} p95 latency above 2s"
+          description: "The 95th percentile request latency has exceeded 2 seconds for 5 minutes."
+
+  - name: tigerwallet-business
+    interval: 60s
+    rules:
+      - alert: PaymentProcessingFailures
+        expr: |
+          sum by (job) (rate(billing_payments_processed_total{outcome!="paid"}[10m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Billing is recording payment failures"
+          description: "Payments are being processed with a non-paid outcome. Check the payment provider callback and webhook signature verification."
+
+      - alert: NotificationDeliveryFailures
+        expr: |
+          sum by (channel) (rate(notifications_delivered_total{outcome="failed"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Notification delivery failing on {{ $labels.channel }}"
+          description: "A notification channel is reporting delivery failures. A channel with no provider configured reports 'unavailable' by design; a 'failed' outcome means a configured provider is erroring."
+
+      - alert: QuotaExhaustion
+        expr: |
+          sum by (job) (rate(multi_tenancy_quota_checks_total{outcome="exceeded"}[15m])) > 0
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Tenants are hitting quota limits"
+          description: "One or more tenants are being refused by quota checks. This may be expected growth or a misconfigured plan."
+
+      - alert: BroadcastStalled
+        expr: |
+          sum(rate(wallet_api_transactions_broadcast_total[10m])) == 0
+          and
+          sum(rate(http_requests_total{job="wallet-api",route="/api/v1/send"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Wallet sends are being requested but nothing reaches a node"
+          description: "The /api/v1/send route is receiving traffic while no transaction has been broadcast for 10 minutes. Check the upstream RPC endpoint and the pre-broadcast chain-id guard."
+
+      - alert: AuthFailureSpike
+        expr: sum(rate(wallet_api_auth_failures_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated authentication failures"
+          description: "Rejected logins are running above 5/second. This may be credential stuffing; check the source addresses."

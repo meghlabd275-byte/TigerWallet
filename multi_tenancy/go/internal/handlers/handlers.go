@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tigerwallet/multi-tenancy/internal/metrics"
 	"github.com/tigerwallet/multi-tenancy/internal/models"
 	"github.com/tigerwallet/multi-tenancy/internal/services"
 )
@@ -72,6 +73,7 @@ func (h *Handlers) CreateTenant(c *gin.Context) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	metrics.TenantsCreated.Inc()
 	c.JSON(http.StatusCreated, gin.H{"tenant": t})
 }
 
@@ -355,6 +357,11 @@ func (h *Handlers) CheckQuota(c *gin.Context) {
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err)
 		return
+	}
+	if allowed {
+		metrics.QuotaChecks.WithLabelValues("allowed").Inc()
+	} else {
+		metrics.QuotaChecks.WithLabelValues("exceeded").Inc()
 	}
 	c.JSON(http.StatusOK, gin.H{"allowed": allowed, "resource": resource})
 }

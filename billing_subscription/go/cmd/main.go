@@ -492,6 +492,7 @@ func CreateInvoice(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	invoicesCreated.Inc()
 
 	c.JSON(http.StatusCreated, invoice)
 }
@@ -555,6 +556,7 @@ func ProcessPayment(c *gin.Context) {
 
 	tx, err := db.Begin(context.Background())
 	if err != nil {
+		paymentsProcessed.WithLabelValues("failed").Inc()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -583,6 +585,7 @@ func ProcessPayment(c *gin.Context) {
 	}
 
 	tx.Commit(context.Background())
+	paymentsProcessed.WithLabelValues("paid").Inc()
 
 	c.JSON(http.StatusCreated, payment)
 }
@@ -685,6 +688,7 @@ func main() {
 		c.Next()
 	})
 
+	registerMetrics(router)
 	router.GET("/health", HealthCheck)
 
 	// Plans

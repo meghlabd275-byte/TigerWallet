@@ -36,6 +36,11 @@ func main() {
 	// Initialize Gin router
 	router := gin.Default()
 
+	// Mount /metrics and the request instrumentation before any route so every
+	// handler is covered. The scrape probes the live database via the handler.
+	metricsHandlerState = h
+	registerMetrics(router)
+
 	// CORS
 	router.Use(corsMiddleware())
 

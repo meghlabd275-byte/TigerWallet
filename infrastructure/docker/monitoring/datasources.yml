@@ -1,0 +1,15 @@
+apiVersion: 1
+
+# The provisioned dashboard references this datasource by uid "prometheus".
+# Without it Grafana loads the dashboard with an unresolved datasource and
+# every panel shows an error.
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s

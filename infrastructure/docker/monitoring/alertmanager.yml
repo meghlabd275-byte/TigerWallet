@@ -1,0 +1,39 @@
+# Alertmanager routing for the TigerWallet infrastructure stack.
+#
+# The default receiver is deliberately a no-op ("null") rather than a fake
+# webhook: alerts are still recorded and visible in the Alertmanager UI, but
+# nothing is silently posted to an endpoint that does not exist. Set
+# ALERT_WEBHOOK_URL (and restart the container) to deliver alerts to Slack,
+# PagerDuty, or any webhook-compatible receiver.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ['alertname', 'job']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = "critical"
+      receiver: default
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    # A no-op receiver. Alerts remain visible in the Alertmanager UI at
+    # http://localhost:9094 and in Prometheus at http://localhost:9091/alerts.
+    # Replace this with a webhook_configs entry to deliver them externally.
+    webhook_configs:
+      - url: 'http://127.0.0.1:9093/-/noop'
+        send_resolved: false
+
+inhibit_rules:
+  # A service being fully down makes its dependency and latency alerts noise.
+  - source_matchers:
+      - alertname = "ServiceDown"
+    target_matchers:
+      - severity =~ "warning|info"
+    equal: ['job']
