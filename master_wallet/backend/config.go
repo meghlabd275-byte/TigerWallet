@@ -133,30 +133,86 @@ func chainRPCEndpoint(chainID int64) string {
 	return ""
 }
 
+// etherscanV2Chains are the chains the unified Etherscan V2 multichain API
+// serves from ONE base URL with ONE key (ETHERSCAN_API_KEY); the chain is
+// selected with the chainid query parameter.
+var etherscanV2Chains = map[int64]bool{
+	1: true, 56: true, 137: true, 42161: true, 10: true, 43114: true, 8453: true,
+}
+
+// keylessBlockscoutHosts maps a chain id to a Blockscout instance that serves
+// its v2 REST API WITHOUT an API key. These are the chains whose Etherscan-
+// family explorer rejects keyless requests, so without this a deployment with
+// no ETHERSCAN_API_KEY would show an empty history on the busiest chains. Each
+// host was verified live; a host that cannot serve a chain is simply absent
+// here, and the chain then reports its real upstream error rather than
+// returning empty data.
+var keylessBlockscoutHosts = map[int64]string{
+	1:      "https://eth.blockscout.com",
+	10:     "https://optimism.blockscout.com",
+	324:    "https://zksync.blockscout.com",
+	534352: "https://scroll.blockscout.com",
+	42220:  "https://celo.blockscout.com",
+	30:     "https://rootstock.blockscout.com",
+}
+
+// explorerHistorySource is one way to read an address's transaction history.
+// An empty apiKeyEnv means the source is keyless.
+type explorerHistorySource struct {
+	// etherscanV2 selects the unified Etherscan V2 request shape (base
+	// ".../v2/api" plus a chainid parameter).
+	etherscanV2 bool
+	// blockscoutV2 selects the Blockscout v2 REST shape (a per-chain host,
+	// paginated with URL parameters).
+	blockscoutV2 bool
+	baseURL      string
+	apiKeyEnv    string
+}
+
 // chainExplorerAPI returns the Etherscan-compatible explorer base URL + API key
 // env var name for a chain id. Used for real transaction history / NFT fetches.
+// An empty apiKeyEnv means the endpoint is keyless.
 func chainExplorerAPI(chainID int64) (baseURL, apiKeyEnv string) {
-	// Etherscan deprecated the per-chain V1 endpoints; the V2 multichain
-	// API serves every Etherscan-family chain from ONE base URL with ONE
-	// key (ETHERSCAN_API_KEY), selecting the chain via the chainid query
-	// parameter (added by the fetcher for /v2/ bases).
-	switch chainID {
-	case 1, 56, 137, 42161, 10, 43114, 8453:
+	if etherscanV2Chains[chainID] {
 		return "https://api.etherscan.io/v2/api", "ETHERSCAN_API_KEY"
-	default:
-		// Keyless fallback: every seeded EVM chain carries a public
-		// ExplorerURL in the registry. Blockscout-family explorers
-		// expose the Etherscan-compatible API at <base>/api WITHOUT an
-		// API key, so history works out of the box for the long tail
-		// of chains. If the explorer is not API-compatible the fetch
-		// fails with the real upstream error (fail-closed, no fakes).
-		for _, c := range defaultEVMChains {
-			if c.ChainID == chainID && c.ExplorerURL != "" {
-				return strings.TrimRight(c.ExplorerURL, "/") + "/api", ""
-			}
-		}
-		return "", ""
 	}
+	// Keyless fallback: every seeded EVM chain carries a public ExplorerURL in
+	// the registry. Blockscout-family explorers expose the Etherscan-compatible
+	// API at <base>/api WITHOUT an API key, so history works out of the box for
+	// the long tail of chains. If the explorer is not API-compatible the fetch
+	// fails with the real upstream error (fail-closed, no fakes).
+	for _, c := range defaultEVMChains {
+		if c.ChainID == chainID && c.ExplorerURL != "" {
+			return strings.TrimRight(c.ExplorerURL, "/") + "/api", ""
+		}
+	}
+	return "", ""
+}
+
+// historySources returns the history backends for a chain, in the order they
+// should be tried. The Etherscan V2 entry is only included when a key is
+// actually configured: without one it can only answer "Missing/Invalid API
+// Key", and returning that as an empty history would be indistinguishable from
+// an address that has never transacted. When a chain has no configured source
+// at all, the registry explorer is still tried, so its real error surfaces.
+func historySources(chainID int64) []explorerHistorySource {
+	var out []explorerHistorySource
+	if etherscanV2Chains[chainID] && os.Getenv("ETHERSCAN_API_KEY") != "" {
+		out = append(out, explorerHistorySource{
+			etherscanV2: true,
+			baseURL:     "https://api.etherscan.io/v2/api",
+			apiKeyEnv:   "ETHERSCAN_API_KEY",
+		})
+	}
+	if host := keylessBlockscoutHosts[chainID]; host != "" {
+		out = append(out, explorerHistorySource{blockscoutV2: true, baseURL: host})
+	}
+	if base, keyEnv := chainExplorerAPI(chainID); base != "" {
+		if !etherscanV2Chains[chainID] {
+			out = append(out, explorerHistorySource{baseURL: base, apiKeyEnv: keyEnv})
+		}
+	}
+	return out
 }
 
 // chainCoinGeckoID maps an EVM chain id to the CoinGecko coin id used for price

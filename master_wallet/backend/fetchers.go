@@ -270,39 +270,97 @@ type TransactionHistory struct {
 	ChainID int64  `json:"chain_id"`
 }
 
-// FetchTransactionHistory queries an Etherscan-compatible explorer for the
-// real on-chain transaction history of an address.
+// FetchTransactionHistoryForChain reads the real on-chain transaction history
+// of an address, trying every configured history backend for the chain in
+// order. It returns the first successful answer; if all of them fail it
+// returns an error naming each backend and its real upstream message, so a
+// caller can never mistake a failure for "this address has no transactions".
+func FetchTransactionHistoryForChain(ctx context.Context, chainID int64, address string, limit int) ([]TransactionHistory, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	sources := historySources(chainID)
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("no transaction-history backend is configured for chain %d", chainID)
+	}
+	var failures []string
+	for _, src := range sources {
+		var (
+			txs []TransactionHistory
+			err error
+		)
+		switch {
+		case src.blockscoutV2:
+			txs, err = fetchBlockscoutV2(ctx, src.baseURL, chainID, address, limit)
+		case src.etherscanV2:
+			txs, err = fetchEtherscanTxList(ctx, src.baseURL, os.Getenv(src.apiKeyEnv), chainID, address, limit)
+		default:
+			apiKey := ""
+			if src.apiKeyEnv != "" {
+				apiKey = os.Getenv(src.apiKeyEnv)
+			}
+			txs, err = fetchEtherscanTxList(ctx, src.baseURL, apiKey, chainID, address, limit)
+		}
+		if err == nil {
+			return txs, nil
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", src.baseURL, err))
+	}
+	return nil, fmt.Errorf("transaction history unavailable for chain %d (%s)", chainID, strings.Join(failures, "; "))
+}
+
+// FetchTransactionHistory queries a specific Etherscan-compatible explorer for
+// the real on-chain transaction history of an address.
 func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address string, chainID int64) ([]TransactionHistory, error) {
 	if explorerAPI == "" {
 		return nil, fmt.Errorf("no explorer API configured for chain %d", chainID)
 	}
-	u := fmt.Sprintf("%s?module=account&action=txlist&address=%s&sort=desc&page=1&offset=50", explorerAPI, address)
-	if strings.Contains(explorerAPI, "/v2/") {
-		// Etherscan V2 multichain API selects the chain via query param.
+	return fetchEtherscanTxList(ctx, explorerAPI, apiKey, chainID, address, 50)
+}
+
+// explorerHTTPClient is shared by the history fetchers. The public explorers
+// reject requests with no User-Agent, so one is always sent.
+var explorerHTTPClient = &http.Client{Timeout: 20 * time.Second}
+
+const explorerUserAgent = "TigerWallet/1.0 (+https://tigerwallet.io)"
+
+// fetchEtherscanTxList reads history from an Etherscan-compatible
+// (module/action) endpoint. Returns the decoded rows.
+func fetchEtherscanTxList(ctx context.Context, baseURL, apiKey string, chainID int64, address string, limit int) ([]TransactionHistory, error) {
+	u := fmt.Sprintf("%s?module=account&action=txlist&address=%s&sort=desc&page=1&offset=%d",
+		baseURL, url.QueryEscape(address), limit)
+	if strings.Contains(baseURL, "/v2/") {
 		u += fmt.Sprintf("&chainid=%d", chainID)
 	}
 	if apiKey != "" {
-		u += "&apikey=" + apiKey
+		u += "&apikey=" + url.QueryEscape(apiKey)
 	}
-	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", explorerUserAgent)
+	req.Header.Set("Accept", "application/json")
+	resp, err := explorerHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	// result is an array on success but a STRING error detail on failure
-	// (e.g. Etherscan-family "Invalid API Key" when called keyless) —
-	// decode as RawMessage so the real upstream message is returned
-	// instead of an opaque unmarshal error.
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("explorer HTTP %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	// result is an array on success but a STRING error detail on failure (e.g.
+	// the Etherscan-family "Missing/Invalid API Key" when called keyless) —
+	// decode as RawMessage so the real upstream message is returned instead of
+	// an opaque unmarshal error.
 	var raw struct {
 		Status  string          `json:"status"`
 		Message string          `json:"message"`
 		Result  json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("explorer returned a non-JSON body: %s", truncateForError(body))
 	}
 	if raw.Status == "0" && raw.Message != "No transactions found" {
 		var resultStr string
@@ -312,22 +370,21 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 		return nil, fmt.Errorf("explorer API error: %s", raw.Message)
 	}
 	var rows []struct {
-		Hash          string `json:"hash"`
-		From          string `json:"from"`
-		To            string `json:"to"`
-		Value         string `json:"value"`
-		TimeStamp     string `json:"timeStamp"`
-		IsError       string `json:"isError"`
-		GasUsed       string `json:"gasUsed"`
-		Status        string `json:"status"`
-		Confirmations string `json:"confirmations"`
+		Hash      string `json:"hash"`
+		From      string `json:"from"`
+		To        string `json:"to"`
+		Value     string `json:"value"`
+		TimeStamp string `json:"timeStamp"`
+		IsError   string `json:"isError"`
+		GasUsed   string `json:"gasUsed"`
+		Status    string `json:"status"`
 	}
 	if len(raw.Result) > 0 && string(raw.Result) != "null" {
 		if err := json.Unmarshal(raw.Result, &rows); err != nil {
 			return nil, fmt.Errorf("explorer returned an unexpected result shape: %w", err)
 		}
 	}
-	out := []TransactionHistory{}
+	out := make([]TransactionHistory, 0, len(rows))
 	for _, t := range rows {
 		ts := int64(0)
 		fmt.Sscanf(t.TimeStamp, "%d", &ts)
@@ -342,6 +399,90 @@ func FetchTransactionHistory(ctx context.Context, explorerAPI, apiKey, address s
 			IsError: isErr,
 			GasUsed: t.GasUsed,
 			Status:  t.Status,
+			ChainID: chainID,
+		})
+	}
+	return out, nil
+}
+
+// blockscoutTx is the subset of the Blockscout v2 transaction shape that maps
+// onto TransactionHistory. Blockscout reports success/failure as a word and
+// the timestamp as RFC3339 rather than a Unix string.
+type blockscoutTx struct {
+	Hash string `json:"hash"`
+	From struct {
+		Hash string `json:"hash"`
+	} `json:"from"`
+	To *struct {
+		Hash string `json:"hash"`
+	} `json:"to"`
+	Value       string `json:"value"`
+	Status      string `json:"status"`
+	Result      string `json:"result"`
+	GasUsed     string `json:"gas_used"`
+	Timestamp   string `json:"timestamp"`
+	BlockNumber int64  `json:"block_number"`
+}
+
+// fetchBlockscoutV2 reads history from a Blockscout instance's keyless v2 REST
+// API.
+func fetchBlockscoutV2(ctx context.Context, host string, chainID int64, address string, limit int) ([]TransactionHistory, error) {
+	u := fmt.Sprintf("%s/api/v2/addresses/%s/transactions", strings.TrimRight(host, "/"), url.PathEscape(address))
+	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", explorerUserAgent)
+	req.Header.Set("Accept", "application/json")
+	resp, err := explorerHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("blockscout HTTP %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	var page struct {
+		Items []blockscoutTx `json:"items"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return nil, fmt.Errorf("blockscout returned a non-JSON body: %s", truncateForError(body))
+	}
+	out := make([]TransactionHistory, 0, len(page.Items))
+	for i, t := range page.Items {
+		if limit > 0 && i >= limit {
+			break
+		}
+		to := ""
+		if t.To != nil {
+			to = t.To.Hash
+		}
+		ts := int64(0)
+		if parsed, err := time.Parse(time.RFC3339, t.Timestamp); err == nil {
+			ts = parsed.Unix()
+		}
+		// Blockscout says "ok" / "error" in result and "success" / "failed" in
+		// status; either may be absent, in which case the tx is reported as
+		// unknown rather than being asserted to have succeeded.
+		status := t.Status
+		if status == "" {
+			status = t.Result
+		}
+		isErr := 0
+		switch strings.ToLower(status) {
+		case "error", "failed", "reverted":
+			isErr = 1
+		}
+		out = append(out, TransactionHistory{
+			Hash:    t.Hash,
+			From:    t.From.Hash,
+			To:      to,
+			Value:   t.Value,
+			Time:    ts,
+			IsError: isErr,
+			GasUsed: t.GasUsed,
+			Status:  status,
 			ChainID: chainID,
 		})
 	}

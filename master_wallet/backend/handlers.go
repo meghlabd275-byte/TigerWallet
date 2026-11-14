@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -1157,17 +1156,15 @@ func (svc *Service) GetTransactionHistory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "address required"})
 		return
 	}
-	base, keyEnv := chainExplorerAPI(chainID)
-	if base == "" {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no explorer configured for chain", "chain_id": chainID})
-		return
-	}
-	apiKey := os.Getenv(keyEnv)
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)
 	defer cancel()
-	txs, err := FetchTransactionHistory(ctx, base, apiKey, address, chainID)
+	// Try every configured history backend for the chain. A chain with no
+	// reachable backend answers 502 with the real upstream error rather than
+	// an empty list, which would be indistinguishable from an address that
+	// has never transacted.
+	txs, err := FetchTransactionHistoryForChain(ctx, chainID, address, 50)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "chain_id": chainID})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"address": address, "chain_id": chainID, "transactions": txs})
