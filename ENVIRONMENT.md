@@ -155,5 +155,9 @@ for:
   `tsc-node`; `TSC_GENESIS_SEED` fixes its genesis and `TSC_RPC_URL` points the
   wallet backends at it.
 - `project_party` — real on-chain launchpad via go-ethereum `ethclient`.
+- `go/full_fetchers` — real EVM JSON-RPC (`eth_getBalance`/`eth_call`/
+  `eth_sendRawTransaction`) plus public price APIs; no scaffold bodies remain.
+- `analytics/go` — event-ingestion and metric plane. Requires `DB_PASSWORD`;
+  database `tigerwallet_analytics_events` is provisioned by `database/init.sql`.
 
-See `GAPS.md` for the fetchers that remain scaffold-only (`go/full_fetchers`).
+See `docs/GAPS.md` for the consolidated gap register.

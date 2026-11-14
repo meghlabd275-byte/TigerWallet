@@ -15,7 +15,6 @@ import (
 	"os/signal"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -314,23 +313,57 @@ func (s *AnalyticsService) GetOverviewStats() (*OverviewStats, error) {
 
 	stats := &OverviewStats{}
 
-	// Total users
-	s.db.Model(&Event{}).Where("event_type = ?", "user_created").Count(&stats.TotalUsers)
+	// Each count is a real query; a failure is surfaced rather than
+	// silently reporting a zero.
+	if err := s.db.Model(&Event{}).Where("event_type = ?", "user_created").Count(&stats.TotalUsers).Error; err != nil {
+		return nil, fmt.Errorf("count users: %w", err)
+	}
 
-	// Active users 24h
-	s.db.Model(&Event{}).Where("timestamp > ?", dayAgo).Distinct("user_id").Count((*gorm.DB)(&stats.ActiveUsers24h)).(*gorm.DB).Count(&stats.ActiveUsers24h)
+	// Distinct active users require a subquery: Count() with Distinct()
+	// counts rows, not distinct values.
+	if err := s.db.Model(&Event{}).
+		Where("timestamp > ? AND user_id <> 0", dayAgo).
+		Distinct("user_id").
+		Count(&stats.ActiveUsers24h).Error; err != nil {
+		return nil, fmt.Errorf("active users 24h: %w", err)
+	}
 
-	// Active users 7d
-	s.db.Model(&Event{}).Where("timestamp > ?", weekAgo).Distinct("user_id").Count((*gorm.DB)(&stats.ActiveUsers7d)).(*gorm.DB).Count(&stats.ActiveUsers7d)
+	if err := s.db.Model(&Event{}).
+		Where("timestamp > ? AND user_id <> 0", weekAgo).
+		Distinct("user_id").
+		Count(&stats.ActiveUsers7d).Error; err != nil {
+		return nil, fmt.Errorf("active users 7d: %w", err)
+	}
 
-	// Total transactions
-	s.db.Model(&Event{}).Where("event_type IN ?", []string{"swap", "transfer", "buy", "sell"}).Count(&stats.TotalTransactions)
+	if err := s.db.Model(&Event{}).
+		Where("event_type IN ?", []string{"swap", "transfer", "buy", "sell"}).
+		Count(&stats.TotalTransactions).Error; err != nil {
+		return nil, fmt.Errorf("count transactions: %w", err)
+	}
 
-	// Volume 24h
-	s.GetMetricSum("volume", dayAgo, now).Then(func(v float64) { stats.Volume24h = v })
+	volume24h, err := s.GetMetricSum("volume", dayAgo, now)
+	if err != nil {
+		return nil, fmt.Errorf("volume 24h: %w", err)
+	}
+	stats.Volume24h = volume24h
 
-	// Volume 7d
-	s.GetMetricSum("volume", weekAgo, now).Then(func(v float64) { stats.Volume7d = v })
+	volume7d, err := s.GetMetricSum("volume", weekAgo, now)
+	if err != nil {
+		return nil, fmt.Errorf("volume 7d: %w", err)
+	}
+	stats.Volume7d = volume7d
+
+	revenue24h, err := s.GetMetricSum("revenue", dayAgo, now)
+	if err != nil {
+		return nil, fmt.Errorf("revenue 24h: %w", err)
+	}
+	stats.Revenue24h = revenue24h
+
+	revenue7d, err := s.GetMetricSum("revenue", weekAgo, now)
+	if err != nil {
+		return nil, fmt.Errorf("revenue 7d: %w", err)
+	}
+	stats.Revenue7d = revenue7d
 
 	return stats, nil
 }
@@ -359,8 +392,11 @@ func (s *AnalyticsService) GetUserActivity(days int) ([]UserActivity, error) {
 		switch event.EventType {
 		case "user_created":
 			activityMap[date].NewUsers++
-		case "login", "swap", "transfer":
 			activityMap[date].ActiveUsers++
+		case "login", "swap", "transfer", "buy", "sell":
+			activityMap[date].ActiveUsers++
+		}
+		switch event.EventType {
 		case "swap", "transfer", "buy", "sell":
 			activityMap[date].Transactions++
 		}

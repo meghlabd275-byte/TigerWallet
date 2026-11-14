@@ -1089,6 +1089,33 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Event-ingestion plane: accepts product events and metric samples and serves
+  # the aggregations built from them. This is the write-side counterpart to
+  # analytics-service (the read-side dashboard API above); they are separate
+  # services and separate databases so event volume cannot slow dashboards.
+  analytics-event-plane:
+    build:
+      context: ./analytics/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-analytics-event-plane
+    ports:
+      - "8013:9104"
+    environment:
+      - ANALYTICS_PORT=9104
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-tigerwallet}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - DB_NAME=tigerwallet_analytics_events
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   notification-service:
     build:
       context: ./go/notification_service

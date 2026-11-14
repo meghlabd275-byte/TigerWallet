@@ -138,6 +138,11 @@ CREATE DATABASE tigerwallet_leaderboard;
 CREATE DATABASE tigerwallet_fiat;
 CREATE DATABASE tigerwallet_notifications;
 
+-- Event-ingestion plane (analytics/go): the write-side counterpart to the
+-- read-side dashboard API in go/analytics_service. Kept separate so the
+-- high-volume event writes cannot affect dashboard query latency.
+CREATE DATABASE tigerwallet_analytics_events;
+
 -- In-house KYC service database (security/rust/kyc_service).
 -- The service owns its schema and creates the applications, watchlist and
 -- audit tables on boot; this only provides the database.
