@@ -1882,3 +1882,22 @@
   (wallet_api, master_wallet/backend, admin/go, super_admin/go, go/api_gateway)
   while the stack runs 71 services; deploy-staging/deploy-production jobs are
   `echo` placeholders. CI does not build most of the stack.
+
+## REPOSITORY POLICY (2026-11-13, owner order — supersedes all earlier notes)
+- ALWAYS commit and push directly to `main` (origin/main). Never open a PR.
+  Never work on a side branch. If a PR exists, merge it into main.
+- Language assignment is fixed and must be respected when adding or rewriting
+  any component:
+    * C++   — latency-critical path (SuperAdmin control plane, signing core)
+    * Rust  — safety/security-critical services + low-latency fetchers
+    * Go    — distributed, high-concurrency, globally loaded backends
+    * Python— ML / AI only
+    * Next.js + React + TypeScript (.tsx) + Tailwind CSS — all frontends
+- No duplicates and no conflicts. One canonical implementation per concern;
+  delete the loser rather than keeping a parallel copy.
+- Production-grade only: no mocks, no demos, no simulation, no fake logic, no
+  hardcoded data, no skeletons, no placeholder UI. If something cannot be done
+  for real, it fails closed with an explicit error — it never fabricates.
+- Security is non-negotiable: no SQL injection (parameterised queries only),
+  no XSS (no unsanitised innerHTML), no cache poisoning, no credential leaks,
+  no auth bypass. All input validated; all secrets from env, fail-closed.
