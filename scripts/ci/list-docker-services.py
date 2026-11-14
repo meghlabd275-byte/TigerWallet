@@ -80,6 +80,23 @@ def resolve(compose_path):
         if df:
             dockerfile = df.group(1)
 
+        # Build arguments are part of the image identity: the shared
+        # root-context Go Dockerfile selects which module it compiles via
+        # TARGET_MODULE, so dropping them would silently build the wrong
+        # binary (the default) into a named service image.
+        build_args = {}
+        args_block = re.search(r"^\s{6,}args:\s*$", block, re.M)
+        if args_block:
+            for line in block[args_block.end():].splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                arg = re.match(r"^\s{8,}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$", line)
+                if not arg:
+                    break
+                value = arg.group(2).strip().strip("'\"")
+                build_args[arg.group(1)] = value
+
         abs_context = os.path.normpath(os.path.join(root, context))
         rel_context = os.path.relpath(abs_context, os.getcwd())
         abs_dockerfile = os.path.normpath(os.path.join(abs_context, dockerfile))
@@ -110,6 +127,7 @@ def resolve(compose_path):
                 "context": rel_context,
                 "dockerfile": os.path.relpath(abs_dockerfile, abs_context),
                 "image": name,
+                "build_args": ["%s=%s" % (k, v) for k, v in sorted(build_args.items())],
             }
         )
     return found

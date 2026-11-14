@@ -374,6 +374,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Test the build-matrix generator
+        run: python3 scripts/ci/test_list_docker_services.py
       - name: Build matrix from compose files
         id: matrix
         run: |
@@ -426,6 +428,7 @@ jobs:
         with:
           context: ${{ matrix.service.context }}
           file: ${{ matrix.service.context }}/${{ matrix.service.dockerfile }}
+          build-args: ${{ join(matrix.service.build_args, '\n') }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
