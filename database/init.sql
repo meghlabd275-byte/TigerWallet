@@ -80,6 +80,14 @@ CREATE DATABASE wl_userwallet;
 -- WL-UserWallet schema is managed by the service's own migrations on boot
 -- (users, wallets with encrypted_seed, transactions, address_book).
 
+-- Standalone WL-Admin database (independent of TigerWallet cloud).
+-- wl-admin-api (:8456) points DATABASE_URL at this database; without it the
+-- container exits at startup with "database wl_admin does not exist".
+CREATE DATABASE wl_admin;
+\connect wl_admin;
+-- WL-Admin schema is managed by the service's own migrations on boot
+-- (tenants, tenant_users, audit_log).
+
 -- Standalone WL-MasterWallet database (independent of TigerWallet cloud).
 CREATE DATABASE wl_masterwallet;
 \connect wl_masterwallet;
