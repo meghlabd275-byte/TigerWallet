@@ -1,11 +1,14 @@
-# The Go backend images build from the repository root so they can see the
-# sibling chainsdk module. Keep the context small: only the three Go modules
-# that participate in that dependency graph are needed.
+# Images that build from the repository root need their sources allowlisted
+# here, because the default is to exclude everything.
 *
+# The Go backends build from the root so they can see the sibling chainsdk
+# module.
 !go/chainsdk
 !go/wallet_api
 !master_wallet/backend
 !deployments/docker/Dockerfile.go-backend
+# The AI prediction service builds from the root for the same reason.
+!ai_layer/python
 
 # Build output and toolchain caches.
 **/target
