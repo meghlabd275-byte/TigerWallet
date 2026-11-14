@@ -114,7 +114,7 @@ func TestBase58CheckEncoding(t *testing.T) {
 	hash := make([]byte, 20)
 	hash[0] = 0x00
 	hash[19] = 0xff
-	addr := base58CheckEncode(0x00, hash)
+	addr := base58CheckEncode(append([]byte{0x00}, hash...))
 	if len(addr) < 26 || len(addr) > 35 {
 		t.Errorf("base58check address length invalid: %d (%s)", len(addr), addr)
 	}

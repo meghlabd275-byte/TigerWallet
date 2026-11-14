@@ -35,12 +35,12 @@ func TestNonEVMParityWithChainsdk(t *testing.T) {
 			},
 			{
 				name: "litecoin-version-byte",
-				mw:   func() (string, error) { return mwUTXOAddressFromSeed(seed, "m/44'/2'/0'/0/0", 0x30) },
+				mw:   func() (string, error) { return mwUTXOAddressFromSeed(seed, "m/44'/2'/0'/0/0", []byte{0x30}) },
 				sdk:  func() (string, error) { return chainsdk.UTXOAddressFromSeed(seed, "m/44'/2'/0'/0/0", "litecoin") },
 			},
 			{
 				name: "dogecoin-version-byte",
-				mw:   func() (string, error) { return mwUTXOAddressFromSeed(seed, "m/44'/3'/0'/0/0", 0x1e) },
+				mw:   func() (string, error) { return mwUTXOAddressFromSeed(seed, "m/44'/3'/0'/0/0", []byte{0x1e}) },
 				sdk:  func() (string, error) { return chainsdk.UTXOAddressFromSeed(seed, "m/44'/3'/0'/0/0", "dogecoin") },
 			},
 			{
@@ -81,8 +81,8 @@ func TestNonEVMParityWithChainsdk(t *testing.T) {
 			t.Logf("base58Encode agree: %s", got)
 		}
 
-		// MW takes the version byte separately; chainsdk expects it prepended.
-		if got, want := base58CheckEncode(0x00, hash20), chainsdk.Base58CheckEncode(append([]byte{0x00}, hash20...)); got != want {
+		// Both take the version prefix already prepended to the payload.
+		if got, want := base58CheckEncode(append([]byte{0x00}, hash20...)), chainsdk.Base58CheckEncode(append([]byte{0x00}, hash20...)); got != want {
 			t.Errorf("base58CheckEncode: mw=%q sdk=%q", got, want)
 		} else {
 			t.Logf("base58CheckEncode agree: %s", got)

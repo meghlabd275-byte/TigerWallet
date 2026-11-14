@@ -960,19 +960,16 @@ func (a *AutoSigner) signAndBroadcast(ctx context.Context, tx *pendingAutoTx) (s
 	// all 23 cosmos-family chains route to the cosmos signer rather than only
 	// rows whose blockchain column literally says "cosmos".
 	family := nonEVMFamilyFor(chainID, tx.Blockchain)
-	switch family {
-	case "solana", "bitcoin", "btc", "litecoin", "ltc", "cosmos":
+	if nonEVMHasSigner(family) {
 		return a.signNonEVM(tx, seed, chainID, derivationPath, family)
-	default:
-		// Any other family is a non-EVM chain with no signer here. It must not
-		// fall through to the EVM path below: that would derive a secp256k1
-		// key for a network which is not EVM-encoded and broadcast a payload
-		// the network cannot accept. Refuse instead of sending it.
-		if isNonEVMChain(chainID) {
-			return "", "approved", fmt.Errorf(
-				"unsupported non-EVM blockchain %q (family %q needs a chain-specific signer)",
-				tx.Blockchain, family)
-		}
+	}
+	// A seeded non-EVM chain with no signer must not fall through to the EVM
+	// path below: that would derive a secp256k1 key for a network which is not
+	// EVM-encoded and broadcast a payload the network cannot accept.
+	if isNonEVMChain(chainID) {
+		return "", "approved", fmt.Errorf(
+			"unsupported non-EVM blockchain %q (family %q needs a chain-specific signer)",
+			tx.Blockchain, family)
 	}
 
 	// EVM path (default): real nonce + EIP-1559 fees + local secp256k1 sign +
@@ -1052,21 +1049,28 @@ func (a *AutoSigner) signNonEVM(tx *pendingAutoTx, seed []byte, chainID int64, d
 		Value:          tx.Amount,
 		TokenAddress:   tx.TokenAddress,
 	}
+	// Cardano is UTXO-shaped but uses its own ledger fee model and builder.
+	if family == "cardano" {
+		return a.svc.autoSignCardano(seed, req, family)
+	}
+	// The remaining UTXO families (bitcoin, litecoin, dogecoin, dash, raven,
+	// zcash, ...) share one signer; the chain table supplies the version prefix,
+	// the indexer and the fee policy, and an unlisted chain fails closed there.
+	if _, ok := utxoParamsFor(family, chainID); ok {
+		return a.svc.autoSignUTXO(seed, req, family)
+	}
 	switch family {
 	case "solana":
 		return a.svc.autoSignSolana(seed, req)
-	case "bitcoin", "btc":
-		return a.svc.autoSignBitcoin(seed, req)
-	case "litecoin", "ltc":
-		return a.svc.autoSignUTXO(seed, req, "litecoin")
 	case "cosmos":
 		return a.svc.autoSignCosmos(seed, req)
-	case "tron", "aptos", "sui", "near", "algorand", "stellar", "ripple",
-		"vechain", "tezos", "multiversx", "elrond":
-		// Chains whose builders live in the shared chainsdk module (the same
-		// one go/wallet_api uses), so there is a single implementation per chain.
-		return a.svc.autoSignChainSDK(seed, req, family)
 	default:
+		// Account-model families whose builders live in the shared chainsdk
+		// module (the same one go/wallet_api uses), so there is a single
+		// implementation per chain.
+		if chainsdkFamilySupported(family) {
+			return a.svc.autoSignChainSDK(seed, req, family)
+		}
 		return "", "approved", fmt.Errorf("unsupported non-EVM blockchain %q (family %q needs a chain-specific signer)", tx.Blockchain, family)
 	}
 }
@@ -1078,12 +1082,9 @@ func nonEVMFamilyFor(chainID int64, blockchain string) string {
 	if chainID != 0 {
 		for _, c := range defaultNonEVMChains {
 			if c.ChainID == chainID {
-				switch c.ChainType {
-				case "cosmos", "bitcoin", "litecoin", "solana":
-					return c.ChainType
-				default:
-					return c.ChainType // known-but-unsupported: explicit fail-closed downstream
-				}
+				// The seeded chain_type is authoritative; a chain with no signer
+				// is rejected downstream by nonEVMHasSigner.
+				return strings.ToLower(c.ChainType)
 			}
 		}
 	}
@@ -1097,6 +1098,35 @@ func nonEVMFamilyFor(chainID int64, blockchain string) string {
 		return "litecoin"
 	}
 	return b
+}
+
+// chainsdkFamilySupported reports whether the shared chainsdk module has a
+// sign-and-broadcast builder for the family. A family absent from this list is
+// rejected with an explicit error rather than signed with the wrong scheme.
+func chainsdkFamilySupported(family string) bool {
+	switch strings.ToLower(family) {
+	case "tron", "aptos", "sui", "near", "algorand", "stellar", "pi",
+		"ripple", "xrp", "vechain", "tezos", "multiversx", "elrond":
+		return true
+	default:
+		return false
+	}
+}
+
+// nonEVMHasSigner reports whether the signer has a real broadcast path for the
+// family. UTXO families are resolved through the chain table so every listed
+// chain (and its registry id) is covered; the account-model families come from
+// chainsdkFamilySupported.
+func nonEVMHasSigner(family string) bool {
+	f := strings.ToLower(family)
+	switch f {
+	case "solana", "cosmos", "cardano":
+		return true
+	}
+	if _, ok := utxoParamsFor(f, 0); ok {
+		return true
+	}
+	return chainsdkFamilySupported(f)
 }
 
 // isNonEVMChain reports whether the chain id belongs to the seeded non-EVM

@@ -1465,7 +1465,7 @@ func (svc *Service) autoSignBitcoin(seed []byte, req *AutoSignRequest) (string, 
 func (svc *Service) autoSignUTXO(seed []byte, req *AutoSignRequest, chainType string) (string, string, error) {
 	params, ok := utxoParamsFor(chainType, req.ChainID)
 	if !ok {
-		return "", "failed", fmt.Errorf("UTXO chain %q not supported for auto-sign (needs a chain-specific signer; supported: bitcoin, litecoin)", chainType)
+		return "", "failed", errUnsupportedUTXO(chainType)
 	}
 	derivationPath := req.DerivationPath
 	if derivationPath == "" {
@@ -1483,13 +1483,17 @@ func (svc *Service) autoSignUTXO(seed []byte, req *AutoSignRequest, chainType st
 		// Unable to hash locally (malformed tx) — do not broadcast garbage.
 		return "", "failed", fmt.Errorf("%s tx hash failed", params.name)
 	}
-	// Broadcast the signed raw transaction to the chain's esplora relay and
-	// return the real on-chain txid (same contract as the EVM "broadcast" status).
-	broadcastHash, err := broadcastEsploraTx(params.esploraBase, rawTx)
+	// Relay the signed raw transaction through the chain's own indexer and
+	// return the real on-chain txid (same contract as the EVM "broadcast"
+	// status). A relay failure is reported as such; the txid is never faked.
+	idx, err := params.indexer()
+	if err != nil {
+		return "", "failed", fmt.Errorf("%s indexer: %w", params.name, err)
+	}
+	broadcastHash, err := idx.Broadcast(rawTx)
 	if err != nil {
 		return "", "broadcast_failed", err
 	}
-	_ = txHash
 	return broadcastHash, "broadcast", nil
 }
 

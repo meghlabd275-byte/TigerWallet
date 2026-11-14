@@ -192,6 +192,12 @@ func uintToBe(v uint64, size int) []byte {
 // VETBuildSend builds a transfer tx: [chainTag u8, blockRef8B, exp u32,
 // clauses, gasPriceCoef u8, gas u64, dependsOn(empty), nonce]. BlockRef is
 // fetched properly from the node /blocks/best; fail closed on error.
+// vetMainnetChainTag is the last byte of the VeChain mainnet genesis block id
+// (0x00000000851caf3cfdb6e899cf5958bfb1ac3413d346d43539627e6be7ec1b4a).
+// The protocol requires it in every transaction body so a signature cannot be
+// replayed on a testnet or a different chain.
+const vetMainnetChainTag = byte(0x4a)
+
 func VETBuildSend(ctx context.Context, seed []byte, path, endpoint, to string, atomic uint64, gas uint64, broadcast bool) (string, string, error) {
 	priv, err := HDDerive(seed, path)
 	if err != nil {
@@ -217,7 +223,11 @@ func VETBuildSend(ctx context.Context, seed []byte, path, endpoint, to string, a
 		return "", "", errors.New("vechain block id malformed")
 	}
 	blockRef := idBytes[:8]
-	chainTag := byte(0x4a) // mainnet vest exo tag? chain genesis tag for mainnet is variable—the correct one for mainnet = computed from genesis id below; use fixed mainnet constant
+	// The protocol requires the last byte of the chain's genesis block id.
+	// VeChain mainnet's genesis id is
+	// 0x00000000851caf3cfdb6e899cf5958bfb1ac3413d346d43539627e6be7ec1b4a,
+	// so the tag is 0x4a.
+	chainTag := vetMainnetChainTag
 
 	toDear := rlpBytes(toAddr)
 	value := rlpBytes(uintToBe(atomic, 8))

@@ -154,28 +154,76 @@ func (svc *Service) autoSignChainSDK(seed []byte, req *AutoSignRequest, chainTyp
 		path = defaultDerivationForChain(req.ChainID)
 	}
 
+	// Each account-model family needs live chain state (nonce, sequence,
+	// round window, block reference). Those values are read from the chain's
+	// own node here; a node that cannot answer fails the transfer closed.
+	fromAddr, addrErr := chainsdkAddressFor(chainType, seed, path)
+	if addrErr != nil {
+		return "", "failed", addrErr
+	}
+
 	var txHash string
 	switch strings.ToLower(chainType) {
 	case "tron":
 		_, txHash, err = chainsdk.TronBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), true)
-	case "aptos":
-		_, txHash, err = chainsdk.AptosBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), 0, 0, 100, 0, 0, true)
 	case "sui":
 		_, txHash, err = chainsdk.SuiBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), true)
-	case "near":
-		_, txHash, err = chainsdk.NearBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits, chainsdk.NearParams{}, true)
-	case "algorand":
-		_, txHash, err = chainsdk.AlgoBuildSend(ctx, seed, path, endpoint, "", req.ToAddress, chainsdk.AlgoBuildRequest{Amount: baseUnits.Uint64()}, true)
-	case "stellar":
-		_, txHash, err = chainsdk.StellarBuildSend(ctx, seed, path, endpoint, chainType, req.ToAddress, baseUnits.Int64(), 0, 100, true)
 	case "ripple":
 		_, txHash, err = chainsdk.RippleBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), nil, true)
 	case "vechain":
-		_, txHash, err = chainsdk.VETBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), 0, true)
+		_, txHash, err = chainsdk.VETBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), vetTransferGas, true)
+	case "aptos":
+		var seq uint64
+		if seq, err = aptosSequence(ctx, endpoint, fromAddr); err != nil {
+			return "", "failed", err
+		}
+		_, txHash, err = chainsdk.AptosBuildSend(ctx, seed, path, endpoint, req.ToAddress,
+			baseUnits.Uint64(), seq, aptosMaxGas, aptosGasPrice, 0, 1, true)
+	case "near":
+		var params chainsdk.NearParams
+		if params, err = nearSendParams(ctx, endpoint, fromAddr, nearPublicKey(seed, path)); err != nil {
+			return "", "failed", err
+		}
+		_, txHash, err = chainsdk.NearBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits, params, true)
+	case "algorand":
+		var genesis string
+		var first, last, fee uint64
+		if genesis, first, last, fee, err = algoTxParams(ctx, endpoint); err != nil {
+			return "", "failed", err
+		}
+		_, txHash, err = chainsdk.AlgoBuildSend(ctx, seed, path, endpoint, algoToken(),
+			req.ToAddress, chainsdk.AlgoBuildRequest{
+				GenesisHashB64: genesis, Fee: fee, FirstValid: first, LastValid: last,
+				Amount: baseUnits.Uint64(),
+			}, true)
+	case "stellar", "pi":
+		var seq uint64
+		if seq, err = stellarSequence(ctx, endpoint, fromAddr); err != nil {
+			return "", "failed", err
+		}
+		_, txHash, err = chainsdk.StellarBuildSend(ctx, seed, path, endpoint, chainType, req.ToAddress,
+			baseUnits.Int64(), seq, stellarBaseFee, true)
 	case "tezos":
-		_, txHash, err = chainsdk.TezosBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.Uint64(), 0, 0, 0, 0, true)
+		// A bare transfer from an account whose manager key has never been
+		// revealed is rejected by the network; the reveal must be forged in
+		// the same batch. Report that precisely instead of broadcasting an
+		// operation that cannot succeed.
+		managerKey, mkErr := tezosManagerKey(ctx, endpoint, fromAddr)
+		if mkErr != nil {
+			return "", "failed", mkErr
+		}
+		if managerKey == "" {
+			return "", "failed", fmt.Errorf("tezos account %s has never revealed its manager key; a reveal operation must be forged before it can send", fromAddr)
+		}
+		var counter uint64
+		if counter, err = tezosCounter(ctx, endpoint, fromAddr); err != nil {
+			return "", "failed", err
+		}
+		_, txHash, err = chainsdk.TezosBuildSend(ctx, seed, path, endpoint, req.ToAddress,
+			baseUnits.Uint64(), tezosRevealFee, counter, tezosGasLimit, tezosStorageLimit, true)
 	case "multiversx", "elrond":
-		_, txHash, err = chainsdk.MultiversXBuildSend(ctx, seed, path, endpoint, req.ToAddress, baseUnits.String(), true)
+		_, txHash, err = chainsdk.MultiversXBuildSend(ctx, seed, path, endpoint, req.ToAddress,
+			baseUnits.String(), true)
 	default:
 		return "", "failed", fmt.Errorf("non-EVM chain %q has no broadcast builder in the shared SDK; fail-closed rather than fabricating a hash", chainType)
 	}

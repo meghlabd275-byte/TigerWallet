@@ -13,7 +13,6 @@ package main
 // for Ed25519. No external btcd dependency (avoids Go version conflicts).
 
 import (
-	"crypto/ecdsa"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -134,12 +133,12 @@ func mwSolanaSign(seed []byte, derivationPath, message string) (sig, pub []byte,
 // mwBTCAddressFromSeed derives a Bitcoin mainnet P2PKH address from a seed.
 // P2PKH = base58check(0x00 || RIPEMD160(SHA256(compressed_pubkey)))
 func mwBTCAddressFromSeed(seed []byte, derivationPath string) (string, error) {
-	return mwUTXOAddressFromSeed(seed, derivationPath, 0x00)
+	return mwUTXOAddressFromSeed(seed, derivationPath, []byte{0x00})
 }
 
 // mwUTXOAddressFromSeed derives a legacy P2PKH address for any UTXO-family
 // chain (the version byte is the only per-chain difference).
-func mwUTXOAddressFromSeed(seed []byte, derivationPath string, version byte) (string, error) {
+func mwUTXOAddressFromSeed(seed []byte, derivationPath string, version []byte) (string, error) {
 	privKey, err := DerivePrivateKeyFromPath(seed, derivationPath)
 	if err != nil {
 		return "", err
@@ -150,7 +149,9 @@ func mwUTXOAddressFromSeed(seed []byte, derivationPath string, version byte) (st
 	hasher := ripemd160.New()
 	hasher.Write(sha[:])
 	hash160 := hasher.Sum(nil)
-	return base58CheckEncode(version, hash160), nil
+	// Version prefixes are 1-2 bytes (Zcash is 0x1cb8); prepend the whole
+	// prefix before the base58check payload.
+	return base58CheckEncode(append(append([]byte{}, version...), hash160...)), nil
 }
 
 // ----------------------------------------------------------------------------
@@ -202,44 +203,82 @@ func mwBTCSignTx(seed []byte, derivationPath, toAddress, valueStr string) (strin
 	return mwUTXOSignTx(seed, derivationPath, toAddress, valueStr, p)
 }
 
-// mwUTXOSignTx is the chain-parameterized form of mwBTCSignTx: identical
-// legacy P2PKH signing, per-chain esplora endpoint + address version + fee.
+// mwUTXOSignTx builds and signs a real transfer on any UTXO-family chain.
+//
+// The sighash implementation lives in the shared chainsdk module so the
+// MasterWallet, go/wallet_api and the SDKs cannot drift: chainsdk.UTXOSign
+// covers the standard double-SHA256 SIGHASH_ALL family and the BCH-descendant
+// BIP-143 SIGHASH_ALL|FORKID family, and chainsdk.ZECSign covers Zcash's
+// Sapling v4 / ZIP-243 sighash. This function only selects the signer, feeds
+// it the real UTXOs from the chain's indexer, and returns the raw signed
+// transaction together with its locally computed txid.
 func mwUTXOSignTx(seed []byte, derivationPath, toAddress, valueStr string, p utxoChainParams) (string, string, error) {
-	privKey, err := DerivePrivateKeyFromPath(seed, derivationPath)
+	idx, err := p.indexer()
 	if err != nil {
-		return "", "", fmt.Errorf("%s key derivation: %w", p.name, err)
+		return "", "", fmt.Errorf("%s indexer: %w", p.name, err)
 	}
 	fromAddr, err := mwUTXOAddressFromSeed(seed, derivationPath, p.p2pkhVersion)
 	if err != nil {
 		return "", "", fmt.Errorf("%s from-address: %w", p.name, err)
 	}
-	utxos, err := fetchEsploraUTXOs(p.esploraBase, fromAddr)
+	utxos, err := idx.ListUTXOs(fromAddr)
 	if err != nil {
 		return "", "", fmt.Errorf("%s UTXO fetch: %w", p.name, err)
 	}
 	if len(utxos) == 0 {
-		return "", "", fmt.Errorf("no UTXOs for %s", fromAddr)
+		return "", "", fmt.Errorf("no confirmed UTXOs for %s on %s", fromAddr, p.name)
 	}
-	valueSat, ok := new(big.Int).SetString(valueStr, 10)
-	if !ok {
-		return "", "", fmt.Errorf("invalid BTC value: %s", valueStr)
+	valueSat, ok := new(big.Int).SetString(strings.TrimSpace(valueStr), 10)
+	if !ok || valueSat.Sign() <= 0 {
+		return "", "", fmt.Errorf("invalid %s value %q", p.name, valueStr)
 	}
-	fee := big.NewInt(p.feeSat)
-	totalNeeded := new(big.Int).Add(valueSat, fee)
-	var selectedUTXOs []btcUTXO
+
+	// Fee is derived from the real serialized size of the inputs we select.
+	// A single-input estimate picks the UTXO set, then the fee is recomputed
+	// against the selected input count so multi-input sweeps stay relayable.
+	fee := p.feeForSize(estimateUTXOTxSize(1, p.sighash))
+	totalNeeded := new(big.Int).Add(valueSat, big.NewInt(fee))
+
+	selected := make([]btcUTXO, 0, len(utxos))
 	selectedValue := big.NewInt(0)
 	for _, u := range utxos {
-		selectedUTXOs = append(selectedUTXOs, u)
+		selected = append(selected, u)
 		selectedValue.Add(selectedValue, u.Value)
 		if selectedValue.Cmp(totalNeeded) >= 0 {
 			break
 		}
 	}
 	if selectedValue.Cmp(totalNeeded) < 0 {
-		return "", "", fmt.Errorf("insufficient UTXOs: have %s need %s", selectedValue.String(), totalNeeded.String())
+		return "", "", fmt.Errorf("insufficient %s UTXOs: have %s need %s", p.name, selectedValue.String(), totalNeeded.String())
+	}
+	fee = p.feeForSize(estimateUTXOTxSize(int64(len(selected)), p.sighash))
+	totalNeeded = new(big.Int).Add(valueSat, big.NewInt(fee))
+	if selectedValue.Cmp(totalNeeded) < 0 {
+		return "", "", fmt.Errorf("insufficient %s UTXOs after fee adjustment: have %s need %s", p.name, selectedValue.String(), totalNeeded.String())
 	}
 	change := new(big.Int).Sub(selectedValue, totalNeeded)
-	rawTx, err := buildSignBTCP2PKH(privKey, selectedUTXOs, toAddress, valueSat, change, fromAddr)
+
+	inputs := make([]chainsdk.UTXOInput, 0, len(selected))
+	for _, u := range selected {
+		// The ForkID and Zcash sighashes commit to each input's amount, so the
+		// value travels with the input; the legacy sighash ignores it.
+		inputs = append(inputs, chainsdk.UTXOInput{
+			TxID:     u.TxID,
+			Vout:     u.Vout,
+			Satoshis: u.Value.Int64(),
+		})
+	}
+	outputs := []chainsdk.UTXOOutput{{Address: toAddress, AmountSat: valueSat.Int64()}}
+	if change.Sign() > 0 {
+		outputs = append(outputs, chainsdk.UTXOOutput{Address: fromAddr, AmountSat: change.Int64()})
+	}
+
+	var rawTx string
+	if p.sighash == "zcash" {
+		rawTx, err = chainsdk.ZECSign(seed, derivationPath, inputs, outputs)
+	} else {
+		rawTx, err = chainsdk.UTXOSign(seed, derivationPath, p.name, inputs, outputs)
+	}
 	if err != nil {
 		return "", "", fmt.Errorf("%s tx build+sign: %w", p.name, err)
 	}
@@ -250,171 +289,30 @@ func mwUTXOSignTx(seed []byte, derivationPath, toAddress, valueStr string, p utx
 	return rawTx, txHash, nil
 }
 
+// estimateUTXOTxSize estimates the serialized size of a 1-2 output P2PKH
+// transaction with the given number of inputs, in bytes. It is used only to
+// price the fee; the real transaction is built and signed by chainsdk.
+func estimateUTXOTxSize(inputs int64, sighash string) int64 {
+	if inputs < 1 {
+		inputs = 1
+	}
+	// version(4) + count(1) + inputs*(36 outpoint + 1 scriptlen + 108 scriptSig + 4 sequence)
+	// + count(1) + 2*(8 value + 1 scriptlen + 25 P2PKH) + locktime(4)
+	const perInput = 36 + 1 + 108 + 4
+	size := int64(4+1+1+4) + inputs*perInput + 2*(8+1+25)
+	if sighash == "zcash" {
+		// Zcash v4 adds versionGroupId(4), expiryHeight(4), valueBalance(8)
+		// and the empty shielded-bundle counts(2).
+		size += 18
+	}
+	return size
+}
+
 // btcUTXO represents an unspent transaction output from the blockstream API.
 type btcUTXO struct {
 	TxID  string
 	Vout  uint32
 	Value *big.Int
-}
-
-// fetchBTCUTXOs fetches UTXOs for a Bitcoin address from blockstream.info API.
-func fetchBTCUTXOs(address string) ([]btcUTXO, error) {
-	return fetchEsploraUTXOs("https://blockstream.info/api", address)
-}
-
-// fetchEsploraUTXOs fetches confirmed UTXOs for an address from any
-// esplora-compatible API (blockstream.info, litecoinspace.org, or an
-// operator-hosted esplora instance via *_ESPLORA_URL env overrides).
-func fetchEsploraUTXOs(esploraBase, address string) ([]btcUTXO, error) {
-	url := strings.TrimRight(esploraBase, "/") + "/address/" + address + "/utxo"
-	resp, err := httpGet(url)
-	if err != nil {
-		return nil, err
-	}
-	if len(resp) == 0 || string(resp) == "[]" {
-		return nil, nil
-	}
-	var raw []struct {
-		TxID   string `json:"txid"`
-		Vout   int    `json:"vout"`
-		Value  int64  `json:"value"`
-		Status struct {
-			Confirmed bool `json:"confirmed"`
-		} `json:"status"`
-	}
-	if err := jsonUnmarshal(resp, &raw); err != nil {
-		return nil, err
-	}
-	utxos := make([]btcUTXO, 0, len(raw))
-	for _, r := range raw {
-		if !r.Status.Confirmed {
-			continue
-		}
-		utxos = append(utxos, btcUTXO{
-			TxID:  r.TxID,
-			Vout:  uint32(r.Vout),
-			Value: big.NewInt(r.Value),
-		})
-	}
-	return utxos, nil
-}
-
-// buildSignBTCP2PKH constructs and signs a legacy Bitcoin P2PKH transaction.
-// Uses legacy SIGHASH_ALL. Returns the raw signed transaction hex.
-func buildSignBTCP2PKH(privKey *ecdsa.PrivateKey, utxos []btcUTXO, toAddress string, value, change *big.Int, fromAddr string) (string, error) {
-	pubKeyBytes := crypto.CompressPubkey(&privKey.PublicKey)
-	sha := sha256.Sum256(pubKeyBytes)
-	hasher := ripemd160.New()
-	hasher.Write(sha[:])
-	hash160 := hasher.Sum(nil)
-
-	// P2PKH subscript (the script used for signing): OP_DUP OP_HASH160 <h160> OP_EQUALVERIFY OP_CHECKSIG
-	subscript := buildP2PKHScript(hash160)
-
-	// Build the base transaction (with empty scriptSigs for signing).
-	var tx bytesBuffer
-	tx.writeUint32(1) // version
-	tx.writeVarInt(uint64(len(utxos)))
-	for _, u := range utxos {
-		tx.writeBytes(parseHexReverse(u.TxID)) // txid reversed (LE)
-		tx.writeUint32(u.Vout)
-		tx.writeVarInt(0) // empty scriptSig for signing
-		tx.writeUint32(0xFFFFFFFF)
-	}
-	numOutputs := 1
-	if change.Sign() > 0 {
-		numOutputs = 2
-	}
-	tx.writeVarInt(uint64(numOutputs))
-	pkScriptTo := buildP2PKHOutputScript(toAddress)
-	tx.writeUint64(uint64(value.Int64()))
-	tx.writeVarInt(uint64(len(pkScriptTo)))
-	tx.writeBytes(pkScriptTo)
-	if change.Sign() > 0 {
-		pkScriptChange := buildP2PKHOutputScript(fromAddr)
-		tx.writeUint64(uint64(change.Int64()))
-		tx.writeVarInt(uint64(len(pkScriptChange)))
-		tx.writeBytes(pkScriptChange)
-	}
-	tx.writeUint32(0) // locktime
-
-	// Sign each input: for legacy SIGHASH_ALL, replace input i's scriptSig with
-	// the subscript, zero all others, append SIGHASH_ALL (4 bytes LE), double-SHA256.
-	sigs := make([][]byte, len(utxos))
-	for i := range utxos {
-		// Build preimage: copy base tx, set input i's scriptSig = subscript.
-		preimage := buildBTCSignPreimage(utxos, numOutputs, value, change, pkScriptTo, fromAddr, subscript, i)
-		sighash := doubleSHA256(preimage)
-		sig, err := crypto.Sign(sighash, privKey)
-		if err != nil {
-			return "", fmt.Errorf("BTC sign input %d: %w", i, err)
-		}
-		sigs[i] = append(sig, 0x01) // append SIGHASH_ALL
-	}
-
-	// Build the final transaction with real scriptSigs = <sig> <pubkey>.
-	var finalTx bytesBuffer
-	finalTx.writeUint32(1)
-	finalTx.writeVarInt(uint64(len(utxos)))
-	for i, u := range utxos {
-		finalTx.writeBytes(parseHexReverse(u.TxID))
-		finalTx.writeUint32(u.Vout)
-		// scriptSig = PUSH <sig> PUSH <pubkey>
-		scriptSig := make([]byte, 0, 1+len(sigs[i])+1+len(pubKeyBytes))
-		scriptSig = append(scriptSig, byte(len(sigs[i])))
-		scriptSig = append(scriptSig, sigs[i]...)
-		scriptSig = append(scriptSig, byte(len(pubKeyBytes)))
-		scriptSig = append(scriptSig, pubKeyBytes...)
-		finalTx.writeVarInt(uint64(len(scriptSig)))
-		finalTx.writeBytes(scriptSig)
-		finalTx.writeUint32(0xFFFFFFFF)
-		_ = i
-	}
-	finalTx.writeVarInt(uint64(numOutputs))
-	finalTx.writeUint64(uint64(value.Int64()))
-	finalTx.writeVarInt(uint64(len(pkScriptTo)))
-	finalTx.writeBytes(pkScriptTo)
-	if change.Sign() > 0 {
-		pkScriptChange := buildP2PKHOutputScript(fromAddr)
-		finalTx.writeUint64(uint64(change.Int64()))
-		finalTx.writeVarInt(uint64(len(pkScriptChange)))
-		finalTx.writeBytes(pkScriptChange)
-	}
-	finalTx.writeUint32(0)
-	return hexEncode(finalTx.bytes()), nil
-}
-
-// buildBTCSignPreimage constructs the legacy SIGHASH_ALL preimage for input idx.
-func buildBTCSignPreimage(utxos []btcUTXO, numOutputs int, value, change *big.Int, pkScriptTo []byte, fromAddr string, subscript []byte, idx int) []byte {
-	var tx bytesBuffer
-	tx.writeUint32(1)
-	tx.writeVarInt(uint64(len(utxos)))
-	for i, u := range utxos {
-		tx.writeBytes(parseHexReverse(u.TxID))
-		tx.writeUint32(u.Vout)
-		if i == idx {
-			tx.writeVarInt(uint64(len(subscript)))
-			tx.writeBytes(subscript)
-		} else {
-			tx.writeVarInt(0)
-		}
-		tx.writeUint32(0xFFFFFFFF)
-	}
-	tx.writeVarInt(uint64(numOutputs))
-	tx.writeUint64(uint64(value.Int64()))
-	tx.writeVarInt(uint64(len(pkScriptTo)))
-	tx.writeBytes(pkScriptTo)
-	if change.Sign() > 0 {
-		pkScriptChange := buildP2PKHOutputScript(fromAddr)
-		tx.writeUint64(uint64(change.Int64()))
-		tx.writeVarInt(uint64(len(pkScriptChange)))
-		tx.writeBytes(pkScriptChange)
-	}
-	tx.writeUint32(0)
-	// Append SIGHASH_ALL as 4-byte LE.
-	ret := tx.bytes()
-	ret = append(ret, 0x01, 0x00, 0x00, 0x00)
-	return ret
 }
 
 // btcTxHash computes the display txid (double-SHA256 of the serialized tx, reversed).
@@ -442,11 +340,11 @@ func btcTxHash(rawTxHex string) (string, error) {
 
 // base58CheckEncode encodes version||payload with a 4-byte double-SHA256
 // checksum. chainsdk takes the version already prepended to the payload.
-func base58CheckEncode(version byte, payload []byte) string {
-	buf := make([]byte, 0, 1+len(payload))
-	buf = append(buf, version)
-	buf = append(buf, payload...)
-	return chainsdk.Base58CheckEncode(buf)
+// base58CheckEncode encodes a version-prefixed payload with the standard
+// 4-byte double-SHA256 checksum. The version prefix is 1-2 bytes and must
+// already be prepended to the payload by the caller.
+func base58CheckEncode(versioned []byte) string {
+	return chainsdk.Base58CheckEncode(versioned)
 }
 
 func bech32Encode(hrp string, data []byte) (string, error) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestHoldDurationExponentialBackoff(t *testing.T) {
 
 func TestUTXOParamsFor(t *testing.T) {
 	p, ok := utxoParamsFor("bitcoin", 0)
-	if !ok || p.p2pkhVersion != 0x00 || p.esploraBase == "" {
+	if !ok || !bytes.Equal(p.p2pkhVersion, []byte{0x00}) || p.indexerBase == "" {
 		t.Fatalf("bitcoin params: %+v ok=%v", p, ok)
 	}
 	// btc alias resolves to bitcoin.
@@ -39,13 +40,13 @@ func TestUTXOParamsFor(t *testing.T) {
 		t.Fatal("btc alias should resolve to bitcoin params")
 	}
 	p, ok = utxoParamsFor("litecoin", 0)
-	if !ok || p.p2pkhVersion != 0x30 {
+	if !ok || !bytes.Equal(p.p2pkhVersion, []byte{0x30}) {
 		t.Fatalf("litecoin params: %+v ok=%v", p, ok)
 	}
 	// Env override wins.
 	t.Setenv("LTC_ESPLORA_URL", "https://ltc.example.com/api/")
 	p, ok = utxoParamsFor("ltc", 0)
-	if !ok || p.esploraBase != "https://ltc.example.com/api" {
+	if !ok || p.indexerBase != "https://ltc.example.com/api" {
 		t.Fatalf("env override: %+v", p)
 	}
 	os.Unsetenv("LTC_ESPLORA_URL")
@@ -54,15 +55,84 @@ func TestUTXOParamsFor(t *testing.T) {
 	if !ok || p.name != "bitcoin" {
 		t.Fatalf("registry resolution: %+v ok=%v", p, ok)
 	}
-	// Fail-closed for unsupported UTXO chains.
-	if _, ok := utxoParamsFor("dogecoin", 0); ok {
-		t.Fatal("dogecoin must fail closed (no esplora params pinned)")
+	// The whole UTXO family is supported, each with a real indexer and a
+	// canonical address version prefix.
+	for _, ct := range supportedUTXOChains() {
+		got, ok := utxoParamsFor(ct, 0)
+		if !ok {
+			t.Fatalf("%s should be supported", ct)
+		}
+		if got.indexerBase == "" || len(got.p2pkhVersion) == 0 || got.feeRatePerB <= 0 || got.minFeeSat <= 0 {
+			t.Fatalf("%s params incomplete: %+v", ct, got)
+		}
 	}
-	if _, ok := utxoParamsFor("bitcoincash", 0); ok {
-		t.Fatal("bitcoincash must fail closed (fork-id sighash required)")
+	// Fork-ID chains sign with the forkid sighash, Zcash with ZIP-243.
+	if bch, _ := utxoParamsFor("bitcoincash", 0); bch.sighash != "forkid" {
+		t.Fatalf("bitcoincash sighash = %q, want forkid", bch.sighash)
+	}
+	if zec, _ := utxoParamsFor("zcash", 0); zec.sighash != "zcash" {
+		t.Fatalf("zcash sighash = %q, want zcash", zec.sighash)
+	}
+	if zec, _ := utxoParamsFor("zcash", 0); !bytes.Equal(zec.p2pkhVersion, []byte{0x1c, 0xb8}) {
+		t.Fatalf("zcash version prefix = %x, want 1cb8", zec.p2pkhVersion)
+	}
+	// Registry id resolution for an expanded chain (Dogecoin = 9000000003).
+	if d, ok := utxoParamsFor("", 9000000003); !ok || d.name != "dogecoin" {
+		t.Fatalf("dogecoin registry resolution: %+v ok=%v", d, ok)
+	}
+	// Fail-closed for a chain with no signer in this build.
+	if _, ok := utxoParamsFor("peercoin", 0); ok {
+		t.Fatal("peercoin must fail closed (no indexer/signer pinned)")
+	}
+	if _, ok := utxoParamsFor("notachain", 0); ok {
+		t.Fatal("unknown chain must fail closed")
 	}
 }
 
+func TestUTXOIndexerKindMapping(t *testing.T) {
+	cases := map[string]utxoIndexerKind{
+		"bitcoin":     indexerEsplora,
+		"litecoin":    indexerEsplora,
+		"dogecoin":    indexerDogechain,
+		"raven":       indexerBlockbook,
+		"zcash":       indexerBlockbook,
+		"bitcoincash": indexerBlockbook,
+	}
+	for ct, want := range cases {
+		p, ok := utxoParamsFor(ct, 0)
+		if !ok {
+			t.Fatalf("%s should be supported", ct)
+		}
+		if p.indexerKind != want {
+			t.Errorf("%s indexer kind = %q, want %q", ct, p.indexerKind, want)
+		}
+		if _, err := p.indexer(); err != nil {
+			t.Errorf("%s indexer construction failed: %v", ct, err)
+		}
+	}
+}
+
+func TestUTXOIndexerRejectsEmptyEndpoint(t *testing.T) {
+	if _, err := indexerFor(indexerEsplora, ""); err == nil {
+		t.Fatal("empty endpoint must fail closed")
+	}
+	if _, err := indexerFor("unknown-kind", "https://x"); err == nil {
+		t.Fatal("unknown indexer kind must fail closed")
+	}
+}
+
+func TestUTXOFeeFloor(t *testing.T) {
+	p, ok := utxoParamsFor("bitcoin", 0)
+	if !ok {
+		t.Fatal("bitcoin must be supported")
+	}
+	if got := p.feeForSize(1); got != p.minFeeSat {
+		t.Errorf("fee for 1 byte = %d, want the floor %d", got, p.minFeeSat)
+	}
+	if got := p.feeForSize(1000); got != 1000*p.feeRatePerB {
+		t.Errorf("fee for 1000 bytes = %d, want %d", got, 1000*p.feeRatePerB)
+	}
+}
 func TestNonEVMFamilyFor(t *testing.T) {
 	// Registry resolution by chain id (Bitcoin seeded at 9000000000).
 	if fam := nonEVMFamilyFor(9000000000, ""); fam != "bitcoin" {

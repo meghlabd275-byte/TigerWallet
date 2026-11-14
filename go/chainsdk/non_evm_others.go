@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -205,6 +206,23 @@ func MultiversXAddress(seed []byte, path string) (string, error) {
 	return Bech32Encode("erd", pub[:32])
 }
 
+// multiversXAccountNonce reads the next unused account nonce from the
+// MultiversX API. Fail-closed: an unreachable API is an error, never a
+// guessed nonce.
+func multiversXAccountNonce(ctx context.Context, apiEndpoint, address string) (uint64, error) {
+	raw, err := getRaw(ctx, strings.TrimRight(apiEndpoint, "/")+"/accounts/"+url.PathEscape(address))
+	if err != nil {
+		return 0, fmt.Errorf("multiversx account nonce: %w", err)
+	}
+	var acc struct {
+		Nonce uint64 `json:"nonce"`
+	}
+	if err := json.Unmarshal(raw, &acc); err != nil {
+		return 0, fmt.Errorf("multiversx account nonce decode: %w", err)
+	}
+	return acc.Nonce, nil
+}
+
 // MultiversXBuildSend builds a signed EGLD transfer JSON (broadcast over
 // the API endpoint on request).
 func MultiversXBuildSend(ctx context.Context, seed []byte, path, apiEndpoint, to, amountAtoms string, broadcast bool) (string, string, error) {
@@ -216,7 +234,16 @@ func MultiversXBuildSend(ctx context.Context, seed []byte, path, apiEndpoint, to
 	if err != nil {
 		return "", "", err
 	}
+	// The account nonce must be the next unused one; the chain rejects a
+	// transaction with a stale or repeated nonce. It is read from the chain's
+	// own API, and the transfer fails closed if the API cannot answer rather
+	// than signing with a guessed nonce.
+	nonce, err := multiversXAccountNonce(ctx, apiEndpoint, sender)
+	if err != nil {
+		return "", "", err
+	}
 	tx := mxTx{
+		Nonce:    nonce,
 		Receiver: to,
 		Value:    amountAtoms,
 		GasLimit: 50000,
