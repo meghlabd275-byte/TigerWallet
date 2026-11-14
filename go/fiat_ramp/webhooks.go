@@ -134,6 +134,7 @@ func (s *FiatRampService) handleStripeWebhook(c *gin.Context) {
 		return
 	}
 	if err := verifyStripeSignature(body, c.GetHeader("Stripe-Signature"), s.getWebhookSecret("stripe")); err != nil {
+		rampWebhooksTotal.WithLabelValues("stripe", "rejected").Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
@@ -165,9 +166,11 @@ func (s *FiatRampService) handleStripeWebhook(c *gin.Context) {
 		return
 	}
 	if err := s.updateOrderStatus(c.Request.Context(), orderID, status); err != nil {
+		rampWebhooksTotal.WithLabelValues("stripe", "error").Inc()
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	rampWebhooksTotal.WithLabelValues("stripe", "accepted").Inc()
 	c.JSON(http.StatusOK, gin.H{"received": true, "orderId": orderID, "status": status})
 }
 
@@ -195,6 +198,7 @@ func (s *FiatRampService) handleMoonPayWebhook(c *gin.Context) {
 		sig = c.GetHeader("Moonpay-Signature-V2")
 	}
 	if err := verifyHMACBody(body, sig, s.getWebhookSecret("moonpay"), "moonpay"); err != nil {
+		rampWebhooksTotal.WithLabelValues("moonpay", "rejected").Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
@@ -222,9 +226,11 @@ func (s *FiatRampService) handleMoonPayWebhook(c *gin.Context) {
 		return
 	}
 	if err := s.updateOrderStatus(c.Request.Context(), orderID, status); err != nil {
+		rampWebhooksTotal.WithLabelValues("moonpay", "error").Inc()
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	rampWebhooksTotal.WithLabelValues("moonpay", "accepted").Inc()
 	c.JSON(http.StatusOK, gin.H{"received": true, "orderId": orderID, "status": status})
 }
 
@@ -248,6 +254,7 @@ func (s *FiatRampService) handleTransakWebhook(c *gin.Context) {
 		return
 	}
 	if err := verifyHMACBody(body, c.GetHeader("x-transak-signature"), s.getWebhookSecret("transak"), "transak"); err != nil {
+		rampWebhooksTotal.WithLabelValues("transak", "rejected").Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
@@ -283,8 +290,10 @@ func (s *FiatRampService) handleTransakWebhook(c *gin.Context) {
 		return
 	}
 	if err := s.updateOrderStatus(c.Request.Context(), orderID, status); err != nil {
+		rampWebhooksTotal.WithLabelValues("transak", "error").Inc()
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
+	rampWebhooksTotal.WithLabelValues("transak", "accepted").Inc()
 	c.JSON(http.StatusOK, gin.H{"received": true, "orderId": orderID, "status": status})
 }

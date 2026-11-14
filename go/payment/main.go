@@ -832,6 +832,7 @@ func (s *PaymentService) GetSupportedChains(c *gin.Context) {
 func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 	secret := paymentWebhookSecret()
 	if secret == "" {
+		payWebhooksTotal.WithLabelValues("error").Inc()
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the chain listener is not configured"})
 		return
 	}
@@ -849,6 +850,7 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	if !hmac.Equal([]byte(signature), []byte(hex.EncodeToString(mac.Sum(nil)))) {
+		payWebhooksTotal.WithLabelValues("rejected").Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
 		return
 	}
@@ -879,12 +881,14 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 	}
 
 	if payment == nil {
+		payWebhooksTotal.WithLabelValues("rejected").Inc()
 		c.JSON(http.StatusNotFound, gin.H{"error": "no pending payment found for address"})
 		return
 	}
 
 	confirmations, err := s.verifyDepositOnChain(c.Request.Context(), payment, payload.TxHash)
 	if err != nil {
+		payWebhooksTotal.WithLabelValues("rejected").Inc()
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		return
 	}
@@ -910,6 +914,8 @@ func (s *PaymentService) HandlePaymentWebhook(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the verified payment could not be recorded, please retry"})
 		return
 	}
+
+	payWebhooksTotal.WithLabelValues("accepted").Inc()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -1216,6 +1222,10 @@ func main() {
 		}
 		c.Next()
 	})
+
+	// Metrics must be installed before the routes so the middleware covers them.
+	payMetricsService = ps
+	registerPaymentMetrics(r)
 
 	// Setup routes
 	ps.SetupRoutes(r)

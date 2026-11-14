@@ -671,6 +671,9 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// Metrics must be installed before the routes so the middleware covers them.
+	rampMetricsService = svc
+	registerFiatRampMetrics(r)
 	svc.RegisterRoutes(r)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 	go func() { log.Printf("Fiat Ramp starting on %s", cfg.Port); srv.ListenAndServe() }()

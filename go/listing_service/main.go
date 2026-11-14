@@ -777,6 +777,7 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 	// their own application paid and skip the fee.
 	secret := listingWebhookSecret()
 	if secret == "" {
+		listWebhooksTotal.WithLabelValues("error").Inc()
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payment processor not configured"})
 		return
 	}
@@ -794,6 +795,7 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 	computed := hmac.New(sha256.New, []byte(secret))
 	computed.Write(body)
 	if !hmac.Equal([]byte(signature), []byte(hex.EncodeToString(computed.Sum(nil)))) {
+		listWebhooksTotal.WithLabelValues("rejected").Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
 		return
 	}
@@ -858,6 +860,7 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 	// A completed payment must name the transaction that settled it; without one
 	// there is nothing to reconcile against.
 	if strings.TrimSpace(payload.TxHash) == "" {
+		listWebhooksTotal.WithLabelValues("rejected").Inc()
 		c.JSON(http.StatusBadRequest, gin.H{"error": "a completed payment must carry a tx_hash"})
 		return
 	}
@@ -877,9 +880,12 @@ func (s *ListingService) HandlePaymentWebhook(c *gin.Context) {
 
 	if err := s.storeListing(c.Request.Context(), listing); err != nil {
 		log.Printf("payment webhook: cannot record the payment: %v", err)
+		listWebhooksTotal.WithLabelValues("error").Inc()
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "the payment could not be recorded, please retry"})
 		return
 	}
+
+	listWebhooksTotal.WithLabelValues("accepted").Inc()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -1341,6 +1347,10 @@ func main() {
 		}
 		c.Next()
 	})
+
+	// Metrics must be installed before the routes so the middleware covers them.
+	listMetricsService = ls
+	registerListingMetrics(r)
 
 	// Setup routes
 	ls.SetupRoutes(r)
