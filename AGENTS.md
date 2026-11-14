@@ -1818,3 +1818,67 @@
   remaining ~40 exotic chains fail closed (never faked). go/wallet_api is
   broader (16+ real BuildSend paths). Extension Google OAuth client_id and FCM
   google-services.json are deployment config, not code.
+
+## Session 46 (2026-11-13) — global launch audit + dead-island removal
+- TOOLCHAIN (sandbox reset): Go 1.22.12 re-installed at /tmp/goroot/go
+  (GOPATH=/tmp/gopath GOMODCACHE=/tmp/gomodcache GOFLAGS=-mod=mod GOTOOLCHAIN=auto).
+  Node 24 / npm 12 present. Docker daemon needs root here.
+- ADMIN/GO DEAD ISLAND REMOVED (commit 1226fe3) — the entry in the previous
+  session's notes above ("DEAD CODE (documented, not removed)") is now RESOLVED:
+  - internal/database (postgres.go + migrations_test.go): zero importers; the
+    live app opens PostgreSQL through pkg/database (GORM AutoMigrate). It was
+    also the only creator of tables (backups, archive_records, archive_policies,
+    sla_policies, sla_reports, admin_sessions, approval_requests,
+    approval_workflows, report_configs, reports) that no live handler reads.
+    Verified with a per-table reference count before deleting.
+  - internal/services/{knowledge_base,sla,archival}.go: the only importers of
+    that package; their constructors (NewKnowledgeBaseService / NewSLAService /
+    NewArchivalService) had zero call sites. Live equivalents: handlers
+    .KnowledgeBaseHandler (10 KB routes on pkg/database) and
+    supportHandler.GetSLAViolations.
+  - pkg/backup (450-line backup/restore service): also unreferenced, and a
+    DUPLICATE of super_admin/go/internal/services/backup.go, which is the real
+    one — main.go runs its ScheduledBackupLoop and exposes GET/POST /backups,
+    POST /backups/:id/restore, DELETE /backups/:id with integration tests.
+    Database backup is a platform-operator concern, so the tenant-admin copy
+    is the duplicate. admin_users/admin_permissions/admin_role_assignments are
+    UNAFFECTED: they come from handlers/rbac_handler.go via AutoMigrate.
+  - go build + go vet + go test -count=1 ./... all pass (4 packages ok).
+- VERIFIED FULL-REPO BUILD (new evidence, 175 Go modules): a sweep of every
+  go.mod in the tree gives 175/175 compiling. Two apparent failures are
+  METHOD artifacts, not defects: security/kyc_aml/go fails only because
+  `go build ./...` writes a binary named `cmd` where a `cmd/` dir exists
+  (builds clean with -o), and tiger_smart_chain needs its documented
+  `-ldflags=-checklinkname=0` (owned by its Makefile) for the memsize linkname.
+- VERIFIED FRONTENDS: all 8 React/Vite apps produce a production build
+  (user_wallet/web, master_wallet/web, admin/web, super_admin/web,
+  white_label_admin/web, white_label/frontend, project_party/web, bots/web).
+- VERIFIED DEPLOYMENT INTEGRITY (both compose files): every build context
+  resolves to a real Dockerfile; ZERO host-port collisions; every database
+  referenced by a service is created (root: database/init.sql; infra:
+  deployments/docker/init-databases.sh); `docker compose config -q` passes.
+- VERIFIED STUB-FREE: 0 TODO/FIXME in the 5 canonical backends. The 8 hits for
+  "mock/fake/hardcoded" are all fail-closed COMMENTS ("no hardcoded keys"),
+  not stubs.
+- TEST COVERAGE EVIDENCE: 141 Go test files across 71 of 175 modules; 208 Rust
+  files carry #[test]; 7 Solidity *.t.sol; only user_wallet/web has a frontend
+  test script (others: none).
+- OPEN GAPS (verified, unchanged): bots/android + project_party/android are
+  ORPHANED SHELLS (no MainActivity — the manifest references `.MainActivity`
+  which does not exist — and no gradle files at all, so they cannot build);
+  bots/ios + project_party/ios are 2-file API-service stubs with no
+  Package.swift/xcodeproj. bot_core executes 10 of 18 bot types; the other 8
+  (ai_trading/signal/cross_chain/flash_loan/sandwich/front_run/mev/custom)
+  fail closed at start by design. master_wallet/backend non-EVM broadcast =
+  EVM + BTC/LTC UTXO + Solana + Cosmos; the remaining ~40 exotic chains of the
+  65-chain non-EVM registry fail closed with an explicit error (go/wallet_api
+  is broader: 16+ real BuildSend paths).
+- COMMERCIAL/LEGAL: LICENSE is MIT (c) 2026 TigerWallet. No third-party
+  security audit report exists in-tree; 103 Solidity files, 7 test contracts.
+  No google-services.json / GoogleService-Info.plist (FCM push config) — this
+  is deployment config. No committed .env.example (documented as intentional
+  in ENVIRONMENT.md / INSTALLATION.md).
+- CI COVERAGE GAP (verified): the docker matrix builds 5 images
+  (wallet_api, master_wallet/backend, admin/go, super_admin/go, go/api_gateway)
+  while the stack runs 71 services; deploy-staging/deploy-production jobs are
+  `echo` placeholders. CI does not build most of the stack.
