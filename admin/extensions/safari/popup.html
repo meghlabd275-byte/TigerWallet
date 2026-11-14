@@ -388,6 +388,19 @@
                     </div>
                 </div>
                 <div class="system-network">
+                    <h3>Backend Server</h3>
+                    <div class="settings-row">
+                        <input type="url" id="apiBaseUrlInput" class="settings-input"
+                               placeholder="https://admin-api.tigerwallet.com/api/v1"
+                               spellcheck="false" />
+                        <button class="settings-save-btn" id="saveApiBaseUrlBtn">Save</button>
+                    </div>
+                    <p class="settings-hint" id="apiBaseUrlHint">
+                        Defaults to the local development server. Point this at your
+                        deployment before signing in to a hosted backend.
+                    </p>
+                </div>
+                <div class="system-network">
                     <h3>Network</h3>
                     <div class="service-list">
                         <div class="service-item">

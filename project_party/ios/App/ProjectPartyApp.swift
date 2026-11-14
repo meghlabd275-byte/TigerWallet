@@ -1,91 +1,126 @@
 import SwiftUI
 
 @main
-struct ProjectPartyApp: App {
-    @StateObject private var themeManager = ThemeManager()
-    
+struct TigerProjectPartyApp: App {
+    @StateObject private var themeManager = PartyThemeManager()
+    @StateObject private var session = PartySession()
+
     var body: some Scene {
         WindowGroup {
-            ProjectPartyContentView()
+            PartyRootView()
                 .environmentObject(themeManager)
+                .environmentObject(session)
         }
     }
 }
 
-class ThemeManager: ObservableObject {
+/// Persisted light/dark preference shared by every screen.
+final class PartyThemeManager: ObservableObject {
     @Published var isDarkMode: Bool {
-        didSet {
-            UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode")
-        }
+        didSet { UserDefaults.standard.set(isDarkMode, forKey: "projectparty.isDarkMode") }
     }
-    
+
     init() {
-        self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        if UserDefaults.standard.object(forKey: "projectparty.isDarkMode") == nil {
+            self.isDarkMode = true
+        } else {
+            self.isDarkMode = UserDefaults.standard.bool(forKey: "projectparty.isDarkMode")
+        }
     }
 }
 
-struct ProjectPartyContentView: View {
-    @EnvironmentObject var themeManager: ThemeManager
+/// Holds the authenticated user. The stored JWT is revalidated at launch by
+/// calling an authenticated endpoint; a revoked token returns the user to the
+/// sign-in screen rather than a shell of empty screens.
+@MainActor
+final class PartySession: ObservableObject {
+    @Published var isAuthenticated = false
+    @Published var username: String?
+    @Published var role: String?
+    @Published var isRestoring = true
+
+    var isAdmin: Bool {
+        (role ?? "").lowercased() == "admin"
+    }
+
+    init() {
+        Task { await restore() }
+    }
+
+    func restore() async {
+        defer { isRestoring = false }
+        guard PartyApiService.shared.token != nil else { return }
+        do {
+            // /favorites is authenticated; a 200 proves the token is still valid.
+            _ = try await PartyApiService.shared.listFavorites()
+            self.isAuthenticated = true
+        } catch PartyApiError.unauthorized {
+            PartyApiService.shared.clearToken()
+            self.isAuthenticated = false
+        } catch {
+            // A network failure must not sign the user out; only an explicit
+            // 401 does. Keep the session and let screens surface the error.
+            self.isAuthenticated = true
+        }
+    }
+
+    func signedIn(_ auth: PartyAuthResponse) {
+        self.username = auth.username
+        self.role = auth.role
+        self.isAuthenticated = true
+    }
+
+    func signOut() {
+        PartyApiService.shared.clearToken()
+        self.username = nil
+        self.role = nil
+        self.isAuthenticated = false
+    }
+}
+
+struct PartyRootView: View {
+    @EnvironmentObject var session: PartySession
+
+    var body: some View {
+        Group {
+            if session.isRestoring {
+                ProgressView("Connecting…")
+            } else if session.isAuthenticated {
+                PartyMainTabView()
+            } else {
+                PartyAuthView()
+            }
+        }
+    }
+}
+
+struct PartyMainTabView: View {
+    @EnvironmentObject var session: PartySession
     @State private var selectedTab = 0
-    
+
     var body: some View {
         TabView(selection: $selectedTab) {
-            PPDashboardView()
-                .tabItem { Image(systemName: "chart.bar"); Text("Market") }
+            MarketDiscoveryView()
+                .tabItem { Label("Market", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(0)
-            
-            CoinsView()
-                .tabItem { Image(systemName: "bitcoinsign.circle"); Text("Coins") }
-                .tag(1)
-            
+
             TokensView()
-                .tabItem { Image(systemName: "token"); Text("Tokens") }
+                .tabItem { Label("Tokens", systemImage: "circle.grid.2x2") }
+                .tag(1)
+
+            LaunchpadView()
+                .tabItem { Label("Launchpad", systemImage: "rocket") }
                 .tag(2)
-            
-            PPSettingsView()
-                .tabItem { Image(systemName: "gear"); Text("Settings") }
-                .tag(3)
-        }
-        .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
-    }
-}
 
-struct PPDashboardView: View {
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading) {
-                Text("Token Marketplace")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-            }.padding()
-        }
-    }
-}
-
-struct CoinsView: View {
-    var body: some View {
-        NavigationView {
-            Text("Coins")
-        }.navigationTitle("Coins")
-    }
-}
-
-struct TokensView: View {
-    var body: some View {
-        NavigationView {
-            Text("Tokens")
-        }.navigationTitle("Tokens")
-    }
-}
-
-struct PPSettingsView: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    
-    var body: some View {
-        NavigationView {
-            List {
-                Toggle("Dark Mode", isOn: $themeManager.isDarkMode)
+            if session.isAdmin {
+                PartyAdminView()
+                    .tabItem { Label("Admin", systemImage: "shield.lefthalf.filled") }
+                    .tag(3)
             }
-        }.navigationTitle("Settings")
+
+            PartySettingsView()
+                .tabItem { Label("Settings", systemImage: "gear") }
+                .tag(4)
+        }
     }
 }

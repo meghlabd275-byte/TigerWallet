@@ -382,6 +382,18 @@
       <button class="btn" id="tcCreateBtn">Create</button>
       <div id="tcList"><div class="empty">Loading…</div></div>
     </div>
+
+    <div id="tab-settings" class="section tabpanel hidden">
+      <h2>Backend Server</h2>
+      <p class="muted">
+        Point the extension at your deployment. A hosted backend is not reachable
+        at localhost, and the browser asks for permission the first time a new
+        host is used.
+      </p>
+      <input id="mwApiBaseInput" placeholder="https://master-api.tigerwallet.com" spellcheck="false" />
+      <button class="btn" id="mwApiBaseSaveBtn">Save server</button>
+      <div id="mwApiBaseHint" class="muted"></div>
+    </div>
   </div>
 
   <script src="popup.js"></script>

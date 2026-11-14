@@ -12,7 +12,20 @@ if (typeof browser !== "undefined" && typeof chrome === "undefined") {
 }
 // Super Admin Chrome Extension - Background Service Worker
 // Drives the real super_admin/go backend on port 8082 (JWT bearer auth).
-const API_BASE_URL = 'http://localhost:8082/api/v1/admin';
+const DEFAULT_API_BASE_URL = 'http://localhost:8082/api/v1/admin';
+
+// A hosted deployment is not reachable at localhost, so the base URL is stored
+// and set from the popup's Server setting. Falls back to the local development
+// default when unset.
+async function getApiBase() {
+  try {
+    const stored = await chrome.storage.local.get('api_base_url');
+    const v = stored && stored.api_base_url;
+    return (typeof v === 'string' && v) ? v.replace(/\/+$/, '') : DEFAULT_API_BASE_URL;
+  } catch (_) {
+    return DEFAULT_API_BASE_URL;
+  }
+}
 
 // 12 governance domains exposed as read-only sections in the popup.
 // `resource` is the path segment under /api/v1/admin.
@@ -73,7 +86,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function fetchDashboard() {
   try {
     const token = await getToken();
-    const response = await fetch(`${API_BASE_URL}/stats`, {
+    const response = await fetch(`${await getApiBase()}/stats`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     return await response.json();
@@ -86,7 +99,7 @@ async function fetchUsers(params = {}) {
   try {
     const token = await getToken();
     const query = new URLSearchParams(params).toString();
-    const response = await fetch(`${API_BASE_URL}/users?${query}`, {
+    const response = await fetch(`${await getApiBase()}/users?${query}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     return await response.json();
@@ -99,7 +112,7 @@ async function fetchTransactions(params = {}) {
   try {
     const token = await getToken();
     const query = new URLSearchParams(params).toString();
-    const response = await fetch(`${API_BASE_URL}/transactions?${query}`, {
+    const response = await fetch(`${await getApiBase()}/transactions?${query}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     return await response.json();
@@ -111,7 +124,7 @@ async function fetchTransactions(params = {}) {
 async function fetchStats() {
   try {
     const token = await getToken();
-    const response = await fetch(`${API_BASE_URL}/stats`, {
+    const response = await fetch(`${await getApiBase()}/stats`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     return await response.json();
@@ -125,7 +138,7 @@ async function fetchStats() {
 async function fetchDomain(domain) {
   try {
     const token = await getToken();
-    const response = await fetch(`${API_BASE_URL}/${domain}`, {
+    const response = await fetch(`${await getApiBase()}/${domain}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const text = await response.text();
@@ -161,7 +174,7 @@ async function cryptoCardsRequest(method, suffix = '', body = null, params = {})
   try {
     const token = await getToken();
     const query = Object.keys(params).length ? '?' + new URLSearchParams(params).toString() : '';
-    const url = `${API_BASE_URL}/${cryptoCardsAPI.resource}${suffix ? '/' + suffix : ''}${query}`;
+    const url = `${await getApiBase()}/${cryptoCardsAPI.resource}${suffix ? '/' + suffix : ''}${query}`;
     const opts = { method, headers: { 'Authorization': `Bearer ${token}` } };
     if (body !== null) {
       opts.headers['Content-Type'] = 'application/json';

@@ -46,8 +46,14 @@ import java.nio.charset.StandardCharsets
  */
 class BotApiService private constructor(
     private val context: Context,
-    private val baseUrl: String,
+    initialBaseUrl: String,
 ) {
+    // The backend URL is runtime-configurable: a physical device cannot reach
+    // the emulator loopback address, so the Settings screen persists a real
+    // host here. Stored in the same encrypted prefs file as the token.
+    @Volatile
+    private var baseUrl: String = initialBaseUrl
+
     private val prefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -56,9 +62,30 @@ class BotApiService private constructor(
             context,
             "tigerbots_prefs",
             masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SCM,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
+    }
+
+    init {
+        prefs.getString(KEY_BASE_URL, null)?.takeIf { it.isNotBlank() }?.let { baseUrl = it }
+    }
+
+    /** Current backend base URL, e.g. `http://host:8471/api/v1`. */
+    fun currentBaseUrl(): String = baseUrl
+
+    /**
+     * Point the client at a different backend. The URL must be an absolute
+     * http(s) URL; anything else is rejected so a bad Settings entry cannot
+     * silently send credentials to an unintended host.
+     */
+    fun setBaseUrl(url: String) {
+        val trimmed = url.trim().trimEnd('/')
+        require(trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            "Backend URL must start with http:// or https://"
+        }
+        baseUrl = trimmed
+        prefs.edit().putString(KEY_BASE_URL, trimmed).apply()
     }
 
     private var token: String? = prefs.getString(KEY_TOKEN, null)
@@ -342,11 +369,15 @@ class BotApiService private constructor(
 
     suspend fun listCEX(): JSONObject = withContext(Dispatchers.IO) { obj(get("/cex")) }
 
-    suspend fun addCEX(name: String, config: JSONObject): JSONObject =
+    suspend fun addCEX(exchange: String, apiKey: String, apiSecret: String): JSONObject =
         withContext(Dispatchers.IO) {
+            // Backend contract (bot_api addCEX): exchange + api_key + api_secret
+            // are all required; it rejects the request otherwise. The previous
+            // {name, config} shape never matched and always returned 400.
             val body = JSONObject().apply {
-                put("name", name)
-                put("config", config)
+                put("exchange", exchange)
+                put("api_key", apiKey)
+                put("api_secret", apiSecret)
             }
             obj(post("/cex", body.toString()))
         }
@@ -360,14 +391,23 @@ class BotApiService private constructor(
 
     suspend fun listDEX(): JSONObject = withContext(Dispatchers.IO) { obj(get("/dex")) }
 
-    suspend fun addDEX(name: String, config: JSONObject): JSONObject =
-        withContext(Dispatchers.IO) {
-            val body = JSONObject().apply {
-                put("name", name)
-                put("config", config)
-            }
-            obj(post("/dex", body.toString()))
+    suspend fun addDEX(
+        dex: String,
+        chainId: Long,
+        rpcUrl: String,
+        walletSeed: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        // Backend contract (bot_api addDEX): dex + wallet_seed are required;
+        // chain_id and rpc_url are optional. The seed is the hex private key
+        // used to sign DEX swaps and is encrypted server-side before storage.
+        val body = JSONObject().apply {
+            put("dex", dex)
+            put("wallet_seed", walletSeed)
+            if (chainId > 0) put("chain_id", chainId)
+            if (rpcUrl.isNotBlank()) put("rpc_url", rpcUrl)
         }
+        obj(post("/dex", body.toString()))
+    }
 
     suspend fun removeDEX(id: String): JSONObject =
         withContext(Dispatchers.IO) { obj(delete("/dex/${enc(id)}")) }
@@ -441,6 +481,7 @@ class BotApiService private constructor(
 
     companion object {
         private const val KEY_TOKEN = "bot_jwt"
+        private const val KEY_BASE_URL = "bot_base_url"
 
         @Volatile private var instance: BotApiService? = null
 
@@ -448,7 +489,7 @@ class BotApiService private constructor(
             return instance ?: synchronized(this) {
                 instance ?: BotApiService(
                     context = context.applicationContext,
-                    baseUrl = System.getProperty("BOTS_API_BASE_URL")
+                    initialBaseUrl = System.getProperty("BOTS_API_BASE_URL")
                         ?: DEFAULT_BASE_URL,
                 ).also { instance = it }
             }

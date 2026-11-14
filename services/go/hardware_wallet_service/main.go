@@ -8,16 +8,8 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
-	"math/big"
 	"net/http"
 	"strings"
 	"sync"
@@ -144,91 +136,32 @@ func NewLedgerClient(apiURL string) *LedgerClient {
 }
 
 func (c *LedgerClient) GetDeviceInfo(ctx context.Context) (*DeviceInfo, error) {
-	// Simulate device detection - in production, use hid library
-	return &DeviceInfo{
-		Type:         WalletTypeLedger,
-		DeviceID:     "ledger-nano-x-001",
-		DeviceName:   "Ledger Nano X",
-		Firmware:     "2.1.0",
-		Bootloader:   "1.0.0",
-		Model:        "Nano X",
-		Serial:       "001122334455",
-		Capabilities: []string{"eth", "btc", "sol", "dot", "ada", "xrp", "trx", "cosmos"},
-		Chains:       []string{"ethereum", "polygon", "arbitrum", "optimism", "avalanche", "bsc", "bitcoin", "solana"},
-	}, nil
+	// Detection requires the HID transport; reporting a fixed device would
+	// claim a specific hardware unit is connected when none may be.
+	return nil, errDeviceTransportUnavailable("Ledger")
 }
 
 func (c *LedgerClient) GetAddress(ctx context.Context, chain string, derivationPath string) (string, error) {
-	// In production, use ledger-go library
-	// This is a simulation
-	switch strings.ToLower(chain) {
-	case "ethereum", "polygon", "arbitrum", "optimism", "avalanche", "bsc":
-		// Derive ETH address from path m/44'/60'/0'/0/0
-		return "0x" + generateAddressFromPath(derivationPath, 40), nil
-	case "bitcoin":
-		return generateBTCAddress(derivationPath), nil
-	case "solana":
-		return generateSolanaAddress(derivationPath), nil
-	default:
-		return "", fmt.Errorf("unsupported chain: %s", chain)
-	}
+	// An address can only come from the device: the seed lives in the
+	// secure element and the APDU exchange is the only way to obtain the
+	// public key. Deriving an address locally from the derivation path
+	// would hand the user an address the device cannot sign for.
+	return "", errDeviceTransportUnavailable("Ledger")
 }
 
 func (c *LedgerClient) SignTransaction(ctx context.Context, tx *TransactionRequest, derivationPath string) (*SignedTransaction, error) {
-	// In production, use ledger for transaction signing
-	// This simulates the signing process
-
-	var txData string
-	if tx.ChainID == 0 {
-		// Determine chain ID
-		switch strings.ToLower(tx.Chain) {
-		case "ethereum":
-			tx.ChainID = 1
-		case "polygon":
-			tx.ChainID = 137
-		case "arbitrum":
-			tx.ChainID = 42161
-		case "optimism":
-			tx.ChainID = 10
-		case "avalanche":
-			tx.ChainID = 43114
-		case "bsc":
-			tx.ChainID = 56
-		}
-	}
-
-	// Build transaction data
-	txData = buildEIP155Tx(tx)
-
-	// Generate mock signature
-	sigBytes := make([]byte, 65)
-	rand.Read(sigBytes)
-	sigBytes[64] = 27 // V value for Ethereum
-
-	signature := hex.EncodeToString(sigBytes)
-	txHash := "" // not broadcast via RPC; real hash requires on-chain broadcast
-
-	return &SignedTransaction{
-		TxHash:     txHash,
-		RawTx:      txData,
-		Signature:  signature,
-		SignerAddr: tx.To,
-	}, nil
+	// A hardware-wallet signature must be produced by the device. A
+	// random 65-byte blob would look like a valid signature and could be
+	// relayed as if it had been authorised on the device.
+	return nil, errDeviceTransportUnavailable("Ledger")
 }
 
 func (c *LedgerClient) SignMessage(ctx context.Context, chain string, message string, derivationPath string) (string, error) {
-	// Sign personal message
-	msgHash := sha256.Sum256([]byte(message))
-	sigBytes := make([]byte, 64)
-	copy(sigBytes[:], msgHash[:64])
-	rand.Read(sigBytes)
-
-	return "0x" + hex.EncodeToString(sigBytes) + "1c", nil
+	return "", errDeviceTransportUnavailable("Ledger")
 }
 
 func (c *LedgerClient) GetPublicKey(ctx context.Context, derivationPath string) (string, error) {
-	// Return mock public key
-	return generatePublicKey(derivationPath), nil
+	return "", errDeviceTransportUnavailable("Ledger")
 }
 
 // ============================================================================
@@ -245,142 +178,48 @@ func NewTrezorClient(apiURL string) *TrezorClient {
 }
 
 func (c *TrezorClient) GetDeviceInfo(ctx context.Context) (*DeviceInfo, error) {
-	return &DeviceInfo{
-		Type:         WalletTypeTrezor,
-		DeviceID:     "trezor-model-t-001",
-		DeviceName:   "Trezor Model T",
-		Firmware:     "2.6.0",
-		Bootloader:   "1.12.0",
-		Model:        "Model T",
-		Serial:       "001122334455",
-		Capabilities: []string{"eth", "btc", "sol", "dot"},
-		Chains:       []string{"ethereum", "polygon", "bitcoin", "solana"},
-	}, nil
+	// Device details come from the trezord bridge; a static description
+	// would tell the user a specific device is connected when none may be.
+	return nil, errDeviceTransportUnavailable("Trezor")
 }
 
 func (c *TrezorClient) GetAddress(ctx context.Context, chain string, derivationPath string) (string, error) {
-	return generateAddressFromPath(derivationPath, 40), nil
+	return "", errDeviceTransportUnavailable("Trezor")
 }
 
 func (c *TrezorClient) SignTransaction(ctx context.Context, tx *TransactionRequest, derivationPath string) (*SignedTransaction, error) {
-	sigBytes := make([]byte, 65)
-	rand.Read(sigBytes)
-	sigBytes[64] = 27
-
-	signature := hex.EncodeToString(sigBytes)
-	txHash := "" // not broadcast via RPC; real hash requires on-chain broadcast
-
-	return &SignedTransaction{
-		TxHash:     txHash,
-		RawTx:      buildEIP155Tx(tx),
-		Signature:  signature,
-		SignerAddr: tx.To,
-	}, nil
+	return nil, errDeviceTransportUnavailable("Trezor")
 }
 
 func (c *TrezorClient) SignMessage(ctx context.Context, chain string, message string, derivationPath string) (string, error) {
-	msgHash := sha256.Sum256([]byte(message))
-	sigBytes := make([]byte, 64)
-	copy(sigBytes[:], msgHash[:64])
-	rand.Read(sigBytes)
-	return "0x" + hex.EncodeToString(sigBytes) + "1b", nil
+	return "", errDeviceTransportUnavailable("Trezor")
 }
 
 func (c *TrezorClient) GetPublicKey(ctx context.Context, derivationPath string) (string, error) {
-	return generatePublicKey(derivationPath), nil
+	return "", errDeviceTransportUnavailable("Trezor")
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-func generateAddressFromPath(path string, length int) string {
-	// Simulate address derivation from path
-	hash := sha256.Sum256([]byte(path))
-	addr := hex.EncodeToString(hash[:length/2])
-	return addr
+// hwDeviceClient is the surface shared by the Ledger and Trezor clients. Both
+// implementations fail closed until a real transport is wired up (HID for
+// Ledger, the trezord bridge for Trezor).
+type hwDeviceClient interface {
+	GetDeviceInfo(context.Context) (*DeviceInfo, error)
+	GetAddress(context.Context, string, string) (string, error)
+	GetPublicKey(context.Context, string) (string, error)
+	SignTransaction(context.Context, *TransactionRequest, string) (*SignedTransaction, error)
+	SignMessage(context.Context, string, string, string) (string, error)
 }
 
-func generateBTCAddress(path string) string {
-	hash := sha256.Sum256([]byte(path))
-	return "bc1" + hex.EncodeToString(hash[:20])
-}
-
-func generateSolanaAddress(path string) string {
-	hash := sha256.Sum256([]byte(path))
-	return base58Encode(hash[:32])
-}
-
-func generatePublicKey(path string) string {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	return hex.EncodeToString(elliptic.MarshalCompressed(key.PublicKey, key.X, key.Y))
-}
-
-func buildEIP155Tx(tx *TransactionRequest) string {
-	nonce := tx.Nonce
-	if nonce == nil {
-		var n uint64 = 0
-		nonce = &n
-	}
-
-	gasLimit := tx.GasLimit
-	if gasLimit == "" {
-		gasLimit = "21000"
-	}
-
-	gasPrice := tx.GasPrice
-	if gasPrice == "" {
-		gasPrice = "1000000000"
-	}
-
-	data := tx.Data
-	if data == "" {
-		data = "0x"
-	}
-
-	return fmt.Sprintf("0x%s%s%s%s%s%s%s",
-		nonceToHex(*nonce),
-		gasPriceToHex(gasPrice),
-		gasLimitToHex(gasLimit),
-		tx.To,
-		amountToHex(tx.Amount),
-		data,
-		chainIDToHex(tx.ChainID),
-	)
-}
-
-func nonceToHex(n uint64) string {
-	return fmt.Sprintf("%s", fmt.Sprintf("%064x", n))
-}
-
-func gasPriceToHex(s string) string {
-	v, _ := new(big.Int).SetString(s, 10)
-	return fmt.Sprintf("%064x", v)
-}
-
-func gasLimitToHex(s string) string {
-	v, _ := new(big.Int).SetString(s, 10)
-	return fmt.Sprintf("%064x", v)
-}
-
-func amountToHex(s string) string {
-	v, _ := new(big.Int).SetString(s, 10)
-	return fmt.Sprintf("%064x", v)
-}
-
-func chainIDToHex(chainID int) string {
-	return fmt.Sprintf("%064x", chainID)
-}
-
-func base58Encode(data []byte) string {
-	// Simplified base58
-	alphabet := "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
-	result := "111111111111111111111111111111111111111"
-
-	for _, b := range data {
-		result = string(alphabet[int(b)%58]) + result
-	}
-	return result[:44]
+// errDeviceTransportUnavailable reports that a hardware-wallet operation could
+// not be performed because no device transport is wired up. Addresses and
+// signatures can only be produced by the device itself, so every such
+// operation fails closed rather than returning a locally invented value.
+func errDeviceTransportUnavailable(device string) error {
+	return fmt.Errorf("%s: no device transport available; connect the device and install the transport (HID for Ledger, trezord for Trezor)", device)
 }
 
 // ============================================================================
@@ -412,15 +251,18 @@ func (s *HardwareWalletService) RegisterWallet(ctx context.Context, userID strin
 		Addresses:   []WalletAddress{},
 	}
 
-	// Get addresses for all supported chains
-	var client interface {
-		GetAddress(context.Context, string, string) (string, error)
-	}
+	// Addresses and the public key can only come from the device. When no
+	// transport is available the client fails closed, so registration
+	// reports the failure instead of storing a wallet with invented
+	// addresses the device could never sign for.
+	var client hwDeviceClient
 	switch walletType {
 	case WalletTypeLedger:
 		client = s.ledgerClient
 	case WalletTypeTrezor:
 		client = s.trezorClient
+	default:
+		return nil, fmt.Errorf("unsupported hardware wallet type: %s", walletType)
 	}
 
 	// Derive addresses for common chains
@@ -441,19 +283,22 @@ func (s *HardwareWalletService) RegisterWallet(ctx context.Context, userID strin
 
 	for _, c := range chains {
 		addr, err := client.GetAddress(ctx, c.chain, c.derivation)
-		if err == nil {
-			wallet.Addresses = append(wallet.Addresses, WalletAddress{
-				Chain:      c.chain,
-				ChainID:    c.chainID,
-				Address:    addr,
-				Path:       c.derivation,
-				Derivation: c.derivation,
-			})
+		if err != nil {
+			return nil, fmt.Errorf("read %s address from device: %w", c.chain, err)
 		}
+		wallet.Addresses = append(wallet.Addresses, WalletAddress{
+			Chain:      c.chain,
+			ChainID:    c.chainID,
+			Address:    addr,
+			Path:       c.derivation,
+			Derivation: c.derivation,
+		})
 	}
 
-	// Get public key
-	pubKey, _ := client.GetPublicKey(ctx, "m/44'/60'/0'/0/0")
+	pubKey, err := client.GetPublicKey(ctx, "m/44'/60'/0'/0/0")
+	if err != nil {
+		return nil, fmt.Errorf("read public key from device: %w", err)
+	}
 	wallet.PublicKey = pubKey
 
 	s.walletMu.Lock()
@@ -489,9 +334,7 @@ func (s *HardwareWalletService) SignTransaction(ctx context.Context, walletID st
 		return nil, err
 	}
 
-	var client interface {
-		SignTransaction(context.Context, *TransactionRequest, string) (*SignedTransaction, error)
-	}
+	var client hwDeviceClient
 
 	switch wallet.Type {
 	case WalletTypeLedger:
@@ -529,9 +372,7 @@ func (s *HardwareWalletService) SignMessage(ctx context.Context, walletID string
 		return "", err
 	}
 
-	var client interface {
-		SignMessage(context.Context, string, string, string) (string, error)
-	}
+	var client hwDeviceClient
 
 	switch wallet.Type {
 	case WalletTypeLedger:
@@ -569,7 +410,7 @@ func (s *HardwareWalletService) DetectDevice(ctx context.Context) (*DeviceInfo, 
 		return trezorInfo, nil
 	}
 
-	return nil, fmt.Errorf("no hardware wallet detected")
+	return nil, fmt.Errorf("no hardware wallet detected: %w", errDeviceTransportUnavailable("Ledger/Trezor"))
 }
 
 func (s *HardwareWalletService) GetUserWallets(ctx context.Context, userID string) ([]*HardwareWallet, error) {

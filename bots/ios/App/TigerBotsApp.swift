@@ -3,89 +3,123 @@ import SwiftUI
 @main
 struct TigerBotsApp: App {
     @StateObject private var themeManager = ThemeManager()
-    
+    @StateObject private var session = BotSession()
+
     var body: some Scene {
         WindowGroup {
-            BotsContentView()
+            RootView()
                 .environmentObject(themeManager)
+                .environmentObject(session)
         }
     }
 }
 
-class ThemeManager: ObservableObject {
+/// Persisted light/dark preference shared by every screen.
+final class ThemeManager: ObservableObject {
     @Published var isDarkMode: Bool {
-        didSet {
-            UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode")
-        }
+        didSet { UserDefaults.standard.set(isDarkMode, forKey: "isDarkMode") }
     }
-    
+
     init() {
-        self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        if UserDefaults.standard.object(forKey: "isDarkMode") == nil {
+            self.isDarkMode = true
+        } else {
+            self.isDarkMode = UserDefaults.standard.bool(forKey: "isDarkMode")
+        }
     }
 }
 
-struct BotsContentView: View {
-    @EnvironmentObject var themeManager: ThemeManager
+/// Holds the authenticated user for the lifetime of the app. A stored JWT in
+/// the Keychain is revalidated against `/bots/me` at launch, so a revoked or
+/// expired token drops the user back to the sign-in screen instead of showing
+/// a shell of empty screens.
+@MainActor
+final class BotSession: ObservableObject {
+    @Published var isAuthenticated = false
+    @Published var userId: String?
+    @Published var role: String?
+    @Published var isRestoring = true
+
+    var isAdmin: Bool {
+        (role ?? "").lowercased() == "admin"
+    }
+
+    init() {
+        Task { await restore() }
+    }
+
+    func restore() async {
+        defer { isRestoring = false }
+        guard BotApiService.shared.token != nil else { return }
+        do {
+            let me = try await BotApiService.shared.currentBotUser()
+            let user = me["user"] as? [String: Any] ?? me
+            self.userId = user["id"] as? String
+            self.role = user["role"] as? String
+            self.isAuthenticated = true
+        } catch {
+            BotApiService.shared.clearToken()
+            self.isAuthenticated = false
+        }
+    }
+
+    func signedIn(_ auth: BotAuthResponse) {
+        self.userId = auth.userId
+        self.role = auth.role
+        self.isAuthenticated = true
+    }
+
+    func signOut() {
+        BotApiService.shared.clearToken()
+        self.userId = nil
+        self.role = nil
+        self.isAuthenticated = false
+    }
+}
+
+struct RootView: View {
+    @EnvironmentObject var session: BotSession
+
+    var body: some View {
+        Group {
+            if session.isRestoring {
+                ProgressView("Connecting…")
+            } else if session.isAuthenticated {
+                MainTabView()
+            } else {
+                AuthView()
+            }
+        }
+    }
+}
+
+struct MainTabView: View {
+    @EnvironmentObject var session: BotSession
     @State private var selectedTab = 0
-    
+
     var body: some View {
         TabView(selection: $selectedTab) {
-            BotsDashboardView()
-                .tabItem { Image(systemName: "chart.bar"); Text("Dashboard") }
+            DashboardView()
+                .tabItem { Label("Dashboard", systemImage: "chart.bar") }
                 .tag(0)
-            
-            MyBotsView()
-                .tabItem { Image(systemName: "robot"); Text("Bots") }
+
+            BotsView()
+                .tabItem { Label("Bots", systemImage: "cpu") }
                 .tag(1)
-            
-            StrategiesView()
-                .tabItem { Image(systemName: "brain"); Text("Strategies") }
+
+            ConnectorsView()
+                .tabItem { Label("Connectors", systemImage: "link") }
                 .tag(2)
-            
-            BotsSettingsView()
-                .tabItem { Image(systemName: "gear"); Text("Settings") }
-                .tag(3)
-        }
-        .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
-    }
-}
 
-struct BotsDashboardView: View {
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading) {
-                Text("Bot Dashboard")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-            }.padding()
-        }
-    }
-}
-
-struct MyBotsView: View {
-    var body: some View {
-        NavigationView {
-            Text("My Bots")
-        }.navigationTitle("Bots")
-    }
-}
-
-struct StrategiesView: View {
-    var body: some View {
-        NavigationView {
-            Text("Strategies")
-        }.navigationTitle("Strategies")
-    }
-}
-
-struct BotsSettingsView: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    
-    var body: some View {
-        NavigationView {
-            List {
-                Toggle("Dark Mode", isOn: $themeManager.isDarkMode)
+            if session.isAdmin {
+                AdminView()
+                    .tabItem { Label("Admin", systemImage: "shield.lefthalf.filled") }
+                    .tag(3)
             }
-        }.navigationTitle("Settings")
+
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gear") }
+                .tag(4)
+        }
     }
 }

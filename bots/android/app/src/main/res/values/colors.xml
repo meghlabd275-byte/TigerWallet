@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bot_primary">#0EA5E9</color>
+    <color name="bot_primary_variant">#0284C7</color>
+    <color name="bot_secondary">#38BDF8</color>
+    <color name="bot_on_primary">#FFFFFF</color>
+    <color name="bot_surface">#FFFFFF</color>
+    <color name="bot_on_surface">#0F172A</color>
+    <color name="bot_background">#F8FAFC</color>
+    <color name="bot_error">#DC2626</color>
+    <color name="bot_success">#16A34A</color>
+    <color name="bot_warning">#F59E0B</color>
+    <color name="bot_muted">#64748B</color>
+
+    <color name="bot_surface_dark">#1E293B</color>
+    <color name="bot_on_surface_dark">#E2E8F0</color>
+    <color name="bot_background_dark">#0F172A</color>
+</resources>

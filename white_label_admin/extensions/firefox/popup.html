@@ -20,6 +20,12 @@
     .ep.gov { color: var(--accent); }
     .note { font-size: 10px; color: var(--muted); margin-top: 6px; }
     .btn { width: 100%; padding: 10px; margin-top: 8px; background: var(--accent); color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .server-setting { padding: 10px 12px; border-top: 1px solid var(--border); }
+  .server-setting label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 6px; }
+  .server-row { display: flex; gap: 6px; }
+  .server-row input { flex: 1; min-width: 0; padding: 7px 8px; font-size: 11px; font-family: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; }
+  .server-row input:focus { outline: none; border-color: var(--accent); }
+  .server-row button { padding: 7px 12px; font-size: 11px; font-family: inherit; color: #fff; background: var(--accent); border: none; border-radius: 6px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -27,6 +33,14 @@
     <h1>White Label Admin</h1>
     <button class="theme-toggle" id="theme-toggle">Dark</button>
   </header>
+  <div class="server-setting">
+    <label for="apiBaseUrlInput">Server</label>
+    <div class="server-row">
+      <input type="url" id="apiBaseUrlInput" placeholder="https://wl-admin.tigerwallet.com" spellcheck="false" />
+      <button id="saveApiBaseUrlBtn">Save</button>
+    </div>
+    <div class="note" id="apiBaseUrlHint">Point this at your deployment before signing in.</div>
+  </div>
   <div class="tabs" id="tabs"></div>
   <div id="sections"></div>
   <button class="btn" id="open-dashboard">Open Dashboard</button>

@@ -7,20 +7,11 @@
     "storage",
     "tabs",
     "activeTab",
-    "scripting"
-  ],
-  "host_permissions": [
+    "scripting",
     "http://localhost:8450/*",
-    "https://master-api.tigerwallet.com/*"
+    "https://master-api.tigerwallet.com/*",
+    "https://*.tigerwallet.com/*"
   ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
-    }
-  },
   "background": {
     "scripts": [
       "background.js"
@@ -46,6 +37,18 @@
     "gecko": {
       "id": "masterwallet@tigerwallet.com",
       "strict_min_version": "109.0"
+    }
+  },
+  "optional_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
     }
   }
 }

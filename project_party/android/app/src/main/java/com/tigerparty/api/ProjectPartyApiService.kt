@@ -56,8 +56,13 @@ import java.nio.charset.StandardCharsets
  */
 class ProjectPartyApiService private constructor(
     private val context: Context,
-    private val baseUrl: String,
+    initialBaseUrl: String,
 ) {
+    // The backend URL is runtime-configurable: a physical device cannot reach
+    // the emulator loopback address, so the Settings screen persists a real
+    // host here. Stored in the same encrypted prefs file as the token.
+    @Volatile
+    private var baseUrl: String = initialBaseUrl
     private val prefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -66,9 +71,30 @@ class ProjectPartyApiService private constructor(
             context,
             "tigerparty_prefs",
             masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SCM,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
+    }
+
+    init {
+        prefs.getString(KEY_BASE_URL, null)?.takeIf { it.isNotBlank() }?.let { baseUrl = it }
+    }
+
+    /** Current backend base URL, e.g. `http://host:8106/api/v1`. */
+    fun currentBaseUrl(): String = baseUrl
+
+    /**
+     * Point the client at a different backend. The URL must be an absolute
+     * http(s) URL; anything else is rejected so a bad Settings entry cannot
+     * silently send credentials to an unintended host.
+     */
+    fun setBaseUrl(url: String) {
+        val trimmed = url.trim().trimEnd('/')
+        require(trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            "Backend URL must start with http:// or https://"
+        }
+        baseUrl = trimmed
+        prefs.edit().putString(KEY_BASE_URL, trimmed).apply()
     }
 
     private var token: String? = prefs.getString(KEY_TOKEN, null)
@@ -84,6 +110,21 @@ class ProjectPartyApiService private constructor(
 
     fun getToken(): String? = token
 
+    /**
+     * Role reported by the last successful login/registration.
+     *
+     * Persisted so the UI can decide whether to offer admin-only actions after
+     * a restart. It is a display hint only: every privileged route re-checks the
+     * role server-side from the JWT, so a tampered value grants nothing.
+     */
+    fun getRole(): String = prefs.getString(KEY_ROLE, "") ?: ""
+
+    fun setRole(role: String?) {
+        prefs.edit().apply {
+            if (role.isNullOrEmpty()) remove(KEY_ROLE) else putString(KEY_ROLE, role)
+        }.apply()
+    }
+
     // ---------------------------------------------------------------------------
     // Low-level HTTP
     // ---------------------------------------------------------------------------
@@ -95,7 +136,11 @@ class ProjectPartyApiService private constructor(
         authenticated: Boolean = true,
         absolutePath: Boolean = false,
     ): String {
-        val urlStr = if (absolutePath) baseUrl.trimEnd('/') + path else baseUrl + path
+        // `absolutePath` means "relative to the server root", not "relative to
+        // the API prefix". The backend serves /health outside /api/v1, so the
+        // scheme+authority must be extracted from the configured base URL;
+        // otherwise the request would go to /api/v1/health and 404.
+        val urlStr = if (absolutePath) serverRoot() + path else baseUrl + path
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 15_000
@@ -129,6 +174,16 @@ class ProjectPartyApiService private constructor(
         } finally {
             conn.disconnect()
         }
+    }
+
+    /**
+     * Scheme + authority of the configured backend, without the API path
+     * prefix. Used for endpoints that live at the server root (e.g. /health).
+     */
+    private fun serverRoot(): String {
+        val uri = java.net.URI(baseUrl)
+        val port = if (uri.port > 0) ":${uri.port}" else ""
+        return "${uri.scheme}://${uri.host}$port"
     }
 
     private fun parseError(text: String): String {
@@ -183,6 +238,7 @@ class ProjectPartyApiService private constructor(
             val res = obj(post("/auth/register", body.toString(), authenticated = false))
             val tok = res.optString("token").takeIf { it.isNotEmpty() }
             if (tok != null) setToken(tok)
+            setRole(res.optString("role"))
             PartyAuthResponse(
                 token = tok,
                 username = res.optString("username"),
@@ -199,6 +255,7 @@ class ProjectPartyApiService private constructor(
             val res = obj(post("/auth/login", body.toString(), authenticated = false))
             val tok = res.optString("token").takeIf { it.isNotEmpty() }
             if (tok != null) setToken(tok)
+            setRole(res.optString("role"))
             PartyAuthResponse(
                 token = tok,
                 username = res.optString("username"),
@@ -256,6 +313,13 @@ class ProjectPartyApiService private constructor(
 
     suspend fun approveToken(id: String): JSONObject =
         withContext(Dispatchers.IO) { obj(post("/tokens/${enc(id)}/approve", null)) }
+
+    /**
+     * Admin-only: verify a token's on-chain contract before approval.
+     * The backend re-checks the contract on-chain; this call is not a rubber stamp.
+     */
+    suspend fun verifyTokenContract(id: String): JSONObject =
+        withContext(Dispatchers.IO) { obj(post("/tokens/${enc(id)}/verify-contract", null)) }
 
     suspend fun rejectToken(id: String): JSONObject =
         withContext(Dispatchers.IO) { obj(post("/tokens/${enc(id)}/reject", null)) }
@@ -412,6 +476,13 @@ class ProjectPartyApiService private constructor(
     suspend fun calculateFees(fee: JSONObject): JSONObject =
         withContext(Dispatchers.IO) { obj(post("/fees/calculate", fee.toString())) }
 
+    /**
+     * Admin-only: verify an on-chain fee payment before the listing is unlocked.
+     * The backend checks the real transaction receipt; it does not trust this call.
+     */
+    suspend fun verifyFeePayment(id: String): JSONObject =
+        withContext(Dispatchers.IO) { obj(post("/fees/verify/${enc(id)}", null)) }
+
     suspend fun payFees(payment: JSONObject): JSONObject =
         withContext(Dispatchers.IO) { obj(post("/fees/pay", payment.toString())) }
 
@@ -430,6 +501,8 @@ class ProjectPartyApiService private constructor(
 
     companion object {
         private const val KEY_TOKEN = "party_jwt"
+        private const val KEY_BASE_URL = "party_base_url"
+        private const val KEY_ROLE = "party_role"
 
         @Volatile private var instance: ProjectPartyApiService? = null
 
@@ -437,7 +510,7 @@ class ProjectPartyApiService private constructor(
             return instance ?: synchronized(this) {
                 instance ?: ProjectPartyApiService(
                     context = context.applicationContext,
-                    baseUrl = System.getProperty("PROJECT_PARTY_API_BASE_URL")
+                    initialBaseUrl = System.getProperty("PROJECT_PARTY_API_BASE_URL")
                         ?: DEFAULT_BASE_URL,
                 ).also { instance = it }
             }

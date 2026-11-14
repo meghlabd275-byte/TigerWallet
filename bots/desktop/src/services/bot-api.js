@@ -25,9 +25,36 @@
 //         adminSetFeeAddress, adminDeleteFeeAddress, adminBotStatus
 //   public: publicTiers, health
 
-const API_BASE_URL =
+const BUILD_API_BASE_URL =
   (typeof process !== 'undefined' && process.env && (process.env.BOTS_API_URL || process.env.VITE_API_URL)) ||
   'http://localhost:8471/api/v1';
+
+// A packaged build cannot be pointed at a hosted backend by an env var, so the
+// operator can override the endpoint at runtime; the value persists in
+// localStorage and is read on every request.
+const API_BASE_KEY = 'tigerbots-api-base';
+
+function getApiBaseUrl() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(API_BASE_KEY);
+      if (stored) return stored.replace(/\/+$/, '');
+    }
+  } catch { /* localStorage may be unavailable outside the renderer */ }
+  return BUILD_API_BASE_URL;
+}
+
+export function setApiBaseUrl(value) {
+  const raw = String(value || '').trim().replace(/\/+$/, '');
+  if (!raw) throw new Error('A server URL is required.');
+  if (!/^https?:\/\//i.test(raw)) throw new Error('The URL must start with http:// or https://');
+  if (typeof localStorage !== 'undefined') localStorage.setItem(API_BASE_KEY, raw);
+  return raw;
+}
+
+export function getApiBaseUrlForDisplay() {
+  return getApiBaseUrl();
+}
 
 const TOKEN_KEY = 'tigerbots-token';
 
@@ -79,7 +106,7 @@ async function request(path, options = {}) {
   // Bodyless POSTs must not send a body (the Go gin handler rejects empty
   // bodies when a JSON struct is bound).
   if (init.body === undefined) delete init.body;
-  const res = await fetch(`${API_BASE_URL}${path}`, init);
+  const res = await fetch(`${getApiBaseUrl()}${path}`, init);
   if (!res.ok) {
     let detail = '';
     try {

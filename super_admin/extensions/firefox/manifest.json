@@ -5,24 +5,11 @@
   "description": "Super Admin extension for TigerWallet management",
   "permissions": [
     "activeTab",
-    "storage"
-  ],
-  "host_permissions": [
+    "storage",
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://*.tigerwallet.com/*"
   ],
-  "optional_host_permissions": [
-    "http://*/*",
-    "https://*/*"
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
-  },
   "background": {
     "scripts": [
       "background.js"
@@ -33,5 +20,17 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "optional_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
 }

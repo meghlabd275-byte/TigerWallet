@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TigerBots</string>
+
+    <!-- Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_bots">Bots</string>
+    <string name="nav_market">Market</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Shared actions -->
+    <string name="action_refresh">Refresh</string>
+    <string name="action_create">Create</string>
+    <string name="action_start">Start</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_save">Save</string>
+    <string name="action_logout">Sign out</string>
+
+    <!-- Auth -->
+    <string name="auth_title">Sign in to TigerBots</string>
+    <string name="label_login">Sign in</string>
+    <string name="label_register">Create account</string>
+    <string name="label_email">Email or username</string>
+    <string name="label_password">Password</string>
+    <string name="label_backend">Backend server</string>
+    <string name="auth_missing_fields">Enter your username and password.</string>
+    <string name="auth_password_too_short">Password must be at least 8 characters.</string>
+    <string name="auth_no_token">The server did not return a session token.</string>
+    <string name="auth_failed">Sign-in failed.</string>
+    <string name="signed_out">Signed out.</string>
+
+    <!-- Bots -->
+    <string name="create_bot">Create a bot</string>
+    <string name="hint_bot_name">Bot name</string>
+    <string name="hint_exchange">Exchange (e.g. binance)</string>
+    <string name="hint_pair">Pair (e.g. BTC/USDT)</string>
+    <string name="bot_name_required">Enter a bot name.</string>
+    <string name="bot_create_failed">Could not create the bot.</string>
+
+    <!-- Market / connectors -->
+    <string name="tiers_title">Subscription tiers</string>
+    <string name="connector_cex_title">Exchange (CEX) connections</string>
+    <string name="connector_dex_title">DEX connections</string>
+    <string name="connector_add_cex">Add CEX connection</string>
+    <string name="connector_add_dex">Add DEX connection</string>
+    <string name="hint_api_key">API key</string>
+    <string name="hint_api_secret">API secret</string>
+    <string name="hint_dex_name">DEX (e.g. uniswap_v2)</string>
+    <string name="hint_chain_id">Chain ID</string>
+    <string name="hint_rpc_url">RPC URL (optional)</string>
+    <string name="hint_wallet_seed">Signing key (hex private key)</string>
+    <string name="connector_cex_fields_required">Exchange, API key and API secret are all required.</string>
+    <string name="connector_dex_fields_required">DEX name and signing key are required.</string>
+
+    <!-- Settings -->
+    <string name="theme_title">Appearance</string>
+    <string name="theme_system">Follow system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="subscription_title">Subscription</string>
+    <string name="admin_title">Platform statistics</string>
+    <string name="settings_backend_saved">Backend URL saved.</string>
+    <string name="settings_backend_invalid">That is not a valid backend URL.</string>
+    <string name="settings_unreachable">Backend unreachable.</string>
+    <string name="settings_reachable">Connected — status %1$s (%2$s)</string>
+
+    <!-- Generic -->
+    <string name="empty_state">Nothing to show yet.</string>
+    <string name="load_failed">Could not load data.</string>
+    <string name="action_failed">Action failed.</string>
+</resources>

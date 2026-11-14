@@ -13,7 +13,14 @@ if (typeof browser !== "undefined" && typeof chrome === "undefined") {
 // Background script
 chrome.runtime.onInstalled.addListener(() => {
   console.log('TigerWallet White Label Admin Extension installed');
-  chrome.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:8456' });
+  // Seed defaults only when unset; an install/update must not clobber the
+  // server the operator configured in the popup.
+  chrome.storage.local.get(['darkMode', 'apiUrl'], (res) => {
+    const seed = {};
+    if (res.darkMode === undefined) seed.darkMode = false;
+    if (!res.apiUrl) seed.apiUrl = 'http://localhost:8456';
+    if (Object.keys(seed).length) chrome.storage.local.set(seed);
+  });
 });
 
 // The popup lists the governance surface; when it asks for a summary we read

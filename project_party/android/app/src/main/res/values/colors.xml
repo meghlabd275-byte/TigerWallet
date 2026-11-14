@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="party_primary">#7C3AED</color>
+    <color name="party_primary_variant">#6D28D9</color>
+    <color name="party_secondary">#A78BFA</color>
+    <color name="party_on_primary">#FFFFFF</color>
+    <color name="party_surface">#FFFFFF</color>
+    <color name="party_on_surface">#18181B</color>
+    <color name="party_background">#FAFAFA</color>
+    <color name="party_error">#DC2626</color>
+    <color name="party_success">#16A34A</color>
+    <color name="party_muted">#71717A</color>
+    <color name="party_surface_dark">#27272A</color>
+    <color name="party_on_surface_dark">#E4E4E7</color>
+    <color name="party_background_dark">#18181B</color>
+</resources>

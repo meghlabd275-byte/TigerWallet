@@ -2589,6 +2589,23 @@ async function saveSettings() {
     if (status) status.textContent = 'Enter a full http(s) URL';
     return;
   }
+  // A self-hosted backend is an optional host permission; the browser blocks
+  // the fetch until the user grants it from this click's user-gesture context.
+  if (chrome.permissions && chrome.permissions.request) {
+    const pattern = new URL(value).origin + '/*';
+    try {
+      if (!(await chrome.permissions.contains({ origins: [pattern] }))) {
+        const granted = await chrome.permissions.request({ origins: [pattern] });
+        if (!granted) {
+          if (status) status.textContent = 'Permission for that host was denied';
+          return;
+        }
+      }
+    } catch (_) {
+      if (status) status.textContent = 'Could not request host permission';
+      return;
+    }
+  }
   await new Promise((resolve) => chrome.storage.local.set({ tw_api_base: value }, resolve));
   await loadApiBase();
   if (status) status.textContent = `Saved. Backend: ${apiOrigin()}`;

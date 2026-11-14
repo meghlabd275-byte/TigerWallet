@@ -125,8 +125,66 @@ function safeUrl(v) {
         
         // System
         serviceList: document.getElementById('serviceList'),
-        refreshSystemBtn: document.getElementById('refreshSystemBtn')
+        refreshSystemBtn: document.getElementById('refreshSystemBtn'),
+        apiBaseUrlInput: document.getElementById('apiBaseUrlInput'),
+        saveApiBaseUrlBtn: document.getElementById('saveApiBaseUrlBtn'),
+        apiBaseUrlHint: document.getElementById('apiBaseUrlHint')
     };
+
+    // A custom backend origin is an OPTIONAL host permission: the browser
+    // blocks the request until the user grants it. The grant must be requested
+    // from the click's own user-gesture context, so the popup's permissions API
+    // is preferred and the service worker is only a fallback.
+    async function ensureHostPermission(url) {
+        var origin;
+        try {
+            origin = new URL(url).origin;
+        } catch (_) {
+            return { ok: false, error: 'That is not a valid URL.' };
+        }
+        var pattern = origin + '/*';
+        if (ext.permissions && ext.permissions.request) {
+            try {
+                if (await ext.permissions.contains({ origins: [pattern] })) return { ok: true };
+                var granted = await ext.permissions.request({ origins: [pattern] });
+                return granted ? { ok: true } : { ok: false, error: 'Permission for ' + origin + ' was denied.' };
+            } catch (e) {
+                return { ok: false, error: 'Could not request permission: ' + (e && e.message ? e.message : e) };
+            }
+        }
+        try {
+            var granted2 = await ext.runtime.sendMessage({ type: 'ENSURE_HOST_PERMISSION', url: url });
+            return granted2 ? { ok: true } : { ok: false, error: 'Permission for ' + origin + ' was denied.' };
+        } catch (e) {
+            return { ok: false, error: 'Could not request permission: ' + (e && e.message ? e.message : e) };
+        }
+    }
+
+    async function saveApiBaseUrl() {
+        var raw = (elements.apiBaseUrlInput.value || '').trim();
+        if (!raw) { setHint('Enter a server URL.', true); return; }
+        var normalized = raw.replace(/\/+$/, '');
+        if (!/^https?:\/\//i.test(normalized)) {
+            setHint('The URL must start with http:// or https://', true);
+            return;
+        }
+        if (!/\/api\/v\d+$/i.test(normalized)) normalized += '/api/v1';
+
+        var perm = await ensureHostPermission(normalized);
+        if (!perm.ok) { setHint(perm.error, true); return; }
+
+        await ls.setItem('api_base_url', normalized);
+        API_BASE_URL = normalized;
+        WS_URL = normalized.replace(/^http/i, 'ws').replace(/\/api\/v\d+$/i, '/ws');
+        await ls.setItem('ws_url', WS_URL);
+        setHint('Saved. Using ' + normalized, false);
+    }
+
+    function setHint(text, isError) {
+        if (!elements.apiBaseUrlHint) return;
+        elements.apiBaseUrlHint.textContent = text;
+        elements.apiBaseUrlHint.style.color = isError ? 'var(--danger-color, #e05252)' : '';
+    }
 
     // Initialize
     document.addEventListener('DOMContentLoaded', init);
@@ -144,6 +202,7 @@ function safeUrl(v) {
         await checkAuth();
         setupEventListeners();
         ensureDomainSections();
+        if (elements.apiBaseUrlInput) elements.apiBaseUrlInput.value = API_BASE_URL;
         await loadDashboard();
         connectWebSocket();
     }
@@ -267,6 +326,16 @@ function safeUrl(v) {
 
         // Add token
         elements.addTokenBtn.addEventListener('click', showAddTokenModal);
+
+        // Backend server
+        if (elements.saveApiBaseUrlBtn) {
+            elements.saveApiBaseUrlBtn.addEventListener('click', saveApiBaseUrl);
+        }
+        if (elements.apiBaseUrlInput) {
+            elements.apiBaseUrlInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') saveApiBaseUrl();
+            });
+        }
     }
 
     // Navigation

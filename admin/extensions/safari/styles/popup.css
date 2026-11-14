@@ -910,3 +910,50 @@ body {
     padding: 24px;
     color: var(--text-muted);
 }
+
+/* Backend Server Setting */
+.settings-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.settings-input {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.04));
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.settings-input:focus {
+    outline: none;
+    border-color: var(--accent-color, #4f9cf9);
+}
+
+.settings-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+.settings-save-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--accent-color, #4f9cf9);
+    color: #fff;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.settings-save-btn:hover {
+    opacity: 0.9;
+}

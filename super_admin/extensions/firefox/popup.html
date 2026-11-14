@@ -139,6 +139,15 @@
       margin-top: 8px;
     }
     .loading { padding: 40px; text-align: center; }
+  .server-setting { padding: 10px 12px; border-top: 1px solid var(--border); }
+  .server-setting label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 6px; }
+  .server-row { display: flex; gap: 6px; }
+  .server-row input { flex: 1; min-width: 0; padding: 7px 8px; font-size: 11px; font-family: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 6px; }
+  .server-row input:focus { outline: none; border-color: var(--accent); }
+  .server-row button { padding: 7px 12px; font-size: 11px; font-family: inherit; color: var(--on-accent); background: var(--accent); border: none; border-radius: 6px; cursor: pointer; }
+  .server-row button:hover { background: var(--accent-dark); }
+  .note { font-size: 10px; color: var(--muted); margin-top: 6px; }
+
   </style>
 </head>
 <body>
@@ -154,6 +163,15 @@
   <div class="domain-tabs" id="domainTabs"></div>
   <div class="domain-panel" id="domainPanel">
     <div class="domain-loading">Select a domain...</div>
+  </div>
+
+  <div class="server-setting">
+    <label for="apiBaseUrlInput">Server</label>
+    <div class="server-row">
+      <input type="url" id="apiBaseUrlInput" placeholder="https://super-admin.tigerwallet.com/api/v1/admin" spellcheck="false" />
+      <button id="saveApiBaseUrlBtn">Save</button>
+    </div>
+    <div class="note" id="apiBaseUrlHint">Point this at your deployment before signing in.</div>
   </div>
 
   <div class="nav">

@@ -321,11 +321,11 @@ func (s *OptionsService) loadContracts() {
 // Contract Management
 // ============================================================================
 
-// getSpotPrice fetches the real spot price for an underlying asset from the
-// canonical wallet_api price endpoint. On failure it falls back to the strike
-// price (a documented fallback, NOT a fabricated number) so pricing still
-// produces a real Black-Scholes premium.
-func (s *OptionsService) getSpotPrice(underlying string, strikePrice float64) float64 {
+// fetchSpotPrice fetches the real spot price for an underlying asset from the
+// canonical wallet_api price endpoint. It returns an error when no price can be
+// established, so callers that move money (settlement) can refuse to act on a
+// guessed number.
+func (s *OptionsService) fetchSpotPrice(underlying string) (float64, error) {
 	walletAPI := os.Getenv("WALLET_API_URL")
 	if walletAPI == "" {
 		walletAPI = "http://localhost:8443"
@@ -333,23 +333,37 @@ func (s *OptionsService) getSpotPrice(underlying string, strikePrice float64) fl
 	url := fmt.Sprintf("%s/api/v1/price?symbol=%s", walletAPI, url.QueryEscape(underlying))
 	resp, err := s.httpClient.Get(url)
 	if err != nil {
-		return strikePrice
+		return 0, fmt.Errorf("price lookup for %s failed: %w", underlying, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("price lookup for %s returned HTTP %d", underlying, resp.StatusCode)
+	}
 	var result struct {
 		Price float64 `json:"price"`
 		USD   float64 `json:"usd"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return strikePrice
+		return 0, fmt.Errorf("price response for %s was not decodable: %w", underlying, err)
 	}
 	if result.Price > 0 {
-		return result.Price
+		return result.Price, nil
 	}
 	if result.USD > 0 {
-		return result.USD
+		return result.USD, nil
 	}
-	return strikePrice
+	return 0, fmt.Errorf("no price available for %s", underlying)
+}
+
+// getSpotPriceOrStrike is used only where a price is needed to quote a premium.
+// A quote is not a money movement, so falling back to the strike price keeps
+// pricing available; settlement never uses this path.
+func (s *OptionsService) getSpotPriceOrStrike(underlying string, strikePrice float64) float64 {
+	price, err := s.fetchSpotPrice(underlying)
+	if err != nil {
+		return strikePrice
+	}
+	return price
 }
 
 func (s *OptionsService) CreateOptionContract(
@@ -368,7 +382,7 @@ func (s *OptionsService) CreateOptionContract(
 
 	// Calculate initial premium using Black-Scholes with the REAL spot price
 	// fetched from the wallet_api price endpoint (fallback to strike on error).
-	currentPrice := s.getSpotPrice(underlying, strikePrice)
+	currentPrice := s.getSpotPriceOrStrike(underlying, strikePrice)
 	timeToExpiry := expiration.Sub(time.Now()).Hours() / (24 * 365)
 	volatility := 0.5 // 50% IV
 	riskFreeRate := 0.05
@@ -669,8 +683,13 @@ func (s *OptionsService) ExerciseOption(userID uint, positionID uint) (*OptionSe
 	contract := s.contracts[position.ContractID]
 	s.mu.RUnlock()
 
-	// Get current underlying price (simplified)
-	underlyingPrice := contract.StrikePrice * 1.1 // Mock price
+	// Settlement must use a real observed price. Inventing one (the old
+	// code used strike * 1.1) would pay out an amount that never happened
+	// in the market.
+	underlyingPrice, err := s.fetchSpotPrice(contract.UnderlyingAsset)
+	if err != nil {
+		return nil, fmt.Errorf("cannot settle option without a market price: %w", err)
+	}
 
 	var settlementAmount float64
 	if contract.OptionType == "call" {
@@ -724,14 +743,26 @@ func (s *OptionsService) ProcessExpiration() error {
 		var positions []OptionPosition
 		s.db.Where("contract_id = ?", contract.ContractID).Find(&positions)
 
+		// Settlement requires a real observed price. When the price
+		// feed is unavailable the positions are left open (the contract
+		// stays active) and the next run retries, rather than settling
+		// everyone against an invented number.
+		underlyingPrice, priceErr := s.fetchSpotPrice(contract.UnderlyingAsset)
+		if priceErr != nil {
+			log.Printf("expiration: skipping contract %s, no market price: %v", contract.ContractID, priceErr)
+			continue
+		}
+
 		for _, position := range positions {
-			// Calculate settlement
-			settlementAmount := 0.0
+			// Intrinsic value at expiry: max(spot - strike, 0) for a
+			// call, max(strike - spot, 0) for a put.
+			var intrinsic float64
 			if contract.OptionType == "call" {
-				settlementAmount = math.Max(0, contract.StrikePrice*0.1) // Simplified
+				intrinsic = math.Max(0, underlyingPrice-contract.StrikePrice)
 			} else {
-				settlementAmount = math.Max(0, contract.StrikePrice*0.05)
+				intrinsic = math.Max(0, contract.StrikePrice-underlyingPrice)
 			}
+			settlementAmount := intrinsic
 
 			settlement := OptionSettlement{
 				SettlementID:     uuid.New().String(),

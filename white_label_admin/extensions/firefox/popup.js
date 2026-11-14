@@ -80,6 +80,58 @@ function openDashboard(url) {
   }
 }
 
+
+// Server setting. A hosted deployment is not reachable at localhost, so the
+// base URL is stored under the `apiUrl` key the background worker already
+// reads. A custom origin is an optional host permission and must be granted
+// from the click's own user-gesture context.
+function initServerSetting() {
+  const input = document.getElementById('apiBaseUrlInput');
+  const saveBtn = document.getElementById('saveApiBaseUrlBtn');
+  const hint = document.getElementById('apiBaseUrlHint');
+  const DEFAULT_SERVER = 'http://localhost:8456';
+  const store = (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage.local
+    : (typeof browser !== 'undefined' && browser.storage) ? browser.storage.local : null;
+  if (!input || !saveBtn) return;
+
+  const setHint = (text, isError) => {
+    hint.textContent = text;
+    hint.style.color = isError ? 'var(--error, #ef4444)' : 'var(--muted)';
+  };
+
+  if (store) {
+    store.get(['apiUrl'], (res) => { input.value = (res && res.apiUrl) || DEFAULT_SERVER; });
+  } else {
+    input.value = DEFAULT_SERVER;
+  }
+
+  const save = async () => {
+    let raw = (input.value || '').trim().replace(/\/+$/, '');
+    if (!raw) { setHint('Enter a server URL.', true); return; }
+    if (!/^https?:\/\//i.test(raw)) { setHint('The URL must start with http:// or https://', true); return; }
+
+    const pattern = new URL(raw).origin + '/*';
+    const perms = (typeof chrome !== 'undefined' && chrome.permissions) ? chrome.permissions : null;
+    if (perms) {
+      try {
+        if (!(await perms.contains({ origins: [pattern] }))) {
+          const granted = await perms.request({ origins: [pattern] });
+          if (!granted) { setHint('Permission for that host was denied.', true); return; }
+        }
+      } catch (e) {
+        setHint('Could not request host permission.', true);
+        return;
+      }
+    }
+    if (store) await store.set({ apiUrl: raw });
+    input.dataset.savedUrl = raw;
+    setHint('Saved. Using ' + raw, false);
+  };
+
+  saveBtn.addEventListener('click', save);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+}
+
 function initTheme() {
   const toggle = document.getElementById('theme-toggle');
   const apply = (dark) => {
@@ -103,5 +155,9 @@ function initTheme() {
 document.addEventListener('DOMContentLoaded', () => {
   buildTabs();
   initTheme();
-  document.getElementById('open-dashboard').addEventListener('click', () => openDashboard('http://localhost:8456'));
+  initServerSetting();
+  document.getElementById('open-dashboard').addEventListener('click', () => {
+    const input = document.getElementById('apiBaseUrlInput');
+    openDashboard((input && input.dataset.savedUrl) || (input && input.value) || 'http://localhost:8456');
+  });
 });

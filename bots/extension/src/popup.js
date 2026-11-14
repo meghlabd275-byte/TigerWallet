@@ -2,7 +2,7 @@
 // Without this shim every browser.* call below throws ReferenceError in Chrome.
 const ext = typeof browser !== 'undefined' ? browser : chrome;
 
-const DEFAULT_WEB_URL = 'http://localhost:8463';
+const DEFAULT_WEB_URL = 'http://localhost:8472';
 
 async function getWebUrl() {
   const { bots_web_url: url } = await ext.storage.local.get('bots_web_url');

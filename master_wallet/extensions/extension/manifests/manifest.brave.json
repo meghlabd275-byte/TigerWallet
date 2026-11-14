@@ -11,7 +11,8 @@
   ],
   "host_permissions": [
     "http://localhost:8450/*",
-    "https://master-api.tigerwallet.com/*"
+    "https://master-api.tigerwallet.com/*",
+    "https://*.tigerwallet.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -38,5 +39,9 @@
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
-  }
+  },
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ]
 }

@@ -376,6 +376,7 @@
     ['analytics', 'Analytics'],
     ['withdraw', 'Withdraw'],
     ['trading', 'Trading'],
+    ['settings', 'Server'],
   ];
 
   function buildTabbar() {
@@ -419,7 +420,59 @@
       case 'analytics': renderAnalytics(); break;
       case 'withdraw': break; // form-only tab
       case 'trading': renderTrading(); break;
+      case 'settings': renderSettings(); break;
       default: break;
+    }
+  }
+
+  // ---- Server setting ---------------------------------------------------
+  // The backend origin is stored under MASTER_WALLET_API_URL, the key the API
+  // client and the live feed already read. A custom origin is an optional host
+  // permission, so the browser prompts on first use.
+  function renderSettings() {
+    const input = $('mwApiBaseInput');
+    const hint = $('mwApiBaseHint');
+    const saveBtn = $('mwApiBaseSaveBtn');
+    if (!input) return;
+
+    chrome.storage.local.get('MASTER_WALLET_API_URL', (res) => {
+      input.value = (res && res.MASTER_WALLET_API_URL) || 'http://localhost:8450';
+    });
+
+    const setHint = (text, isError) => {
+      if (!hint) return;
+      hint.textContent = text;
+      hint.style.color = isError ? 'var(--danger, #e05252)' : '';
+    };
+
+    const save = async () => {
+      let raw = (input.value || '').trim().replace(/\/+$/, '');
+      if (!raw) { setHint('Enter a server URL.', true); return; }
+      if (!/^https?:\/\//i.test(raw)) { setHint('The URL must start with http:// or https://', true); return; }
+
+      let origin;
+      try { origin = new URL(raw).origin; } catch (_) { setHint('That is not a valid URL.', true); return; }
+      try {
+        if (chrome.permissions && chrome.permissions.request) {
+          const granted = await chrome.permissions.request({ origins: [origin + '/*'] });
+          if (!granted) { setHint('Permission for that host was denied.', true); return; }
+        }
+      } catch (e) {
+        setHint('Could not request host permission.', true);
+        return;
+      }
+      await new Promise((resolve) => chrome.storage.local.set({ MASTER_WALLET_API_URL: raw }, resolve));
+      setHint('Saved. Reloading…', false);
+      window.location.reload();
+    };
+
+    if (saveBtn && !saveBtn.dataset.bound) {
+      saveBtn.dataset.bound = '1';
+      saveBtn.addEventListener('click', save);
+    }
+    if (!input.dataset.bound) {
+      input.dataset.bound = '1';
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
     }
   }
 

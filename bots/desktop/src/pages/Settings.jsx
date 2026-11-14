@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import api from '../services/bot-api';
+import api, { setApiBaseUrl, getApiBaseUrlForDisplay } from '../services/bot-api';
 
 export default function Settings() {
   const [health, setHealth] = useState(null);
   const [txs, setTxs] = useState([]);
   const [error, setError] = useState(null);
+  const [serverUrl, setServerUrl] = useState(getApiBaseUrlForDisplay());
+  const [serverStatus, setServerStatus] = useState(null);
+  const [serverError, setServerError] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -17,10 +20,46 @@ export default function Settings() {
     return () => { alive = false; };
   }, []);
 
+  const saveServer = async () => {
+    let saved;
+    try {
+      saved = setApiBaseUrl(serverUrl);
+    } catch (e) {
+      setServerError(true);
+      setServerStatus(e.message);
+      return;
+    }
+    setServerUrl(saved);
+    setServerError(false);
+    setServerStatus(`Saved. Using ${saved}`);
+    try {
+      setHealth(await api.health());
+      setError(null);
+    } catch (e) {
+      setHealth(null);
+      setError(e.message);
+    }
+  };
+
   return (
     <div className="settings-page">
       <h1>Settings</h1>
       {error && <p className="error-banner">{error}</p>}
+
+      <h2>Backend server</h2>
+      <p className="muted">
+        Point this app at your deployment. A hosted backend is not reachable at
+        localhost.
+      </p>
+      <input
+        type="url"
+        value={serverUrl}
+        spellCheck="false"
+        onChange={(e) => setServerUrl(e.target.value)}
+        placeholder="https://bots.tigerwallet.com/api/v1"
+      />
+      <button className="btn" onClick={saveServer}>Save server</button>
+      {serverStatus && <p className={serverError ? 'error-banner' : 'muted'}>{serverStatus}</p>}
 
       <h2>Backend health</h2>
       {health ? (

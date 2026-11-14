@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TigerBots" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/bot_primary</item>
+        <item name="colorPrimaryVariant">@color/bot_primary_variant</item>
+        <item name="colorOnPrimary">@color/bot_on_primary</item>
+        <item name="colorSecondary">@color/bot_secondary</item>
+        <item name="colorSurface">@color/bot_surface</item>
+        <item name="colorOnSurface">@color/bot_on_surface</item>
+        <item name="android:colorBackground">@color/bot_background</item>
+        <item name="colorError">@color/bot_error</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
+
+    <style name="Theme.TigerBots.Dark" parent="Theme.TigerBots">
+        <item name="colorSurface">@color/bot_surface_dark</item>
+        <item name="colorOnSurface">@color/bot_on_surface_dark</item>
+        <item name="android:colorBackground">@color/bot_background_dark</item>
+    </style>
+</resources>

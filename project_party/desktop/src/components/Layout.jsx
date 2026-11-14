@@ -16,7 +16,8 @@ function Layout() {
     { path: '/launchpad', label: 'Launchpad', icon: '🚀' },
     { path: '/market-making', label: 'Market Making', icon: '🤝' },
     { path: '/fees', label: 'Fees', icon: '💰' },
-    { path: '/favorites', label: 'Favorites', icon: '⭐' }
+    { path: '/favorites', label: 'Favorites', icon: '⭐' },
+    { path: '/settings', label: 'Settings', icon: '⚙️' }
   ];
   if (isAdmin) navItems.push({ path: '/admin', label: 'Admin', icon: '🛡️' });
 

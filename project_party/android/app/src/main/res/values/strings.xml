@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TigerParty</string>
+
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_tokens">Tokens</string>
+    <string name="nav_launchpad">Launchpad</string>
+    <string name="nav_market">Market</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="action_refresh">Refresh</string>
+    <string name="action_save">Save</string>
+    <string name="action_logout">Sign out</string>
+    <string name="action_submit_token">Submit token</string>
+    <string name="action_submit_for_review">Submit for review</string>
+    <string name="action_approve">Approve</string>
+    <string name="action_reject">Reject</string>
+    <string name="action_verify_contract">Verify contract</string>
+    <string name="action_verify_fee">Verify payment</string>
+    <string name="action_contribute">Contribute</string>
+    <string name="action_claim">Claim</string>
+
+    <string name="auth_title">Sign in to TigerParty</string>
+    <string name="label_login">Sign in</string>
+    <string name="label_register">Create account</string>
+    <string name="label_email">Username</string>
+    <string name="label_password">Password</string>
+    <string name="label_backend">Backend server</string>
+    <string name="auth_missing_fields">Enter your username and password.</string>
+    <string name="auth_username_too_short">Username must be at least 3 characters.</string>
+    <string name="auth_password_too_short">Password must be at least 8 characters.</string>
+    <string name="auth_no_token">The server did not return a session token.</string>
+    <string name="auth_failed">Sign-in failed.</string>
+    <string name="signed_out">Signed out.</string>
+
+    <string name="submit_token">Submit a token</string>
+    <string name="hint_token_name">Token name</string>
+    <string name="hint_token_symbol">Symbol</string>
+    <string name="hint_chain">Chain</string>
+    <string name="hint_contract">Contract address (optional)</string>
+    <string name="token_fields_required">Name, symbol and chain are required.</string>
+
+    <string name="hint_amount">Amount</string>
+    <string name="launchpad_amount_required">Enter an amount first.</string>
+
+    <string name="order_book">Market-making order book</string>
+
+    <string name="theme_title">Appearance</string>
+    <string name="theme_system">Follow system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="account_title">Account</string>
+    <string name="fee_verification">Fee payment verification</string>
+    <string name="hint_fee_id">Fee payment ID</string>
+    <string name="fee_id_required">Enter a fee payment ID.</string>
+
+    <string name="settings_backend_saved">Backend URL saved.</string>
+    <string name="settings_backend_invalid">That is not a valid backend URL.</string>
+    <string name="backend_unreachable">Backend unreachable.</string>
+    <string name="backend_status">Connected — status %1$s</string>
+
+    <string name="empty_state">Nothing to show yet.</string>
+    <string name="load_failed">Could not load data.</string>
+    <string name="action_failed">Action failed.</string>
+</resources>

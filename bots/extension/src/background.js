@@ -2,7 +2,7 @@
 // Chrome exposes `chrome`; Firefox exposes `browser`.
 const ext = typeof browser !== 'undefined' ? browser : chrome;
 
-const DEFAULT_WEB_URL = 'http://localhost:8463';
+const DEFAULT_WEB_URL = 'http://localhost:8472';
 
 ext.runtime.onInstalled.addListener(async () => {
   const { bots_web_url: existing } = await ext.storage.local.get('bots_web_url');

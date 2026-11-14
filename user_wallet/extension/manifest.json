@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "UserWallet Extension",
   "version": "1.1.0",
-  "description": "TigerWallet UserWallet — EIP-1193 provider injection + canonical wallet-api backend.",
+  "description": "TigerWallet UserWallet \u2014 EIP-1193 provider injection + canonical wallet-api backend.",
   "permissions": [
     "storage",
     "activeTab",
@@ -21,16 +21,30 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/contentScript.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/contentScript.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/inpage.js"],
-      "matches": ["http://*/*", "https://*/*"]
+      "resources": [
+        "src/inpage.js"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
     }
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ]
 }

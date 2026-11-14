@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TigerParty" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/party_primary</item>
+        <item name="colorPrimaryVariant">@color/party_primary_variant</item>
+        <item name="colorOnPrimary">@color/party_on_primary</item>
+        <item name="colorSecondary">@color/party_secondary</item>
+        <item name="colorSurface">@color/party_surface</item>
+        <item name="colorOnSurface">@color/party_on_surface</item>
+        <item name="android:colorBackground">@color/party_background</item>
+        <item name="colorError">@color/party_error</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
+
+    <style name="Theme.TigerParty.Dark" parent="Theme.TigerParty">
+        <item name="colorSurface">@color/party_surface_dark</item>
+        <item name="colorOnSurface">@color/party_on_surface_dark</item>
+        <item name="android:colorBackground">@color/party_background_dark</item>
+    </style>
+</resources>

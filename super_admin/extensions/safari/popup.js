@@ -16,6 +16,49 @@ if (typeof browser !== "undefined" && typeof chrome === "undefined") {
 // failure surfaces an honest error, an empty list shows an empty state.
 
 document.addEventListener('DOMContentLoaded', async () => {
+
+  // Server setting. A hosted deployment is not reachable at localhost, so the
+  // base URL is stored and read by the background worker. A custom origin is
+  // an optional host permission and must be granted from this click's own
+  // user-gesture context.
+  const apiInput = document.getElementById('apiBaseUrlInput');
+  const apiSaveBtn = document.getElementById('saveApiBaseUrlBtn');
+  const apiHint = document.getElementById('apiBaseUrlHint');
+  const DEFAULT_API_BASE_URL = 'http://localhost:8082/api/v1/admin';
+
+  function setServerHint(text, isError) {
+    apiHint.textContent = text;
+    apiHint.style.color = isError ? 'var(--error)' : 'var(--muted)';
+  }
+
+  (async () => {
+    const stored = await chrome.storage.local.get('api_base_url');
+    apiInput.value = (stored && stored.api_base_url) || DEFAULT_API_BASE_URL;
+  })();
+
+  async function saveServer() {
+    let raw = (apiInput.value || '').trim().replace(/\/+$/, '');
+    if (!raw) { setServerHint('Enter a server URL.', true); return; }
+    if (!/^https?:\/\//i.test(raw)) { setServerHint('The URL must start with http:// or https://', true); return; }
+    if (!/\/api\/v\d+$/i.test(raw)) raw += '/api/v1/admin';
+
+    const pattern = new URL(raw).origin + '/*';
+    try {
+      if (!(await chrome.permissions.contains({ origins: [pattern] }))) {
+        const granted = await chrome.permissions.request({ origins: [pattern] });
+        if (!granted) { setServerHint('Permission for that host was denied.', true); return; }
+      }
+    } catch (e) {
+      setServerHint('Could not request host permission.', true);
+      return;
+    }
+    await chrome.storage.local.set({ api_base_url: raw });
+    setServerHint('Saved. Using ' + raw, false);
+  }
+
+  apiSaveBtn.addEventListener('click', saveServer);
+  apiInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveServer(); });
+
   await applyStoredTheme();
 
   const themeToggle = document.getElementById('themeToggle');

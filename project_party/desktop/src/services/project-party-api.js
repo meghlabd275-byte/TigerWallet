@@ -14,9 +14,36 @@
 // Method set matches project_party/web/src/services/api.ts + the discovery,
 // pricing, analytics, compliance routes the task requires.
 
-const API_BASE_URL =
+const BUILD_API_BASE_URL =
   (typeof process !== 'undefined' && process.env && (process.env.PROJECT_PARTY_API_URL || process.env.VITE_API_URL)) ||
   'http://localhost:8106/api/v1';
+
+// A packaged build cannot be pointed at a hosted backend by an env var, so the
+// operator can override the endpoint at runtime; the value persists in
+// localStorage and is read on every request.
+const API_BASE_KEY = 'projectparty-api-base';
+
+function getApiBaseUrl() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(API_BASE_KEY);
+      if (stored) return stored.replace(/\/+$/, '');
+    }
+  } catch { /* localStorage may be unavailable outside the renderer */ }
+  return BUILD_API_BASE_URL;
+}
+
+export function setApiBaseUrl(value) {
+  const raw = String(value || '').trim().replace(/\/+$/, '');
+  if (!raw) throw new Error('A server URL is required.');
+  if (!/^https?:\/\//i.test(raw)) throw new Error('The URL must start with http:// or https://');
+  if (typeof localStorage !== 'undefined') localStorage.setItem(API_BASE_KEY, raw);
+  return raw;
+}
+
+export function getApiBaseUrlForDisplay() {
+  return getApiBaseUrl();
+}
 
 const TOKEN_KEY = 'projectparty-token';
 
@@ -62,7 +89,8 @@ class PartyApiError extends Error {
 }
 
 async function request(path, options = {}, { absolute = false } = {}) {
-  const base = absolute ? API_BASE_URL.replace(/\/api\/v1$/, '') : API_BASE_URL;
+  const apiBase = getApiBaseUrl();
+  const base = absolute ? apiBase.replace(/\/api\/v1$/, '') : apiBase;
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const init = { ...options, headers };

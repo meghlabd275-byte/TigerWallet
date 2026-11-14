@@ -413,16 +413,49 @@ type GeographicData struct {
 }
 
 func (s *AnalyticsService) GetGeographicDistribution() ([]GeographicData, error) {
-	// Mock geographic data
-	data := []GeographicData{
-		{Country: "United States", Users: 15000, Volume: 50000000, Percentage: 35},
-		{Country: "United Kingdom", Users: 8000, Volume: 25000000, Percentage: 18},
-		{Country: "Germany", Users: 6000, Volume: 18000000, Percentage: 13},
-		{Country: "Japan", Users: 5000, Volume: 15000000, Percentage: 11},
-		{Country: "South Korea", Users: 4000, Volume: 12000000, Percentage: 9},
-		{Country: "Others", Users: 12000, Volume: 20000000, Percentage: 14},
+	// Real aggregation over recorded events: the country is read from the
+	// event properties JSON and the volume from the `volume` field of that
+	// object. Events whose properties carry no country are grouped under
+	// "Unknown" rather than being attributed to a country at random.
+	type row struct {
+		Country string
+		Users   int64
+		Volume  float64
 	}
-	return data, nil
+	var rows []row
+	err := s.db.Raw(`
+		SELECT
+			COALESCE(NULLIF(properties::json->>'country', ''), 'Unknown') AS country,
+			COUNT(DISTINCT user_id) AS users,
+			COALESCE(SUM(NULLIF(properties::json->>'volume', '')::numeric), 0) AS volume
+		FROM events
+		WHERE properties IS NOT NULL AND properties <> ''
+		GROUP BY 1
+		ORDER BY volume DESC
+		LIMIT 50
+	`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("geographic aggregation: %w", err)
+	}
+
+	var totalVolume float64
+	for _, r := range rows {
+		totalVolume += r.Volume
+	}
+	out := make([]GeographicData, 0, len(rows))
+	for _, r := range rows {
+		var pct float64
+		if totalVolume > 0 {
+			pct = r.Volume / totalVolume * 100
+		}
+		out = append(out, GeographicData{
+			Country:    r.Country,
+			Users:      r.Users,
+			Volume:     r.Volume,
+			Percentage: pct,
+		})
+	}
+	return out, nil
 }
 
 type RevenueBreakdown struct {
@@ -432,14 +465,44 @@ type RevenueBreakdown struct {
 }
 
 func (s *AnalyticsService) GetRevenueBreakdown() ([]RevenueBreakdown, error) {
-	return []RevenueBreakdown{
-		{Category: "Trading Fees", Amount: 1500000, Percent: 45},
-		{Category: "Swap Fees", Amount: 800000, Percent: 24},
-		{Category: "Withdrawal Fees", Amount: 500000, Percent: 15},
-		{Category: "Staking Rewards", Amount: 300000, Percent: 9},
-		{Category: "NFT Marketplace", Amount: 200000, Percent: 6},
-		{Category: "Other", Amount: 35000, Percent: 1},
-	}, nil
+	// Real aggregation over revenue metrics: each recorded metric named
+	// "revenue" contributes its value to the category held in `dimension`.
+	type row struct {
+		Category string
+		Amount   float64
+	}
+	var rows []row
+	err := s.db.Raw(`
+		SELECT
+			COALESCE(NULLIF(dimension, ''), 'Uncategorised') AS category,
+			COALESCE(SUM(metric_value), 0) AS amount
+		FROM metrics
+		WHERE metric_name = 'revenue'
+		GROUP BY 1
+		ORDER BY amount DESC
+		LIMIT 50
+	`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("revenue aggregation: %w", err)
+	}
+
+	var total float64
+	for _, r := range rows {
+		total += r.Amount
+	}
+	out := make([]RevenueBreakdown, 0, len(rows))
+	for _, r := range rows {
+		var pct float64
+		if total > 0 {
+			pct = r.Amount / total * 100
+		}
+		out = append(out, RevenueBreakdown{
+			Category: r.Category,
+			Amount:   r.Amount,
+			Percent:  pct,
+		})
+	}
+	return out, nil
 }
 
 // ============================================================================
