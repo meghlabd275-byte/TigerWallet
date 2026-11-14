@@ -113,6 +113,11 @@ services:
       # In-house KYC. P2P trading and card issuance are gated on this
       # service, so leaving it unset blocks both (the gate fails closed).
       KYC_SERVICE_TOKEN: "${KYC_API_TOKEN:?KYC_API_TOKEN must be set - the P2P and card gates fail closed without it}"
+      # Shared secret for the service-to-service custody relay
+      # (/api/v1/service/tx/*). The institutional custody service signs a
+      # transaction hash with MPC shares and submits the signature here. When
+      # unset the relay is disabled (503), never open.
+      SERVICE_BROADCAST_TOKEN: "${SERVICE_BROADCAST_TOKEN:?SERVICE_BROADCAST_TOKEN must be set - the custody relay refuses to run unauthenticated}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -1396,6 +1401,62 @@ services:
       - PAYMASTER_ADDRESS=${AA_PAYMASTER_ADDRESS:-}
       - PAYMASTER_SIGNER_KEY=${AA_PAYMASTER_SIGNER_KEY:-}
       - BENEFICIARY=${AA_BENEFICIARY:-}
+    restart: unless-stopped
+
+  # Institutional custody. Creates custody accounts backed by real MPC keys
+  # (go/mpc) and executes withdrawals through the wallet_api relay
+  # (/api/v1/service/tx/*). Every route requires CUSTODY_API_KEY; the service
+  # refuses to start without it rather than approve withdrawals anonymously.
+  # Host port 9105 because 8097 is taken by listing-service.
+  institutional-custody:
+    build:
+      context: ./institutional_custody/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-institutional-custody
+    ports:
+      - "9105:8097"
+    environment:
+      - PORT=8097
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-tigerwallet}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      - DB_NAME=tigerwallet_custody
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MPC_BACKEND_URL=http://mpc-service:9099
+      - MPC_SERVICE_TOKEN=${MPC_SERVICE_TOKEN:-}
+      - WALLET_API_URL=http://wallet-api:8443
+      # Must match the wallet_api SERVICE_BROADCAST_TOKEN so the relay accepts
+      # the signed transaction the custody service submits.
+      - SERVICE_BROADCAST_TOKEN=${SERVICE_BROADCAST_TOKEN:?SERVICE_BROADCAST_TOKEN must be set}
+      - CUSTODY_API_KEY=${CUSTODY_API_KEY:?CUSTODY_API_KEY must be set}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # MEV protection. Builds Flashbots-protected bundles and maintains the
+  # address blocklist. MEV_API_KEY is required (the blocklist is a censorship
+  # surface); the container refuses to start without it.
+  mev-protection-service:
+    build:
+      context: ./services/go/mev_protection_service
+      dockerfile: Dockerfile
+    container_name: tigerwallet-mev-protection-service
+    ports:
+      - "8089:8089"
+    environment:
+      - MEV_PROTECTION_PORT=8089
+      - MEV_API_KEY=${MEV_API_KEY:?MEV_API_KEY must be set - the MEV blocklist is a censorship surface}
+      - REDIS_ADDR=redis:6379
+      - ETH_RPC_URL=${ETH_RPC_URL:-}
+      # Relayer identity for bundle submission. Without it protected bundles
+      # are rejected at broadcast time rather than sent unsigned.
+      - FLASHBOTS_SIGNING_KEY=${FLASHBOTS_SIGNING_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   mpc-service:

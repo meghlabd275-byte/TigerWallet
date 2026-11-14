@@ -5,6 +5,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -47,6 +48,14 @@ type Config struct {
 	// requires an authenticated caller for every signing and export route.
 	MPCServiceToken string `json:"mpc_service_token"`
 	WalletAPIURL    string `json:"wallet_api_url"`
+	// ServiceToken authenticates this service to the wallet_api custody relay
+	// (/api/v1/service/tx/*). It must match the wallet_api SERVICE_BROADCAST_TOKEN.
+	// Empty => executeTransaction fails closed rather than calling unauthenticated.
+	ServiceToken string `json:"service_token"`
+	// APIKey gates every /api/v1/custody route. This service creates and
+	// approves withdrawals that move real funds, so an unauthenticated caller
+	// must never reach it. Required at startup: a credential has no safe default.
+	APIKey string `json:"api_key"`
 }
 
 // ============================================================================
@@ -634,12 +643,23 @@ func (s *CustodyService) ApproveTransaction(ctx *gin.Context) {
 	})
 }
 
-// executeTransaction signs the custody transfer via the real MPC TSS backend
-// (POST /api/v1/mpc/sign with the account's stored keyId + the keccak256
-// tx-hash) and broadcasts the signed raw transaction through the canonical
-// wallet_api /api/v1/send endpoint. It returns the real on-chain tx hash from
-// the broadcast response. It NEVER fabricates a hash; on any failure it
-// returns an error so the caller can surface an honest action_required status.
+// executeTransaction performs a real MPC custody withdrawal in two phases
+// against the canonical wallet_api:
+//
+//  1. POST /api/v1/service/tx/prepare  -> the backend fetches the nonce and
+//     gas price from the chain and returns the unsigned transaction plus the
+//     exact 32-byte hash that must be signed.
+//  2. The MPC TSS backend signs that hash with the account's distributed key
+//     shares (POST /api/v1/mpc/sign). The key never exists in one place.
+//  3. POST /api/v1/service/tx/submit   -> the backend rebuilds the identical
+//     transaction, verifies the signature recovers the custody account's own
+//     address, and broadcasts it.
+//
+// Signing a pre-built transaction hash is the only correct design for an MPC
+// signer: a TSS backend produces a secp256k1 signature over a digest, and it
+// cannot produce the full signed transaction itself. It NEVER fabricates a
+// hash; every failure returns an error so the caller can surface an honest
+// action_required status.
 func (s *CustodyService) executeTransaction(account *CustodyAccount, tx *TransactionRequest) (string, error) {
 	if s.config.MPCBackendURL == "" {
 		return "", fmt.Errorf("MPC backend not configured (set MPC_BACKEND_URL)")
@@ -647,34 +667,180 @@ func (s *CustodyService) executeTransaction(account *CustodyAccount, tx *Transac
 	if account.MPCKeyID == "" {
 		return "", fmt.Errorf("custody account has no MPC key (keyId empty)")
 	}
+	if s.config.WalletAPIURL == "" {
+		return "", fmt.Errorf("wallet_api not configured (set WALLET_API_URL)")
+	}
+	if s.config.ServiceToken == "" {
+		return "", fmt.Errorf("SERVICE_BROADCAST_TOKEN not configured; the wallet_api relay refuses unauthenticated calls")
+	}
 
-	// Build the message hash to sign. For a custody withdrawal the canonical
-	// digest is the keccak256 of the EIP-191-prefixed transfer payload. The
-	// wallet_api constructs the actual EIP-1559 transaction; here we sign the
-	// transfer intent hash so the MPC backend produces a real secp256k1
-	// signature over deterministic data (tx hash is computed server-side by
-	// the broadcast layer; the custody layer signs the intent).
-	intent := fmt.Sprintf("%s:%s:%s:%s", tx.RequestID, tx.ToAddress, tx.Token, tx.Amount)
-	messageHash := intent // MPC backend hashes internally; pass the canonical intent.
+	// Phase 1: ask the wallet backend to build the transaction. It owns the
+	// chain registry, the nonce lookup and the fee logic, so the custody
+	// service never has to duplicate any of it.
+	prepared, err := s.prepareTransfer(account, tx)
+	if err != nil {
+		return "", fmt.Errorf("prepare failed: %w", err)
+	}
+	if prepared.SigningHash == "" {
+		return "", fmt.Errorf("wallet_api returned no signing_hash")
+	}
 
-	// 1. Sign via the MPC TSS backend.
-	sigResp, err := s.mpcSign(account.MPCKeyID, messageHash)
+	// Phase 2: sign the digest with the distributed key.
+	sig, err := s.mpcSign(account.MPCKeyID, prepared.SigningHash)
 	if err != nil {
 		return "", fmt.Errorf("MPC sign failed: %w", err)
 	}
 
-	// 2. Broadcast the signed transaction via the canonical wallet_api.
-	if s.config.WalletAPIURL == "" {
-		// We have a real signature but no broadcast endpoint; surface it so an
-		// operator can submit the raw signed payload. This is still honest: no
-		// fake hash is returned.
-		return "", fmt.Errorf("wallet_api not configured (set WALLET_API_URL); signature produced: %s", sigResp)
-	}
-	txHash, err := s.broadcastTransfer(account, tx, sigResp)
+	// Phase 3: submit. The backend re-derives the hash from the fields we
+	// echo back and rejects the call if it does not match what we signed.
+	txHash, err := s.submitTransfer(prepared, sig)
 	if err != nil {
-		return "", fmt.Errorf("broadcast failed: %w", err)
+		return "", fmt.Errorf("submit failed: %w", err)
 	}
 	return txHash, nil
+}
+
+// preparedTx mirrors the wallet_api /service/tx/prepare response.
+type preparedTx struct {
+	ChainID        int64  `json:"chain_id"`
+	From           string `json:"from"`
+	To             string `json:"to"`
+	ValueWei       string `json:"value_wei"`
+	Data           string `json:"data"`
+	GasLimit       uint64 `json:"gas_limit"`
+	TxType         string `json:"tx_type"`
+	Nonce          uint64 `json:"nonce"`
+	GasPriceWei    string `json:"gas_price_wei,omitempty"`
+	MaxFeeWei      string `json:"max_fee_wei,omitempty"`
+	MaxPriorityWei string `json:"max_priority_fee_wei,omitempty"`
+	SigningHash    string `json:"signing_hash"`
+}
+
+// tokenToWei converts a decimal token amount into the smallest unit for the
+// chain. Custody transfers must not lose precision, so the conversion is done
+// on integers: the fractional part is scaled by the chain's decimals.
+//
+// Only a plain non-negative decimal is accepted. Anything else (letters, a
+// second decimal point, a sign) is rejected rather than coerced, because a
+// malformed amount must never be turned into a number the operator did not
+// authorise.
+func tokenToWei(amount string, decimals int) (string, error) {
+	amount = strings.TrimSpace(amount)
+	if amount == "" {
+		return "", fmt.Errorf("amount is empty")
+	}
+	if strings.HasPrefix(amount, "-") || strings.HasPrefix(amount, "+") {
+		return "", fmt.Errorf("amount must not be signed")
+	}
+	if decimals < 0 || decimals > 36 {
+		decimals = 18
+	}
+
+	intPart, fracPart := amount, ""
+	if i := strings.Index(amount, "."); i >= 0 {
+		intPart, fracPart = amount[:i], amount[i+1:]
+		if strings.Contains(fracPart, ".") {
+			return "", fmt.Errorf("amount has more than one decimal point")
+		}
+	}
+	if intPart == "" {
+		intPart = "0"
+	}
+	if !isDigits(intPart) || !isDigits(fracPart) {
+		return "", fmt.Errorf("amount must be a decimal number")
+	}
+
+	if len(fracPart) > decimals {
+		// Truncate rather than round: never move more than authorised.
+		fracPart = fracPart[:decimals]
+	}
+	for len(fracPart) < decimals {
+		fracPart += "0"
+	}
+	scaled := strings.TrimLeft(intPart+fracPart, "0")
+	if scaled == "" {
+		scaled = "0"
+	}
+	return scaled, nil
+}
+
+// isDigits reports whether s consists only of ASCII digits. An empty string is
+// accepted so the caller can treat a missing fractional part as zero.
+func isDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// prepareTransfer asks the canonical wallet_api to build the withdrawal.
+func (s *CustodyService) prepareTransfer(account *CustodyAccount, tx *TransactionRequest) (*preparedTx, error) {
+	wei, err := tokenToWei(tx.Amount, 18)
+	if err != nil {
+		return nil, err
+	}
+	req := map[string]interface{}{
+		"chain_id":  account.ChainID,
+		"from":      account.WalletAddress,
+		"to":        tx.ToAddress,
+		"value_wei": wei,
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.postJSON(s.config.WalletAPIURL+"/api/v1/service/tx/prepare", string(body))
+	if err != nil {
+		return nil, err
+	}
+	var out preparedTx
+	if err := json.Unmarshal(resp, &out); err != nil {
+		return nil, fmt.Errorf("prepare response parse: %w (body: %s)", err, string(resp))
+	}
+	return &out, nil
+}
+
+// submitTransfer sends the signature back for verification and broadcast.
+func (s *CustodyService) submitTransfer(prepared *preparedTx, signature string) (string, error) {
+	payload := map[string]interface{}{
+		"chain_id":             prepared.ChainID,
+		"from":                 prepared.From,
+		"to":                   prepared.To,
+		"value_wei":            prepared.ValueWei,
+		"data":                 prepared.Data,
+		"gas_limit":            prepared.GasLimit,
+		"tx_type":              prepared.TxType,
+		"nonce":                prepared.Nonce,
+		"gas_price_wei":        prepared.GasPriceWei,
+		"max_fee_wei":          prepared.MaxFeeWei,
+		"max_priority_fee_wei": prepared.MaxPriorityWei,
+		"signing_hash":         prepared.SigningHash,
+		"signature":            signature,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	resp, err := s.postJSON(s.config.WalletAPIURL+"/api/v1/service/tx/submit", string(body))
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		TxHash string `json:"tx_hash"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal(resp, &out); err != nil {
+		return "", fmt.Errorf("submit response parse: %w (body: %s)", err, string(resp))
+	}
+	if out.Error != "" {
+		return "", fmt.Errorf("wallet_api error: %s", out.Error)
+	}
+	if out.TxHash == "" {
+		return "", fmt.Errorf("wallet_api returned no tx hash (body: %s)", string(resp))
+	}
+	return out.TxHash, nil
 }
 
 // createMPCWallet asks the canonical go/mpc backend to generate a real
@@ -732,44 +898,6 @@ func (s *CustodyService) mpcSign(keyID, messageHash string) (string, error) {
 		return "", fmt.Errorf("mpc backend returned empty signature (body: %s)", string(resp))
 	}
 	return out.Signature, nil
-}
-
-// broadcastTransfer submits the signed custody withdrawal to the canonical
-// wallet_api broadcast endpoint and returns the real on-chain tx hash.
-func (s *CustodyService) broadcastTransfer(account *CustodyAccount, tx *TransactionRequest, signature string) (string, error) {
-	payload := map[string]interface{}{
-		"address":   account.WalletAddress,
-		"chain_id":  account.ChainID,
-		"to":        tx.ToAddress,
-		"amount":    tx.Amount,
-		"token":     tx.Token,
-		"signature": signature,
-		"key_id":    account.MPCKeyID,
-	}
-	body, _ := json.Marshal(payload)
-	resp, err := s.postJSON(s.config.WalletAPIURL+"/api/v1/send", string(body))
-	if err != nil {
-		return "", err
-	}
-	var out struct {
-		TxHash string `json:"tx_hash"`
-		Hash   string `json:"hash"`
-		Error  string `json:"error"`
-	}
-	if err := json.Unmarshal(resp, &out); err != nil {
-		return "", fmt.Errorf("broadcast response parse: %w (body: %s)", err, string(resp))
-	}
-	if out.Error != "" {
-		return "", fmt.Errorf("wallet_api error: %s", out.Error)
-	}
-	hash := out.TxHash
-	if hash == "" {
-		hash = out.Hash
-	}
-	if hash == "" {
-		return "", fmt.Errorf("wallet_api returned no tx hash (body: %s)", string(resp))
-	}
-	return hash, nil
 }
 
 // postJSON is a small helper that POSTs a JSON body and returns the response
@@ -864,7 +992,7 @@ func (s *CustodyService) logCompliance(institutionID, accountID uint, action, de
 
 func main() {
 	config := Config{
-		ServerPort:      "8097",
+		ServerPort:      getEnv("PORT", "8097"),
 		DBHost:          getEnv("DB_HOST", "localhost"),
 		DBPort:          getEnv("DB_PORT", "5432"),
 		DBUser:          getEnv("DB_USER", "tigerwallet"),
@@ -875,6 +1003,7 @@ func main() {
 		MPCBackendURL:   getEnv("MPC_BACKEND_URL", "http://localhost:9099"),
 		MPCServiceToken: getEnv("MPC_SERVICE_TOKEN", ""),
 		WalletAPIURL:    getEnv("WALLET_API_URL", "http://localhost:8443"),
+		APIKey:          mustEnv("CUSTODY_API_KEY"),
 	}
 
 	service, err := NewCustodyService(config)
@@ -897,6 +1026,7 @@ func main() {
 	})
 
 	api := router.Group("/api/v1/custody")
+	api.Use(requireAPIKey(config.APIKey))
 	{
 		api.GET("/institutions", service.GetInstitutions)
 		api.POST("/institutions", service.CreateInstitution)
@@ -942,4 +1072,25 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// requireAPIKey authenticates every custody route. The service approves
+// withdrawals that move real funds, so a request without the operator's key is
+// refused before any handler runs. The comparison is constant-time: a timing
+// side channel on a credential check is not worth the risk in a money path.
+func requireAPIKey(expected string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		presented := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+		if presented == "" {
+			presented = strings.TrimSpace(c.GetHeader("X-API-Key"))
+		}
+		if expected == "" || subtle.ConstantTimeCompare([]byte(presented), []byte(expected)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "invalid or missing API key",
+			})
+			return
+		}
+		c.Next()
+	}
 }

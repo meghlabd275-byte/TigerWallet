@@ -105,6 +105,11 @@ func main() {
 	r.GET("/health/live", handleLiveness)
 	r.GET("/health/ready", handleReadiness)
 	r.GET("/api/v1/chains", handleSupportedChains)
+	// Service-to-service raw transaction relay for MPC custody signers.
+	// Bearer-token gated; see raw_broadcast.go. It never signs.
+	r.POST("/api/v1/service/tx/prepare", handleServiceTxPrepare)
+	r.POST("/api/v1/service/tx/submit", handleServiceTxSubmit)
+	r.POST("/api/v1/service/broadcast", handleServiceBroadcast)
 	r.GET("/api/v1/price", handlePrice)
 	r.GET("/api/v1/gas", handleGasPrice)
 	r.POST("/api/v1/gas/estimate", handleEstimateGas)

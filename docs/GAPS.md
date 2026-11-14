@@ -135,13 +135,14 @@ See the domain READMEs and `ARCHITECTURE.md` for per-domain capability detail.
 - `frontend/web_nextjs` `/wallet/import` route → FIXED (no longer a byte-copy of
   `/wallet/create`; now targets the real import endpoint).
 
-### Fixed in session 6
+### Fixed in session 6, superseded by session 44
 
 - `services/go/*.go` (9 standalone demo scripts): the directory was a **broken
-  Go package** (8 `func main()` in one dir + 1 file with none). All 9 now carry
-  a `//go:build ignore` tag, so each is still runnable via `go run <file>` while
-  the directory no longer breaks sweep builds. `services/go/staking_service.go`
-  placeholder `"your-opensea-key"` now reads `OPENSEA_API_KEY` from env.
+  Go package** (8 `func main()` in one dir + 1 file with none). All 9 then
+  carried a `//go:build ignore` tag. **Session 44 deleted all 9** after
+  confirming each duplicated a canonical deployed service and was referenced by
+  nothing (no compose entry, Dockerfile, CI workflow, Go import, or doc). See
+  the session 44 section below for the full evidence table.
 
 ### Duplicate audit (exact-hash sweep over 3317 files, excl. .git/node_modules)
 

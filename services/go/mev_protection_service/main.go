@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -819,6 +820,11 @@ func main() {
 		redisAddr = "localhost:6379"
 	}
 
+	apiKey := os.Getenv("MEV_API_KEY")
+	if apiKey == "" {
+		log.Fatal("MEV_API_KEY must be set: /v1/mev/block is a censorship surface and bundle submission must not be anonymous")
+	}
+
 	config := &Config{
 		FlashbotsRPC:        "https://relay.flashbots.net",
 		FlashbotsSigningKey: flashbotsSigningKey,
@@ -830,11 +836,31 @@ func main() {
 
 	r := gin.Default()
 	service := NewMEVProtectionService(config)
-	service.RegisterRoutes(r.Group("/v1/mev"))
+	api := r.Group("/v1/mev")
+	api.Use(requireAPIKey(os.Getenv("MEV_API_KEY")))
+	service.RegisterRoutes(api)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "mev-protection"})
 	})
 
 	r.Run(":" + port)
+}
+
+// requireAPIKey authenticates every /v1/mev route. The service blocks
+// addresses (a censorship surface) and submits bundles to a public relay under
+// the operator's reputation, so neither may be driven anonymously. The
+// comparison is constant-time.
+func requireAPIKey(expected string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		presented := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+		if presented == "" {
+			presented = strings.TrimSpace(c.GetHeader("X-API-Key"))
+		}
+		if expected == "" || subtle.ConstantTimeCompare([]byte(presented), []byte(expected)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or missing API key"})
+			return
+		}
+		c.Next()
+	}
 }

@@ -152,3 +152,8 @@ CREATE DATABASE tigerwallet_kyc;
 -- and creates pb_products / pb_permissions on boot; this only provides the
 -- database so the bridge can connect without an operator creating it by hand.
 CREATE DATABASE tigerwallet_permissions;
+
+-- Institutional custody (institutional_custody/go). It creates its own tables
+-- on boot; this only provides the database so the service can connect without
+-- an operator creating it by hand.
+CREATE DATABASE tigerwallet_custody;
