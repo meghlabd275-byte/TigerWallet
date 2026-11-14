@@ -126,6 +126,9 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// Metrics must be installed before the routes so the middleware covers them.
+	botMetricsSvc = svc
+	registerBotMetrics(r)
 	r.GET("/api/v1/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "bot_api", "licensed": gate.IsAlive()})
 	})

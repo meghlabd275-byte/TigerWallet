@@ -55,6 +55,11 @@ func main() {
 	// Initialize Gin router
 	router := gin.Default()
 
+	// Metrics must be installed before the routes so the middleware covers them.
+	ppMetricsDB = db
+	ppMetricsRedis = rdb
+	registerProjectPartyMetrics(router)
+
 	// CORS
 	router.Use(corsMiddleware())
 

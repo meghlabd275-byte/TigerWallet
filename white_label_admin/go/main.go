@@ -74,7 +74,13 @@ func main() {
 
 	svc := handlers.New(cfg, database.Pool, rdb)
 
+	// Metrics must be installed before the routes so the middleware covers them.
+	wlaPG = database.Pool
+	if rdb != nil {
+		wlaRedis = rdb.Client
+	}
 	router := gin.Default()
+	registerWLMetrics(router)
 	router.Use(func() gin.HandlerFunc {
 		// CORS: an explicit origin allowlist. A wildcard cannot be combined with
 		// AllowCredentials (browsers reject it), so this previously blocked
