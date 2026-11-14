@@ -27,6 +27,8 @@ type Config struct {
 	JWTExpiry         time.Duration
 	HeartbeatInterval time.Duration
 	BotCoreURL        string // Rust bot_core execution plane (BOT_CORE_URL)
+	AIServiceURL      string // AI prediction service (AI_SERVICE_URL)
+	MEVRelayURL       string // MEV-protection relay (MEV_RELAY_URL)
 	ProjectPartyURL   string // WL ProjectParty backend for mm-configs linkage (PROJECT_PARTY_URL)
 	PPServiceToken    string // shared service-to-service token with project-party (PP_SERVICE_TOKEN)
 	// CORSAllowedOrigins is the browser-origin allowlist for the API.
@@ -49,6 +51,8 @@ func Load() *Config {
 		JWTExpiry:          getDuration("JWT_EXPIRY", 24*time.Hour),
 		HeartbeatInterval:  getDuration("HEARTBEAT_INTERVAL", 30*time.Second),
 		BotCoreURL:         getEnv("BOT_CORE_URL", "http://localhost:8472"),
+		AIServiceURL:       getEnv("AI_SERVICE_URL", "http://localhost:8091"),
+		MEVRelayURL:        getEnv("MEV_RELAY_URL", "http://localhost:8089"),
 		ProjectPartyURL:    getEnv("PROJECT_PARTY_URL", "http://localhost:8106"),
 		PPServiceToken:     getEnv("PP_SERVICE_TOKEN", ""),
 		CORSAllowedOrigins: splitCSV(getEnv("WL_BOTS_CORS_ORIGINS", "")),

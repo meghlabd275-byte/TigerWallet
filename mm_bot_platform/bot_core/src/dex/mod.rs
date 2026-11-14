@@ -79,11 +79,116 @@ pub struct DexSwapResult {
     pub success: bool,
 }
 
+/// A signed Uniswap V2 swap, ready to be broadcast.
+///
+/// The transaction is fully constructed and signed with a real secp256k1
+/// EIP-155 signature. Holding it separately from the broadcast is what lets a
+/// caller submit it through a private relay instead of the public mempool.
+pub struct SignedSwap {
+    /// Raw signed transaction (RLP), hex-encoded with a 0x prefix.
+    pub raw_signed_tx: String,
+    /// keccak256 of the signed transaction — the hash the network will use.
+    pub tx_hash: String,
+    /// Provider used for signing; reused to broadcast and confirm.
+    provider: Arc<SignerMiddleware<Arc<Provider<Http>>, LocalWallet>>,
+    /// Output token, needed to decode the realized amount from the receipt.
+    token_out: ethers::core::types::Address,
+    /// Sender, needed to identify the recipient of the output transfer.
+    from: ethers::core::types::Address,
+    /// Decimals of the output token.
+    out_decimals: u8,
+}
+
+impl SignedSwap {
+    /// The address that signed this transaction. Derived from the signer, so a
+    /// caller never has to be told it separately (and cannot be told wrong).
+    pub fn sender(&self) -> String {
+        format!("{:?}", self.from)
+    }
+
+    /// Broadcast through the node this transaction was signed against and wait
+    /// for the receipt. Real hash, real confirmation, no fabricated values.
+    pub async fn broadcast_and_confirm(self) -> Result<DexSwapResult, DexError> {
+        let pending = self
+            .provider
+            .provider()
+            .send_raw_transaction(
+                ethers::core::types::Bytes::from(
+                    hex::decode(self.raw_signed_tx.trim_start_matches("0x"))
+                        .map_err(|e| DexError::decode_msg(format!("raw tx hex: {e}")))?,
+                ),
+            )
+            .await
+            .map_err(DexError::provider)?;
+
+        let receipt = tokio::time::timeout(Duration::from_secs(180), pending)
+            .await
+            .map_err(|_| DexError::timeout_parse(&self.tx_hash))?
+            .map_err(DexError::provider)?
+            .ok_or_else(|| DexError::timeout_parse(&self.tx_hash))?;
+
+        self.finish(receipt)
+    }
+
+    /// Confirm a transaction that was broadcast by someone else (for example a
+    /// relay) by polling for its receipt. The receipt is the only source of the
+    /// realized output amount, so a transaction that never lands is an error
+    /// rather than a zero.
+    pub async fn confirm_relayed(self) -> Result<DexSwapResult, DexError> {
+        let hash: ethers::core::types::H256 = self
+            .tx_hash
+            .parse()
+            .map_err(|e| DexError::decode_msg(format!("tx hash: {e}")))?;
+        let receipt = self
+            .provider
+            .provider()
+            .get_transaction_receipt(hash)
+            .await
+            .map_err(DexError::provider)?;
+        let receipt = receipt.ok_or_else(|| DexError::timeout_parse(&self.tx_hash))?;
+        self.finish(receipt)
+    }
+
+    fn finish(
+        self,
+        receipt: ethers::core::types::TransactionReceipt,
+    ) -> Result<DexSwapResult, DexError> {
+        let success = receipt.status == Some(1.into());
+        if !success {
+            return Err(DexError::reverted_parse(&self.tx_hash));
+        }
+        let amount_out = decode_amount_out(&receipt, self.token_out, self.from, self.out_decimals)
+            .ok_or_else(|| DexError::decode_msg(format!("amount_out for {}", self.tx_hash)))?;
+        Ok(DexSwapResult {
+            tx_hash: self.tx_hash,
+            amount_out,
+            gas_used: receipt.gas_used.map(|g| g.as_u64()).unwrap_or(0),
+            gas_price: receipt.effective_gas_price.map(|g| g.as_u128()).unwrap_or(0),
+            block_number: receipt.block_number.map(|b| b.as_u64()).unwrap_or(0),
+            success,
+        })
+    }
+}
+
+/// Sign a real Uniswap V2 `swapExactTokensForTokens` swap WITHOUT broadcasting.
+///
+/// Use this when the transaction must be routed privately (see the MEV
+/// runners). The returned [`SignedSwap`] is broadcast with
+/// [`SignedSwap::broadcast_and_confirm`].
+pub async fn sign_swap(req: &DexSwapRequest) -> Result<SignedSwap, DexError> {
+    let signed = build_signed_swap(req).await?;
+    Ok(signed)
+}
+
 /// Execute a real Uniswap V2 `swapExactTokensForTokens` swap.
 ///
 /// This signs and broadcasts a real transaction. It never fabricates a hash:
 /// if broadcast or confirmation fails, an error is returned.
 pub async fn execute_swap(req: &DexSwapRequest) -> Result<DexSwapResult, DexError> {
+    sign_swap(req).await?.broadcast_and_confirm().await
+}
+
+async fn build_signed_swap(req: &DexSwapRequest) -> Result<SignedSwap, DexError> {
     let provider = Arc::new(
         Provider::<Http>::try_from(req.rpc_url.as_str())
             .map_err(DexError::provider)?
@@ -188,43 +293,17 @@ pub async fn execute_swap(req: &DexSwapRequest) -> Result<DexSwapResult, DexErro
         .map_err(DexError::signer)?;
     let raw = typed.rlp_signed(&signature);
 
-    // Real broadcast. No fabricated hash.
-    let pending = client
-        .provider()
-        .send_raw_transaction(raw)
-        .await
-        .map_err(DexError::provider)?;
-    let tx_hash = pending.tx_hash();
+    // A transaction's hash is keccak256 of its signed RLP, so it is derived
+    // locally: the node would report the same value.
+    let tx_hash = format!("0x{}", hex::encode(ethers::core::utils::keccak256(raw.as_ref())));
 
-    // Real confirmation: wait for the receipt, with a bounded timeout.
-    let receipt = tokio::time::timeout(Duration::from_secs(180), pending)
-        .await
-        .map_err(|_| DexError::timeout(tx_hash))?
-        .map_err(DexError::provider)?
-        .ok_or_else(|| DexError::timeout(tx_hash))?;
-
-    let success = receipt.status == Some(1.into());
-    if !success {
-        return Err(DexError::reverted(tx_hash));
-    }
-
-    // Real amount_out: decode from the router's `amounts` return value via the
-    // Swap event / last Transfer to `from`. The router returns `uint[] amounts`;
-    // the receipt logs include the output Transfer. We decode the largest
-    // Transfer of `token_out` to `from` in this tx as the realized amount_out.
-    let amount_out = decode_amount_out(&receipt, token_out, from, out_decimals)
-        .ok_or_else(|| DexError::decode(tx_hash))?;
-
-    Ok(DexSwapResult {
-        tx_hash: format!("{tx_hash:#x}"),
-        amount_out,
-        gas_used: receipt.gas_used.map(|g| g.as_u64()).unwrap_or(0),
-        gas_price: receipt
-            .effective_gas_price
-            .map(|g| g.as_u128())
-            .unwrap_or(0),
-        block_number: receipt.block_number.map(|b| b.as_u64()).unwrap_or(0),
-        success,
+    Ok(SignedSwap {
+        raw_signed_tx: format!("0x{}", hex::encode(raw.as_ref())),
+        tx_hash,
+        provider: client,
+        token_out,
+        from,
+        out_decimals,
     })
 }
 
@@ -589,11 +668,21 @@ impl DexError {
     fn reverted(h: ethers::core::types::TxHash) -> Self {
         DexError::Reverted(format!("{h:#x}"))
     }
-    fn decode(h: ethers::core::types::TxHash) -> Self {
-        DexError::Decode(format!("{h:#x}"))
+    /// Decode failure reported against a message rather than a tx hash.
+    fn decode_msg(msg: String) -> Self {
+        DexError::Decode(msg)
     }
     fn other(s: &'static str) -> Self {
         DexError::Other(s.to_string())
+    }
+    /// Timeout reported against a hash we only hold as text (a signed
+    /// transaction that has not been broadcast by us yet, or a relayed one).
+    fn timeout_parse(h: &str) -> Self {
+        DexError::Timeout(h.to_string())
+    }
+    /// Reverted transaction reported against a hash we only hold as text.
+    fn reverted_parse(h: &str) -> Self {
+        DexError::Reverted(h.to_string())
     }
 }
 

@@ -1,3 +1,7 @@
+pub mod advanced;
+
+pub use advanced::*;
+
 // ============================================================================
 // TigerWallet Advanced Trading Strategies
 // High-Performance Rust Implementation for New Bot Types
@@ -989,7 +993,7 @@ impl SniperRunner {
     }
 }
 
-async fn record(store: &PgPool, bot_id: &str, strategy: &str, action: &str, outcome: &StrategyOutcome) {
+pub(crate) async fn record(store: &PgPool, bot_id: &str, strategy: &str, action: &str, outcome: &StrategyOutcome) {
     let rec = ExecutionRecord {
         bot_id: bot_id.to_string(),
         strategy: strategy.to_string(),
@@ -1015,7 +1019,7 @@ async fn record(store: &PgPool, bot_id: &str, strategy: &str, action: &str, outc
 // ============================================================================
 
 /// Place a real market order and map the exchange result to a StrategyOutcome.
-async fn market_order(client: &CexClient, symbol: &str, side: &str, qty: f64) -> StrategyOutcome {
+pub(crate) async fn market_order(client: &CexClient, symbol: &str, side: &str, qty: f64) -> StrategyOutcome {
     let start = std::time::Instant::now();
     let req = CexOrderRequest {
         base_url: None,

@@ -82,6 +82,16 @@ class MarketSignal:
     timestamp: int
     indicators: Dict[str, float] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict:
+        return {
+            'symbol': self.symbol,
+            'signal_type': self.signal_type,
+            'strength': self.strength,
+            'reason': self.reason,
+            'timestamp': self.timestamp,
+            'indicators': self.indicators,
+        }
+
 # ============================================================================
 # TECHNICAL INDICATORS ENGINE (Rust-like performance in Python)
 # ============================================================================

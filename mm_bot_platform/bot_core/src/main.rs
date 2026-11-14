@@ -26,8 +26,9 @@ use tigerswap_bot_core::cex::{CexClient, CexCredentials, CexExchange, CexOrderRe
 use tigerswap_bot_core::dex::{self, DexSwapRequest};
 use tigerswap_bot_core::store::{PgPool, TradeRecord};
 use tigerswap_bot_core::strategies::{
-    ArbitrageRunner, DcaRunner, GridRunner, LiquidityProviderRunner, MarketMakerRunner,
-    MeanReversionRunner, MomentumRunner, PerpHedgeRunner, ScalpingRunner, SniperRunner,
+    AiTradingRunner, ArbitrageRunner, CrossChainArbRunner, CustomRunner, DcaRunner, GridRunner,
+    LiquidityProviderRunner, MarketMakerRunner, MeanReversionRunner, MomentumRunner,
+    PerpHedgeRunner, PrivateSwapRunner, ScalpingRunner, SignalRunner, SniperRunner,
 };
 
 const PORT: u16 = 8472;
@@ -52,6 +53,11 @@ enum BotKind {
     Scalping,
     PerpHedge,
     LiquidityProvider,
+    AiTrading,
+    Signal,
+    Mev,
+    CrossChain,
+    Custom,
 }
 
 #[derive(Default)]
@@ -266,6 +272,90 @@ struct StartLiquidityProvider {
     poll_interval_ms: Option<u64>,
 }
 
+/// AI trading: reads predictions from the ML service and places real orders.
+#[derive(Debug, Deserialize)]
+struct StartAiTrading {
+    bot_id: String,
+    exchange: CexExchange,
+    #[serde(flatten)]
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: String,
+    order_size: f64,
+    /// Predicted move (fraction) required before an order is placed.
+    threshold_pct: Option<f64>,
+    /// Minimum model confidence required before an order is placed.
+    min_confidence: Option<f64>,
+    timeframe: Option<String>,
+    /// Base URL of the AI prediction service.
+    ai_endpoint: String,
+    ai_api_key: Option<String>,
+    /// Pull fresh candles before each prediction. Defaults to true.
+    refresh_candles: Option<bool>,
+    poll_interval_ms: Option<u64>,
+}
+
+/// Signal feed: polls the operator's endpoint and acts on each new signal once.
+#[derive(Debug, Deserialize)]
+struct StartSignal {
+    bot_id: String,
+    exchange: CexExchange,
+    #[serde(flatten)]
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: String,
+    order_size: f64,
+    signal_endpoint: String,
+    signal_api_key: Option<String>,
+    min_confidence: Option<f64>,
+    poll_interval_ms: Option<u64>,
+}
+
+/// Private submission: signs its own swap and routes it through the relay.
+#[derive(Debug, Deserialize)]
+struct StartMev {
+    bot_id: String,
+    dex_req: DexSwapRequest,
+    /// Wallet address that signs the swap. Optional: when omitted it is read
+    /// from the signer, which is the authoritative source.
+    wallet_address: Option<String>,
+    relay_endpoint: String,
+    relay_api_key: String,
+    min_edge_bps: Option<f64>,
+    observe_mempool: Option<bool>,
+    mempool_url: Option<String>,
+    adverse_notional_usd: Option<f64>,
+    poll_interval_ms: Option<u64>,
+}
+
+/// Cross-chain arbitrage: buys the cheaper venue, sells the dearer one.
+#[derive(Debug, Deserialize)]
+struct StartCrossChain {
+    bot_id: String,
+    buy: DexSwapRequest,
+    sell: DexSwapRequest,
+    bridge_cost_bps: Option<f64>,
+    min_edge_bps: Option<f64>,
+    poll_interval_ms: Option<u64>,
+}
+
+/// Custom strategy: an operator expression evaluated in a sandbox.
+#[derive(Debug, Deserialize)]
+struct StartCustom {
+    bot_id: String,
+    exchange: CexExchange,
+    #[serde(flatten)]
+    creds: CexCredentials,
+    base_url: Option<String>,
+    symbol: String,
+    order_size: f64,
+    max_order_size: Option<f64>,
+    /// Expression over price, price_mean, price_std, price_min, price_max,
+    /// samples, position. Positive buys, negative sells, zero holds.
+    expression: String,
+    poll_interval_ms: Option<u64>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum StartReq {
@@ -281,6 +371,15 @@ enum StartReq {
     PerpHedge(StartPerpHedge),
     #[serde(rename = "liquidity_provider")]
     LiquidityProvider(StartLiquidityProvider),
+    #[serde(rename = "ai_trading")]
+    AiTrading(StartAiTrading),
+    Signal(StartSignal),
+    Mev(StartMev),
+    #[serde(rename = "front_run", alias = "mev_bot")]
+    FrontRun(StartMev),
+    #[serde(rename = "cross_chain")]
+    CrossChain(StartCrossChain),
+    Custom(StartCustom),
 }
 
 #[derive(Debug, Deserialize)]
@@ -471,6 +570,94 @@ async fn dispatch_start(
             let p = Arc::clone(&pool);
             let task = tokio::spawn(async move { runner.run(run_rx, p).await });
             (l.bot_id, BotKind::LiquidityProvider, task, run_tx)
+        }
+        StartReq::AiTrading(a) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = AiTradingRunner {
+                bot_id: a.bot_id.clone(),
+                exchange: a.exchange,
+                creds: a.creds,
+                base_url: a.base_url,
+                symbol: a.symbol,
+                order_size: a.order_size,
+                threshold_pct: a.threshold_pct.unwrap_or(0.005),
+                min_confidence: a.min_confidence.unwrap_or(0.6),
+                timeframe: a.timeframe.unwrap_or_else(|| "1h".to_string()),
+                ai_endpoint: a.ai_endpoint,
+                ai_api_key: a.ai_api_key,
+                refresh_candles: a.refresh_candles.unwrap_or(true),
+                poll_interval_ms: a.poll_interval_ms.unwrap_or(60_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (a.bot_id, BotKind::AiTrading, task, run_tx)
+        }
+        StartReq::Signal(sg) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = SignalRunner {
+                bot_id: sg.bot_id.clone(),
+                exchange: sg.exchange,
+                creds: sg.creds,
+                base_url: sg.base_url,
+                symbol: sg.symbol,
+                order_size: sg.order_size,
+                signal_endpoint: sg.signal_endpoint,
+                signal_api_key: sg.signal_api_key,
+                min_confidence: sg.min_confidence.unwrap_or(0.0),
+                poll_interval_ms: sg.poll_interval_ms.unwrap_or(30_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (sg.bot_id, BotKind::Signal, task, run_tx)
+        }
+        StartReq::Mev(m) | StartReq::FrontRun(m) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = PrivateSwapRunner {
+                bot_id: m.bot_id.clone(),
+                dex_req: m.dex_req,
+                relay_endpoint: m.relay_endpoint,
+                relay_api_key: m.relay_api_key,
+                poll_interval_ms: m.poll_interval_ms.unwrap_or(30_000),
+                min_edge_bps: m.min_edge_bps.unwrap_or(0.0),
+                observe_mempool: m.observe_mempool.unwrap_or(false),
+                mempool_url: m.mempool_url,
+                adverse_notional_usd: m.adverse_notional_usd.unwrap_or(f64::MAX),
+                wallet_address: m.wallet_address,
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (m.bot_id, BotKind::Mev, task, run_tx)
+        }
+        StartReq::CrossChain(c) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = CrossChainArbRunner {
+                bot_id: c.bot_id.clone(),
+                buy: c.buy,
+                sell: c.sell,
+                bridge_cost_bps: c.bridge_cost_bps.unwrap_or(30.0),
+                min_edge_bps: c.min_edge_bps.unwrap_or(50.0),
+                poll_interval_ms: c.poll_interval_ms.unwrap_or(30_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (c.bot_id, BotKind::CrossChain, task, run_tx)
+        }
+        StartReq::Custom(cu) => {
+            let (run_tx, run_rx) = watch::channel(true);
+            let runner = CustomRunner {
+                bot_id: cu.bot_id.clone(),
+                exchange: cu.exchange,
+                creds: cu.creds,
+                base_url: cu.base_url,
+                symbol: cu.symbol,
+                order_size: cu.order_size,
+                max_order_size: cu.max_order_size.unwrap_or(1.0),
+                expression: cu.expression,
+                poll_interval_ms: cu.poll_interval_ms.unwrap_or(5_000),
+            };
+            let p = Arc::clone(&pool);
+            let task = tokio::spawn(async move { runner.run(run_rx, p).await });
+            (cu.bot_id, BotKind::Custom, task, run_tx)
         }
     };
 

@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -347,7 +348,11 @@ func (s *Svc) StartBot(c *gin.Context) {
 // executableBotTypes lists the bot types with a real execution runner in
 // bot_core. All other types fail closed at start time.
 func executableBotTypes() []string {
-	return []string{"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum", "mean_reversion", "scalping", "perp_hedge", "liquidity_provider"}
+	return []string{
+		"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum",
+		"mean_reversion", "scalping", "perp_hedge", "liquidity_provider",
+		"ai_trading", "signal", "mev", "front_run", "cross_chain", "custom",
+	}
 }
 
 func (s *Svc) StopBot(c *gin.Context) {
@@ -633,11 +638,197 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 		}
 		return json.Marshal(payload)
 
+	case "ai_trading":
+		// The model runs in the Python AI service (ai_layer). The runner
+		// polls it for a real prediction and places a real order only when
+		// the model is both confident and directional.
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		aiEndpoint := cfgString(cfg, "ai_endpoint", "")
+		if aiEndpoint == "" {
+			aiEndpoint = s.aiServiceURL()
+		}
+		payload := map[string]any{
+			"kind":           "ai_trading",
+			"bot_id":         b.ID.String(),
+			"exchange":       cexCreds.exchange,
+			"api_key":        cexCreds.apiKey,
+			"secret_key":     cexCreds.apiSecret,
+			"symbol":         b.Pair,
+			"order_size":     cfgFloat(cfg, "order_size", 0.01),
+			"threshold_pct":  cfgFloat(cfg, "threshold_pct", 0.005),
+			"min_confidence": cfgFloat(cfg, "min_confidence", 0.6),
+			"timeframe":      cfgString(cfg, "timeframe", "1h"),
+			"ai_endpoint":    aiEndpoint,
+		}
+		if key := cfgString(cfg, "ai_api_key", ""); key != "" {
+			payload["ai_api_key"] = key
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if v, ok := cfg["passphrase"].(string); ok && v != "" {
+			payload["passphrase"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "signal":
+		// The operator runs the signal source; this runner polls it and acts
+		// on each new signal exactly once (signal_id is the dedup key).
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		signalEndpoint := cfgString(cfg, "signal_endpoint", "")
+		if signalEndpoint == "" {
+			return nil, errors.New("signal requires 'signal_endpoint' in bot config")
+		}
+		payload := map[string]any{
+			"kind":            "signal",
+			"bot_id":          b.ID.String(),
+			"exchange":        cexCreds.exchange,
+			"api_key":         cexCreds.apiKey,
+			"secret_key":      cexCreds.apiSecret,
+			"symbol":          b.Pair,
+			"order_size":      cfgFloat(cfg, "order_size", 0.01),
+			"signal_endpoint": signalEndpoint,
+			"min_confidence":  cfgFloat(cfg, "min_confidence", 0),
+		}
+		if key := cfgString(cfg, "signal_api_key", ""); key != "" {
+			payload["signal_api_key"] = key
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if v, ok := cfg["passphrase"].(string); ok && v != "" {
+			payload["passphrase"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "mev", "front_run":
+		// Private submission: the runner signs its own swap and routes it
+		// through the MEV-protection relay so it never touches the public
+		// mempool. Scope is protecting this platform's own transactions; it
+		// does not build sandwiches or front-run third parties.
+		dexReq, err := s.buildDexReq(c, userID, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dex config: %w", err)
+		}
+		relayEndpoint := cfgString(cfg, "relay_endpoint", "")
+		if relayEndpoint == "" {
+			relayEndpoint = s.mevRelayURL()
+		}
+		relayKey := cfgString(cfg, "relay_api_key", "")
+		if relayKey == "" {
+			relayKey = os.Getenv("MEV_API_KEY")
+		}
+		if relayKey == "" {
+			return nil, errors.New("private submission requires 'relay_api_key' in bot config or MEV_API_KEY in the environment")
+		}
+		payload := map[string]any{
+			"kind":                 b.BotType,
+			"bot_id":               b.ID.String(),
+			"dex_req":              dexReq,
+			"relay_endpoint":       relayEndpoint,
+			"relay_api_key":        relayKey,
+			"min_edge_bps":         cfgFloat(cfg, "min_edge_bps", 0),
+			"observe_mempool":      cfgBool(cfg, "observe_mempool", false),
+			"adverse_notional_usd": cfgFloat(cfg, "adverse_notional_usd", 0),
+		}
+		if mp := cfgString(cfg, "mempool_url", ""); mp != "" {
+			payload["mempool_url"] = mp
+		}
+		if wa := cfgString(cfg, "wallet_address", ""); wa != "" {
+			payload["wallet_address"] = wa
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "cross_chain":
+		// Both legs are real swaps on their own chains. The runner quotes
+		// each venue live, charges the bridge cost, and trades only when the
+		// net spread clears the threshold.
+		buyReq, err := s.buildDexReqForChain(c, userID, cfg, "buy", 0)
+		if err != nil {
+			return nil, fmt.Errorf("buy leg: %w", err)
+		}
+		sellChainID := int64(cfgFloat(cfg, "sell_chain_id", 0))
+		if sellChainID == 0 {
+			return nil, errors.New("cross_chain requires 'sell_chain_id' in bot config")
+		}
+		sellReq, err := s.buildDexReqForChain(c, userID, cfg, "sell", sellChainID)
+		if err != nil {
+			return nil, fmt.Errorf("sell leg: %w", err)
+		}
+		payload := map[string]any{
+			"kind":            "cross_chain",
+			"bot_id":          b.ID.String(),
+			"buy":             buyReq,
+			"sell":            sellReq,
+			"bridge_cost_bps": cfgFloat(cfg, "bridge_cost_bps", 30),
+			"min_edge_bps":    cfgFloat(cfg, "min_edge_bps", 50),
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
+	case "custom":
+		// The expression is evaluated by a sandboxed evaluator in bot_core:
+		// an AST over an allowlisted function set. No host code is ever
+		// executed, so an operator string cannot reach the process, the
+		// filesystem or the network.
+		cexCreds, err := s.fetchCEXCreds(c, userID, b.Exchange)
+		if err != nil {
+			return nil, err
+		}
+		expression := cfgString(cfg, "expression", "")
+		if expression == "" {
+			return nil, errors.New("custom requires 'expression' in bot config")
+		}
+		payload := map[string]any{
+			"kind":       "custom",
+			"bot_id":     b.ID.String(),
+			"exchange":   cexCreds.exchange,
+			"api_key":    cexCreds.apiKey,
+			"secret_key": cexCreds.apiSecret,
+			"symbol":     b.Pair,
+			"order_size": cfgFloat(cfg, "order_size", 0.01),
+			"expression": expression,
+		}
+		if v, ok := cfg["max_order_size"].(float64); ok {
+			payload["max_order_size"] = v
+		}
+		if v, ok := cfg["base_url"].(string); ok && v != "" {
+			payload["base_url"] = v
+		}
+		if v, ok := cfg["passphrase"].(string); ok && v != "" {
+			payload["passphrase"] = v
+		}
+		if pi, ok := cfg["poll_interval_ms"].(float64); ok {
+			payload["poll_interval_ms"] = int64(pi)
+		}
+		return json.Marshal(payload)
+
 	default:
-		// Bot types without a real execution runner in bot_core (mev,
-		// sandwich, front_run, flash_loan, cross_chain, ai_trading, signal,
-		// custom) fail closed: the start is rejected with 400, never faked
-		// as "running".
+		// Bot types with no real execution runner in bot_core:
+		//   flash_loan — needs a deployed flashloan provider plus an atomic
+		//     repayment path; without one the trade cannot be constructed,
+		//     so it is not offered.
+		//   sandwich   — deliberately NOT implemented: it extracts value from
+		//     other users' trades, which this platform does not do.
+		// Fail closed: the start is rejected with 400 and the status is never
+		// flipped to "running".
 		return nil, errStopDispatch
 	}
 }
@@ -712,12 +903,31 @@ func (s *Svc) fetchCEXCreds(c *gin.Context, userID uuid.UUID, exchange string) (
 // chain provides rpc_url + decrypted wallet seed; router/tokens/amounts come
 // from the bot config. Fail-closed: an error aborts the start.
 func (s *Svc) buildDexReq(c *gin.Context, userID uuid.UUID, cfg map[string]any) (map[string]any, error) {
-	chainID := int64(0)
-	if v, ok := cfg["chain_id"].(float64); ok {
-		chainID = int64(v)
+	return s.buildDexReqForChain(c, userID, cfg, "", 0)
+}
+
+// buildDexReqForChain builds a DEX request for one leg. `prefix` selects
+// per-leg config keys for a multi-chain strategy (e.g. "buy" reads
+// buy_chain_id, buy_rpc_url, buy_router, buy_token_in...). An empty
+// prefix uses the flat keys, which is what single-chain strategies use.
+func (s *Svc) buildDexReqForChain(c *gin.Context, userID uuid.UUID, cfg map[string]any, prefix string, forcedChainID int64) (map[string]any, error) {
+	key := func(name string) string {
+		if prefix == "" {
+			return name
+		}
+		return prefix + "_" + name
+	}
+	chainID := forcedChainID
+	if chainID == 0 {
+		if v, ok := cfg[key("chain_id")].(float64); ok {
+			chainID = int64(v)
+		}
 	}
 	if chainID == 0 {
-		return nil, errors.New("dex requires 'chain_id' in bot config")
+		if prefix == "" {
+			return nil, errors.New("dex requires 'chain_id' in bot config")
+		}
+		return nil, fmt.Errorf("dex leg %q requires '%s_chain_id' in bot config", prefix, prefix)
 	}
 	conn, err := s.store.GetDEXForUser(c.Request.Context(), userID, chainID)
 	if err != nil {
@@ -730,15 +940,22 @@ func (s *Svc) buildDexReq(c *gin.Context, userID uuid.UUID, cfg map[string]any) 
 	if err != nil {
 		return nil, fmt.Errorf("decrypt wallet_seed: %w", err)
 	}
+	rpcURL := conn.RPCURL
+	// An explicit per-leg rpc_url overrides the stored one, so an operator
+	// can point a leg at a private node without re-registering the
+	// connection.
+	if override := cfgString(cfg, key("rpc_url"), ""); override != "" {
+		rpcURL = override
+	}
 	return map[string]any{
-		"rpc_url":        conn.RPCURL,
+		"rpc_url":        rpcURL,
 		"chain_id":       conn.ChainID,
 		"private_key":    string(seed),
-		"router":         cfgString(cfg, "router", ""),
-		"token_in":       cfgString(cfg, "token_in", ""),
-		"token_out":      cfgString(cfg, "token_out", ""),
-		"amount_in":      cfgFloat(cfg, "amount_in", 0),
-		"amount_out_min": cfgFloat(cfg, "amount_out_min", 0),
+		"router":         cfgString(cfg, key("router"), ""),
+		"token_in":       cfgString(cfg, key("token_in"), ""),
+		"token_out":      cfgString(cfg, key("token_out"), ""),
+		"amount_in":      cfgFloat(cfg, key("amount_in"), 0),
+		"amount_out_min": cfgFloat(cfg, key("amount_out_min"), 0),
 	}, nil
 }
 
@@ -747,6 +964,31 @@ func cfgString(cfg map[string]any, key, def string) string {
 		return v
 	}
 	return def
+}
+
+func cfgBool(cfg map[string]any, key string, def bool) bool {
+	if v, ok := cfg[key].(bool); ok {
+		return v
+	}
+	return def
+}
+
+// aiServiceURL returns the AI prediction service base URL. Defaults to
+// http://localhost:8091, overridable via AI_SERVICE_URL.
+func (s *Svc) aiServiceURL() string {
+	if s.cfg.AIServiceURL != "" {
+		return s.cfg.AIServiceURL
+	}
+	return "http://localhost:8091"
+}
+
+// mevRelayURL returns the MEV-protection relay base URL. Defaults to
+// http://localhost:8089, overridable via MEV_RELAY_URL.
+func (s *Svc) mevRelayURL() string {
+	if s.cfg.MEVRelayURL != "" {
+		return s.cfg.MEVRelayURL
+	}
+	return "http://localhost:8089"
 }
 
 func (s *Svc) ListBotExecutions(c *gin.Context) {

@@ -209,6 +209,10 @@ jobs:
           # only in the image build.
           - security/rust/kyc_engine
           - security/rust/kyc_service
+          # The bot execution plane: every bot-api / wl-bots dispatch lands
+          # here, so its runners and the sandboxed expression evaluator must be
+          # built and tested on every change.
+          - mm_bot_platform/bot_core
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -239,6 +243,36 @@ jobs:
       - name: Clippy
         working-directory: ${{ matrix.crate }}
         run: cargo clippy --all-targets
+
+  # ============== AI prediction service (Python) ==============
+  # The ai_trading bot polls this service for a real prediction. Its tests
+  # cover the provider adapters (a mis-parsed candle would make the model act
+  # on wrong prices) and the fail-closed behaviour when no real data is
+  # available. It had no CI coverage at all.
+  build-python-ai:
+    name: Build Python AI service
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: ai_layer/python
+        run: pip install -r requirements-service.txt pytest
+
+      - name: Test
+        working-directory: ai_layer/python
+        run: python -m pytest test_ai_service.py -q
+
+      - name: Byte-compile the service
+        working-directory: ai_layer/python
+        run: python -m compileall -q ai_service.py price_prediction.py
 
   # ============== Build C++ Components ==============
   # libsecp256k1-dev is required by cpp/core for real secp256k1 arithmetic.

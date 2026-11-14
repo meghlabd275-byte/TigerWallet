@@ -1,0 +1,10 @@
+# TigerWallet AI prediction HTTP service.
+#
+# The prediction engine itself is stdlib-only (indicators + ensemble over
+# ingested candles). These are the dependencies the HTTP layer adds; the heavy
+# ML stack in ../requirements.txt is for the other AI features and is not
+# needed to serve predictions.
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+httpx>=0.25.0
+pydantic>=2.5.0

@@ -673,6 +673,8 @@ services:
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be set to a strong value}"
       BOT_CORE_URL: "http://bot-core:8472"
       PROJECT_PARTY_URL: "http://project-party-api:8106"
+      AI_SERVICE_URL: "http://ai-prediction:8091"
+      MEV_RELAY_URL: "http://mev-protection-service:8089"
     depends_on:
       postgres:
         condition: service_healthy
@@ -680,6 +682,26 @@ services:
         condition: service_healthy
       bot-core:
         condition: service_started
+      ai-prediction:
+        condition: service_started
+    restart: unless-stopped
+
+  # TigerWallet AI prediction service (Python/FastAPI). Serves real
+  # indicator-based predictions over real exchange candles. bot-api's
+  # ai_trading bot polls GET /predict; the service never invents a price (an
+  # unreachable provider is a 502), so a bot never trades on fabricated data.
+  # Provider is selectable (binance / binance_us / coinbase / kraken) because
+  # exchanges restrict different regions.
+  ai-prediction:
+    build:
+      context: .
+      dockerfile: ai_layer/python/Dockerfile
+    container_name: tigerwallet-ai-prediction
+    ports:
+      - "8091:8091"
+    environment:
+      AI_INGEST_API_KEY: "${AI_INGEST_API_KEY:?AI_INGEST_API_KEY must be set - an unauthenticated writer could poison the model inputs}"
+      AI_CANDLE_PROVIDER: "${AI_CANDLE_PROVIDER:-binance}"
     restart: unless-stopped
 
   # TigerWallet bot_core — the Rust execution plane (real CEX/DEX order
@@ -851,6 +873,8 @@ services:
       BOT_CORE_URL: "http://bot-core:8472"
       PROJECT_PARTY_URL: "http://wl-project-party:8106"
       PP_SERVICE_TOKEN: "${PP_SERVICE_TOKEN:-}"
+      AI_SERVICE_URL: "http://ai-prediction:8091"
+      MEV_RELAY_URL: "http://mev-protection-service:8089"
     depends_on:
       postgres:
         condition: service_healthy
