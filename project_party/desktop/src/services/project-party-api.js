@@ -149,32 +149,37 @@ export const api = {
     return request(path, { method: 'GET' });
   },
   async getLaunchpad(id) { return request(`/launchpad/${enc(id)}`, { method: 'GET' }); },
-  async createLaunchpad(data) { return request('/launchpad/create', { method: 'POST', body: jsonBody(data) }); },
+  async createLaunchpad(data) { return request('/launchpad', { method: 'POST', body: jsonBody(data) }); },
   async contribute(id, amount) {
     return request(`/launchpad/${enc(id)}/contribute`, { method: 'POST', body: jsonBody({ amount }) });
   },
+  async listParticipations(id) { return request(`/launchpad/${enc(id)}/participations`, { method: 'GET' }); },
   async claimTokens(id) { return request(`/launchpad/${enc(id)}/claim`, { method: 'POST' }); },
   async cancelLaunchpad(id) { return request(`/launchpad/${enc(id)}/cancel`, { method: 'POST' }); },
 
   // ---- Market-making ----
   async getMakerOrders(tokenId) {
-    const path = tokenId ? `/market-making/orders?token_id=${enc(tokenId)}` : '/market-making/orders';
+    const path = tokenId ? `/orders?token_id=${enc(tokenId)}` : '/orders';
     return request(path, { method: 'GET' });
   },
   async getMarketMakerStatus(tokenId) {
-    return request(`/market-making/status/${enc(tokenId)}`, { method: 'GET' });
+    return request(`/marketmaking/status/${enc(tokenId)}`, { method: 'GET' });
+  },
+  async listMakerTrades(tokenId) {
+    const path = tokenId ? `/market-making/trades?token_id=${enc(tokenId)}` : '/market-making/trades';
+    return request(path, { method: 'GET' });
   },
   async createMakerOrders(data) {
-    return request('/market-making/orders', { method: 'POST', body: jsonBody(data) });
+    return request('/orders', { method: 'POST', body: jsonBody(data) });
   },
   async updateOrderStatus(id, status) {
-    return request(`/market-making/orders/${enc(id)}/status`, { method: 'PUT', body: jsonBody({ status }) });
+    return request(`/orders/${enc(id)}/status`, { method: 'PUT', body: jsonBody({ status }) });
   },
   async addLiquidity(data) {
-    return request('/market-making/liquidity/add', { method: 'POST', body: jsonBody(data) });
+    return request('/liquidity/add', { method: 'POST', body: jsonBody(data) });
   },
   async removeLiquidity(data) {
-    return request('/market-making/liquidity/remove', { method: 'POST', body: jsonBody(data) });
+    return request('/liquidity/remove', { method: 'POST', body: jsonBody(data) });
   },
 
   // ---- Pricing ----
@@ -194,6 +199,7 @@ export const api = {
   async getTransactionCount() { return request('/analytics/transactions', { method: 'GET' }); },
 
   // ---- Compliance ----
+  async getComplianceStatus(tokenId) { return request(`/compliance/status/${enc(tokenId)}`, { method: 'GET' }); },
   async getAuditStatus(tokenId) { return request(`/compliance/audit/${enc(tokenId)}`, { method: 'GET' }); },
   async getKYCStatus(tokenId) { return request(`/compliance/kyc/${enc(tokenId)}`, { method: 'GET' }); },
   async requestAudit(data) { return request('/compliance/audit', { method: 'POST', body: jsonBody(data) }); },
@@ -203,6 +209,14 @@ export const api = {
   async getListingFees() { return request('/fees', { method: 'GET' }); },
   async calculateFees(data) { return request('/fees/calculate', { method: 'POST', body: jsonBody(data) }); },
   async payFees(data) { return request('/fees/pay', { method: 'POST', body: jsonBody(data) }); },
+
+  // ---- Admin (JWT + admin/super_admin role; backend enforces) ----
+  async verifyTokenContract(id) { return request(`/tokens/${enc(id)}/verify-contract`, { method: 'POST' }); },
+  async listFeePayments(status) {
+    const path = status ? `/fees/payments?status=${enc(status)}` : '/fees/payments';
+    return request(path, { method: 'GET' });
+  },
+  async verifyFeePayment(paymentId) { return request(`/fees/verify/${enc(paymentId)}`, { method: 'POST' }); },
 
   // ---- Favorites (auth) ----
   async listFavorites() { return request('/favorites', { method: 'GET' }); },

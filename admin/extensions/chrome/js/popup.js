@@ -38,9 +38,17 @@ function safeUrl(v) {
 (function() {
     'use strict';
 
-    // Configuration
-    const API_BASE_URL = localStorage.getItem('api_base_url') || 'http://localhost:9093/api/v1';
-    const WS_URL = localStorage.getItem('ws_url') || 'ws://localhost:9093/ws';
+    // WebExtension API compatibility shim: Firefox exposes `browser.*`,
+    // Chromium exposes `chrome.*`.
+    const ext = (typeof browser !== 'undefined') ? browser : chrome;
+    // A popup document has web storage; the MV3 service worker does not, so
+    // token and config live in extension storage instead. Hydrate it once at
+    // startup and read through TWStore from then on.
+    const ls = window.TWStore;
+
+    // Configuration (assigned in init(), after the store is hydrated)
+    let API_BASE_URL = 'http://localhost:9093/api/v1';
+    let WS_URL = 'ws://localhost:9093/ws';
     
     // State
     let currentUser = null;
@@ -124,6 +132,14 @@ function safeUrl(v) {
     document.addEventListener('DOMContentLoaded', init);
 
     async function init() {
+        await ls.hydrate();
+        API_BASE_URL = ls.getItem('api_base_url') || API_BASE_URL;
+        WS_URL = ls.getItem('ws_url') || WS_URL;
+        try {
+            await ext.runtime.sendMessage({ type: 'ENSURE_HOST_PERMISSION', url: API_BASE_URL });
+        } catch (e) {
+            // Worker asleep or permission refused; the fetch will surface it.
+        }
         loadTheme();
         await checkAuth();
         setupEventListeners();
@@ -134,7 +150,7 @@ function safeUrl(v) {
 
     // Theme Management
     function loadTheme() {
-        const savedTheme = localStorage.getItem('admin_theme');
+        const savedTheme = ls.getItem('admin_theme');
         isDarkMode = savedTheme !== 'light';
         applyTheme();
     }
@@ -146,7 +162,7 @@ function safeUrl(v) {
         const themeIcon = elements.themeToggle.querySelector('.theme-icon');
         themeIcon.textContent = isDarkMode ? '🌙' : '☀️';
         
-        localStorage.setItem('admin_theme', isDarkMode ? 'dark' : 'light');
+        ls.setItem('admin_theme', isDarkMode ? 'dark' : 'light');
     }
 
     function toggleTheme() {
@@ -156,7 +172,7 @@ function safeUrl(v) {
     }
 
     function broadcastThemeChange() {
-        browser.runtime.sendMessage({
+        ext.runtime.sendMessage({
             type: 'THEME_CHANGED',
             theme: isDarkMode ? 'dark' : 'light'
         });
@@ -164,7 +180,7 @@ function safeUrl(v) {
 
     // Authentication
     async function checkAuth() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         
         if (!token) {
             showLoginRequired();
@@ -298,8 +314,8 @@ function safeUrl(v) {
 
     // Logout
     function logout() {
-        localStorage.removeItem('admin_token');
-        localStorage.removeItem('admin_user');
+        ls.removeItem('admin_token');
+        ls.removeItem('admin_user');
         
         if (websocket) {
             websocket.close();
@@ -310,7 +326,7 @@ function safeUrl(v) {
 
     // WebSocket Connection
     function connectWebSocket() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         if (!token) return;
 
         try {
@@ -388,7 +404,7 @@ function safeUrl(v) {
     // Dashboard
     async function loadDashboard() {
         try {
-            const token = localStorage.getItem('admin_token');
+            const token = ls.getItem('admin_token');
             const response = await fetch(`${API_BASE_URL}/admin/dashboard`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -462,7 +478,7 @@ function safeUrl(v) {
 
     // Users
     async function loadUsers() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         const status = elements.userStatusFilter.value;
         const kyc = elements.kycFilter.value;
 
@@ -528,7 +544,7 @@ function safeUrl(v) {
             return;
         }
 
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         
         try {
             const response = await fetch(`${API_BASE_URL}/admin/users/search?q=${encodeURIComponent(query)}`, {
@@ -563,14 +579,14 @@ function safeUrl(v) {
     }
 
     function viewUser(userId) {
-        browser.runtime.sendMessage({
+        ext.runtime.sendMessage({
             type: 'OPEN_USER_DETAIL',
             userId: userId
         });
     }
 
     function editUser(userId) {
-        browser.runtime.sendMessage({
+        ext.runtime.sendMessage({
             type: 'OPEN_USER_EDIT',
             userId: userId
         });
@@ -578,7 +594,7 @@ function safeUrl(v) {
 
     // Transactions
     async function loadTransactions() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         const type = elements.txTypeFilter.value;
         const status = elements.txStatusFilter.value;
 
@@ -635,7 +651,7 @@ function safeUrl(v) {
             return;
         }
 
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         
         try {
             const response = await fetch(`${API_BASE_URL}/admin/transactions/search?q=${encodeURIComponent(query)}`, {
@@ -657,7 +673,7 @@ function safeUrl(v) {
 
     // KYC
     async function loadKYC() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/kyc`, {
@@ -720,7 +736,7 @@ function safeUrl(v) {
         const kycId = event.target.dataset.kycId;
         
         if (action === 'view') {
-            browser.runtime.sendMessage({
+            ext.runtime.sendMessage({
                 type: 'OPEN_KYC_DETAIL',
                 kycId: kycId
             });
@@ -735,7 +751,7 @@ function safeUrl(v) {
     }
 
     async function updateKYCStatus(kycId, status) {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/kyc/${kycId}/status`, {
@@ -759,7 +775,7 @@ function safeUrl(v) {
 
     // Tokens
     async function loadTokens() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/tokens`, {
@@ -825,14 +841,14 @@ function safeUrl(v) {
     }
 
     function showAddTokenModal() {
-        browser.runtime.sendMessage({
+        ext.runtime.sendMessage({
             type: 'OPEN_ADD_TOKEN'
         });
     }
 
     // Withdrawals
     async function loadWithdrawals() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         const status = elements.withdrawalStatusFilter.value;
         const chain = elements.withdrawalChainFilter.value;
 
@@ -884,7 +900,7 @@ function safeUrl(v) {
 
     // System Status
     async function loadSystemStatus() {
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
 
         try {
             const response = await fetch(`${API_BASE_URL}/admin/system/status`, {
@@ -1024,7 +1040,7 @@ function safeUrl(v) {
         const countEl = sec.querySelector('.domain-count');
         tbody.innerHTML = `<tr><td colspan="5" class="loading">Loading ${esc(d.label.toLowerCase())}...</td></tr>`;
         countEl.textContent = '';
-        const token = localStorage.getItem('admin_token');
+        const token = ls.getItem('admin_token');
         if (!token) {
             tbody.innerHTML = `<tr><td colspan="5" class="empty">Authentication required. Please log in.</td></tr>`;
             return;
@@ -1076,7 +1092,7 @@ function safeUrl(v) {
     }
 
     // Message listener for background script
-    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
         switch (message.type) {
             case 'DASHBOARD_UPDATE':
                 updateDashboard(message.data);

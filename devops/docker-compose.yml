@@ -3,7 +3,7 @@ version: '3.9'
 services:
   api-gateway:
     build:
-      context: .
+      context: ../
       dockerfile: devops/docker/api-gateway/Dockerfile
     container_name: tigerwallet-api-gateway
     ports:
@@ -26,7 +26,7 @@ services:
 
   wallet-core:
     build:
-      context: .
+      context: ../
       dockerfile: devops/docker/wallet-core/Dockerfile
     container_name: tigerwallet-wallet-core
     ports:
@@ -42,7 +42,7 @@ services:
 
   ai-layer:
     build:
-      context: .
+      context: ../
       dockerfile: devops/docker/ai-layer/Dockerfile
     container_name: tigerwallet-ai-layer
     ports:

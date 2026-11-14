@@ -30,15 +30,22 @@ services:
       - user-wallet-network
     restart: unless-stopped
 
-  # UserWallet Frontend
+  # UserWallet Frontend (CRA; built at repo-root user_wallet/web)
   user-wallet-frontend:
     build:
-      context: ../../user_wallet/web
+      context: ../../../user_wallet/web
       dockerfile: Dockerfile
+      args:
+        # CRA inlines REACT_APP_* at build time (runtime env has no effect).
+        # Relative path: the browser talks to nginx, which proxies /api/ to the
+        # backend. A container hostname would be unresolvable from the browser.
+        REACT_APP_API_URL: /api/v1
+        REACT_APP_WS_URL: /ws
+        REACT_APP_TENANT_SLUG: ${TENANT_SLUG}
     container_name: ${TENANT_SLUG}-user-wallet-frontend
     environment:
-      - REACT_APP_API_URL=http://user-wallet-backend:8443
-      - REACT_APP_WS_URL=ws://user-wallet-backend:8443
+      - REACT_APP_API_URL=/api/v1
+      - REACT_APP_WS_URL=/ws
       - REACT_APP_TENANT_SLUG=${TENANT_SLUG}
     ports:
       - "3002:80"
@@ -63,6 +70,11 @@ services:
     networks:
       - user-wallet-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis
   redis:
@@ -76,6 +88,11 @@ services:
     networks:
       - user-wallet-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Nginx
   nginx:

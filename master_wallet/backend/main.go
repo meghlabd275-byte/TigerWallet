@@ -58,6 +58,10 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+
+	metricsStore = s
+	registerMetrics(r)
+
 	// CORS: an explicit origin allowlist. AllowOrigins:["*"] together with
 	// AllowCredentials is rejected by browsers, so a wildcard could never have
 	// worked for credentialed requests anyway; with no allowlist configured the

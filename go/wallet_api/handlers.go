@@ -185,10 +185,12 @@ func handleLogin(c *gin.Context) {
 	}
 	user, err := store.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil || user == nil {
+		authFailures.Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
 	if !VerifyPassword(user.PasswordHash, req.Password) {
+		authFailures.Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}

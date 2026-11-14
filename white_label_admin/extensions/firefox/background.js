@@ -11,14 +11,35 @@ if (typeof browser !== "undefined" && typeof chrome === "undefined") {
   browser = chrome;
 }
 // Background script
-browser.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(() => {
   console.log('TigerWallet White Label Admin Extension installed');
-  browser.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:8456' });
+  chrome.storage.local.set({ darkMode: false, apiUrl: 'http://localhost:8456' });
 });
 
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+// The popup lists the governance surface; when it asks for a summary we read
+// the real tenant-scoped stats endpoint rather than reporting invented zeros.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getStats') {
-    sendResponse({ users: 0, transactions: 0, kyc: 0, status: 'OK' });
+    (async () => {
+      const { token, apiUrl } = await chrome.storage.local.get(['token', 'apiUrl']);
+      const base = apiUrl || 'http://localhost:8456';
+      if (!token) return sendResponse({ error: 'not_authenticated' });
+      try {
+        const res = await fetch(`${base}/api/v1/admin/stats`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const text = await res.text();
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
+        if (!res.ok) {
+          return sendResponse({ error: (body && body.error) || `HTTP ${res.status}` });
+        }
+        sendResponse(body || { error: 'No data returned by the WL admin backend.' });
+      } catch (e) {
+        sendResponse({ error: 'Failed to reach WL admin backend.' });
+      }
+    })();
+    return true;
   }
   return true;
 });

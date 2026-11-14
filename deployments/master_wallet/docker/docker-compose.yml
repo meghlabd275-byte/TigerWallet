@@ -4,10 +4,10 @@
 version: '3.8'
 
 services:
-  # MasterWallet Backend (Go)
+  # MasterWallet Backend (canonical master_wallet/backend, listens on :8450)
   master-wallet-backend:
     build:
-      context: ../../master_wallet/go
+      context: ../../../master_wallet/backend
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-master-wallet-backend
     environment:
@@ -21,7 +21,7 @@ services:
       - LOG_LEVEL=info
       - JWT_SECRET=${JWT_SECRET}
     ports:
-      - "8001:8001"
+      - "8450:8450"
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,12 +34,12 @@ services:
   # MasterWallet Frontend (React)
   master-wallet-frontend:
     build:
-      context: ../../master_wallet/web
+      context: ../../../master_wallet/web
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-master-wallet-frontend
     environment:
-      - REACT_APP_API_URL=http://master-wallet-backend:8001
-      - REACT_APP_WS_URL=ws://master-wallet-backend:8001
+      - REACT_APP_API_URL=http://master-wallet-backend:8450
+      - REACT_APP_WS_URL=ws://master-wallet-backend:8450
       - REACT_APP_TENANT_SLUG=${TENANT_SLUG}
     ports:
       - "3001:80"
@@ -59,7 +59,6 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     networks:
@@ -95,7 +94,6 @@ services:
     container_name: ${TENANT_SLUG}-nginx
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
     ports:
       - "80:80"
       - "443:443"

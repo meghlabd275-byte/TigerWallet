@@ -722,7 +722,9 @@ func NewTransactionShieldServer(cfg *Config) *TransactionShieldServer {
 	}
 
 	// Auto migrate
-	db.AutoMigrate(&Transaction{}, &User{}, &WalletAddress{}, &RiskProfile{}, &Alert{}, &BlockedAddress{}, &TransactionPattern{}, &ReviewQueue{})
+	if err := db.AutoMigrate(&Transaction{}, &User{}, &WalletAddress{}, &RiskProfile{}, &Alert{}, &BlockedAddress{}, &TransactionPattern{}, &ReviewQueue{}); err != nil {
+		log.Fatalf("Failed to migrate database: %v", err)
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),

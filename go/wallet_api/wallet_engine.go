@@ -206,6 +206,7 @@ func BroadcastTransaction(ctx context.Context, rpcEndpoint, rawTxHex string, exp
 	if err := client.CallContext(ctx, &result, "eth_sendRawTransaction", rawTxHex); err != nil {
 		return "", fmt.Errorf("sendRawTransaction: %w", err)
 	}
+	transactionsBroadcast.Inc()
 	return result, nil
 }
 

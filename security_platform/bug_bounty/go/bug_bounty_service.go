@@ -269,7 +269,9 @@ func NewBugBountyService(cfg *Config) (*BugBountyService, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&Researcher{}, &VulnerabilityReport{}, &BountyProgram{}, &Reward{}, &SecurityAudit{}, &AuditLog{})
+	if err := db.AutoMigrate(&Researcher{}, &VulnerabilityReport{}, &BountyProgram{}, &Reward{}, &SecurityAudit{}, &AuditLog{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate bug bounty schema: %w", err)
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),

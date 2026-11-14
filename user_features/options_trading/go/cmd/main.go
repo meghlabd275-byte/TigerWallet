@@ -281,7 +281,9 @@ func NewOptionsService(cfg *Config) (*OptionsService, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&OptionContract{}, &OptionPosition{}, &OptionOrder{}, &OptionTrade{}, &OptionSettlement{})
+	if err := db.AutoMigrate(&OptionContract{}, &OptionPosition{}, &OptionOrder{}, &OptionTrade{}, &OptionSettlement{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate options schema: %w", err)
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),

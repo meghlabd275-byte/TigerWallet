@@ -467,7 +467,9 @@ func NewTokenService(cfg *Config) (*TokenService, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&TokenProject{}, &Tokenomics{}, &TokenDistribution{}, &AuditReport{}, &LiquidityLock{})
+	if err := db.AutoMigrate(&TokenProject{}, &Tokenomics{}, &TokenDistribution{}, &AuditReport{}, &LiquidityLock{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate token schema: %w", err)
+	}
 
 	return &TokenService{
 		config: cfg,

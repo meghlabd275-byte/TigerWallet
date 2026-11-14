@@ -14,6 +14,9 @@
 
     const API_BASE_URL = (function () {
         try {
+            if (root.TWStore && root.TWStore.isHydrated()) {
+                return root.TWStore.getItem('api_base_url') || 'http://localhost:9093/api/v1';
+            }
             return localStorage.getItem('api_base_url') || 'http://localhost:9093/api/v1';
         } catch (e) {
             return 'http://localhost:9093/api/v1';
@@ -22,6 +25,9 @@
 
     function getToken() {
         try {
+            if (root.TWStore && root.TWStore.isHydrated()) {
+                return root.TWStore.getItem('admin_token');
+            }
             return localStorage.getItem('admin_token');
         } catch (e) {
             return null;

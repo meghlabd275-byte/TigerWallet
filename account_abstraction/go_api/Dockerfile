@@ -6,7 +6,7 @@
 # The healthcheck probes the service's own route so the orchestrator only
 # routes traffic to a replica that can serve it.
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.23.12-alpine AS builder
 
 WORKDIR /src
 

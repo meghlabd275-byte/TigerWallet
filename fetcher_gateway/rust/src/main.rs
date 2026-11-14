@@ -443,6 +443,57 @@ async fn get_fetcher_config(
     Ok(Json(result))
 }
 
+// Prometheus text exposition of the same counters the JSON /api/v1/metrics
+// endpoint reports. Prometheus scrapes /metrics, so the JSON endpoint alone
+// leaves the service invisible to monitoring.
+async fn get_prometheus_metrics(
+    State(state): State<Arc<AppState>>,
+) -> Result<String, (StatusCode, String)> {
+    let mut conn = state
+        .redis
+        .get_async_connection()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let requests_success: i64 = conn.get("fetcher:requests:success").await.unwrap_or(0);
+    let requests_failed: i64 = conn.get("fetcher:requests:failed").await.unwrap_or(0);
+    let cache_hits: i64 = conn.get("fetcher:cache:hits").await.unwrap_or(0);
+    let cache_misses: i64 = conn.get("fetcher:cache:misses").await.unwrap_or(0);
+
+    let cache_total = cache_hits + cache_misses;
+    let cache_hit_rate = if cache_total > 0 {
+        cache_hits as f64 / cache_total as f64
+    } else {
+        0.0
+    };
+
+    // A failed dependency is reported as 0 rather than failing the scrape, so a
+    // Redis outage does not also take out monitoring of the outage. A GET of an
+    // absent key is a real round-trip: it returns Ok(None) when Redis answers
+    // and Err when Redis is unreachable.
+    let redis_up = if conn.get::<_, Option<i64>>("fetcher:health:ping").await.is_ok() {
+        1
+    } else {
+        0
+    };
+
+    let body = format!(
+        "# HELP fetcher_requests_total Fetch requests handled, by outcome.\n\
+         # TYPE fetcher_requests_total counter\n\
+         fetcher_requests_total{{outcome=\"success\"}} {}\n\
+         fetcher_requests_total{{outcome=\"failed\"}} {}\n\
+         # HELP fetcher_cache_hit_ratio Share of cache lookups served from cache.\n\
+         # TYPE fetcher_cache_hit_ratio gauge\n\
+         fetcher_cache_hit_ratio {}\n\
+         # HELP fetcher_redis_up 1 when Redis answers, 0 otherwise.\n\
+         # TYPE fetcher_redis_up gauge\n\
+         fetcher_redis_up {}\n",
+        requests_success, requests_failed, cache_hit_rate, redis_up
+    );
+
+    Ok(body)
+}
+
 async fn get_metrics(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let mut conn = state.redis.get_async_connection().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -575,6 +626,7 @@ async fn main() {
         .route("/api/v1/fetch", post(fetch_data))
         .route("/api/v1/config/:product/:fetcher", get(get_fetcher_config))
         .route("/api/v1/metrics", get(get_metrics))
+        .route("/metrics", get(get_prometheus_metrics))
         .route("/api/v1/permission/check", post(check_permission))
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(state);

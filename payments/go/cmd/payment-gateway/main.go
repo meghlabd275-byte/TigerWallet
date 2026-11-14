@@ -200,7 +200,9 @@ func NewPaymentGateway(cfg *Config) (*PaymentGateway, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&PaymentMethod{}, &Transaction{}, &Refund{}, &Invoice{})
+	if err := db.AutoMigrate(&PaymentMethod{}, &Transaction{}, &Refund{}, &Invoice{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate payment schema: %w", err)
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),

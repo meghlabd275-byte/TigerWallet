@@ -1,3 +1,6 @@
+// Firefox exposes `browser.*`, Chromium exposes `chrome.*`.
+const ext = (typeof browser !== 'undefined') ? browser : chrome;
+
 /**
  * TigerWallet Admin Safari Extension - Content Script
  * Injected into web pages for enhanced admin functionality
@@ -7,7 +10,7 @@
     'use strict';
 
     // Listen for messages from background script
-    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
         switch (message.type) {
             case 'THEME_CHANGED':
                 document.dispatchEvent(new CustomEvent('tigerwallet-theme-changed', {
@@ -84,7 +87,7 @@
         document.body.classList.toggle('light-mode', isDark);
         
         // Notify background script
-        browser.runtime.sendMessage({
+        ext.runtime.sendMessage({
             type: 'THEME_CHANGED',
             theme: isDark ? 'light' : 'dark'
         });
@@ -159,7 +162,7 @@
 
     // Handle context menu actions
     function handleMenuAction(action, userId) {
-        browser.runtime.sendMessage({
+        ext.runtime.sendMessage({
             type: 'ADMIN_CONTEXT_ACTION',
             action: action,
             userId: userId

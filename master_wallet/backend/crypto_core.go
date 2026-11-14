@@ -146,6 +146,7 @@ func BroadcastTransaction(ctx context.Context, rpcEndpoint, rawTxHex string) (st
 	if result == "" {
 		return "", errors.New("rpc returned empty transaction hash")
 	}
+	transactionsBroadcast.Inc()
 	return result, nil
 }
 

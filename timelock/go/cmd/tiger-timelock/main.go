@@ -184,7 +184,9 @@ func NewTimelockService(cfg *Config) (*TimelockService, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&TimelockTransaction{}, &TimelockAdmin{}, &TimelockQueue{}, &TimelockSignatures{}, &TimelockHistory{})
+	if err := db.AutoMigrate(&TimelockTransaction{}, &TimelockAdmin{}, &TimelockQueue{}, &TimelockSignatures{}, &TimelockHistory{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate timelock schema: %w", err)
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),

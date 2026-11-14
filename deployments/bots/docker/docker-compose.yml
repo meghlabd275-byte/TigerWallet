@@ -3,10 +3,10 @@
 version: '3.8'
 
 services:
-  # Bots Backend
+  # Bots Backend (license-gated WL-Bots clone; listens on :8471)
   bots-backend:
     build:
-      context: ../../mm_bot_platform/go
+      context: ../../../wl_bots/go
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-bots-backend
     environment:
@@ -19,7 +19,7 @@ services:
       - API_SECRET=${API_SECRET}
       - JWT_SECRET=${JWT_SECRET}
     ports:
-      - "8003:8003"
+      - "8471:8471"
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,12 +32,12 @@ services:
   # Bots Frontend (Admin Panel)
   bots-frontend:
     build:
-      context: ../../mm_bot_platform/web
+      context: ../../../bots/web
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-bots-frontend
     environment:
-      - REACT_APP_API_URL=http://bots-backend:8003
-      - REACT_APP_WS_URL=ws://bots-backend:8003
+      - REACT_APP_API_URL=http://bots-backend:8471
+      - REACT_APP_WS_URL=ws://bots-backend:8471
     ports:
       - "3003:80"
     depends_on:
@@ -60,6 +60,11 @@ services:
     networks:
       - bots-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis (for bot state)
   redis:
@@ -72,6 +77,11 @@ services:
     networks:
       - bots-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Nginx
   nginx:

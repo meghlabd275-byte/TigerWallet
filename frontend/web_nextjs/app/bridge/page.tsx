@@ -111,7 +111,8 @@ const BRIDGE_ROUTES: BridgeRoute[] = [
 // Utility Functions
 // ============================================================================
 
-function formatAddress(address: string, chars: number = 4): string {
+function formatAddress(address: string | undefined | null, chars: number = 4): string {
+  if (!address) return '—';
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`;
 }
 

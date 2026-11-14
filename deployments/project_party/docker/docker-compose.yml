@@ -3,10 +3,10 @@
 version: '3.8'
 
 services:
-  # ProjectParty Backend
+  # ProjectParty Backend (canonical project_party API, listens on :8106)
   project-party-backend:
     build:
-      context: ../../project_party/go
+      context: ../../../project_party
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-project-party-backend
     environment:
@@ -20,7 +20,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - LISTING_FEE_USD=500
     ports:
-      - "8004:8004"
+      - "8106:8106"
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,12 +33,12 @@ services:
   # ProjectParty Frontend
   project-party-frontend:
     build:
-      context: ../../project_party/web
+      context: ../../../project_party/web
       dockerfile: Dockerfile
     container_name: ${TENANT_SLUG}-project-party-frontend
     environment:
-      - REACT_APP_API_URL=http://project-party-backend:8004
-      - REACT_APP_WS_URL=ws://project-party-backend:8004
+      - REACT_APP_API_URL=http://project-party-backend:8106
+      - REACT_APP_WS_URL=ws://project-party-backend:8106
     ports:
       - "3004:80"
     depends_on:
@@ -61,6 +61,11 @@ services:
     networks:
       - project-party-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis
   redis:
@@ -73,6 +78,11 @@ services:
     networks:
       - project-party-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Nginx
   nginx:

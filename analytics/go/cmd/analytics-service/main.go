@@ -136,7 +136,9 @@ func NewAnalyticsService(cfg *Config) (*AnalyticsService, error) {
 		return nil, err
 	}
 
-	db.AutoMigrate(&Event{}, &Metric{}, &Report{}, &Dashboard{})
+	if err := db.AutoMigrate(&Event{}, &Metric{}, &Report{}, &Dashboard{}); err != nil {
+		return nil, fmt.Errorf("failed to migrate analytics schema: %w", err)
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", cfg.RedisHost, cfg.RedisPort),

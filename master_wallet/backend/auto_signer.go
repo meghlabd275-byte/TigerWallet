@@ -656,6 +656,7 @@ func (a *AutoSigner) claimBatch(ctx context.Context) ([]pendingAutoTx, error) {
 		}
 		batch = append(batch, tx)
 	}
+	autoSignClaimed.Add(float64(len(batch)))
 	return batch, rows.Err()
 }
 
@@ -666,7 +667,7 @@ func (a *AutoSigner) claimBatch(ctx context.Context) ([]pendingAutoTx, error) {
 // instead of looping forever). Manual HTTP approvals carry no claim marker
 // and are never touched.
 func (a *AutoSigner) reapStaleClaims(ctx context.Context) {
-	_, err := a.svc.store.db.Exec(ctx,
+	tag, err := a.svc.store.db.Exec(ctx,
 		`UPDATE transactions
 		 SET status = CASE
 		         WHEN COALESCE((metadata->>'auto_sign_attempts')::int, 0) + 1 >= $1 THEN 'failed'
@@ -687,6 +688,11 @@ func (a *AutoSigner) reapStaleClaims(ctx context.Context) {
 		a.maxAttempts)
 	if err != nil {
 		log.Printf("auto-signer: reaper failed: %v", err)
+		return
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		autoSignReaped.Add(float64(n))
+		log.Printf("auto-signer: reaper recovered %d stale claim(s) from a lost replica", n)
 	}
 }
 
@@ -721,6 +727,12 @@ func (a *AutoSigner) releaseClaim(ctx context.Context, txID string, refusal bool
 		txID, hold.String(), instanceID)
 	if err != nil {
 		log.Printf("auto-signer: release claim for tx %s failed: %v", txID, err)
+		return
+	}
+	if refusal {
+		autoSignProcessed.WithLabelValues("refused").Inc()
+	} else {
+		autoSignProcessed.WithLabelValues("released").Inc()
 	}
 }
 
@@ -760,10 +772,12 @@ func (a *AutoSigner) requeueOrFail(ctx context.Context, tx *pendingAutoTx, signE
 	attempts++
 	if attempts >= a.maxAttempts {
 		_, _ = a.svc.store.db.Exec(ctx, sqlAutoSignFail, tx.ID, signErr.Error(), attempts)
+		autoSignProcessed.WithLabelValues("failed").Inc()
 		return "failed"
 	}
 	hold := holdDuration(attempts, false)
 	_, _ = a.svc.store.db.Exec(ctx, sqlAutoSignRequeue, tx.ID, signErr.Error(), attempts, hold.String())
+	autoSignProcessed.WithLabelValues("requeued").Inc()
 	return "pending"
 }
 
