@@ -362,10 +362,31 @@ jobs:
           done
 
   # ============== Build Docker Images ==============
-  docker:
-    name: Build Docker Images
+  # Discover every buildable service from the compose files so the matrix
+  # cannot drift away from what actually ships. The previous hand-written
+  # matrix covered 5 images while the stack runs ~70 services, so most of the
+  # platform was never built before a release.
+  docker-matrix:
+    name: Discover Docker Build Matrix
     runs-on: ubuntu-latest
-    needs: [code-quality, build-rust, build-frontend, build-cpp]
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Build matrix from compose files
+        id: matrix
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/list-docker-services.py --output matrix.json
+          count=$(python3 -c "import json;print(len(json.load(open('matrix.json'))['include']))")
+          echo "Discovered $count buildable services"
+          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+
+  docker:
+    name: Build ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    needs: [code-quality, build-rust, build-frontend, build-cpp, docker-matrix]
     if: github.event_name != 'pull_request'
     # Without an explicit packages: write the job inherits the repository
     # default token scope and every push to ghcr.io is rejected with
@@ -375,18 +396,7 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
-      matrix:
-        service:
-          - context: go/wallet_api
-            image: wallet-api
-          - context: master_wallet/backend
-            image: master-wallet-backend
-          - context: admin/go
-            image: admin-backend
-          - context: super_admin/go
-            image: super-admin-backend
-          - context: go/api_gateway
-            image: api-gateway
+      matrix: ${{ fromJson(needs.docker-matrix.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -415,22 +425,69 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.context }}/${{ matrix.service.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Build (without pushing) on pull requests so a broken Dockerfile is caught
+  # before merge rather than at release time.
+  docker-verify:
+    name: Verify Docker Build ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    needs: [docker-matrix]
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.docker-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build only
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.context }}/${{ matrix.service.dockerfile }}
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ============== Deploy ==============
+  # Real health-gated rolling deploy with automatic rollback. The previous
+  # `echo "Deploying..."` placeholders meant every release was manual and
+  # unverified; scripts/deploy/rolling-deploy.sh starts the release, waits for
+  # every service to report healthy, and rolls back to the previous image set
+  # if any service fails.
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: docker
     if: github.ref == 'refs/heads/develop'
     environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate the deploy script
+        run: bash -n scripts/deploy/rolling-deploy.sh
+
       - name: Deploy to staging
-        run: echo "Deploying to staging environment..."
+        env:
+          DEPLOY_ENV: staging
+          IMAGE_TAG: ${{ github.sha }}
+          HEALTH_TIMEOUT_SECONDS: '180'
+        run: scripts/deploy/rolling-deploy.sh
 
   deploy-production:
     name: Deploy to Production
@@ -438,9 +495,22 @@ jobs:
     needs: docker
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate the deploy script
+        run: bash -n scripts/deploy/rolling-deploy.sh
+
       - name: Deploy to production
-        run: echo "Deploying to production environment..."
+        env:
+          DEPLOY_ENV: production
+          IMAGE_TAG: ${{ github.sha }}
+          HEALTH_TIMEOUT_SECONDS: '300'
+        run: scripts/deploy/rolling-deploy.sh
 
   # ============== Notify ==============
   notify:
