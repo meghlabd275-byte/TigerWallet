@@ -142,3 +142,8 @@ CREATE DATABASE tigerwallet_notifications;
 -- The service owns its schema and creates the applications, watchlist and
 -- audit tables on boot; this only provides the database.
 CREATE DATABASE tigerwallet_kyc;
+
+-- Tenant-facing permission bridge (permission_bridge/go). It owns its schema
+-- and creates pb_products / pb_permissions on boot; this only provides the
+-- database so the bridge can connect without an operator creating it by hand.
+CREATE DATABASE tigerwallet_permissions;

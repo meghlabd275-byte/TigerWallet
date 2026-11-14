@@ -494,6 +494,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Tenant-facing permission bridge. Edge service white-label tenants call to
+  # read their own product/feature permissions; it is not the control plane
+  # (that is permission-service). SUPER_ADMIN_SECRET gates its /super-admin/*
+  # routes; without it those routes return 403 (fail-closed).
+  permission-bridge:
+    build:
+      context: ./permission_bridge/go
+      dockerfile: Dockerfile
+    container_name: tigerwallet-permission-bridge
+    ports:
+      - "8483:9007"
+    environment:
+      PERMISSION_BRIDGE_PORT: "9007"
+      PERMISSION_DB_HOST: postgres
+      PERMISSION_DB_PORT: "5432"
+      PERMISSION_DB_USER: "${POSTGRES_USER:-tigerwallet}"
+      PERMISSION_DB_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      PERMISSION_DB_NAME: "tigerwallet_permissions"
+      SUPER_ADMIN_SECRET: "${SUPER_ADMIN_SECRET:?SUPER_ADMIN_SECRET must be set - permission-bridge gates /super-admin/* with it}"
+      SUPER_ADMIN_URL: "http://super-admin-api:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Connection API (has Dockerfile)
   connection-api:
     build:

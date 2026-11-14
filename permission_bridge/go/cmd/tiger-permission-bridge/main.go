@@ -63,19 +63,21 @@ func main() {
 			permissions.GET("/cache", h.getCachedPermissionsHandler)
 		}
 
-		// Product registration
+		// Product reads are tenant-scoped. Provisioning moved to the super-admin
+		// group below: registering the first product is what issues an API key, so
+		// gating registration behind that key was a bootstrap deadlock.
 		products := api.Group("/products")
 		products.Use(h.authMiddleware())
 		{
-			products.POST("/register", h.registerProductHandler)
 			products.GET("", h.listProductsHandler)
-			products.PUT("/:product_id/status", h.updateProductStatusHandler)
 		}
 
 		// Super Admin endpoints
 		superAdmin := api.Group("/super-admin")
 		superAdmin.Use(superAdminMiddleware(cfg))
 		{
+			superAdmin.POST("/tenants/:tenant_id/products/register", h.registerProductHandler)
+			superAdmin.PUT("/tenants/:tenant_id/products/:product_id/status", h.updateProductStatusHandler)
 			superAdmin.GET("/tenants/:tenant_id/permissions", h.getTenantPermissionsHandler)
 			superAdmin.PUT("/tenants/:tenant_id/permissions", h.updateTenantPermissionsHandler)
 			superAdmin.POST("/tenants/:tenant_id/products/:product/enable", h.enableProductHandler)
@@ -118,6 +120,7 @@ type DatabaseConfig struct {
 	User     string
 	Password string
 	DBName   string
+	SSLMode  string
 }
 
 func loadConfig() *Config {
@@ -131,6 +134,10 @@ func loadConfig() *Config {
 			User:     getEnv("PERMISSION_DB_USER", "tigerwallet"),
 			Password: mustEnv("PERMISSION_DB_PASSWORD"),
 			DBName:   getEnv("PERMISSION_DB_NAME", "tigerwallet_permissions"),
+			// The in-cluster PostgreSQL does not serve TLS, so the default matches
+			// the rest of the stack. A managed database that requires TLS sets
+			// PERMISSION_DB_SSLMODE=require.
+			SSLMode: getEnv("PERMISSION_DB_SSLMODE", "disable"),
 		},
 	}
 }
@@ -499,7 +506,12 @@ func (h *handlers) registerProductHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	tenantID := c.GetHeader("X-Tenant-ID")
+	// Provisioning runs under the super-admin group, which names the tenant in
+	// the path. The header is accepted as a fallback for older callers.
+	tenantID := c.Param("tenant_id")
+	if tenantID == "" {
+		tenantID = c.GetHeader("X-Tenant-ID")
+	}
 	tid, err := uuid.Parse(tenantID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
@@ -568,6 +580,17 @@ func (h *handlers) updateProductStatusHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid product_id"})
 		return
 	}
+	// Scope the update to the tenant named by the caller. Without this a tenant
+	// holding any one API key could disable another tenant's product.
+	tenantID := c.Param("tenant_id")
+	if tenantID == "" {
+		tenantID = c.GetHeader("X-Tenant-ID")
+	}
+	tid, err := uuid.Parse(tenantID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
+		return
+	}
 	var req struct {
 		Status string `json:"status" binding:"required,oneof=enabled disabled"`
 	}
@@ -576,7 +599,7 @@ func (h *handlers) updateProductStatusHandler(c *gin.Context) {
 		return
 	}
 	res, err := h.db.Exec(c.Request.Context(),
-		`UPDATE pb_products SET status = $2, updated_at = now() WHERE id = $1`, pid, req.Status)
+		`UPDATE pb_products SET status = $3, updated_at = now() WHERE id = $1 AND tenant_id = $2`, pid, tid, req.Status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update product status"})
 		return
@@ -743,12 +766,13 @@ func validateSignature(secret, message, signature string) bool {
 // ============== Database ==============
 
 func initDatabase(cfg *Config) (*pgxpool.Pool, error) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=require",
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		cfg.Database.User,
 		cfg.Database.Password,
 		cfg.Database.Host,
 		cfg.Database.Port,
 		cfg.Database.DBName,
+		cfg.Database.SSLMode,
 	)
 
 	pool, err := pgxpool.New(context.Background(), dsn)
