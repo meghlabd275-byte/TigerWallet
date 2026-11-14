@@ -1776,3 +1776,45 @@
   resolution in this sandbox), PostgreSQL 17 on :55432, Redis on :56379.
 - PUSH NOTE: the token in the git remote URL works; `git push origin main`
   succeeded without refresh.
+
+## Session 45 (2026-11-13) — production launch audit + P0 deploy fixes (pushed to main)
+- TOOLCHAIN: Go at /tmp/goroot/go/bin (GOPATH=/tmp/gopath, GOMODCACHE=/tmp/gomodcache,
+  GOFLAGS=-mod=mod, GOTOOLCHAIN=auto). PostgreSQL + Redis running locally.
+- P0 FIXED — admin API could not boot at all (fresh DB AND restart):
+  (1) models.SupportTicketMessage.Sender was `interface{}` — GORM cannot map an
+      untyped field (it was never read/written); removed.
+  (2) Circular FK on support ticket messages: Ticket *SupportTicket is now
+      `gorm:"-"`; the scalar TicketID remains the real FK.
+  (3) Root cause of the "insufficient arguments" AutoMigrate failure on
+      `blockchains`: gorm.io/driver/postgres v1.5.4 used m.DB.Raw(...).Rows(),
+      which mishandles pgx placeholders; v1.5.9 uses queryRaw. Bumped
+      gorm.io/driver/postgres 1.5.4->1.5.9 and gorm.io/gorm 1.25.7->1.25.10.
+  Verified live: fresh DB boots (health 200, /metrics works), restart against an
+  existing DB works. TestNewPostgresDBOnFreshDatabase + TestMigrateIsIdempotent
+  FAIL on the previous HEAD and PASS with the fix.
+- P0 FIXED — wl-admin-api (:8456) was undeployable: it points DATABASE_URL at
+  `wl_admin`, which database/init.sql never created, so the container exited with
+  "database wl_admin does not exist". Added it. Verified by running the real
+  init.sql against a clean PostgreSQL (exit 0, wl_admin created).
+  NOTE: CREATE DATABASE has no IF NOT EXISTS, so init.sql only runs on an empty
+  data directory — that is how the postgres entrypoint invokes it.
+- CI GAP CLOSED: admin/go was built in CI but its DB tests were never run (no
+  TEST_DATABASE_URL => they skip), which is exactly how a startup-blocking
+  migration regression reached main. The integration job now creates a dedicated
+  database and runs admin/go/pkg/database -v. Simulated locally: ok.
+- MONITORING: per-Docker-network Prometheus scrape configs (prometheus.yml for
+  the root network, prometheus-infra.yml for the infra network), corrected
+  service ports, and a fixed ServiceAbsent alert. /metrics verified live on
+  admin/go (real labels) and confirmed to be genuinely INCREMENTED (not merely
+  registered) in wallet_api, master_wallet, kill_switch, license_service,
+  super_admin, billing, multi_tenancy, notifications, permission_bridge.
+- DEAD CODE (documented, not removed): admin/go/internal/database is a second
+  pgx-based migration path that nothing calls; its `Pool` global is never
+  initialised, so internal/services/{knowledge_base,sla,archival}.go would
+  nil-panic. The live handlers use GORM instead. internal/database is still the
+  only package that loads the schema DDL, so removing it needs care.
+- LAUNCH BLOCKERS (unchanged, verified): non-EVM on-chain broadcast in
+  master_wallet/backend covers EVM + BTC/LTC UTXO + Solana + Cosmos only; the
+  remaining ~40 exotic chains fail closed (never faked). go/wallet_api is
+  broader (16+ real BuildSend paths). Extension Google OAuth client_id and FCM
+  google-services.json are deployment config, not code.
