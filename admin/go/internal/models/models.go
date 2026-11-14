@@ -462,14 +462,24 @@ type SupportTicket struct {
 
 // SupportTicketMessage represents messages in support tickets
 type SupportTicketMessage struct {
-	ID          uint            `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time       `json:"created_at"`
-	TicketID    uint            `gorm:"not null;index" json:"ticket_id"`
-	Ticket      *SupportTicket  `gorm:"foreignKey:TicketID" json:"ticket,omitempty"`
-	SenderID    uint            `gorm:"not null" json:"sender_id"`
-	SenderType  string          `gorm:"not null" json:"sender_type"` // user, admin, system
-	SenderName  string          `json:"sender_name,omitempty"`
-	Sender      interface{}     `json:"sender,omitempty"` // User or Admin
+	ID        uint      `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	TicketID  uint      `gorm:"not null;index" json:"ticket_id"`
+	// Ticket is a load-only association. SupportTicketMessage is migrated
+	// before SupportTicket (see main.go), and declaring the belongs-to here
+	// makes GORM emit support_tickets' FK to support_ticket_messages while
+	// support_ticket_messages does not exist yet, so the whole migration
+	// aborted with SQLSTATE 42P01. The ticket_id column is still a real
+	// indexed column, and callers preload via TicketID.
+	Ticket     *SupportTicket `gorm:"-" json:"ticket,omitempty"`
+	SenderID   uint           `gorm:"not null" json:"sender_id"`
+	SenderType string         `gorm:"not null" json:"sender_type"` // user, admin, system
+	SenderName string         `json:"sender_name,omitempty"`
+	// Sender carries the denormalised sender record for API responses only.
+	// It must stay gorm:"-" : an untyped interface{} field has no column and
+	// makes AutoMigrate fail with "unsupported data type", which aborted the
+	// whole admin schema migration on a fresh database.
+	Sender      interface{}     `gorm:"-" json:"sender,omitempty"` // User or Admin
 	Message     string          `gorm:"type:text" json:"message"`
 	IsInternal  bool            `gorm:"default:false" json:"is_internal"`
 	Attachments json.RawMessage `gorm:"type:jsonb" json:"attachments"`

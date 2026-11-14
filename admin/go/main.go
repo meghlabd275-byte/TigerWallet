@@ -173,6 +173,12 @@ func main() {
 	// Live traffic metrics back the analytics system-metrics endpoint.
 	router.Use(metricsCollector.Middleware())
 
+	// Prometheus scrape endpoint. Mounted before the routes so its middleware
+	// instruments every handler; the scrape probes the live DB and Redis.
+	adminMetricsState.db = db
+	adminMetricsState.redis = redisClient
+	registerAdminMetrics(router)
+
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tiger-admin", "timestamp": time.Now().Unix()})
 	})
