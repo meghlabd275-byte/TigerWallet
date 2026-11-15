@@ -863,9 +863,9 @@ func (s *service) buildStartPayload(ctx context.Context, botID, userID string) (
 		if err != nil {
 			return nil, fmt.Errorf("cex creds: %w", err)
 		}
-		kind := botType
-		if kind == "mean_reversion" {
-			kind = "meanreversion" // bot_core serde tag
+		kind, ok := dispatchKind(botType)
+		if !ok {
+			return nil, errSignalOnlyStrategy
 		}
 		payload := map[string]any{
 			"kind":       kind,
@@ -1177,6 +1177,51 @@ func executableBotTypes() []string {
 		"market_maker", "arbitrage", "sniper", "grid", "dca", "momentum",
 		"mean_reversion", "scalping", "perp_hedge", "liquidity_provider",
 		"ai_trading", "signal", "mev", "front_run", "cross_chain", "custom",
+	}
+}
+
+// dispatchKind maps a stored bot_type to the `kind` tag bot_core's StartReq
+// expects. bot_core derives most tags from the Rust variant name with
+// rename_all = "lowercase" (so GridDca is "grid", MeanReversion is
+// "meanreversion") and renames the rest explicitly. A mismatch here is not a
+// compile error in either language: bot_core answers 422 and the bot silently
+// never runs, so bot_type_dispatch_test.go pins every pair.
+func dispatchKind(botType string) (string, bool) {
+	switch botType {
+	case "market_maker":
+		return "marketmaker", true
+	case "arbitrage":
+		return "arbitrage", true
+	case "sniper":
+		return "sniper", true
+	case "grid":
+		return "grid", true
+	case "dca":
+		return "dca", true
+	case "momentum":
+		return "momentum", true
+	case "mean_reversion":
+		return "meanreversion", true
+	case "scalping":
+		return "scalping", true
+	case "perp_hedge":
+		return "perp_hedge", true
+	case "liquidity_provider":
+		return "liquidity_provider", true
+	case "ai_trading":
+		return "ai_trading", true
+	case "signal":
+		return "signal", true
+	case "mev":
+		return "mev", true
+	case "front_run":
+		return "front_run", true
+	case "cross_chain":
+		return "cross_chain", true
+	case "custom":
+		return "custom", true
+	default:
+		return "", false
 	}
 }
 

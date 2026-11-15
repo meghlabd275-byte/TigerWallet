@@ -355,6 +355,51 @@ func executableBotTypes() []string {
 	}
 }
 
+// dispatchKind maps a stored bot_type to the `kind` tag bot_core's StartReq
+// expects. bot_core derives most tags from the Rust variant name with
+// rename_all = "lowercase" (so MeanReversion is "meanreversion") and renames
+// the rest explicitly. A mismatch is not a compile error in either language:
+// bot_core answers 422 and the bot silently never runs, so
+// bot_type_dispatch_test.go pins every pair against the Rust source.
+func dispatchKind(botType string) (string, bool) {
+	switch botType {
+	case "market_maker":
+		return "marketmaker", true
+	case "arbitrage":
+		return "arbitrage", true
+	case "sniper":
+		return "sniper", true
+	case "grid":
+		return "grid", true
+	case "dca":
+		return "dca", true
+	case "momentum":
+		return "momentum", true
+	case "mean_reversion":
+		return "meanreversion", true
+	case "scalping":
+		return "scalping", true
+	case "perp_hedge":
+		return "perp_hedge", true
+	case "liquidity_provider":
+		return "liquidity_provider", true
+	case "ai_trading":
+		return "ai_trading", true
+	case "signal":
+		return "signal", true
+	case "mev":
+		return "mev", true
+	case "front_run":
+		return "front_run", true
+	case "cross_chain":
+		return "cross_chain", true
+	case "custom":
+		return "custom", true
+	default:
+		return "", false
+	}
+}
+
 func (s *Svc) StopBot(c *gin.Context) {
 	b, ok := s.fetchOwnedBot(c)
 	if !ok {
@@ -528,9 +573,9 @@ func (s *Svc) buildStartPayload(c *gin.Context, b *store.Bot) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		kind := b.BotType
-		if kind == "mean_reversion" {
-			kind = "meanreversion" // bot_core serde tag
+		kind, ok := dispatchKind(b.BotType)
+		if !ok {
+			return nil, errStopDispatch
 		}
 		payload := map[string]any{
 			"kind":       kind,
