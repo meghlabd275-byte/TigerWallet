@@ -69,6 +69,10 @@ func chainsdkAddressFor(chainType string, seed []byte, path string) (string, err
 		return chainsdk.TezosAddress(seed, path)
 	case "multiversx", "elrond":
 		return chainsdk.MultiversXAddress(seed, path)
+	case "nano":
+		return chainsdk.NanoAddressFor(seed, path, "nano")
+	case "banano":
+		return chainsdk.NanoAddressFor(seed, path, "banano")
 	default:
 		return "", fmt.Errorf("no address derivation for non-EVM chain %q", chainType)
 	}

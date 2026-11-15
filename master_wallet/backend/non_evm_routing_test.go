@@ -79,19 +79,19 @@ func TestEverySeededFamilyIsClassified(t *testing.T) {
 func TestChainsdkFamilySupportedHasBuilder(t *testing.T) {
 	// Keep in step with the switch in autoSignChainSDK.
 	handled := []string{"tron", "sui", "ripple", "vechain", "aptos", "near",
-		"algorand", "stellar", "tezos", "multiversx", "elrond"}
+		"algorand", "stellar", "tezos", "multiversx", "elrond", "nano"}
 	for _, f := range handled {
 		if !chainsdkFamilySupported(f) {
 			t.Errorf("family %q is handled by autoSignChainSDK but not advertised", f)
 		}
 	}
-	for _, f := range []string{"xrp", "pi"} {
+	for _, f := range []string{"xrp", "pi", "banano"} {
 		if !chainsdkFamilySupported(f) {
 			t.Errorf("alias %q must resolve to a supported family", f)
 		}
 	}
 	// A family with no builder must not be advertised.
-	for _, f := range []string{"ton", "hedera", "flow", "aleo", "nano", "kaspa"} {
+	for _, f := range []string{"ton", "hedera", "flow", "aleo", "kaspa"} {
 		if chainsdkFamilySupported(f) {
 			t.Errorf("family %q is advertised but has no builder in the switch", f)
 		}

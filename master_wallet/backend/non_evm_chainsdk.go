@@ -221,6 +221,17 @@ func (svc *Service) autoSignChainSDK(seed []byte, req *AutoSignRequest, chainTyp
 		}
 		_, txHash, err = chainsdk.TezosBuildSend(ctx, seed, path, endpoint, req.ToAddress,
 			baseUnits.Uint64(), tezosRevealFee, counter, tezosGasLimit, tezosStorageLimit, true)
+	case "nano", "banano":
+		// A Nano send block commits to the balance that remains after the
+		// transfer, so the block must be built from the ledger's own balance.
+		// The amount is passed in raw units and the remainder is computed from
+		// the account state inside the SDK.
+		prefix := "nano"
+		if strings.EqualFold(chainType, "banano") {
+			prefix = "banano"
+		}
+		_, txHash, err = chainsdk.NanoBuildSendRequest(ctx, seed, path, endpoint, req.ToAddress,
+			chainsdk.NanoSendRequest{Amount: baseUnits.String(), Prefix: prefix}, true)
 	case "multiversx", "elrond":
 		_, txHash, err = chainsdk.MultiversXBuildSend(ctx, seed, path, endpoint, req.ToAddress,
 			baseUnits.String(), true)

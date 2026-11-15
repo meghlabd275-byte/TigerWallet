@@ -322,11 +322,26 @@ func nonEvmDispatchSend(ctx context.Context, family chainsdk.Family, ct string, 
 		return raw, txHash, famStr, err
 
 	case chainsdk.FamilyNano:
-		rem, err := hex.DecodeString(req.RemBalHex)
-		if err != nil {
-			return "", "", famStr, fmt.Errorf("nano remaining_balance_hex malformed: %w", err)
+		// The remainder is derived from the ledger inside the SDK rather than
+		// taken from rem_bal_hex: the remainder is signed into the block, so a
+		// stale client value would produce a block every node rejects, or one
+		// that commits to a balance the account does not hold. rem_bal_hex is
+		// still honoured when supplied, for callers that already resolved it.
+		var rem []byte
+		if strings.TrimSpace(req.RemBalHex) != "" {
+			decoded, decErr := hex.DecodeString(req.RemBalHex)
+			if decErr != nil {
+				return "", "", famStr, fmt.Errorf("nano remaining_balance_hex malformed: %w", decErr)
+			}
+			rem = decoded
 		}
-		raw, txHash, err := chainsdk.NanoBuildSend(ctx, seed, path, chainsdk.LookupEndpoint(req.ChainID, ct), req.To, rem, req.WorkHex, !req.Simulate)
+		raw, txHash, err := chainsdk.NanoBuildSendRequest(ctx, seed, path,
+			chainsdk.LookupEndpoint(req.ChainID, ct), req.To,
+			chainsdk.NanoSendRequest{
+				Amount:             req.Amount,
+				RemainingBalanceBE: rem,
+				WorkHex:            req.WorkHex,
+			}, !req.Simulate)
 		return raw, txHash, famStr, err
 
 	case chainsdk.FamilyMultiversX:

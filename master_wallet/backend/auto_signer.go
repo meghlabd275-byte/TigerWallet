@@ -1106,7 +1106,8 @@ func nonEVMFamilyFor(chainID int64, blockchain string) string {
 func chainsdkFamilySupported(family string) bool {
 	switch strings.ToLower(family) {
 	case "tron", "aptos", "sui", "near", "algorand", "stellar", "pi",
-		"ripple", "xrp", "vechain", "tezos", "multiversx", "elrond":
+		"ripple", "xrp", "vechain", "tezos", "multiversx", "elrond",
+		"nano", "banano":
 		return true
 	default:
 		return false

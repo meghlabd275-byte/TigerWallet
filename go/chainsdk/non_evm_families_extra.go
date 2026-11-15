@@ -429,23 +429,18 @@ func MinaAddress(seed []byte, path string) (string, error) {
 // ---------------------------------------------------------------------------
 
 // blake2bNanoAddress derives a Nano-ledger address for a chain that runs the
-// same scheme with its own prefix, e.g. Wakt.
+// same scheme with its own prefix, e.g. Wakt. The prefix here includes the
+// trailing underscore, so it is passed through unchanged.
 func blake2bNanoAddress(seed []byte, path, prefix string) (string, error) {
 	pub, err := EdPubKey(seed, path)
 	if err != nil {
 		return "", err
 	}
-	h, err := blake2b.New(5, nil)
+	chk, err := nanoChecksumChars(pub)
 	if err != nil {
 		return "", err
 	}
-	h.Write(pub)
-	d := h.Sum(nil)
-	rev := make([]byte, 5)
-	for i := 0; i < 5; i++ {
-		rev[i] = d[4-i]
-	}
-	return prefix + nanoBase32Enc(pub) + nanoBase32Enc(rev), nil
+	return prefix + nanoBase32Enc(pub) + chk, nil
 }
 
 // ---------------------------------------------------------------------------
