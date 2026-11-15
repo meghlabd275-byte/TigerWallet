@@ -68,7 +68,12 @@ impl TransactionPattern {
 pub struct MEVOpportunity {
     pub id: u64,
     pub attack_type: MEVAttackType,
-    pub profit_estimate: i64,
+    /// The profit this attack is expected to extract, in the pool's input
+    /// token, or `None` when it cannot be derived from the observed fields.
+    /// `None` is not zero: it means the inputs needed to price the attack
+    /// (pool reserves, the attacker's exit price) were not available, and a
+    /// caller must not present it as a concrete number.
+    pub profit_estimate: Option<i64>,
     pub affected_addresses: Vec<String>,
     pub pool_addresses: Vec<String>,
     pub timestamp: u64,
@@ -80,7 +85,7 @@ impl MEVOpportunity {
     pub fn new(
         id: u64,
         attack_type: MEVAttackType,
-        profit_estimate: i64,
+        profit_estimate: Option<i64>,
         affected_addresses: Vec<String>,
     ) -> Self {
         Self {
@@ -133,7 +138,12 @@ pub struct MEVEngine {
     recent_transactions: RwLock<HashMap<String, TransactionPattern>>,
     flashbots_endpoint: RwLock<Option<String>>,
     block_number: RwLock<u64>,
+    pool_fee_bps: RwLock<u32>,
 }
+
+/// The fee tier used to price a sandwich when the caller has not set one.
+/// 30 bps is the 0.30% tier that most AMM pools use.
+pub const DEFAULT_POOL_FEE_BPS: u32 = 30;
 
 impl MEVEngine {
     pub fn new() -> Self {
@@ -143,7 +153,16 @@ impl MEVEngine {
             recent_transactions: RwLock::new(HashMap::new()),
             flashbots_endpoint: RwLock::new(None),
             block_number: RwLock::new(0),
+            pool_fee_bps: RwLock::new(DEFAULT_POOL_FEE_BPS),
         }
+    }
+
+    /// Set the fee tier, in basis points, of the pools this engine monitors.
+    ///
+    /// A sandwich attacker's profit is bounded by the fee the victim pays, so
+    /// the estimate is only as good as this number.
+    pub fn set_pool_fee_bps(&self, bps: u32) {
+        *self.pool_fee_bps.write().unwrap() = bps;
     }
 
     /// Configure Flashbots endpoint
@@ -193,31 +212,47 @@ impl MEVEngine {
         None
     }
 
-    /// Detect sandwich attack
+    /// Detect a sandwich attack.
+    ///
+    /// A sandwich is an attacker's trade that brackets a victim's trade on the
+    /// same pool, in the same token, with the attacker paying more gas to land
+    /// first. So the victim is another sender already in the recent set whose
+    /// gas price is below this transaction's.
+    ///
+    /// The previous implementation looked the victim up under the sender of
+    /// the transaction being analysed. `analyze_transaction` records that
+    /// transaction under its own sender before calling this, so the lookup
+    /// always returned the transaction itself and the gas comparison was
+    /// always false — the branch could never be reached.
     fn detect_sandwich(&self, tx: &TransactionPattern) -> Option<MEVOpportunity> {
+        let pool = tx.pool_address.as_ref()?;
+        let token = tx.token_in.as_ref()?;
+
         let txs = self.recent_transactions.read().unwrap();
-        
-        // Look for victim's pending transaction
-        if let Some(victim_tx) = txs.get(&tx.sender) {
-            if victim_tx.gas_price < tx.gas_price {
-                // Potential front-run
-                // Look for matching back-run
-                let victim_token = victim_tx.token_in.as_ref()?;
-                let victim_pool = victim_tx.pool_address.as_ref()?;
-                
-                // Simple sandwich detection
-                if tx.pool_address.as_ref() == Some(victim_pool) &&
-                   tx.token_in.as_ref() == Some(victim_token) {
-                    return Some(MEVOpportunity::new(
-                        0,
-                        MEVAttackType::Sandwich,
-                        self.estimate_sandwich_profit(tx, victim_tx),
-                        vec![tx.sender.clone(), victim_tx.sender.clone()],
-                    ));
-                }
+
+        for (address, victim_tx) in txs.iter() {
+            if address == &tx.sender {
+                continue;
             }
+            // The victim pays less gas, so the attacker lands ahead of them.
+            if victim_tx.gas_price >= tx.gas_price {
+                continue;
+            }
+            if victim_tx.pool_address.as_ref() != Some(pool) {
+                continue;
+            }
+            if victim_tx.token_in.as_ref() != Some(token) {
+                continue;
+            }
+
+            return Some(MEVOpportunity::new(
+                0,
+                MEVAttackType::Sandwich,
+                self.estimate_sandwich_profit(victim_tx),
+                vec![tx.sender.clone(), victim_tx.sender.clone()],
+            ));
         }
-        
+
         None
     }
 
@@ -240,16 +275,12 @@ impl MEVEngine {
                recent_tx.token_out == tx.token_out &&
                recent_tx.gas_price < tx.gas_price {
                 
-                // Calculate profit estimate
-                let profit = self.estimate_frontrun_profit(tx, recent_tx);
-                if profit > 0 {
-                    return Some(MEVOpportunity::new(
-                        0,
-                        MEVAttackType::FrontRun,
-                        profit,
-                        vec![tx.sender.clone(), address.clone()],
-                    ));
-                }
+                return Some(MEVOpportunity::new(
+                    0,
+                    MEVAttackType::FrontRun,
+                    self.estimate_frontrun_profit(),
+                    vec![tx.sender.clone(), address.clone()],
+                ));
             }
         }
         
@@ -279,7 +310,7 @@ impl MEVEngine {
                 return Some(MEVOpportunity::new(
                     0,
                     MEVAttackType::BackRun,
-                    self.estimate_backrun_profit(tx, recent_tx),
+                    self.estimate_backrun_profit(),
                     vec![tx.sender.clone(), address.clone()],
                 ));
             }
@@ -288,30 +319,48 @@ impl MEVEngine {
         None
     }
 
-    /// Estimate sandwich profit
-    fn estimate_sandwich_profit(&self, front_run: &TransactionPattern, victim: &TransactionPattern) -> i64 {
-        let front_run_amount = front_run.amount_in.unwrap_or(0);
-        let victim_amount = victim.amount_in.unwrap_or(0);
-        
-        // Simplified profit calculation
-        let price_impact = (victim_amount as f64 * 0.003); // ~0.3% fee + slippage
-        (price_impact as i64) * 2 // Front and back
+    /// Estimate sandwich profit.
+    ///
+    /// A sandwich attacker buys ahead of the victim and sells behind them.
+    /// What they can capture is bounded by the fee the victim pays on their
+    /// own trade, so the estimate is `victim_amount * fee_bps / 10_000`.
+    ///
+    /// This needs a fee tier. Callers that have not set one get the engine
+    /// default, which is a documented assumption rather than a measurement.
+    /// Returns `None` when the victim's trade size is unknown, because a
+    /// profit cannot be derived from nothing.
+    fn estimate_sandwich_profit(&self, victim: &TransactionPattern) -> Option<i64> {
+        let victim_amount = victim.amount_in?;
+        if victim_amount == 0 {
+            return None;
+        }
+
+        let fee_bps = u64::from(*self.pool_fee_bps.read().unwrap());
+        let profit = (victim_amount as u128 * fee_bps as u128) / 10_000;
+        i64::try_from(profit).ok()
     }
 
-    /// Estimate frontrun profit
-    fn estimate_frontrun_profit(&self, attacker: &TransactionPattern, victim: &TransactionPattern) -> i64 {
-        let attacker_amount = attacker.amount_in.unwrap_or(0);
-        let price_diff = attacker.gas_price as i64 - victim.gas_price as i64;
-        
-        // Profit from buying before victim
-        (attacker_amount as f64 * 0.01) as i64 - price_diff
+    /// Estimate front-run profit.
+    ///
+    /// Always `None`. Pricing a front-run means knowing what the attacker's
+    /// position is worth once the victim's trade moves the pool, and that
+    /// requires the pool reserves. The gas-price difference the previous
+    /// implementation used is a cost the attacker pays, not a profit, so it
+    /// cannot stand in for one. Detection still reports the pattern; only the
+    /// number is withheld.
+    fn estimate_frontrun_profit(&self) -> Option<i64> {
+        None
     }
 
-    /// Estimate backrun profit
-    fn estimate_backrun_profit(&self, large_swap: &TransactionPattern, arb: &TransactionPattern) -> i64 {
-        let amount = large_swap.amount_in.unwrap_or(0);
-        // Approximate arb profit
-        (amount as f64 * 0.002) as i64 // ~0.2% arb
+    /// Estimate back-run profit.
+    ///
+    /// Always `None`. A back-runner's profit is the arbitrage between the
+    /// price the victim's swap leaves behind and the price the pool returns
+    /// to. Both come from the reserves, which this detector does not hold, so
+    /// the number cannot be derived from the swap size alone. Detection still
+    /// reports the pattern; only the number is withheld.
+    fn estimate_backrun_profit(&self) -> Option<i64> {
+        None
     }
 
     /// Record detected attack
@@ -327,7 +376,6 @@ impl MEVEngine {
 
     /// Get all detected attacks
     pub fn get_detected_attacks(&self) -> Vec<MEVOpportunity> {
-        self.recent_transactions.read().unwrap();
         self.detected_attacks.read().unwrap().clone()
     }
 
@@ -340,23 +388,16 @@ impl MEVEngine {
         bundle
     }
 
-    /// Simulate bundle (simplified)
-    pub fn simulate_bundle(&self, bundle: &MevBundle) -> Result<BundleSimulation, String> {
-        // Simplified simulation
-        let mut profit = 0i64;
-        let mut gas_used = 0u64;
-        
-        for tx in &bundle.transactions {
-            gas_used += 21000; // Base gas
-            profit += 1000; // Estimated profit per tx
-        }
-        
-        Ok(BundleSimulation {
-            total_profit: profit,
-            gas_used,
-            state_changes: Vec::new(),
-            reverts: Vec::new(),
-        })
+    /// Simulate a bundle against real chain state.
+    ///
+    /// Fails closed. Simulating a bundle means executing it against the state
+    /// of a specific block, which requires an archive node. The previous
+    /// implementation returned a constant per transaction and called that a
+    /// simulation, which would have told a caller that an unprofitable bundle
+    /// was worth submitting. There is no honest answer to give without a
+    /// node, so this reports that rather than inventing one.
+    pub fn simulate_bundle(&self, _bundle: &MevBundle) -> Result<BundleSimulation, String> {
+        Err("bundle simulation requires an archive node; none is configured".to_string())
     }
 
     /// Check if transaction is safe (not vulnerable to MEV)
@@ -536,4 +577,101 @@ mod tests {
         let stats = engine.get_stats();
         assert_eq!(stats.monitored_pools, 2);
     }
+
+    fn pattern(sender: &str, gas_price: u64, amount_in: Option<u64>) -> TransactionPattern {
+        let mut tx = TransactionPattern::new(
+            sender.to_string(),
+            "0xPool".to_string(),
+            0,
+            gas_price,
+        );
+        tx.token_in = Some("0xWETH".to_string());
+        tx.token_out = Some("0xUSDC".to_string());
+        tx.amount_in = amount_in;
+        tx.pool_address = Some("0xPool".to_string());
+        tx
+    }
+
+    #[test]
+    fn a_sandwich_profit_is_bounded_by_the_victim_fee() {
+        // 100_000_000 in, 30 bps fee => 300_000 capturable.
+        let engine = MEVEngine::new();
+        let victim = pattern("0xVictim", 100, Some(100_000_000));
+        let attacker = pattern("0xAttacker", 200, Some(1_000));
+
+        engine.analyze_transaction(&victim);
+        let attack = engine
+            .analyze_transaction(&attacker)
+            .expect("a matching pool and token must be detected as a sandwich");
+
+        assert_eq!(attack.attack_type, MEVAttackType::Sandwich);
+        assert_eq!(
+            attack.profit_estimate,
+            Some(300_000),
+            "profit must follow from the fee tier, not a magic multiplier"
+        );
+    }
+
+    #[test]
+    fn the_sandwich_estimate_follows_a_configured_fee_tier() {
+        let engine = MEVEngine::new();
+        engine.set_pool_fee_bps(100); // 1.00%
+
+        let victim = pattern("0xVictim", 100, Some(100_000_000));
+        let attacker = pattern("0xAttacker", 200, Some(1_000));
+
+        engine.analyze_transaction(&victim);
+        let attack = engine.analyze_transaction(&attacker).expect("detected");
+
+        assert_eq!(attack.profit_estimate, Some(1_000_000));
+    }
+
+    #[test]
+    fn an_unpriceable_attack_reports_unknown_rather_than_zero() {
+        // The victim's trade size is unknown, so no profit can be derived.
+        // Reporting 0 would claim the attack is worthless.
+        let engine = MEVEngine::new();
+        let victim = pattern("0xVictim", 100, None);
+        let attacker = pattern("0xAttacker", 200, Some(1_000));
+
+        engine.analyze_transaction(&victim);
+        let attack = engine.analyze_transaction(&attacker).expect("detected");
+
+        assert_eq!(
+            attack.profit_estimate, None,
+            "an unknown profit must be None, not a fabricated 0"
+        );
+    }
+
+    #[test]
+    fn a_frontrun_never_invents_a_profit_figure() {
+        // The old estimate returned amount * 0.01 - gas_delta, which is
+        // unrelated to what the attacker would actually make.
+        let engine = MEVEngine::new();
+        // A different pool keeps sandwich detection out of the way, so this
+        // exercises the front-run branch on its own.
+        let mut victim = pattern("0xVictim", 100, Some(50_000));
+        victim.pool_address = Some("0xOtherPool".to_string());
+        let attacker = pattern("0xAttacker", 500, Some(50_000));
+
+        engine.analyze_transaction(&victim);
+        let attack = engine.analyze_transaction(&attacker).expect("detected");
+
+        assert_eq!(attack.attack_type, MEVAttackType::FrontRun);
+        assert_eq!(attack.profit_estimate, None);
+    }
+
+    #[test]
+    fn bundle_simulation_fails_closed_without_a_node() {
+        let engine = MEVEngine::new();
+        let bundle = engine.create_bundle(vec![vec![1, 2, 3]], 42);
+
+        let result = engine.simulate_bundle(&bundle);
+
+        assert!(
+            result.is_err(),
+            "simulation without chain state must error, not return fake numbers"
+        );
+    }
+
 }

@@ -91,6 +91,54 @@ impl PoolCore {
         liquidity
     }
 
+    /// Quote a swap without mutating the pool.
+    ///
+    /// Uses the same constant-product math as `swap`, so a quote and the
+    /// execution that follows it agree. Returns the amount out net of the fee.
+    pub fn quote(&self, amount_in: &BigUint, zero_for_one: bool) -> Result<BigUint, String> {
+        let state = self.state.read();
+
+        let (reserve_in, reserve_out) = if zero_for_one {
+            (state.reserves0.clone(), state.reserves1.clone())
+        } else {
+            (state.reserves1.clone(), state.reserves0.clone())
+        };
+
+        if reserve_in == BigUint::from(0u64) || reserve_out == BigUint::from(0u64) {
+            return Err("Pool has no liquidity".to_string());
+        }
+        if amount_in == &BigUint::from(0u64) {
+            return Err("Amount in must be greater than zero".to_string());
+        }
+
+        let fee_multiplier = BigUint::from(1000000u64) - BigUint::from(state.fee as u64);
+        let amount_in_with_fee = (amount_in * &fee_multiplier) / BigUint::from(1000000u64);
+        if amount_in_with_fee == BigUint::from(0u64) {
+            return Err("Amount in is too small to cover the fee".to_string());
+        }
+
+        let new_reserve_in = &reserve_in + &amount_in_with_fee;
+        let new_reserve_out = (&reserve_in * &reserve_out) / &new_reserve_in;
+
+        Ok(&reserve_out - &new_reserve_out)
+    }
+
+    /// Price of token0 denominated in token1, from the pool's reserves.
+    ///
+    /// This is the marginal price an infinitesimal trade would face, which is
+    /// what price impact is measured against. It returns `None` rather than a
+    /// number when either reserve is empty, because a price cannot be derived
+    /// from a pool that holds nothing.
+    pub fn spot_price_from_reserves(&self) -> Option<f64> {
+        let state = self.state.read();
+        let reserve0 = state.reserves0.to_f64()?;
+        let reserve1 = state.reserves1.to_f64()?;
+        if reserve0 <= 0.0 || reserve1 <= 0.0 {
+            return None;
+        }
+        Some(reserve1 / reserve0)
+    }
+
     /// Execute a swap
     pub fn swap(
         &self,
