@@ -133,8 +133,8 @@ Duplicate top-level directories were merged into one canonical home each
 | Portfolio analytics | `portfolio/` (go, rust) | `portfolio_analytics/` (README) → `portfolio/README.md` |
 | Governance / DAO | `governance/` (go service + 4 contract variants) | `governance_dao/` → `governance/smart_contracts/ethereum/TigerGovernance.sol` |
 | API gateway | `api_gateway/` (unified_gateway canonical) | `backend_services/api_gateway/` → `api_gateway/go/gateway_v1/` (feature-rich Gin/Redis/WebSocket gateway, own go.mod; CI + Dockerfile updated) |
-| Perpetuals | `user_features/perpetual_trading/` | `perpetuals_engine/` (Rust matching/risk/margin/liquidation engines) → `engine/`, `perpetuals_backend/` (Go services) → `backend/`, `perpetual_trading/` (C++ engine, Go service, frontend) → `cpp_engine/`, `go/`, `frontend/` |
-| Options | `user_features/options_trading/` | `options_trading/go/cmd/main.go` (full options platform) merged in |
+| Perpetuals | `go/perpetual_service/` (:8455, deployed) + `go/wallet_api` `/perpetual/positions` | `perpetuals_engine/` (Rust matching/risk/margin/liquidation engines), `user_features/perpetual_trading/` (never built, never deployed) |
+| Options | `go/wallet_api` `/options/{series,quote,positions}` (DB-backed) | `user_features/options_trading/` (never built, never deployed) |
 
 Round 2 verified with Go 1.27: `api_gateway/go/gateway_v1` and `api_gateway/go`
 pass `go build ./...`.
@@ -148,9 +148,19 @@ are `user_wallet/android` + `user_wallet/ios`), duplicate desktop apps
 `desktop_app/` Tauri), and duplicate web apps (`user_wallet/react_app/`,
 `user_wallet/production/` — canonical is `user_wallet/web/`). All fetchers
 (`go/full_fetchers`, `fetcher_core`, `fetcher_gateway`) and unique
-functionality were preserved; perpetuals/options engines were merged into
-`user_features/`, not deleted, and the unique `listing_service` was moved from
+functionality were preserved; the unique `listing_service` was moved from
 `backend_services/go/listing_service` to `listing_service/go`.
+
+Round 4 (2026-11-14): removed the `user_features/` tree. It was a parallel,
+never-built, never-deployed copy of capabilities the canonical services already
+serve — `lending_borrowing` duplicated the deployed `go/lending_service`,
+`perpetual_trading` duplicated the deployed `go/perpetual_service`, and
+`options_trading` duplicated the DB-backed `go/wallet_api` `/options/*` routes.
+The remaining modules (dca_bot, grid_trading, savings, limit_orders,
+wallet_management) were standalone `main` packages with no Dockerfile, no
+compose entry, no CI job and no importer. It also carried stub contracts that
+never moved tokens (`TigerLending`, `TigerPerpetual`) and a frontend that
+hardcoded a demo wallet address. Nothing referenced it, so nothing broke.
 
 Language placement rule: **C++** for ultra-low-latency speed paths,
 **Rust** where safety/security is critical (also ultra-low-latency),
